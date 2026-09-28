@@ -90,6 +90,8 @@ public sealed class EmissionArtifactsTest : IDisposable
     [Theory]
     [InlineData(null, "codec.dll")]
     [InlineData(null, "/DEFAULTLIB:evil.lib")]
+    [InlineData(null, "/defaultlib:evil.lib")]
+    [InlineData(null, "/WHOLEARCHIVE:evil.lib")]
     [InlineData("static", "codec.lib")]
     public void InvalidPackageTargetedSuppliesAreRejectedEvenWhenUnused(string? kind, string input)
     {
@@ -98,6 +100,12 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
         Assert.Null(path);
         Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void FullyQualifiedNativePathsRemainValid()
+    {
+        ArtifactFiles.CheckPath(Path.Combine(this.directory, "codec.lib"));
     }
 
     [Fact]

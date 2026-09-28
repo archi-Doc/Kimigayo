@@ -1,5 +1,17 @@
 # Change Log
 
+## 0.0.9
+
+- Report invalid server paths and server failures once per unchanged setting, shared across diagnostics and build/run/check commands; retain repeated details in the Kimi output.
+- Prevent duplicate language-client popups and automatic connection restart loops while preserving manual retry and recovery after configuration changes.
+- Explain VS Code's upstream url.parse warning and vsce's relative file-size annotation without suppressing them.
+
+## 0.0.8
+
+- Replace Mocha's deprecated glob dependency and lock the VSIX packaging tool with the other development dependencies.
+- Bundle the shipped JavaScript and retain dependency license notices, excluding development files and the dependency tree from the VSIX.
+- Add a repository script that builds and installs the VSIX into VS Code, with alternate CLI and isolated extension-directory options.
+
 ## 0.0.7
 
 - Integrate the extension into the Kimigayo repository with shared maintenance rules, documentation and development configuration.

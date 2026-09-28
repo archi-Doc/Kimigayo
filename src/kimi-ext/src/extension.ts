@@ -1,5 +1,5 @@
 import { CancellationTokenSource, commands, ExtensionContext, TextDocument, Uri, window, workspace } from 'vscode';
-import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient/node';
+import { CloseAction, ErrorAction, LanguageClient, LanguageClientOptions, RevealOutputChannelOn, ServerOptions } from 'vscode-languageclient/node';
 import { resolveServerPath } from './serverPath';
 import { ServerManager } from './serverManager';
 import { toProtocolUri } from './documentUri';
@@ -12,14 +12,36 @@ let manager: ServerManager | undefined;
 let commandRunner: CommandRunner | undefined;
 let taskExecutor: TaskExecutor | undefined;
 
+/** Keep library diagnostics in the output; Kimi owns the single actionable notification. */
+class KimiLanguageClient extends LanguageClient {
+  override error(message: string, data?: unknown): void {
+    super.error(message, data, false);
+  }
+}
+
 function isKimiDocument(document: TextDocument): boolean {
   return document.uri.scheme === 'file' && (document.languageId === 'kimi' || document.languageId === 'kimiproj');
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const output = window.createOutputChannel('Kimi');
+  let serverPath = workspace.getConfiguration('kimi').get<unknown>('serverPath');
+  let serverErrorReported = false;
+  const currentServerPath = (): unknown => {
+    const value = workspace.getConfiguration('kimi').get<unknown>('serverPath');
+    if (!Object.is(value, serverPath)) {
+      serverPath = value;
+      serverErrorReported = false;
+    }
+    return value;
+  };
   const reportError = (message: string): void => {
     output.appendLine(message);
+    currentServerPath();
+    if (serverErrorReported) {
+      return;
+    }
+    serverErrorReported = true;
     void window.showErrorMessage(`Kimi: ${message}`, 'Open Settings', 'Show Output').then(async action => {
       if (action === 'Open Settings') {
         await commands.executeCommand('workbench.action.openSettings', 'kimi.serverPath');
@@ -41,7 +63,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const runner = new CommandRunner({
     runBuilds: () => workspace.getConfiguration('kimi').get('runBuilds', false),
     save: saveKimiDocuments,
-    resolveExecutable: () => resolveServerPath(workspace.getConfiguration('kimi').get<unknown>('serverPath')),
+    resolveExecutable: () => resolveServerPath(currentServerPath()),
     execute: (executable, command, target, signal) => executor.execute(executable, command, target, signal),
     reportError: reportCommandError
   });
@@ -90,8 +112,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
   registerRunWithoutDebugging(context, (uri, signal) => runCommand('buildAndRun', uri, signal), reportCommandError);
 
   const server = new ServerManager({
-    resolvePath: () => resolveServerPath(workspace.getConfiguration('kimi').get<unknown>('serverPath')),
+    resolvePath: () => resolveServerPath(currentServerPath()),
     createClient: executable => {
+      const configuration = currentServerPath();
+      const reportConnectionError = (message: string): void => {
+        if (Object.is(configuration, currentServerPath())) {
+          reportError(`Language server "${executable}" (kimi.serverPath): ${message}`);
+        }
+      };
       const serverOptions: ServerOptions = { command: executable, args: ['lsp'] };
       const clientOptions: LanguageClientOptions = {
         documentSelector: [
@@ -100,9 +128,22 @@ export async function activate(context: ExtensionContext): Promise<void> {
         ],
         initializationOptions: { checkQuietPeriodMs: 250 },
         uriConverters: { code2Protocol: toProtocolUri, protocol2Code: value => Uri.parse(value) },
-        outputChannel: output
+        outputChannel: output,
+        // ServerManager reports startup failures; avoid a second languageclient popup.
+        revealOutputChannelOn: RevealOutputChannelOn.Never,
+        initializationFailedHandler: () => false,
+        errorHandler: {
+          error: error => {
+            reportConnectionError(error.message);
+            return { action: ErrorAction.Shutdown, handled: true };
+          },
+          closed: () => {
+            reportConnectionError('The connection closed. Check the Kimi output, then use Kimi: Restart Language Server to retry.');
+            return { action: CloseAction.DoNotRestart, handled: true };
+          }
+        }
       };
-      return new LanguageClient('kimi', 'Kimi', serverOptions, clientOptions);
+      return new KimiLanguageClient('kimi', 'Kimi', serverOptions, clientOptions);
     },
     reportError,
     log: message => output.appendLine(message)
@@ -117,6 +158,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }),
     workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('kimi.serverPath')) {
+        currentServerPath();
         void server.restart(serverRequested);
       }
     }),

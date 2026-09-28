@@ -410,7 +410,11 @@ suite('Kimi build and run integration', () => {
   test('invalid server paths prevent task creation and offer configuration errors', async () => {
     await vscode.workspace.getConfiguration('kimi').update('serverPath', path.join(root, 'missing.exe'), vscode.ConfigurationTarget.Global);
     assert.equal(await vscode.commands.executeCommand('kimi.check', vscode.Uri.file(file)), 'failed');
+    await vscode.commands.executeCommand('kimi.restartServer');
+    assert.equal(await vscode.commands.executeCommand('kimi.check', vscode.Uri.file(file)), 'failed');
+    assert.equal(await vscode.commands.executeCommand('kimi.build', vscode.Uri.file(file)), 'failed');
     assert.deepEqual(started, []);
+    assert.equal(errors.length, 1, errors.join('\n'));
     assert.ok(errors.some(error => error.includes('kimi.serverPath') && error.includes('missing.exe')));
     await vscode.workspace.getConfiguration('kimi').update('serverPath', process.env.KIMI_TEST_SERVER_PATH, vscode.ConfigurationTarget.Global);
   });

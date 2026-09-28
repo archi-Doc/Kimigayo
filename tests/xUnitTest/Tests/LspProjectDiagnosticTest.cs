@@ -24,7 +24,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     {
         var path = Path.Combine(this.directory, "Hello.kimi");
         await using var client = new LspTestClient();
-        await client.InitializeAsync();
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}");
         await client.OpenAsync(path, "::Kimi.Console.writeLine(\"Hello\" +\n");
         var publish = await client.ReceiveAsync(x => LspTestClient.IsPublish(x, LspTestClient.Uri(path)));
         Assert.Equal(1, publish.GetProperty("params").GetProperty("version").GetInt32());

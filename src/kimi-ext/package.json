@@ -3,7 +3,7 @@
   "publisher": "local",
   "displayName": "Kimi Extension",
   "description": "Kimi language diagnostics, build, run, and check commands for Visual Studio Code.",
-  "version": "0.0.7",
+  "version": "0.0.9",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -207,8 +207,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && node scripts/prepare-package.mjs",
-    "package": "npx @vscode/vsce@4.0.0 package -o ../../artifacts/packages/kimi-ext.vsix",
+    "vscode:prepublish": "npm run compile && npm run bundle && node scripts/prepare-package.mjs",
+    "package": "vsce package --no-dependencies -o ../../artifacts/packages/kimi-ext.vsix",
+    "bundle": "esbuild src/extension.ts --bundle --minify --platform=node --format=cjs --target=node22 --external:vscode --legal-comments=linked --outfile=out/extension.js",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
@@ -223,11 +224,16 @@
     "@types/vscode": "^1.138.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1"
   },
   "overrides": {
+    "mocha": {
+      "glob": "^13.0.6"
+    },
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
   },

@@ -6,5 +6,10 @@ scripts/**
 **/*.map
 **/*.ts
 **/.vscode-test.*
-out/test/**
+node_modules/**
+out/**
+!out/extension.js
+!out/extension.js.LEGAL.txt
+!out/THIRD_PARTY_NOTICES.txt
+!out/terminateProcess.sh
 **/*.vsix

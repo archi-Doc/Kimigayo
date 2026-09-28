@@ -268,6 +268,14 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 
 Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain. NativeAOT tests are separate and are not run by these commands.
 
+LSP tests require directory-listing access from the OS temporary directory through every
+ancestor to the filesystem root: project discovery must distinguish an unreadable directory
+from one containing no projects (SPEC §23.4.3). Session verification and selections of the
+implicit-source LSP test classes check this access before building. If the preflight fails,
+inspect `lsp-discovery-access.log` in the evidence directory and rerun in a process with the
+required access, outside a restricting sandbox. Do not treat an unreadable directory as empty
+or skip the tests; otherwise missing diagnostics appear as assertion failures or timeouts.
+
 Each run records results in `artifacts/verify/<run>/`, including failed runs. Native scratch files go to `temp/verify/<run>/`. Fixture inputs and their expected results stay with the evidence so they can be replayed after scratch files are deleted. Do not edit sources or remove working directories during verification.
 
 The [current plan](docs/dev/PLAN.md) describes ongoing work; [session history](docs/dev/PLAN_HISTORY.md) links to retained evidence. Extension-specific checks are listed under [Visual Studio Code](#extension-development).
@@ -290,11 +298,10 @@ The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check
 2. Package and install the extension from the repository root:
 
    ```powershell
-   ./scripts/build-extension.ps1
-   code --install-extension .\artifacts\packages\kimi-ext.vsix --force
+   ./scripts/install-extension.ps1
    ```
 
-   The script restores locked npm dependencies and packages the current version without incrementing it. Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
+   The script runs `build-extension.ps1`, then installs `artifacts/packages/kimi-ext.vsix` using the VS Code `code` CLI on PATH. Use `-CodeCommand 'C:/path/to/VS Code/bin/code.cmd'` for another installation, or `-ExtensionsDirectory 'C:/path/to/test-extensions'` for an isolated extension directory. Run `./scripts/build-extension.ps1` when only a VSIX is needed. Both scripts keep the current version; locked npm dependencies include the packaging tool. Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
 
 3. Run **Preferences: Open User Settings (JSON)** and set your actual compiler path:
 
@@ -330,13 +337,17 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 
 ### Settings and troubleshooting
 
-- **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and startup errors offer **Open Settings** and **Show Output**. Path changes restart the server; **Kimi: Restart Language Server** retries it.
+- **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and server errors offer **Open Settings** and **Show Output** once per unchanged setting during an extension session, shared by diagnostics and build/run/check commands. Repeated failures remain in the **Kimi** Output channel. Changing the setting allows a new notification and restarts the server; **Kimi: Restart Language Server** retries the same setting without repeating the popup. A failed connection does not automatically restart in a loop.
 - **`kimi.runBuilds`**: enable for current Kimi. The compatibility default is `false`, which uses `build` then `run` for Build and Run and leaves Run's behavior to the executable.
 - **`kimi.trace.server`**: `off` (default), `messages`, or `verbose`; see the **Kimi** Output channel.
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.
 
 Tasks need an open folder; diagnostics also work in standalone editor windows. Avoid `%` in native build paths with the verified Windows linker. Completion, hover, navigation and syntax highlighting are not included. Kimi.exe manages the toolchain.
+
+VS Code 1.139.1 can emit `DEP0169` (`url.parse()`) from its own CLI marketplace metadata request after installing a local VSIX ([upstream issue](https://github.com/microsoft/vscode/issues/326998)). This is outside the extension; the install script preserves the warning while awaiting an upstream fix.
+
+The `vsce` 4.0.0 message that `extension.js` is **large** means that this one file accounts for more than 85% of the unpacked package, not that it exceeds an absolute size limit. A minified single bundle naturally dominates this small VSIX (about 97 KB compressed). Keep the bundle; splitting it or adding filler only to change this ratio would not improve loading or download size.
 
 ### Extension development
 
@@ -349,5 +360,7 @@ npm --prefix src/kimi-ext run test:integration
 ```
 
 Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
+
+The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 
 Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once, update `src/kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-srckimi-ext).
