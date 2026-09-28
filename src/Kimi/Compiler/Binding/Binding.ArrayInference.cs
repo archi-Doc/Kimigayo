@@ -123,12 +123,7 @@ public sealed partial class Binding
             var source = KotoHelper.UnwrapParentheses(literal.Elements[i]);
             if (IsUnfittedLiteral(source))
             {
-                var number = source as NumberLiteralKoto ?? (source as UnaryKoto)?.Operand as NumberLiteralKoto;
-                if (number is not null)
-                {
-                    literalDefault ??= DefaultLiteralType(number, null);
-                }
-
+                literalDefault ??= LiteralDefault(source);
                 continue;
             }
 
@@ -184,12 +179,7 @@ public sealed partial class Binding
 
         if (shape is TypeSemanticsKoto { Type: null, Identifier: "_" } && IsUnfittedLiteral(source))
         {
-            var number = source as NumberLiteralKoto ?? (source as UnaryKoto)?.Operand as NumberLiteralKoto;
-            if (number is not null)
-            {
-                literalDefault ??= DefaultLiteralType(number, null);
-            }
-
+            literalDefault ??= LiteralDefault(source);
             return true;
         }
 

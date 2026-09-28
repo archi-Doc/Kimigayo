@@ -988,13 +988,12 @@ public sealed partial class Binding
                 if (type is null)
                 {
                     // Default only otherwise unconstrained literals; all established inputs were processed above.
-                    var literal = argument is NumberLiteralKoto number ? number : argument is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)argument).Operand as NumberLiteralKoto : null;
-                    if (literal is null)
+                    if (LiteralDefault(argument) is not { } literalDefault)
                     {
                         return CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                     }
 
-                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64, argument))
+                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literalDefault, argument))
                     {
                         return CandidateApplicability.Inapplicable;
                     }

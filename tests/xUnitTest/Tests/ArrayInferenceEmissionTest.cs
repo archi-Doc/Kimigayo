@@ -23,6 +23,7 @@ public class ArrayInferenceEmissionTest
     [InlineData("Once", "func get() -> i32\n    Console.writeLine(\"ok\")\n    return 1\nlet row: [1 of _] = [get()]")]
     [InlineData("Selection", "let first: [1 of string] = [\"ok\"]\nlet second: [1 of string] = [\"bad\"]\nlet row: [1 of _] = if true => first@move else => second@move\nConsole.writeLine(row[0])")]
     [InlineData("Constants", "let N = 2\nlet row: [N of _] = [\"first\", \"ok\"]\nConsole.writeLine(row[1])")]
+    [InlineData("LiteralOnly", "let x: u8 = 1\nlet row: [2 of _] = [(1 + 2), x]\nif row[0] == 3 => Console.writeLine(\"ok\")")]
     public void LocalArrayAnnotationsInferOneCompleteElementType(string name, string source)
         => ScalarEmissionTest.EmitFixture("ArrayInference" + name, source, "ok\n");
 
@@ -34,7 +35,6 @@ public class ArrayInferenceEmissionTest
     [InlineData("let row: [2 of _] = [1, true]")]
     [InlineData("let x: u8 = 1\nlet y: i32 = 2\nlet row: [2 of _] = [x, y]")]
     [InlineData("let x: u8 = 1\nlet row: [2 of _] = [256, x]")]
-    [InlineData("let x: u8 = 1\nlet row: [2 of _] = [(1 + 2), x]")]
     [InlineData("let source: [2 of i32] = [1, 2]\nlet row: [1 of _] = source")]
     [InlineData("let row: [1 of _] = [null]")]
     public void InferenceDoesNotChangeEstablishedTypesOrArrayShapes(string source)

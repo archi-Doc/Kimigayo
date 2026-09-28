@@ -88,8 +88,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var literal = source is NumberLiteralKoto number ? number : source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : null;
-        return literal is null || this.Infer(pattern, literal.IsInteger ? BoundType.I32 : BoundType.F64, function, types, lengths: lengths);
+        return LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, function, types, lengths: lengths);
     }
 
     // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
@@ -130,8 +129,7 @@ public sealed partial class Binding
             }
         }
 
-        var literal = source is NumberLiteralKoto number ? number : source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : null;
-        return fitLiterals && literal is not null ? DefaultLiteralType(literal, null) : null;
+        return fitLiterals ? LiteralDefault(source) : null;
     }
 
     private bool PrepareAggregateArgument(Koto source, BindingScope scope)

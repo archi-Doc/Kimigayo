@@ -181,10 +181,36 @@ public sealed partial class Binding
         return ReferenceEquals(declarationScope.Function, scope.Function);
     }
 
+    // SPEC 12.3.1: an unfitted literal is an untyped literal or literal-only expression still waiting for its Type.
     private static bool IsUnfittedLiteral(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        return node.BoundType is null && (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto });
+        return node.BoundType is null &&
+            (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } || IsLiteralOnlyOperation(node));
+    }
+
+    // SPEC 12.3.1: a built-in unary +/-, arithmetic, bitwise or shift operation whose operands are all integer literals or
+    // literal-only operations; it is fitted to a Type as one literal.
+    private static bool IsLiteralOnlyOperation(Koto node) => node switch
+    {
+        PrefixMinusKoto or PrefixPlusKoto => IsIntegerLiteralOnly(((UnaryKoto)node).Operand),
+        BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary =>
+            IsIntegerLiteralOnly(binary.Left) && IsIntegerLiteralOnly(binary.Right),
+        _ => false,
+    };
+
+    private static bool IsIntegerLiteralOnly(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return node is NumberLiteralKoto { IsInteger: true } || IsLiteralOnlyOperation(node);
+    }
+
+    // SPEC 12.3.1: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
+    private static BoundType? LiteralDefault(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        var number = node as NumberLiteralKoto ?? (node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand as NumberLiteralKoto : null);
+        return number is not null ? DefaultLiteralType(number, null) : IsLiteralOnlyOperation(node) ? BoundType.I32 : null;
     }
 
     private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
@@ -246,6 +272,21 @@ public sealed partial class Binding
         if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.IsGenericInteger(type, scope))
         {
             return FitsGenericInteger(node as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)node).Operand, node is PrefixMinusKoto);
+        }
+
+        if (node is not (PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }) && IsLiteralOnlyOperation(node))
+        {
+            // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
+            // a shift count is typed independently of the candidate.
+            var integer = this.IsIntegerOperand(type, scope);
+            return node switch
+            {
+                PrefixMinusKoto negated => integer && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                PrefixPlusKoto plus => integer && this.FitsInputLiteral(plus.Operand, type, scope),
+                BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
+                BinaryKoto binary => integer && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
+                _ => false,
+            };
         }
 
         return node switch
@@ -1051,10 +1092,10 @@ public sealed partial class Binding
         // target keeps its Place, and an assigned value is read only where the target's Type expects it.
         if (shift)
         {
-            // The count may have any integer Type; only an untyped count adopts the shifted Type (SPEC 13.3).
+            // The count may have any integer Type and is typed independently of the shifted operand (SPEC 12.3.1, 13.3).
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
             left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
-            right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
+            right = this.BindNode(binary.Right, scope);
 
             // SPEC 3.5.3: the count of a compound shift is Scalar-read like that of a plain shift (below).
             right = assignment ? this.ReadReferent(binary.Right, right) : right;
