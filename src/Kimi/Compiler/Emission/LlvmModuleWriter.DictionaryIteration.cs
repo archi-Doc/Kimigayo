@@ -22,6 +22,31 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        if (instruction.ScalarOperator == "FixedStorage")
+        {
+            // {storage, position, count} = {first element, 0, N} of the borrowed fixed array.
+            output.Write("  store ptr ");
+            Address();
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n  %fpos");
+            WriteNumber(output, id);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", i64 8\n  store i64 0, ptr %fpos");
+            WriteNumber(output, id);
+            output.Write(", align 8\n  %fcount");
+            WriteNumber(output, id);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", i64 16\n  store i64 ");
+            WriteNumber(output, operands[1].Value);
+            output.Write(", ptr %fcount");
+            WriteNumber(output, id);
+            output.Write(", align 8\n");
+            return;
+        }
+
         if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage")
         {
             // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle; the owning

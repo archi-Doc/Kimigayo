@@ -83,6 +83,46 @@ internal sealed partial class BodyLowering
         return true;
     }
 
+    // SPEC 22.1.2.5: borrowStorage over a fixed array writes the contiguous remainder {storage, position, count} as the
+    // borrowed array's first element address, 0 and its concrete length N.
+    private bool LowerFixedStorageBorrow(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || target.Parameters.Count != 1 || plan.ArgumentToParameter is not [0] ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.FixedArray, Components: [var elementType] } array] } input ||
+            plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+            array.LengthExpression is not null || !this.TryGetArrayElement(elementType, out _, allowEmpty: true))
+        {
+            return Fail("Fixed-array storage borrow needs a concrete borrowed array.", out failure);
+        }
+
+        var returnType = SignatureType(this, plan.ReturnType);
+        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
+            !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 3 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
+        {
+            return Fail("Fixed-array storage borrow result is not the contiguous remainder.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ValidateSlotCallResult(body, id, out failure) || !this.ScalarArrayArgument(body, id, 0, input, out var address))
+        {
+            return Fail(failure ?? "Fixed-array storage borrow is unavailable at the call.", out failure);
+        }
+
+        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, array.Length)], place: body.Operations[id].Place, op: "FixedStorage");
+        return true;
+    }
+
     // SPEC 22.1.2.5: ownStorage transfers the acquired Dictionary handle's buffer, first and last links and live count into
     // the owning remainder, which then destroys the unreturned entries and releases the buffer; keyAt and valueAt address
     // one slot's key or value.

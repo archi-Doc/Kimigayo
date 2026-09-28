@@ -6,7 +6,7 @@ internal static partial class LlvmModuleWriter
 {
     private static void WriteSequence(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
-        if (instruction.ScalarOperator is "DictionaryLocate" or "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress")
+        if (instruction.ScalarOperator is "DictionaryLocate" or "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress" or "FixedStorage")
         {
             WriteDictionaryIteration(output, constants, function, instruction);
             return;
