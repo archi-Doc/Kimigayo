@@ -137,6 +137,13 @@ public class IntegerRangeTest
             "struct Range\n    public let other: i32 = 0\nstruct IndexRange\n    public let other: i32 = 0\nlet values: [3 of i32] = [1, 2, 3]\nvar total = 0\nfor v in 0..3 => total += v\nlet tail = values[1..^0]\nrequire total == 3 and tail.length == 2 else => $abort(\"shadow\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    [Fact]
+    public void ExampleRunsUnchanged()
+        => ScalarEmissionTest.EmitFixture(
+            "IntegerRangeExample",
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../docs/examples/Ranges/Ranges.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal),
+            "Sum of 1..=4 is 10.\nLast byte is 255.\nMiddle has 3 values.\nTail starts at 40.\nResolved range covers 3 positions.\nWindow 3..9 is out of range.\n");
+
     private static string LibraryAbort(string anchor)
     {
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../src/Kimi/Library/Core.kimi"));
