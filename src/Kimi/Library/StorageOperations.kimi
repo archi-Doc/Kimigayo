@@ -10,4 +10,8 @@ internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> Dicti
     K is Equatable
 internal unsafe func lendKey<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: unsafe/u8) -> ref/K during state.source
 internal unsafe func lendValue<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: unsafe/u8) -> ref/V during state.source
+internal func borrowStorage<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
+    K is Equatable
+internal unsafe func lendKey<K, V>(state: ref/DictionaryUniqRemainder<K, V>, slot: unsafe/u8) -> ref/K during state.source
+internal unsafe func splitValue<K, V>(state: uniq/DictionaryUniqRemainder<K, V>, slot: unsafe/u8) -> uniq/V during state.source
 internal unsafe func release<E>(storage: unsafe/E)

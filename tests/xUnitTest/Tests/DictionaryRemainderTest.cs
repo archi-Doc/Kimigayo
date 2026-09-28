@@ -88,6 +88,54 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.WriteFixture("DictionaryRemainderIterator", CompilationTestHelper.WriteIr(c), "iterator\n");
     }
 
+    // SPEC 14.6.2: exclusive enumeration lends each value exclusively once while keys stay shared; an earlier value
+    // stays writable across later steps (region splitting), and the writes reach the Dictionary.
+    [Fact]
+    public void ExclusiveIterationSplitsEachValueOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("""
+            var map: Dictionary<i32, i32> = [:]
+            _ = map.tryInsert(2, 20)
+            _ = map.tryInsert(1, 10)
+            _ = map.tryInsert(3, 30)
+            _ = map.remove(1)
+            var it = map.iterateUniq()
+            match it.next()
+                .Some((let k1, let v1))
+                    match it.next()
+                        .Some((let k2, let v2))
+                            v1@follow += 1
+                            v2@follow += 2
+                            require k1 == 2 and k2 == 3 else => $abort("keys")
+                        .None => $abort("second")
+                .None => $abort("first")
+            match it.next()
+                .Some(_) => $abort("exhausted")
+                .None => ()
+            var total: i32 = 0
+            var shared = map.iterate()
+            loop
+                match shared.next()
+                    .Some(let entry)
+                        let value: i32 = entry.1
+                        total += value
+                    .None => exit
+            require total == 53 else => $abort("written")
+            Console.writeLine("exclusive")
+            """);
+        ScalarEmissionTest.WriteFixture("DictionaryRemainderExclusive", CompilationTestHelper.WriteIr(c), "exclusive\n");
+    }
+
+    [Theory]
+    [InlineData("_ = map.length", false)]
+    [InlineData("_ = map.tryInsert(5, 50)", false)]
+    [InlineData("_ = 1", true)]
+    public void ALiveExclusiveIteratorKeepsTheParentLoan(string use, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("var map: Dictionary<i32, i32> = [:]\n_ = map.tryInsert(1, 10)\nvar it = map.iterateUniq()\n" + use + "\n_ = it.next()");
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+    }
+
     [Theory]
     [InlineData("_ = map.tryInsert(5, 50)", false)]
     [InlineData("map.clear()", false)]
@@ -109,7 +157,7 @@ public class DictionaryRemainderTest
             _ = map.tryInsert(1, 10)
             Kimi.StorageProbe.touch(map@uniq)
             """);
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public group StorageProbe\n    public func touch(values: uniq/Dictionary<i32, i32>)\n        var state = Storage.borrowStorage(values)\n        " + use + "\n        _ = Storage.splitFirst(state@uniq)\n");
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public group StorageProbe\n    public func touch(values: uniq/Dictionary<i32, i32>)\n        var state = Storage.borrowStorage(values@follow@ref)\n        " + use + "\n        _ = Storage.splitFirst(state@uniq)\n");
         var bound = c.Bind().IsComplete;
         Assert.Equal(valid, bound && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Ownership.Analyze().IsVerified);
     }

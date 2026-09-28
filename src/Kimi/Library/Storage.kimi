@@ -36,6 +36,14 @@ internal group Storage
         internal var link: isize
         internal var count: isize
 
+    /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
+    /// values; keys never become exclusive references.
+    internal struct DictionaryUniqRemainder<K, V> {source}
+        internal let storage: unsafe/u8
+        internal let stride: isize
+        internal var link: isize
+        internal var count: isize
+
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
         require state.count > 0 else => return .None
@@ -73,3 +81,12 @@ internal group Storage
             // Each slot starts with its previous and next links.
             state.link = (slot@unsafe/isize)[1]
             return .Some((lendKey(state, slot), lendValue(state, slot)))
+
+    /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
+    internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
+        require state.count > 0 else => return .None
+        state.count -= 1
+        unsafe
+            let slot = state.storage + (state.link - 1) * state.stride
+            state.link = (slot@unsafe/isize)[1]
+            return .Some((lendKey(state, slot), splitValue(state, slot)))

@@ -12,7 +12,11 @@ internal sealed partial class BodyLowering
     private bool LowerDictionaryStorageOperation(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
-        var borrow = plan.Target.CompilerFunction == CompilerFunctionKind.StorageBorrowDictionary;
+        var kind = plan.Target.CompilerFunction;
+        var borrow = kind is CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageBorrowDictionaryExclusive;
+        var exclusive = kind is CompilerFunctionKind.StorageBorrowDictionaryExclusive or CompilerFunctionKind.StorageLendUniqKey or CompilerFunctionKind.StorageSplitValue;
+        var lendsKey = kind is CompilerFunctionKind.StorageLendKey or CompilerFunctionKind.StorageLendUniqKey;
+        var inputSemantics = kind is CompilerFunctionKind.StorageBorrowDictionaryExclusive or CompilerFunctionKind.StorageSplitValue ? SemanticsKind.Uniq : SemanticsKind.Ref;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != (borrow ? 1 : 2) || call.ArgumentNodes.Count != plan.ArgumentOperations.Length || target.Parameters.Count != plan.ArgumentOperations.Length ||
             plan.ArgumentToParameter.Length != plan.ArgumentOperations.Length || plan.ArgumentToParameter[0] != 0 || (!borrow && plan.ArgumentToParameter[1] != 1))
@@ -21,10 +25,10 @@ internal sealed partial class BodyLowering
         }
 
         var input = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
-        if (input is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var source] } ||
+        if (input is not { Kind: BoundTypeKind.Semantics, Components: [var source] } || input.Semantics != inputSemantics ||
             plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
             source.Components is not [var keyType, var valueType] ||
-            (borrow ? source.Kind != BoundTypeKind.Dictionary : source.Symbol?.LibraryDeclaration != KimiDeclarationId.DictionaryRefRemainder) ||
+            (borrow ? source.Kind != BoundTypeKind.Dictionary : source.Symbol?.LibraryDeclaration != (exclusive ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder)) ||
             !this.TryGetArrayElement(keyType, out var key, allowEmpty: true) || !this.TryGetArrayElement(valueType, out var value, allowEmpty: true))
         {
             return Fail("Dictionary storage operation has an unsupported Dictionary or entry Type.", out failure);
@@ -34,8 +38,8 @@ internal sealed partial class BodyLowering
         var returnType = SignatureType(this, plan.ReturnType);
         if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) ||
             (!borrow && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-                returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var lent] } ||
-                !ReferenceEquals(lent, plan.Target.CompilerFunction == CompilerFunctionKind.StorageLendKey ? keyType : valueType))))
+                returnType is not { Kind: BoundTypeKind.Semantics, Components: [var lent] } ||
+                returnType.Semantics != (kind == CompilerFunctionKind.StorageSplitValue ? SemanticsKind.Uniq : SemanticsKind.Ref) || !ReferenceEquals(lent, lendsKey ? keyType : valueType))))
         {
             return Fail("Dictionary storage operation result does not match its entry Types.", out failure);
         }
@@ -58,7 +62,7 @@ internal sealed partial class BodyLowering
                 return Fail("Dictionary storage lending arguments are unavailable at the call.", out failure);
             }
 
-            var offset = plan.Target.CompilerFunction == CompilerFunctionKind.StorageLendKey ? helper.KeyOffset : helper.ValueOffset;
+            var offset = lendsKey ? helper.KeyOffset : helper.ValueOffset;
             function.AddScalar(EmissionOpcode.Sequence, id, [slot, new(EmissionOperandKind.Integer, offset)], op: "DictionaryEntryAddress");
             return true;
         }

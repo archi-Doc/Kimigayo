@@ -11,16 +11,18 @@ namespace XunitTest;
 public class DictionaryStorageValidationTest
 {
     [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void RemainderFieldsRetainTheirBoundTypes(int index)
+    [InlineData(KimiDeclarationId.DictionaryRefRemainder, 0)]
+    [InlineData(KimiDeclarationId.DictionaryRefRemainder, 1)]
+    [InlineData(KimiDeclarationId.DictionaryRefRemainder, 2)]
+    [InlineData(KimiDeclarationId.DictionaryRefRemainder, 3)]
+    [InlineData(KimiDeclarationId.DictionaryUniqRemainder, 0)]
+    [InlineData(KimiDeclarationId.DictionaryUniqRemainder, 3)]
+    public void RemainderFieldsRetainTheirBoundTypes(KimiDeclarationId id, int index)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Library.ValidateBoundDeclarations());
-        var declaration = (StructKoto)c.Library.GetSymbol(KimiDeclarationId.DictionaryRefRemainder)!.Declaration;
+        var declaration = (StructKoto)c.Library.GetSymbol(id)!.Declaration;
         var field = declaration.Members.OfType<VariableKoto>().ElementAt(index);
         field.TypeKoto!.BoundType = field.BoundSymbol!.Type = index == 0 ? BoundType.ISize : BoundType.Primitives["u8"];
         Assert.False(c.Library.ValidateBoundDeclarations());
@@ -39,6 +41,16 @@ public class DictionaryStorageValidationTest
     [InlineData(KimiDeclarationId.StorageLendValue, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageLendValue, "result-state")]
     [InlineData(KimiDeclarationId.StorageLendValue, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "result-static")]
+    [InlineData(KimiDeclarationId.StorageLendUniqKey, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageLendUniqKey, "result-state")]
+    [InlineData(KimiDeclarationId.StorageLendUniqKey, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageSplitValue, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageSplitValue, "result-state")]
+    [InlineData(KimiDeclarationId.StorageSplitValue, "result-mode")]
+    [InlineData(KimiDeclarationId.StorageSplitValue, "pointer")]
     public void OperationsKeepTheirCompleteSignatures(KimiDeclarationId id, string mutation)
     {
         var c = Compilation.CreateForTest();
@@ -53,7 +65,10 @@ public class DictionaryStorageValidationTest
         switch (mutation)
         {
             case "input-mode":
-                input.BoundType = Copy(original, semantics: SemanticsKind.Uniq);
+                input.BoundType = Copy(original, semantics: original.Semantics == SemanticsKind.Ref ? SemanticsKind.Uniq : SemanticsKind.Ref);
+                break;
+            case "result-mode":
+                symbol.Type = Copy(result, semantics: result.Semantics == SemanticsKind.Ref ? SemanticsKind.Uniq : SemanticsKind.Ref);
                 break;
             case "input-key":
                 input.BoundType = Copy(original, components: [Copy(original.Components[0], components: [value, value])]);

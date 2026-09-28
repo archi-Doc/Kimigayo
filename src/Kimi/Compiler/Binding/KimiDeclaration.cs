@@ -116,6 +116,10 @@ public enum KimiDeclarationId : byte
     StorageBorrowDictionary,
     StorageLendKey,
     StorageLendValue,
+    DictionaryUniqRemainder,
+    StorageBorrowDictionaryExclusive,
+    StorageLendUniqKey,
+    StorageSplitValue,
 }
 
 public enum KimiDeclarationState : byte

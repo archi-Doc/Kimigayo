@@ -4,10 +4,16 @@ public struct Dictionary<K, V>
     K is Equatable
     Self is Iterable
     associate Iterable.IteratorType(source) is DictionaryIterator<K, V> during source
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(source) is DictionaryUniqIterator<K, V> during source
 
     /// Starts a shared enumeration of the entries in insertion order.
     public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source
         return DictionaryIterator<K, V>.init(Storage.borrowStorage(self))
+
+    /// Starts an exclusive enumeration in insertion order: keys stay shared and each value is lent exclusively once.
+    public func iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source
+        return DictionaryUniqIterator<K, V>.init(Storage.borrowStorage(self))
 
 /// The standard shared Dictionary iterator: each `next` lends the key and value of the next live entry in insertion order
 /// (SPEC 14.6.2, 22.1.2.3).
@@ -17,4 +23,14 @@ public struct DictionaryIterator<K, V> {source}
     var state: Storage.DictionaryRefRemainder<K, V> during source
     internal init(state: Storage.DictionaryRefRemainder<K, V> during source) => self.state = state@move
     public func next(self: uniq/Self) -> Option<(ref/K during source, ref/V during source)>
+        return Storage.splitFirst(self.state@uniq)
+
+/// The standard exclusive Dictionary iterator: each `next` lends the next live key for shared access and splits its
+/// value off as a child Loan, so earlier items stay valid (SPEC 14.6.2, 15.6.3, 22.1.2.5).
+public struct DictionaryUniqIterator<K, V> {source}
+    Self is Iterator
+    associate Iterator.Item is (ref/K during source, uniq/V during source)
+    var state: Storage.DictionaryUniqRemainder<K, V> during source
+    internal init(state: Storage.DictionaryUniqRemainder<K, V> during source) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<(ref/K during source, uniq/V during source)>
         return Storage.splitFirst(self.state@uniq)
