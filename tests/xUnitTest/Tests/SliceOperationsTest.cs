@@ -20,8 +20,8 @@ public class SliceOperationsTest
         "match s.trySplitAt(Index.init(0))\n    .Some(let pair)\n        require pair.0.isEmpty and pair.1.length == 3 else => $abort(\"split 0\")\n    .None => $abort(\"split none\")\n" +
         "match s.trySlice(1..)\n    .Some(let tail)\n        require tail.length == 2 and tail[0] == 30 else => $abort(\"tail\")\n    .None => $abort(\"tail none\")\n" +
         "match s.trySlice(2..=5)\n    .Some(_) => $abort(\"beyond slice\")\n    .None => Console.writeLine(\"None for 2..=5.\")\n" +
-        "let r = ResolvedRange.init(start: 1, end: 3)\nmatch s.trySlice(r)\n    .Some(let inner)\n        require inner.length == 2 and inner[1] == 40 else => $abort(\"resolved\")\n    .None => $abort(\"resolved none\")\n" +
-        "match s.trySlice(ResolvedRange.init(start: 2, end: 5))\n    .Some(_) => $abort(\"beyond resolved\")\n    .None => Console.writeLine(\"None for resolved.\")\n" +
+        "let r = (1..3).resolve(3)\nmatch s.trySlice(r)\n    .Some(let inner)\n        require inner.length == 2 and inner[1] == 40 else => $abort(\"resolved\")\n    .None => $abort(\"resolved none\")\n" +
+        "match s.trySlice((2..5).resolve(5))\n    .Some(_) => $abort(\"beyond resolved\")\n    .None => Console.writeLine(\"None for resolved.\")\n" +
         "let text: [2 of string] = [\"First text.\", \"Last text.\"]\nlet words = text[..]\n" +
         "match words.tryGet(1)\n    .Some(let word) => Console.writeLine(word)\n    .None => $abort(\"word\")\n" +
         "func tryTail<T>(items: Slice<T>) -> Option<Slice<T> during items.source>\n    return items.trySlice(1..)\n" +

@@ -28,7 +28,7 @@ public class KeyedIndexingTest
         "let empty = values[^0..]\nrequire empty.isEmpty else => $abort(\"empty\")\n" +
         "let whole: IndexRange = ..\nrequire values[whole].length == 5 and middle[whole].length == 3 else => $abort(\"whole\")\n" +
         "let nested = middle[1..]\nrequire nested.length == 2 and nested[0] == 3 else => $abort(\"nested\")\n" +
-        "let direct = ResolvedRange.init(start: 1, end: 3)\nlet applied = middle[direct]\nrequire applied.length == 2 and applied[0] == 3 else => $abort(\"direct\")\n" +
+        "let direct = (1..3).resolve(3)\nlet applied = middle[direct]\nrequire applied.length == 2 and applied[0] == 3 else => $abort(\"direct\")\n" +
         "Console.writeLine(\"ok\")";
 
     // SPEC 4.6.5, 4.6.6: a view of a fixed-array element reached through a Slice retains the backing storage, not the

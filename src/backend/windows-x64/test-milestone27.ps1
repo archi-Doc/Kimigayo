@@ -31,7 +31,7 @@ $variants = [ordered]@{
     Renamed = @{ source = $original; stdout = $expected }
     IndexInit = @{ source = (Edit-KimiSource $original 'let last: Index = ^1' 'let last: Index = Index.init(1, fromEnd: true)'); stdout = $expected }
     InclusiveKey = @{ source = (Edit-KimiSource $original 'exit to selection: row[resolved]' 'exit to selection: row[1..=2]'); stdout = $expected }
-    ResolvedInit = @{ source = (Edit-KimiSource $original 'let resolved = bounds.resolve(grid[1].length)' 'let resolved = ResolvedRange.init(start: 1, end: 3)'); stdout = $expected }
+    IntegerResolve = @{ source = (Edit-KimiSource $original 'let resolved = bounds.resolve(grid[1].length)' 'let resolved = (1..3).resolve(grid[1].length)'); stdout = $expected }
     TrySplit = @{ source = (Edit-KimiSource $original 'let parts = middle.splitAt(1)' $trySplit); stdout = $expected }
     EmptyRange = @{ source = (Edit-KimiSource $original 'let empty = middle[^0..]' 'let empty = middle[2..2]'); stdout = $expected }
     SavedReapplied = @{ source = (Edit-KimiSource $original '    Console.writeLine("Nested views retain 20 and 30.")' ('    require bounds.resolve(grid[0].length).end == 3 and bounds == (1..^1) and bounds != (1..=^2) else => $abort("Reapplied bounds failed")' + "`n" + '    Console.writeLine("Nested views retain 20 and 30.")')); stdout = $expected }
@@ -39,7 +39,7 @@ $variants = [ordered]@{
     TryGetPosition = @{ source = (Edit-KimiSource $original 'match middle.tryGet(^0)' 'match middle.tryGet(2)'); stdout = $expected }
     TrySlice = @{ source = (Edit-KimiSource $original '    require tail(middle)[0] == 30 else => $abort("Generic reslice failed")' ('    require tail(middle)[0] == 30 else => $abort("Generic reslice failed")' + "`n" + '    match middle.trySlice(^0..)' + "`n" + '        .Some(let none) => require none.isEmpty else => $abort("Empty view failed")' + "`n" + '        .None => $abort("From-end view refused")' + "`n" + '    match middle.trySlice(3..)' + "`n" + '        .Some(_) => $abort("Long view accepted")' + "`n" + '        .None => ()')); stdout = $expected }
     ReversedRange = @{ source = "let values: [3 of i32] = [1, 2, 3]`nlet bad = values[2..1]`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:2:11: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
-    ShortTarget = @{ source = "let bounds = ResolvedRange.init(start: 2, end: 5)`nlet values: [3 of i32] = [1, 2, 3]`nlet failed = values[bounds]`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:3:14: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
+    ShortTarget = @{ source = "let bounds = (2..5).resolve(5)`nlet values: [3 of i32] = [1, 2, 3]`nlet failed = values[bounds]`n"; stdout = ''; exit = 1; stderr = '{name}.kimi:3:14: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
 }
 Invoke-MilestoneVariants $variants $expected
 # Rejections must name the actual diagnostic and must leave neither IR nor an executable.

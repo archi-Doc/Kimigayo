@@ -645,14 +645,16 @@ public sealed partial class KimiLibrary
         constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "Index") &&
         constructor.Parameters[2] is { InternalName: "inclusive", ExternalName: "inclusive", DefaultValue: null } inclusiveParameter && BareName(inclusiveParameter.Type, "bool");
 
-    // SPEC 4.6.3: public struct ResolvedRange with isize start and end and the validating init(! start, end).
+    // SPEC 4.6.3.4: public struct ResolvedRange with isize start and end; its init(! start, end) is internal, because only
+    // indices, resolve and tryResolve produce a validated interval.
     private bool ValidResolvedRange(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
         symbol.Declaration is StructKoto { Name: "ResolvedRange", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 1, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
         BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
-        ValidField(declaration, 0, "start", "isize") && ValidField(declaration, 1, "end", "isize") &&
-        declaration.Members.Count > 4 && declaration.Members[4] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, NameBoundaryIndex: 0, ReturnType: null, Body: not null, AttributeChain: null } constructor && // Members[2..3] are the computed length and isEmpty (STYLE 2.2).
+        FirstStorage(declaration) is var first && // The associated iterator Types precede the fields.
+        ValidField(declaration, first, "start", "isize") && ValidField(declaration, first + 1, "end", "isize") &&
+        declaration.Members.Count > first + 4 && declaration.Members[first + 4] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Internal, Parameters.Count: 2, NameBoundaryIndex: 0, ReturnType: null, Body: not null, AttributeChain: null } constructor && // The computed length and isEmpty precede it (STYLE 2.2).
         constructor.Parameters[0] is { InternalName: "start", ExternalName: "start", DefaultValue: null } startParameter && BareName(startParameter.Type, "isize") &&
         constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "isize");
 

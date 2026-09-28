@@ -87,6 +87,8 @@ public sealed partial class Binding
             source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
         }
 
+        // SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries directly; a
+        // validated interval never Aborts, so no iterator value is formed.
         var view = source.SharedIterable ?? iterable;
         var element = view is null ? null : view.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize

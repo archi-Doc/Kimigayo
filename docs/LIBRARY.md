@@ -154,8 +154,8 @@ Index, `Range<T>`, IndexRange and ResolvedRange are Copy, Owned and Equatable. N
 | `IndexRange` | `start: Index`, `end: Index`, `isInclusive: bool` | Unresolved boundaries; no target-independent length and no iteration. |
 | | `resolve(self: ref/Self, length: isize) -> ResolvedRange` | Resolves and validates the interval; invalid length or bounds Abort. |
 | | `tryResolve(self: ref/Self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds. |
-| `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. |
-| | `init(! start: isize, end: isize)` | Invalid bounds Abort. |
+| `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. Only `indices`, `resolve` and `tryResolve` produce it. |
+| | `iterate`, `iterateUniq`, `intoIterator` | Return `RangeIterator<isize>` over `start` through `end - 1`; they never Abort. |
 
 Range syntax is the only constructor of `Range<T>` and IndexRange. Two integer boundaries of one Type `T` construct `Range<T>` (`0..n`, `1..=3`; an all-literal range is `Range<i32>` unless its context fits another `T`). An omitted or Index boundary constructs IndexRange (`a..`, `..b`, `..=b`, `..`, `1..^1`); its integer boundaries, of any integer Type, are formed into Indexes in order after both are evaluated, and a negative or unrepresentable one Aborts. Neither checks boundary order at construction; ordering is checked on resolution or iteration. Omitted start and end normalize to `0` and `^0`.
 
@@ -421,7 +421,6 @@ The source library currently has the following differences from the required API
 
 | Source interface | Difference and intended treatment |
 | --- | --- |
-| `ResolvedRange.init(! start: isize, end: isize)` in [Core.kimi](../src/Kimi/Library/Core.kimi) | A public validating constructor. The specification produces a ResolvedRange only by `indices`, `resolve` and `tryResolve`. |
 | `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](../src/Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |
 
 `SliceIterator<T> {source}` is the current public concrete Slice iterator. Its `next(self: uniq/Self) -> Option<ref/T during source>` returns elements in order and retains the backing Loan. Source declaration shape and compiler-provided support may differ during implementation; use [STATUS.md](STATUS.md) to assess support.

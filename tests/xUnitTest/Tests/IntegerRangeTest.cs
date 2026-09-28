@@ -49,9 +49,20 @@ public class IntegerRangeTest
         "match tryWindow(data[..], start: -1, end: 2)\n    .Some(_) => $abort(\"window negative\")\n    .None => Console.writeLine(\"Window refused.\")\n" +
         "Console.writeLine(\"ok\")";
 
+    // SPEC 4.6.3.5: a ResolvedRange's entries return RangeIterator<isize> over its half-open interval, also through a
+    // generic Iterable and an owning adapter.
+    private const string Resolved =
+        "func count<S>(items: S) -> i32\n    S is Iterable\n    var n: i32 = 0\n    for _ in items\n        n += 1\n    return n\n" +
+        "let values: [5 of i32] = [1, 2, 3, 4, 5]\nlet r = (1..4).resolve(values.length)\n" +
+        "var sum: isize = 0\nfor i in Kimi.Iteration.owning(r.intoIterator()) => sum += i\nrequire sum == 6 else => $abort(\"owning\")\n" +
+        "var shared = r.iterate()\nmatch shared.next()\n    .Some(let first) => require first == 1 else => $abort(\"first\")\n    .None => $abort(\"empty\")\n" +
+        "require count(values.indices) == 5 and count(r) == 3 and count((2..2).resolve(5)) == 0 and count(0..4) == 4 else => $abort(\"generic\")\n" +
+        "Console.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "Iteration", Iteration, "ok\n" },
+        { "Resolved", Resolved, "ok\n" },
         { "Slicing", Slicing, "Reversed refused.\nNegative refused.\nInclusive end refused.\nTry negative refused.\nTry reversed refused.\nok\n" },
         { "Generic", Generic, "Window refused.\nok\n" },
     };
@@ -107,6 +118,8 @@ public class IntegerRangeTest
     [InlineData("let r = Range<i32>.between(1, 2)")]
     [InlineData("let r = IndexRange.between(Index.init(0), ^0)")]
     [InlineData("let i = Index.init(unchecked: 3)")]
+    [InlineData("let r = ResolvedRange.init(start: 1, end: 2)")]
+    [InlineData("let i = RangeIterator<i32>.unchecked(0, 3)")]
     [InlineData("func zero<T>() -> T\n    T is PrimitiveInteger\n    return 0\nlet r = zero()..10")]
     [InlineData("let values: [2 of i32] = [1, 2]\nlet a: i32 = 0\nlet x = values[a]")]
     [InlineData("let r = (0..3)..5")]

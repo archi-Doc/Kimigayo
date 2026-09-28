@@ -19,7 +19,7 @@ public class RangeValueTest
         "require half == (1..3) and half != inclusive and whole == (0..^0) and (1..=2) != (1..3) else => $abort(\"equality\")\n" +
         "require Index.init(1) == Index.init(1) and ^1 != Index.init(1) and (^0).resolve(4) == 4 and Index.init(2).resolve(2) == 2 else => $abort(\"index\")\n" +
         "let empty = (3..3).resolve(3)\nrequire empty.isEmpty and empty.length == 0 else => $abort(\"empty\")\n" +
-        "let direct = ResolvedRange.init(start: 2, end: 5)\nrequire direct.length == 3 and direct == ResolvedRange.init(start: 2, end: 5) else => $abort(\"direct\")\n" +
+        "let direct = (2..5).resolve(5)\nrequire direct.length == 3 and direct == (2..^0).resolve(5) and direct != values.indices else => $abort(\"direct\")\n" +
         "var sum: isize = 0\nfor i in direct\n    sum = sum + i\nrequire sum == 9 else => $abort(\"iteration\")\n" +
         "var count: isize = 0\nfor i in values.indices\n    count = count + 1\nrequire count == 5 else => $abort(\"indices\")\n" +
         "match (3..2).tryResolve(5)\n    .Some(_) => $abort(\"reversed\")\n    .None => Console.writeLine(\"Reversed refused.\")\n" +

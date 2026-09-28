@@ -252,6 +252,9 @@ public struct RangeIterator<T>
         require start <= end else => $abort("Reversed range")
         return RangeIterator<T>.init(start, end, inclusive)
 
+    /// Starts at `start` of a validated half-open interval, which is never reversed.
+    internal func unchecked(start: T, end: T) -> RangeIterator<T> => RangeIterator<T>.init(start, end, false)
+
     /// Returns the next value, or None after the last one.
     public func next(self: uniq/Self) -> Option<T>
         let value = self.current
@@ -265,11 +268,17 @@ public struct RangeIterator<T>
 
 /// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3.4).
 ///
-/// The compiler produces it for `indices` and iterates it directly; selection with a ResolvedRange still
-/// checks `end` against the target's length.
+/// Only `indices`, `resolve` and `tryResolve` produce it. A `for` loop over it runs the same positions as its
+/// entries without an iterator value; selection with a ResolvedRange still checks `end` against the target's length.
 public struct ResolvedRange
     Self is Copy
     Self is Equatable
+    Self is Iterable
+    associate Iterable.IteratorType(source) is RangeIterator<isize>
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(source) is RangeIterator<isize>
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is RangeIterator<isize>
     public let start: isize
     public let end: isize
 
@@ -283,14 +292,23 @@ public struct ResolvedRange
         get() -> bool
             return self.start == self.end
 
-    /// Creates the interval `[start, end)`.
-    ///
-    /// - abort: `start < 0` or `start > end`.
-    public init(! start: isize, end: isize)
-        require start >= 0 and start <= end else => $abort("Invalid ResolvedRange bounds")
+    /// Creates the interval `[start, end)` that `resolve` or `tryResolve` validated: `0 <= start <= end`.
+    internal init(! start: isize, end: isize)
         self.start = start
         self.end = end
 
     /// Compares both bounds.
     public func equals(self: ref/Self, other: ref/Self) -> bool
         return self.start == other.start and self.end == other.end
+
+    /// Returns an iterator over the positions `start` through `end - 1`; it keeps no borrow of the interval.
+    public func iterate(self: ref/Self during source) -> RangeIterator<isize>
+        return RangeIterator<isize>.unchecked(self.start, self.end)
+
+    /// Returns an iterator over the positions `start` through `end - 1`; it keeps no borrow of the interval.
+    public func iterateUniq(self: uniq/Self during source) -> RangeIterator<isize>
+        return RangeIterator<isize>.unchecked(self.start, self.end)
+
+    /// Returns an iterator over the positions `start` through `end - 1`.
+    public func intoIterator(self: Self) -> RangeIterator<isize>
+        return RangeIterator<isize>.unchecked(self.start, self.end)
