@@ -14,7 +14,7 @@ public enum KimiDeclarationId : byte
     Result,
     Array,
     Index,
-    Range,
+    IndexRange,
     ResolvedRange,
     Slice,
     Dictionary,

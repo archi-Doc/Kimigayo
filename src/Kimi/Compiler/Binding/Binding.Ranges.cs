@@ -6,14 +6,14 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.3: range syntax outside an index position constructs the library Range through the labeled constructor
-    // that names the written boundaries; an isize boundary is normalized to a start-relative Index, and Range
+    // SPEC 4.6.3: range syntax outside an index position constructs the library IndexRange through the labeled constructor
+    // that names the written boundaries; an isize boundary is normalized to a start-relative Index, and IndexRange
     // construction checks both signs after both boundaries are evaluated (SPEC 4.6.4). The synthesized calls are
     // ordinary calls of the Kimi Kotonoha's Types, whatever names the source scope declares.
     private readonly Dictionary<RangeKoto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, InvocationKoto> boundaryCalls = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 4.6.1, 4.6.4: an Index or Range key of a built-in selection is resolved against the receiver's length by a
+    // SPEC 4.6.1, 4.6.4: an Index or IndexRange key of a built-in selection is resolved against the receiver's length by a
     // synthesized key.resolve(receiver.length) call whose length argument shares the receiver Place, so the receiver is
     // restricted to a Place written as a path; a ResolvedRange key is applied as written and rechecked by the selection.
     private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
@@ -128,7 +128,7 @@ public sealed partial class Binding
         }
 
         var index = key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.Index);
-        var unresolved = key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.Range);
+        var unresolved = key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.IndexRange);
         if (!index && !unresolved && !ReferenceTypes.IsResolvedRange(key))
         {
             return false;
@@ -216,11 +216,11 @@ public sealed partial class Binding
                 arguments.Add(end);
             }
 
-            call = new InvocationKoto(range, new MemberAccessKoto(range, new IdentifierNameKoto(range, "Range"), new IdentifierNameKoto(range, form)), arguments);
+            call = new InvocationKoto(range, new MemberAccessKoto(range, new IdentifierNameKoto(range, "IndexRange"), new IdentifierNameKoto(range, form)), arguments);
             this.rangeCalls[range] = call;
         }
 
-        var type = this.BindSynthesizedConstruction(call, this.Library.Range, scope);
+        var type = this.BindSynthesizedConstruction(call, this.Library.IndexRange, scope);
         return type is null ? Complete(range, null) : Complete(range, type);
     }
 

@@ -136,7 +136,7 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 
 [Specification: Index](spec/04-arrays-indexing-and-slices.md#462-index), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
 
-Index, Range and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
+Index, IndexRange and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
 
 | Type | Member | Guarantee |
 | --- | --- | --- |
@@ -144,15 +144,15 @@ Index, Range and ResolvedRange are Copy, Owned and Equatable. None provides Comp
 | | `init(offset: isize, fromEnd: bool = false)` | Negative offsets Abort at construction. `^n` constructs a from-end Index. |
 | | `resolve(self: ref/Self, length: isize) -> isize` | Returns a boundary in `[0, length]`; invalid length or bounds Abort. |
 | | `tryResolve(self: ref/Self, length: isize) -> Option<isize>` | Returns None for invalid length or bounds. |
-| `Range` | `start: Index`, `end: Index`, `isInclusive: bool` | Unresolved boundaries; no target-independent length and no iteration. |
+| `IndexRange` | `start: Index`, `end: Index`, `isInclusive: bool` | Unresolved boundaries; no target-independent length and no iteration. |
 | | `resolve(self: ref/Self, length: isize) -> ResolvedRange` | Resolves and validates the interval; invalid length or bounds Abort. |
 | | `tryResolve(self: ref/Self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds. |
 | `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. |
 | | `init(! start: isize, end: isize)` | Invalid bounds Abort. |
 
-Range is constructed only by syntax: `a..b`, `a..=b`, `a..`, `..b`, `..=b` or `..`. It has no specified public constructor or factory. Negative integer boundaries Abort immediately; ordering is checked on resolution. Omitted start and end normalize to `0` and `^0`.
+IndexRange is constructed only by syntax: `a..b`, `a..=b`, `a..`, `..b`, `..=b` or `..`. It has no specified public constructor or factory. Negative integer boundaries Abort immediately; ordering is checked on resolution. Omitted start and end normalize to `0` and `^0`.
 
-`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares Index direction/offset, normalized Range fields, or ResolvedRange endpoints; it does not compare coincidentally equivalent ranges across Types.
+`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares Index direction/offset, normalized IndexRange fields, or ResolvedRange endpoints; it does not compare coincidentally equivalent ranges across Types.
 
 ### 3.2. Slice<T> {source}
 
@@ -166,9 +166,9 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | --- | --- |
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Metadata without element access. |
 | `s[i]`, where i is `isize or Index` | `place ref/T during source`; invalid element bounds Abort. |
-| `s[r]`, where r is `Range or ResolvedRange` | `Slice<T> during source`; invalid range bounds Abort. |
+| `s[r]`, where r is `IndexRange or ResolvedRange` | `Slice<T> during source`; invalid range bounds Abort. |
 | `tryGet(self: Self, index: isize or Index) -> Option<ref/T during source>` | None for an invalid element index. |
-| `trySlice(self: Self, range: Range or ResolvedRange) -> Option<Slice<T> during source>` | None for invalid range bounds. |
+| `trySlice(self: Self, range: IndexRange or ResolvedRange) -> Option<Slice<T> during source>` | None for invalid range bounds. |
 | `splitAt(self: Self, index: isize or Index) -> (Slice<T> during source, Slice<T> during source)` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
 | `trySplitAt(self: Self, index: isize or Index) -> Option<(Slice<T> during source, Slice<T> during source)>` | The same split, returning None for an invalid boundary. |
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
@@ -211,7 +211,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is `isize or Index` | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
-| `values[r]`, where r is `Range or ResolvedRange` | A shared Slice; invalid bounds Abort. |
+| `values[r]`, where r is `IndexRange or ResolvedRange` | A shared Slice; invalid bounds Abort. |
 | `append(self: uniq/Self, value: T) -> ()` | Adds at the end; amortized O(1). |
 | `insert(self: uniq/Self, index: isize or Index, value: T) -> ()` | Inserts at a boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
 | `pop(self: uniq/Self) -> Option<T>` | Returns the last element, or None when empty. O(1). |
@@ -414,7 +414,7 @@ The source library currently has the following differences from the required API
 | Source interface | Difference and intended treatment |
 | --- | --- |
 | `Index.init(! unchecked: isize)` in [Core.kimi](../src/Kimi/Library/Core.kimi) | A normalization helper can admit negative values, unlike specified Index construction. It must not be treated as the specified constructor. |
-| `Range.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](../src/Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
+| `IndexRange.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](../src/Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
 | `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](../src/Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |
 
 `SliceIterator<T> {source}` is the current public concrete Slice iterator. Its `next(self: uniq/Self) -> Option<ref/T during source>` returns elements in order and retains the backing Loan. Source declaration shape and compiler-provided support may differ during implementation; use [STATUS.md](STATUS.md) to assess support.

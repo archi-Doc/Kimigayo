@@ -21,7 +21,7 @@ public struct Slice<T> {source}
             .None => return .None
 
     /// Returns the sub-Slice selected by `range`, or `None` when `range` does not resolve within this Slice.
-    public func trySlice(self: Self, range: Range) -> Option<Slice<T> during source>
+    public func trySlice(self: Self, range: IndexRange) -> Option<Slice<T> during source>
         match range.tryResolve(self.length)
             .Some(let resolved) => return .Some(self[resolved])
             .None => return .None

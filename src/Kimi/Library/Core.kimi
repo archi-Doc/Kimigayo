@@ -32,7 +32,7 @@ public struct Index
 
     /// Creates a from-start position without checking its sign.
     ///
-    /// Range syntax normalizes an integer boundary through this form; Range construction then checks the
+    /// Range syntax normalizes an integer boundary through this form; IndexRange construction then checks the
     /// signs in boundary order after both boundaries are evaluated (SPEC 4.6.4).
     public init(! unchecked: isize)
         self.offset = unchecked
@@ -60,11 +60,11 @@ public struct Index
 
 /// Unresolved start and end boundaries with an end-inclusion flag (SPEC 4.6.3).
 ///
-/// Range syntax constructs a Range through the Type functions below, its normal forms: an omitted start is
+/// Range syntax constructs an IndexRange through the Type functions below, its normal forms: an omitted start is
 /// `0` and an omitted end is `^0`. They check the signs of integer boundaries in boundary order after both
-/// boundaries are evaluated (SPEC 4.6.4). A Range is a Copy value, retains no target and is not iterable;
+/// boundaries are evaluated (SPEC 4.6.4). An IndexRange is a Copy value, retains no target and is not iterable;
 /// resolve it against a length to obtain a ResolvedRange.
-public struct Range
+public struct IndexRange
     Self is Copy
     Self is Equatable
     public let start: Index
@@ -79,42 +79,42 @@ public struct Range
     /// Creates the half-open range `start..end`.
     ///
     /// - abort: A boundary has a negative offset.
-    public func between(start: Index, end: Index) -> Range
+    public func between(start: Index, end: Index) -> IndexRange
         require start.offset >= 0 else => $abort("Negative Range start")
         require end.offset >= 0 else => $abort("Negative Range end")
-        return Range.init(start, end, false)
+        return IndexRange.init(start, end, false)
 
     /// Creates the range `start..`, which ends at `^0`.
     ///
     /// - abort: `start` has a negative offset.
-    public func from(start: Index) -> Range
+    public func from(start: Index) -> IndexRange
         require start.offset >= 0 else => $abort("Negative Range start")
-        return Range.init(start, Index.init(0, fromEnd: true), false)
+        return IndexRange.init(start, Index.init(0, fromEnd: true), false)
 
     /// Creates the range `..end`, which starts at `0`.
     ///
     /// - abort: `end` has a negative offset.
-    public func to(end: Index) -> Range
+    public func to(end: Index) -> IndexRange
         require end.offset >= 0 else => $abort("Negative Range end")
-        return Range.init(Index.init(0), end, false)
+        return IndexRange.init(Index.init(0), end, false)
 
     /// Creates the range `..`, which covers a whole sequence.
-    public func all() -> Range => Range.init(Index.init(0), Index.init(0, fromEnd: true), false)
+    public func all() -> IndexRange => IndexRange.init(Index.init(0), Index.init(0, fromEnd: true), false)
 
     /// Creates the inclusive range `start..=end`.
     ///
     /// - abort: A boundary has a negative offset.
-    public func through(start: Index, end: Index) -> Range
+    public func through(start: Index, end: Index) -> IndexRange
         require start.offset >= 0 else => $abort("Negative Range start")
         require end.offset >= 0 else => $abort("Negative Range end")
-        return Range.init(start, end, true)
+        return IndexRange.init(start, end, true)
 
     /// Creates the inclusive range `..=end`, which starts at `0`.
     ///
     /// - abort: `end` has a negative offset.
-    public func upTo(end: Index) -> Range
+    public func upTo(end: Index) -> IndexRange
         require end.offset >= 0 else => $abort("Negative Range end")
-        return Range.init(Index.init(0), end, true)
+        return IndexRange.init(Index.init(0), end, true)
 
     /// Compares the unresolved boundaries and the inclusion flag; `0..2` and `0..=1` are different values.
     public func equals(self: ref/Self, other: ref/Self) -> bool

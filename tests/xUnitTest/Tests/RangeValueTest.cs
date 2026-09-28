@@ -30,7 +30,7 @@ public class RangeValueTest
 
     private const string Order =
         "func first() -> isize\n    Console.writeLine(\"Start evaluated.\")\n    return 1\nfunc second() -> Index\n    Console.writeLine(\"End evaluated.\")\n    return ^1\n" +
-        "let bounds: Range = first()..second()\nrequire bounds.start.offset == 1 and bounds.start.isFromEnd == false and bounds.end.isFromEnd and bounds.isInclusive == false else => $abort(\"bounds\")\n" +
+        "let bounds: IndexRange = first()..second()\nrequire bounds.start.offset == 1 and bounds.start.isFromEnd == false and bounds.end.isFromEnd and bounds.isInclusive == false else => $abort(\"bounds\")\n" +
         "let saved = bounds\nlet resolved = saved.resolve(4)\nrequire resolved.start == 1 and resolved.end == 3 else => $abort(\"saved\")\nConsole.writeLine(\"ok\")";
 
     public static TheoryData<string, string, string> Fixtures => new()
@@ -55,7 +55,7 @@ public class RangeValueTest
     [Fact]
     public void InclusiveEndCannotBeOmitted()
     {
-        var c = MinimalEmissionTest.Analyze("let r: Range = 1..=");
+        var c = MinimalEmissionTest.Analyze("let r: IndexRange = 1..=");
         Assert.NotEmpty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
     }
 }
