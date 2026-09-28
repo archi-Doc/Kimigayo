@@ -71,9 +71,10 @@ The diagnostic benchmark includes the former implementation as a paired referenc
 
 These are operation costs, not whole-server response times. The listing samples
 exclude disk I/O and snapshot construction; the edit samples exclude JSON parsing
-and text snapshot creation. Insertions and deletions can still move the document
-tail and following line offsets. New Windows paths may require a case-insensitive
-scan of retained disk names. Timing varies by machine and workload.
+and text snapshot creation. Insertions and deletions still moved the document tail
+and following line offsets; the follow-up review below removes that cost. New Windows
+paths may require a case-insensitive scan of retained disk names. Timing varies by
+machine and workload.
 
 To reproduce after a verified Release build:
 
@@ -100,3 +101,64 @@ configurations (`recovery-Debug.log`, `recovery-Release.log` and
 `recovery-summary.json`). The original session failure records are preserved.
 
 No NativeAOT run, compiler generation change, draft edit or milestone change was made.
+
+## Follow-up review
+
+A second pass over `Kimi/Lsp` on the same day. Required behavior remains SPEC Chapter 23;
+no language rule or advertised capability changed.
+
+### Correctness
+
+- Document text holding an escaped lone surrogate was rejected as invalid params, so
+  the server dropped a change that the client had applied. Such text is now read, and
+  the check reports `InvalidSourceEncoding_Kd` as §23.3.4 requires.
+- A string request ID holding an escaped lone surrogate made the sender throw while
+  echoing it; the pump stopped and no later frame was written. Such an ID is now an
+  invalid request (-32600), and a value that cannot be serialized drops only its frame.
+- An unreadable change entry (null, or without text) dropped the whole notification
+  and left the server text silently stale. The entries before it still apply, and the
+  document is desynchronized (§23.4.2) until a full-text event.
+- An unexpected input failure left the session waiting forever; the receive loop now
+  always ends the input.
+
+The implementation commits are `01b24e96`, `4c35980c`, `f5071b2f` and `9606df50`; the
+harness additions are `04a27cb3`.
+
+### Measurements
+
+Release, tiered compilation disabled, medians of five samples as above. Before is
+`aba90c68` with the same harness adapted to its API; after is `9606df50`.
+
+| Operation | Before, ns/op | After, ns/op | Before, B/op | After, B/op |
+| --- | ---: | ---: | ---: | ---: |
+| One-character `didChange` near the top of a 105 KB document, parse and state owner | 45,785 | 2,422 | 2,820 | 1,468 |
+| Insertion or deletion near the top of the 105 KB document | 20,940 | 19 | 0 | 0 |
+| Repeated `didOpen` of the 105 KB document | 891,280 | 449,782 | 336,951 | 221,376 |
+| One diagnostics frame through the sender, all threads | 2,467 | 2,579 | 176 | 40 |
+
+- Open documents are gap buffers. An edit costs its size plus its distance from the
+  previous edit, and the line starts after the gap are kept as distances from the end,
+  so typing at one place moves neither characters nor line offsets.
+- The receive loop reads each body once and deserializes a known method's parameters
+  straight from the frame; the former path copied them into a `JsonElement` and parsed
+  them again. An edit finds its document by the URI it was opened with, without
+  parsing the URI. The reopen still allocates the 210 KB text string it retains.
+- Output messages are queued as values, each frame is one write, and the output is
+  flushed when the queue runs empty. The remaining 40 B per frame is the harness's own
+  parameter object.
+- Each check copies the committed snapshot into a dictionary instead of persistent
+  immutable collections, and skips hashing inputs while nothing changed after the base.
+  These per-check costs were not measured separately.
+
+Raw results: [before](Results/Lsp/2026-09-28-followup-before-release.json),
+[after](Results/Lsp/2026-09-28-followup-after-release.json). The same exclusions apply:
+these are operation costs, not whole-editor latency.
+
+### Follow-up verification
+
+Each unit was verified with the focused LSP classes; the regression tests for the four
+defects fail on the code before the fix. The 93 LSP tests include 12 added in this
+review. Session evidence is in `bin/verify/20260928-031855-454-session-lsp-followup`
+at `04a27cb3`: non-incremental Debug and Release builds with warnings treated as
+errors, and 12,908 tests passing in each configuration. No NativeAOT run, compiler
+generation change, draft edit or milestone change was made.
