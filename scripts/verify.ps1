@@ -69,6 +69,31 @@ function Invoke-Build([string] $configuration) {
     return $ok
 }
 
+function Test-LspDiscoveryAccess {
+    $timer = Start-Step 'LSP discovery access'
+    $log = Join-Path $evidence 'lsp-discovery-access.log'
+    $ok = $true
+    # Implicit-source fixtures live under the OS temp directory. SPEC 23.4.3 requires
+    # listing every ancestor; an unreadable listing cannot mean "no project".
+    $directory = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))
+    while ($directory) {
+        try {
+            $null = [IO.Directory]::GetFiles($directory, '*.kimiproj', [IO.SearchOption]::TopDirectoryOnly)
+            "PASS $directory" | Add-Content -LiteralPath $log
+        }
+        catch {
+            $ok = $false
+            "FAIL ${directory}: $($_.Exception.GetBaseException().Message)" | Add-Content -LiteralPath $log
+        }
+        $directory = [IO.Path]::GetDirectoryName($directory)
+    }
+    $detail = if ($ok) { $log } else {
+        "LSP tests require listing the temp directory and every ancestor. Run verification in a process with that access (outside a restricting sandbox). See $log"
+    }
+    Add-Step 'LSP discovery access' $ok $detail $timer.Elapsed.TotalSeconds
+    return $ok
+}
+
 function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $tag) {
     $timer = Start-Step "tests $configuration $tag (up to $TestParallel collections)"
     $log = Join-Path $evidence "tests-$configuration-$tag.log"
@@ -98,6 +123,20 @@ $filters = @()
 foreach ($c in $Class) { $filters += @('-class', $c) }
 foreach ($m in $Method) { $filters += @('-method', $m) }
 if ($Mode -eq 'Session') { $filters = @() }
+
+# Check only selections that can include the implicit-source LSP fixtures. Method
+# filters use their declaring-class pattern; unqualified patterns may match any class.
+$lspClasses = @('XunitTest.CheckSchedulerTest', 'XunitTest.LspProtocolTest', 'XunitTest.LspProjectDiagnosticTest', 'XunitTest.LspProcessTest')
+$classPatterns = @($Class) + @($Method | ForEach-Object {
+    if ($_.Contains('.')) { $_.Substring(0, $_.LastIndexOf('.')) } else { '*' }
+})
+$needsLspAccess = $Mode -eq 'Session'
+foreach ($pattern in $classPatterns) {
+    foreach ($testClass in $lspClasses) {
+        if ($testClass -like $pattern) { $needsLspAccess = $true }
+    }
+}
+if ($needsLspAccess -and -not (Test-LspDiscoveryAccess)) { $configurations = @() }
 
 foreach ($configuration in $configurations) {
     if (-not (Invoke-Build $configuration)) { continue }

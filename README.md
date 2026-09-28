@@ -268,6 +268,14 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 
 Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain. NativeAOT tests are separate and are not run by these commands.
 
+LSP tests require directory-listing access from the OS temporary directory through every
+ancestor to the filesystem root: project discovery must distinguish an unreadable directory
+from one containing no projects (SPEC §23.4.3). Session verification and selections of the
+implicit-source LSP test classes check this access before building. If the preflight fails,
+inspect `lsp-discovery-access.log` in the evidence directory and rerun in a process with the
+required access, outside a restricting sandbox. Do not treat an unreadable directory as empty
+or skip the tests; otherwise missing diagnostics appear as assertion failures or timeouts.
+
 Each run records results in `artifacts/verify/<run>/`, including failed runs. Native scratch files go to `temp/verify/<run>/`. Fixture inputs and their expected results stay with the evidence so they can be replayed after scratch files are deleted. Do not edit sources or remove working directories during verification.
 
 The [current plan](docs/dev/PLAN.md) describes ongoing work; [session history](docs/dev/PLAN_HISTORY.md) links to retained evidence. Extension-specific checks are listed under [Visual Studio Code](#extension-development).
