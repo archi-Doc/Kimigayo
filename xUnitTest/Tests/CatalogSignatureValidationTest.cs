@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class CollectionSignatureValidationTest
+public class CatalogSignatureValidationTest
 {
     [Theory]
     [InlineData(KimiDeclarationId.ArrayReserve)]
@@ -27,6 +27,12 @@ public class CollectionSignatureValidationTest
     [InlineData(KimiDeclarationId.DictionaryTryGet)]
     [InlineData(KimiDeclarationId.DictionaryClear)]
     [InlineData(KimiDeclarationId.DictionaryShrinkToFit)]
+    [InlineData(KimiDeclarationId.Replace)]
+    [InlineData(KimiDeclarationId.Exchange)]
+    [InlineData(KimiDeclarationId.Swap)]
+    [InlineData(KimiDeclarationId.MakeObj)]
+    [InlineData(KimiDeclarationId.WriteLine)]
+    [InlineData(KimiDeclarationId.TestTempDirectory)]
     public void EveryOperationChecksItsCompleteBoundSignature(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();
@@ -117,5 +123,18 @@ public class CollectionSignatureValidationTest
         symbol.Type = new(result.Name, result.Kind, result.Symbol, result.Semantics, components);
         Assert.False(c.Library.ValidateBoundDeclarations());
         Assert.Same(symbol.Declaration, c.Library.InvalidDeclaration);
+    }
+
+    [Fact]
+    public void SwapInputsKeepDistinctOriginBinders()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var symbol = c.Library.GetSymbol(KimiDeclarationId.Swap)!;
+        var function = (FunctionKoto)symbol.Declaration;
+        var type = function.Parameters[1].Type.BoundType!;
+        function.Parameters[1].Type.BoundType = new(type.Name, type.Kind, type.Symbol, type.Semantics, type.Components.ToArray(), origin: function.Parameters[0].Type.BoundType!.Origin);
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(function, c.Library.InvalidDeclaration);
     }
 }

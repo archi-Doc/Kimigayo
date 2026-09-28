@@ -47,8 +47,8 @@ public sealed partial class KimiLibrary
         OptionBorrowedValue,
     }
 
-    private static bool CollectionBorrow(BoundType? type, BoundType element, FunctionKoto function, int input)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Symbol: null, OriginArguments.Count: 0, Components: [var referent], Origin: { Kind: OriginKind.Input } origin } &&
+    private static bool BoundInputBorrow(BoundType? type, BoundType element, SemanticsKind semantics, FunctionKoto function, int input)
+        => type is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var referent], Origin: { Kind: OriginKind.Input } origin } && type.Semantics == semantics &&
             ReferenceEquals(referent, element) && ReferenceEquals(origin.Binder, function) && origin.InputIndex == input && origin.Slot == input &&
             ReferenceEquals(origin, function.Parameters[input].Type.BoundType?.Origin);
 
@@ -108,12 +108,12 @@ public sealed partial class KimiLibrary
             CollectionType.OptionElement => type is not null && this.BoundStorageContainer(type, KimiDeclarationId.Option, element, 0),
             CollectionType.Value => value is not null && ReferenceEquals(type, value),
             CollectionType.OptionValue => type is not null && value is not null && this.BoundStorageContainer(type, KimiDeclarationId.Option, value, 0),
-            CollectionType.BorrowedKey => CollectionBorrow(type, element, function, 1),
+            CollectionType.BorrowedKey => BoundInputBorrow(type, element, SemanticsKind.Ref, function, 1),
             CollectionType.OptionPair => this.CollectionResult(type, KimiDeclarationId.Option) && type!.Components is [var pair] && CollectionPair(pair, element, value),
             CollectionType.ResultPair => this.CollectionResult(type, KimiDeclarationId.Result) && type!.Components is [var success, var pair] &&
                 ReferenceEquals(success, BoundType.Unit) && CollectionPair(pair, element, value),
             CollectionType.OptionBorrowedValue => this.CollectionResult(type, KimiDeclarationId.Option) && type!.Components is [var borrowed] &&
-                value is not null && CollectionBorrow(borrowed, value, function, 0),
+                value is not null && BoundInputBorrow(borrowed, value, SemanticsKind.Ref, function, 0),
             CollectionType.Receiver or CollectionType.SharedReceiver => type is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var storage], Origin.Slot: 0 } &&
                 type.Semantics == (expected == CollectionType.SharedReceiver ? SemanticsKind.Ref : SemanticsKind.Uniq) &&
                 StorageInputOrigin(type.Origin, function) && this.CollectionStorage(storage, element, value),
