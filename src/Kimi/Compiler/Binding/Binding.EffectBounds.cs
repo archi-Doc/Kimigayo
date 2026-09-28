@@ -843,7 +843,8 @@ public sealed partial class Binding
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
                 CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.DictionaryShrinkToFit or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit or
-                CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease => true,
+                CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
+                CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageLendKey or CompilerFunctionKind.StorageLendValue => true,
             _ => false,
         };
 

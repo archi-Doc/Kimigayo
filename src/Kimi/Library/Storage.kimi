@@ -28,6 +28,14 @@ internal group Storage
                 unsafe => _ = storage[self.position + self.count]
             unsafe => release(storage)
 
+    /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
+    /// the slot links; it does not own them.
+    internal struct DictionaryRefRemainder<K, V> {source}
+        internal let storage: unsafe/u8
+        internal let stride: isize
+        internal var link: isize
+        internal var count: isize
+
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
         require state.count > 0 else => return .None
@@ -55,3 +63,13 @@ internal group Storage
         unsafe
             let element = state.storage + position
             return .Some(split(state, element))
+
+    /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
+    internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
+        require state.count > 0 else => return .None
+        state.count -= 1
+        unsafe
+            let slot = state.storage + (state.link - 1) * state.stride
+            // Each slot starts with its previous and next links.
+            state.link = (slot@unsafe/isize)[1]
+            return .Some((lendKey(state, slot), lendValue(state, slot)))

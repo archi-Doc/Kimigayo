@@ -126,6 +126,11 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StorageLend, "lend", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLend),
         new(KimiDeclarationId.StorageSplit, "split", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplit),
         new(KimiDeclarationId.StorageRelease, "release", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageRelease),
+        // SPEC 22.1.2.5: the distinct Dictionary family traverses live entries in insertion order.
+        new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
+        new(KimiDeclarationId.StorageLendKey, "lendKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLendKey),
+        new(KimiDeclarationId.StorageLendValue, "lendValue", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLendValue),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -136,7 +141,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageRelease;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageLendValue;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

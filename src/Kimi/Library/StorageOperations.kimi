@@ -6,4 +6,8 @@ internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E
 internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source
 internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
+internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
+    K is Equatable
+internal unsafe func lendKey<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: unsafe/u8) -> ref/K during state.source
+internal unsafe func lendValue<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: unsafe/u8) -> ref/V during state.source
 internal unsafe func release<E>(storage: unsafe/E)

@@ -49,10 +49,10 @@ public sealed partial class Binding
 
             // SPEC 22.1.2.5, 15.3.5: a storage remainder holds the shared or the parent exclusive Loan of its source slot
             // without a safe stored reference; as a verified boundary Type it keeps that established Loan requirement.
-            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.RefRemainder or KimiDeclarationId.UniqRemainder && schema.Origins.Count == 1)
+            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.RefRemainder or KimiDeclarationId.UniqRemainder or KimiDeclarationId.DictionaryRefRemainder && schema.Origins.Count == 1)
             {
                 schema.Origins[0].Variance = OriginVariance.Covariant;
-                schema.Origins[0].LoanRequirement = node.BoundSymbol.LibraryDeclaration == KimiDeclarationId.RefRemainder ? LoanRequirement.Ref : LoanRequirement.Uniq;
+                schema.Origins[0].LoanRequirement = node.BoundSymbol.LibraryDeclaration == KimiDeclarationId.UniqRemainder ? LoanRequirement.Uniq : LoanRequirement.Ref;
             }
 
             if (!this.originRequirementNodes.TryGetValue(node, out var work))

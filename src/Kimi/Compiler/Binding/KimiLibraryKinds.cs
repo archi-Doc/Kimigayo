@@ -80,4 +80,7 @@ public enum CompilerFunctionKind : byte
     StorageLend,
     StorageSplit,
     StorageRelease,
+    StorageBorrowDictionary,
+    StorageLendKey,
+    StorageLendValue,
 }
