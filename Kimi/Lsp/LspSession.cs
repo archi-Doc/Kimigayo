@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Kimi.Checking;
 using Kimi.Compiler;
 
@@ -22,6 +21,7 @@ internal sealed class LspSession : IDisposable
     private readonly Kimigayo kimigayo = Kimigayo.CreateSilent();
     private readonly InputStore store = new();
     private readonly Dictionary<SourceIdentity, OpenDocument> documents = new();
+    private readonly Dictionary<string, OpenDocument> documentsByUri = new(StringComparer.Ordinal);
     private readonly Dictionary<SourceIdentity, LoadedProject> projects = new();
     private readonly Dictionary<UnitKey, UnitState> units = new();
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
@@ -130,6 +130,7 @@ internal sealed class LspSession : IDisposable
         }
 
         this.documents.Clear();
+        this.documentsByUri.Clear();
     }
 
     /// <summary>Starts the pending check when its deadline has passed and the worker is free (SPEC 23.4.6).</summary>
@@ -186,18 +187,13 @@ internal sealed class LspSession : IDisposable
         => identity.Value.EndsWith(".kimi", StringComparison.OrdinalIgnoreCase) ? DocumentRole.Source :
             identity.Value.EndsWith(".kimiproj", StringComparison.OrdinalIgnoreCase) ? DocumentRole.Project : null;
 
-    private static T? Read<T>(LspMessage message, JsonTypeInfo<T> typeInfo)
-        => message.Params is { } parameters ? parameters.Deserialize(typeInfo) : default;
+    // The receive loop read the parameters; a failure is raised here, where the method's rules decide how to report it.
+    private static T? Read<T>(LspMessage message)
+        where T : class
+        => message.ParamsError is { } error ? throw new JsonException(error) : (T?)message.Params;
 
     private void OnMessage(LspMessage message, long now)
     {
-        if (message.Jsonrpc != "2.0" || (message.Id is { } id &&
-            !(id.ValueKind == JsonValueKind.String || (id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out _)))))
-        {
-            this.sender.Error(null, -32600, "Invalid request.");
-            return;
-        }
-
         if (message.Method is null)
         {
             if (message.Id is null)
@@ -206,21 +202,21 @@ internal sealed class LspSession : IDisposable
                 return;
             }
 
-            if (message.Id is not null && message.Error is not null)
+            if (message.Error is { } error)
             {
-                this.Log(2, "The client rejected a server request: " + message.Error.Value.GetRawText());
+                this.Log(2, "The client rejected a server request: " + error);
             }
 
             return; // A response to a server request.
         }
 
         var isRequest = message.Id is not null;
-        if (!isRequest && message.Method is "initialize" or "shutdown")
+        if (!isRequest && message.Method is LspMethods.Initialize or LspMethods.Shutdown)
         {
             return; // Lifecycle requests must carry an ID.
         }
 
-        if (message.Method == "exit")
+        if (message.Method == LspMethods.Exit)
         {
             if (isRequest)
             {
@@ -242,7 +238,7 @@ internal sealed class LspSession : IDisposable
             return;
         }
 
-        if (!this.initialized && message.Method != "initialize")
+        if (!this.initialized && message.Method != LspMethods.Initialize)
         {
             if (isRequest)
             {
@@ -252,7 +248,7 @@ internal sealed class LspSession : IDisposable
             return;
         }
 
-        if (isRequest && message.Method is "initialized" or "textDocument/didOpen" or "textDocument/didChange" or "textDocument/didClose" or "workspace/didChangeWatchedFiles")
+        if (isRequest && message.Method is LspMethods.Initialized or LspMethods.DidOpen or LspMethods.DidChange or LspMethods.DidClose or LspMethods.DidChangeWatchedFiles)
         {
             this.sender.Error(message.Id, -32600, "The method must be a notification.");
             return;
@@ -262,29 +258,29 @@ internal sealed class LspSession : IDisposable
         {
             switch (message.Method)
             {
-                case "initialize":
+                case LspMethods.Initialize:
                     this.OnInitialize(message);
                     break;
-                case "initialized":
+                case LspMethods.Initialized:
                     this.OnInitialized(now);
                     break;
-                case "shutdown":
+                case LspMethods.Shutdown:
                     this.shutdownRequested = true;
                     this.eligibleAt = null;
                     this.shutdown.Cancel();
                     this.sender.Result<object>(message.Id, null, null);
                     break;
-                case "textDocument/didOpen":
-                    this.OnDidOpen(Read(message, LspJsonContext.Default.DidOpenTextDocumentParams), now);
+                case LspMethods.DidOpen:
+                    this.OnDidOpen(Read<DidOpenTextDocumentParams>(message), now);
                     break;
-                case "textDocument/didChange":
-                    this.OnDidChange(Read(message, LspJsonContext.Default.DidChangeTextDocumentParams), now);
+                case LspMethods.DidChange:
+                    this.OnDidChange(Read<DidChangeTextDocumentParams>(message), now);
                     break;
-                case "textDocument/didClose":
-                    this.OnDidClose(Read(message, LspJsonContext.Default.DidCloseTextDocumentParams), now);
+                case LspMethods.DidClose:
+                    this.OnDidClose(Read<DidCloseTextDocumentParams>(message), now);
                     break;
-                case "workspace/didChangeWatchedFiles":
-                    this.OnWatchedFiles(Read(message, LspJsonContext.Default.DidChangeWatchedFilesParams), now);
+                case LspMethods.DidChangeWatchedFiles:
+                    this.OnWatchedFiles(Read<DidChangeWatchedFilesParams>(message), now);
                     break;
                 default:
                     if (isRequest)
@@ -316,7 +312,7 @@ internal sealed class LspSession : IDisposable
             return;
         }
 
-        var parameters = Read(message, LspJsonContext.Default.InitializeParams);
+        var parameters = Read<InitializeParams>(message);
         this.settings = LspSettings.Parse(parameters?.InitializationOptions, x => this.Log(2, x));
         this.watchSupported = parameters?.Capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration == true;
         this.initialized = true;
@@ -372,61 +368,71 @@ internal sealed class LspSession : IDisposable
             return;
         }
 
-        this.documents.Add(identity, new(item.Uri, identity, role, new(text), item.Version));
-        this.Event(now, false, this.OpenCloseKeys(identity));
+        var document = new OpenDocument(item.Uri, identity, role, new(text), item.Version);
+        this.documents.Add(identity, document);
+        this.documentsByUri.TryAdd(item.Uri, document);
+        this.OpenCloseEvent(now, false, identity);
     }
 
     private void OnDidChange(DidChangeTextDocumentParams? parameters, long now)
     {
-        if (parameters is not null && (parameters.ContentChanges is null || parameters.ContentChanges.Exists(static change => change is null || change.Text is null)))
+        if (parameters is null)
+        {
+            return;
+        }
+
+        var changes = parameters.ContentChanges;
+        var readable = changes is not null && !changes.Exists(static change => change?.Text is null);
+        if (parameters.TextDocument is { } identifier && this.FindChanged(identifier.Uri) is { } document)
+        {
+            if (identifier.Version <= document.Version)
+            {
+                this.Log(4, $"Non-increasing version {identifier.Version} after {document.Version}: {identifier.Uri}");
+            }
+
+            document.Version = identifier.Version;
+            if (changes is null)
+            {
+                this.Desynchronize(document);
+            }
+
+            foreach (var change in changes ?? [])
+            {
+                if (change?.Text is not { } replacement)
+                {
+                    this.Desynchronize(document); // The client applied a change the server cannot read.
+                }
+                else if (change.Range is not { } range)
+                {
+                    document.Text.Replace(replacement);
+                    document.Desynchronized = false;
+                }
+                else if (!document.Desynchronized && !document.Text.TryApply(range.Start, range.End, replacement))
+                {
+                    this.Desynchronize(document);
+                }
+            }
+
+            this.Event(now, false, InputKey.File(document.Identity));
+        }
+
+        if (!readable)
         {
             throw new JsonException("contentChanges must contain text changes with string text.");
         }
-
-        if (parameters?.TextDocument is not { } identifier || !SourceIdentity.TryFromUri(identifier.Uri, out var identity))
-        {
-            return;
-        }
-
-        if (!this.documents.TryGetValue(identity, out var document))
-        {
-            this.Log(4, "A change to a document that is not open was ignored: " + identifier.Uri);
-            return;
-        }
-
-        if (identifier.Version <= document.Version)
-        {
-            this.Log(4, $"Non-increasing version {identifier.Version} after {document.Version}: {identifier.Uri}");
-        }
-
-        document.Version = identifier.Version;
-        foreach (var change in parameters.ContentChanges)
-        {
-            if (change.Range is not { } range)
-            {
-                document.Text.Replace(change.Text ?? string.Empty);
-                document.Desynchronized = false;
-            }
-            else if (!document.Desynchronized && !document.Text.TryApply(range.Start, range.End, change.Text ?? string.Empty))
-            {
-                document.Desynchronized = true;
-                this.Log(2, "The document is out of sync after an inapplicable change; close and reopen it: " + identifier.Uri);
-            }
-        }
-
-        this.Event(now, false, InputKey.File(identity));
     }
 
     private void OnDidClose(DidCloseTextDocumentParams? parameters, long now)
     {
-        if (parameters?.TextDocument is not { } identifier || !SourceIdentity.TryFromUri(identifier.Uri, out var identity) ||
-            !this.documents.Remove(identity, out var document))
+        if (parameters?.TextDocument is not { } identifier || this.FindOpen(identifier.Uri) is not { } document)
         {
             return;
         }
 
+        this.documents.Remove(document.Identity);
+        this.documentsByUri.Remove(document.Uri);
         document.Text.Dispose();
-        this.Event(now, false, this.OpenCloseKeys(identity));
+        this.OpenCloseEvent(now, false, document.Identity);
     }
 
     private void OnWatchedFiles(DidChangeWatchedFilesParams? parameters, long now)
@@ -440,13 +446,49 @@ internal sealed class LspSession : IDisposable
         {
             if (SourceIdentity.TryFromUri(change.Uri, out var identity))
             {
-                this.Event(now, true, this.OpenCloseKeys(identity));
+                this.OpenCloseEvent(now, true, identity);
             }
         }
     }
 
-    private InputKey[] OpenCloseKeys(SourceIdentity identity)
-        => InputKey.TryGetListing(identity, out var listing) ? [InputKey.File(identity), listing] : [InputKey.File(identity)];
+    // An open document is found by the URI it was opened with, so an edit parses no URI; another spelling of the same
+    // file still finds it through its identity. A JSON null URI finds nothing.
+    private OpenDocument? FindOpen(string? uri)
+        => uri is null ? null : this.documentsByUri.GetValueOrDefault(uri) ??
+            (SourceIdentity.TryFromUri(uri, out var identity) ? this.documents.GetValueOrDefault(identity) : null);
+
+    private OpenDocument? FindChanged(string? uri)
+    {
+        var document = this.FindOpen(uri);
+        if (document is null && SourceIdentity.TryFromUri(uri, out _))
+        {
+            this.Log(4, "A change to a document that is not open was ignored: " + uri);
+        }
+
+        return document;
+    }
+
+    private void Desynchronize(OpenDocument document)
+    {
+        if (!document.Desynchronized)
+        {
+            document.Desynchronized = true;
+            this.Log(2, "The document is out of sync after an inapplicable change; close and reopen it: " + document.Uri);
+        }
+    }
+
+    // SPEC 23.4.5: an open, close or watched event marks the file and the listing of its directory that matches it.
+    private void OpenCloseEvent(long now, bool watched, SourceIdentity identity)
+    {
+        if (InputKey.TryGetListing(identity, out var listing))
+        {
+            this.Event(now, watched, InputKey.File(identity), listing);
+        }
+        else
+        {
+            this.Event(now, watched, InputKey.File(identity));
+        }
+    }
 
     private void Event(long now, bool watched, params ReadOnlySpan<InputKey> keys)
     {

@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
+using System.Buffers.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Kimi.Diagnostics;
@@ -9,22 +12,6 @@ using Kimi.Diagnostics;
 namespace Kimi.Lsp;
 
 // The wire model never carries compiler objects; it mirrors the LSP 3.17 members the server reads or writes.
-
-/// <summary>One incoming JSON-RPC message.</summary>
-public sealed class LspMessage
-{
-    public string Jsonrpc { get; set; } = string.Empty;
-
-    public JsonElement? Id { get; set; }
-
-    public string? Method { get; set; }
-
-    public JsonElement? Params { get; set; }
-
-    public JsonElement? Result { get; set; }
-
-    public JsonElement? Error { get; set; }
-}
 
 public sealed class JsonRpcError
 {
@@ -128,6 +115,7 @@ public sealed class TextDocumentItem
 
     public int Version { get; set; }
 
+    [JsonConverter(typeof(DocumentTextConverter))]
     public string? Text { get; set; }
 }
 
@@ -147,6 +135,7 @@ public sealed class TextDocumentContentChangeEvent
 
     public int? RangeLength { get; set; }
 
+    [JsonConverter(typeof(DocumentTextConverter))]
     public string? Text { get; set; }
 }
 
@@ -205,9 +194,130 @@ public sealed class LogMessageParams
     public string Message { get; set; } = string.Empty;
 }
 
-/// <summary>An empty object for notifications and requests without parameters.</summary>
-public sealed class EmptyParams
+/// <summary>The methods the server handles or sends.</summary>
+internal static class LspMethods
 {
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? Extra { get; set; }
+    public const string Initialize = "initialize";
+    public const string Initialized = "initialized";
+    public const string Shutdown = "shutdown";
+    public const string Exit = "exit";
+    public const string DidOpen = "textDocument/didOpen";
+    public const string DidChange = "textDocument/didChange";
+    public const string DidClose = "textDocument/didClose";
+    public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
+    public const string PublishDiagnostics = "textDocument/publishDiagnostics";
+    public const string LogMessage = "window/logMessage";
+    public const string RegisterCapability = "client/registerCapability";
+}
+
+/// <summary>A JSON-RPC request ID, which LSP limits to an integer or a string.</summary>
+/// <param name="Number">The integer, when <paramref name="Text"/> is null.</param>
+/// <param name="Text">The string, or null for an integer.</param>
+internal readonly record struct RequestId(int Number, string? Text)
+{
+    /// <summary>Writes the ID as it was received.</summary>
+    /// <param name="writer">The writer.</param>
+    public void WriteTo(Utf8JsonWriter writer)
+    {
+        if (this.Text is { } text)
+        {
+            writer.WriteStringValue(text);
+        }
+        else
+        {
+            writer.WriteNumberValue(this.Number);
+        }
+    }
+}
+
+/// <summary>One incoming JSON-RPC message, whose parameters of a known method the receive loop has already read.</summary>
+internal sealed class LspMessage
+{
+    /// <summary>Gets the request ID, or null for a notification or a response without one.</summary>
+    public RequestId? Id { get; init; }
+
+    /// <summary>Gets the method, or null for a response. A known method is the constant of <see cref="LspMethods"/>.</summary>
+    public string? Method { get; init; }
+
+    /// <summary>Gets the parameters of a known method, or null when they are absent.</summary>
+    public object? Params { get; init; }
+
+    /// <summary>Gets why the parameters of a known method could not be read.</summary>
+    public string? ParamsError { get; init; }
+
+    /// <summary>Gets the <c>error</c> member of a response as JSON text.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>
+/// Reads document text, which may hold a lone surrogate: JSON escapes it, and the tokenizer reports it as
+/// <c>InvalidSourceEncoding_Kd</c> (SPEC 23.3.4), so it must not make the whole change unreadable.
+/// </summary>
+internal sealed class DocumentTextConverter : JsonConverter<string>
+{
+    /// <inheritdoc/>
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException("Document text must be a string.");
+        }
+
+        try
+        {
+            return reader.GetString()!;
+        }
+        catch (InvalidOperationException)
+        {
+            return Unescape(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value);
+
+    // The reader has validated every escape, so only the pairing of escaped surrogates is left unchecked here.
+    // An escape is never shorter than the character it denotes, so the byte length bounds the text.
+    private static string Unescape(ReadOnlySpan<byte> escaped)
+    {
+        var buffer = ArrayPool<char>.Shared.Rent(escaped.Length);
+        try
+        {
+            var written = 0;
+            while (true)
+            {
+                var backslash = escaped.IndexOf((byte)'\\');
+                written += Encoding.UTF8.GetChars(backslash < 0 ? escaped : escaped[..backslash], buffer.AsSpan(written));
+                if (backslash < 0)
+                {
+                    return new string(buffer, 0, written);
+                }
+
+                var kind = escaped[backslash + 1];
+                if (kind == (byte)'u')
+                {
+                    Utf8Parser.TryParse(escaped.Slice(backslash + 2, 4), out ushort code, out _, 'X');
+                    buffer[written++] = (char)code;
+                    escaped = escaped[(backslash + 6)..];
+                    continue;
+                }
+
+                buffer[written++] = kind switch
+                {
+                    (byte)'b' => '\b',
+                    (byte)'f' => '\f',
+                    (byte)'n' => '\n',
+                    (byte)'r' => '\r',
+                    (byte)'t' => '\t',
+                    _ => (char)kind,
+                };
+                escaped = escaped[(backslash + 2)..];
+            }
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
+    }
 }

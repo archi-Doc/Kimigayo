@@ -5,7 +5,6 @@ using System.Text.Json.Serialization;
 namespace Kimi.Lsp;
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(LspMessage))]
 [JsonSerializable(typeof(InitializeParams))]
 [JsonSerializable(typeof(DidOpenTextDocumentParams))]
 [JsonSerializable(typeof(DidChangeTextDocumentParams))]

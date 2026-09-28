@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.Text.Json;
 using System.Threading.Channels;
 
 #pragma warning disable SA1402 // The queue items belong to the host.
@@ -70,6 +69,7 @@ public sealed class LspServer
     }
 
     // Reads frames and enqueues each parsed message; a malformed body is answered, a malformed header ends the input.
+    // The input ends whatever stops the loop, so an unexpected failure cannot leave the session waiting for messages.
     private static async Task Receive(LspFrameReader reader, ChannelWriter<object> writer, CancellationToken cancellationToken)
     {
         try
@@ -79,21 +79,7 @@ public sealed class LspServer
                 var (buffer, length) = frame;
                 try
                 {
-                    writer.TryWrite(JsonSerializer.Deserialize(buffer.AsSpan(0, length), LspJsonContext.Default.LspMessage) ?? (object)new InvalidFrame(-32600, "Invalid request."));
-                }
-                catch (JsonException ex)
-                {
-                    // Deserialization also rejects valid JSON with the wrong wire types.
-                    // Only malformed JSON is a parse error; do the extra parse on the error path.
-                    try
-                    {
-                        using var document = JsonDocument.Parse(buffer.AsMemory(0, length));
-                        writer.TryWrite(new InvalidFrame(-32600, "Invalid request."));
-                    }
-                    catch (JsonException)
-                    {
-                        writer.TryWrite(new InvalidFrame(-32700, "Parse error: " + ex.Message));
-                    }
+                    writer.TryWrite(LspMessageReader.Parse(buffer.AsSpan(0, length)));
                 }
                 finally
                 {
@@ -105,18 +91,13 @@ public sealed class LspServer
         {
             writer.TryWrite(new InvalidFrame(-32700, ex.Message));
         }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (IOException)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or ObjectDisposedException)
         {
         }
-        catch (ObjectDisposedException)
+        finally
         {
+            writer.TryWrite(EndOfInput.Instance);
         }
-
-        writer.TryWrite(EndOfInput.Instance);
     }
 }
 

@@ -198,7 +198,7 @@ internal sealed class LspSender
     /// <param name="id">The request ID.</param>
     /// <param name="result">The result.</param>
     /// <param name="typeInfo">The result's serializer metadata.</param>
-    public void Result<T>(JsonElement? id, T? result, JsonTypeInfo<T>? typeInfo)
+    public void Result<T>(RequestId? id, T? result, JsonTypeInfo<T>? typeInfo)
         => this.queue.Writer.TryWrite(writer =>
         {
             Begin(writer, id);
@@ -219,7 +219,7 @@ internal sealed class LspSender
     /// <param name="id">The request ID, or null when it is unknown.</param>
     /// <param name="code">The JSON-RPC error code.</param>
     /// <param name="message">The error message.</param>
-    public void Error(JsonElement? id, int code, string message)
+    public void Error(RequestId? id, int code, string message)
         => this.queue.Writer.TryWrite(writer =>
         {
             Begin(writer, id);
@@ -256,12 +256,12 @@ internal sealed class LspSender
         await this.pump.ConfigureAwait(false);
     }
 
-    private static void Begin(Utf8JsonWriter writer, JsonElement? id)
+    private static void Begin(Utf8JsonWriter writer, RequestId? id)
     {
         writer.WriteStartObject();
         writer.WriteString("jsonrpc", "2.0");
         writer.WritePropertyName("id");
-        if (id is { } value && value.ValueKind is JsonValueKind.Number or JsonValueKind.String)
+        if (id is { } value)
         {
             value.WriteTo(writer);
         }

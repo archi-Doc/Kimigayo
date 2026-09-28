@@ -76,6 +76,23 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     }
 
     [Fact]
+    public async Task LoneSurrogatesInDocumentTextAreEncodingDiagnostics()
+    {
+        // JSON escapes a lone surrogate; the change applies and the source reports it instead of dropping the change.
+        this.WriteProject("App", ("main.kimi", Valid));
+        var main = this.PathOf("App", "main.kimi");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync();
+        await client.OpenAsync(main, Valid);
+        await client.ChangeAsync(main, 2, "{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}},\"text\":\"// \\" + "ud800\\n\"}");
+        var diagnostics = await client.PublishAsync(main);
+        Assert.Contains(diagnostics.EnumerateArray(), static x => x.GetProperty("code").GetString() == "InvalidSourceEncoding_Kd");
+
+        await client.ChangeAsync(main, 3, LspTestClient.Range(0, 0, 1, 0, string.Empty));
+        Assert.Equal(0, (await client.PublishAsync(main)).GetArrayLength());
+    }
+
+    [Fact]
     public async Task IgnoredDocumentsAndUnopenedChangesDoNothing()
     {
         var path = Path.Combine(this.directory, "notes.txt");

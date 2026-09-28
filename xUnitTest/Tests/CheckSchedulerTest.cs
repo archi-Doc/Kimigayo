@@ -237,6 +237,53 @@ public sealed class CheckSchedulerTest : IDisposable
     }
 
     [Fact]
+    public async Task AnUnreadableChangeDesynchronizesTheOpenDocument()
+    {
+        // The client applied every change, so dropping the notification would leave the server's text silently stale.
+        await using var harness = new SchedulerHarness();
+        harness.Session.Runner = static (_, _, plan, source, token) => WorkspaceCheck.RunCheck(Kimigayo.CreateSilent(), plan, false, source, token);
+        var path = this.PathOf("A.kimi");
+        harness.At(0).Open(path, "let x = 1\n");
+        harness.Message($"{{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{{\"textDocument\":{{\"uri\":\"{LspTestClient.Uri(path)}\",\"version\":2}},\"contentChanges\":[{LspTestClient.Range(0, 0, 0, 0, "x")},{{\"text\":null}}]}}}}");
+        harness.At(250);
+        await harness.RunCheckAsync();
+        Assert.False(harness.Session.Store.Find(InputKey.File(path))!.State!.Established);
+        var frames = await harness.FramesAsync();
+        Assert.Contains(frames, static x => LspTestClient.IsLog(x, "Invalid params"));
+        Assert.Contains(frames, static x => LspTestClient.IsLog(x, "out of sync"));
+
+        harness.At(300).Change(path, 3, "let x = 1\n");
+        harness.At(550);
+        await harness.RunCheckAsync();
+        Assert.True(harness.Session.Store.Find(InputKey.File(path))!.State!.Established);
+    }
+
+    [Fact]
+    public async Task AnotherSpellingOfTheUriFindsTheOpenDocument()
+    {
+        await using var harness = new SchedulerHarness();
+        var path = this.PathOf("A.kimi");
+        var spelling = LspTestClient.Uri(path).Replace("/A.kimi", "/%41.kimi", StringComparison.Ordinal);
+        harness.At(0).Open(path, "fine");
+        harness.Message($"{{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{{\"textDocument\":{{\"uri\":\"{spelling}\",\"version\":2}},\"contentChanges\":[{LspTestClient.Full("error")}]}}}}");
+        harness.At(250);
+        await harness.RunCheckAsync();
+        Assert.Equal(1, Assert.Single(await harness.PublishesAsync(path)).GetProperty("diagnostics").GetArrayLength());
+
+        harness.At(300).Message($"{{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didClose\",\"params\":{{\"textDocument\":{{\"uri\":\"{spelling}\"}}}}}}");
+        harness.At(550);
+        await harness.RunCheckAsync();
+        Assert.Empty(harness.Session.Units);
+
+        // The close released the first spelling too, so a reopened document receives its changes.
+        harness.At(600).Open(path, "fine");
+        harness.Change(path, 2, "error error");
+        harness.At(850);
+        await harness.RunCheckAsync();
+        Assert.Equal(2, (await harness.PublishesAsync(path))[^1].GetProperty("diagnostics").GetArrayLength());
+    }
+
+    [Fact]
     public async Task AnAlreadyLoadedCandidateStillExpandsItsProductDependencies()
     {
         var app = this.WriteProject("App", "Dependencies={Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}}");
@@ -329,7 +376,7 @@ public sealed class CheckSchedulerTest : IDisposable
         }
 
         public void Message(string json)
-            => this.Session.Process(JsonSerializer.Deserialize(json, LspJsonContext.Default.LspMessage)!, this.Now);
+            => this.Session.Process(LspMessageReader.Parse(Encoding.UTF8.GetBytes(json)), this.Now);
 
         public void Open(string path, string text)
             => this.Message($"{{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{{\"textDocument\":{{\"uri\":\"{LspTestClient.Uri(path)}\",\"languageId\":\"kimi\",\"version\":1,\"text\":{JsonSerializer.Serialize(text)}}}}}}}");

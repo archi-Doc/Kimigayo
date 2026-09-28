@@ -12,6 +12,9 @@ namespace XunitTest;
 // SPEC 23.4.1: framing, JSON-RPC responses and the lifecycle.
 public sealed class LspProtocolTest
 {
+    // The start of a JSON \u escape, spelled so that no source escape is involved.
+    private const string Escape = "\\" + "u";
+
     [Fact]
     public async Task InitializeAdvertisesOnlyTheImplementedCapabilities()
     {
@@ -261,6 +264,54 @@ public sealed class LspProtocolTest
     }
 
     [Fact]
+    public async Task UnechoableRequestIdsAreInvalidRequestsAndOutputContinues()
+    {
+        // A string ID holding an escaped lone surrogate cannot be written back; answering it once stopped all output.
+        await using var client = new LspTestClient();
+        await client.SendAsync("{\"jsonrpc\":\"2.0\",\"id\":\"" + Escape + "d800\",\"method\":\"initialize\",\"params\":{}}");
+        var error = await client.ReceiveAsync(static x => x.TryGetProperty("error", out _));
+        Assert.Equal(JsonValueKind.Null, error.GetProperty("id").ValueKind);
+        Assert.Equal(-32600, error.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.True((await client.RequestAsync("initialize", "{}")).TryGetProperty("result", out _));
+    }
+
+    [Fact]
+    public async Task AnUnexpectedInputFailureEndsTheSession()
+    {
+        using var output = new MemoryStream();
+        var token = TestContext.Current.CancellationToken;
+        Assert.Equal(1, await LspServer.Run(new FailingStream(), output, static () => Environment.TickCount64, null, token).WaitAsync(TimeSpan.FromSeconds(5), token));
+    }
+
+    [Fact]
+    public void MessagesAreReadInOnePassWhateverTheMemberOrder()
+    {
+        var message = Assert.IsType<LspMessage>(LspMessageReader.Parse("{\"params\":{\"textDocument\":{\"uri\":\"file:///a.kimi\",\"languageId\":\"kimi\",\"version\":3,\"text\":\"a\\n\"}},\"method\":\"textDocument/didOpen\",\"jsonrpc\":\"2.0\"}"u8));
+        Assert.Same(LspMethods.DidOpen, message.Method);
+        Assert.Null(message.Id);
+        Assert.Equal("a\n", Assert.IsType<DidOpenTextDocumentParams>(message.Params).TextDocument.Text);
+
+        var response = Assert.IsType<LspMessage>(LspMessageReader.Parse("{\"jsonrpc\":\"2.0\",\"id\":\"r\",\"result\":[1,{}],\"error\":{\"code\":1}}"u8));
+        Assert.Null(response.Method);
+        Assert.Equal(new RequestId(0, "r"), response.Id);
+        Assert.Equal("{\"code\":1}", response.Error);
+
+        var invalid = Assert.IsType<LspMessage>(LspMessageReader.Parse("{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":2,\"params\":{\"capabilities\":5}}"u8));
+        Assert.Null(invalid.Params);
+        Assert.NotNull(invalid.ParamsError);
+    }
+
+    [Fact]
+    public void DocumentTextKeepsLoneSurrogatesAndEveryEscape()
+    {
+        var text = "\"a" + "\\/b\\\"\\\\\\t\\r\\b\\f" + Escape + "d800c" + Escape + "00e9" + Escape + "D83D" + Escape + "DE00\"";
+        var json = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"textDocument\":{\"uri\":\"file:///a.kimi\",\"version\":2},\"contentChanges\":[{\"text\":" + text + "}]}}";
+        var message = Assert.IsType<LspMessage>(LspMessageReader.Parse(Encoding.UTF8.GetBytes(json)));
+        var change = Assert.Single(Assert.IsType<DidChangeTextDocumentParams>(message.Params).ContentChanges);
+        Assert.Equal("a/b\"\\\t\r\b\f" + (char)0xD800 + "c" + (char)0xE9 + char.ConvertFromUtf32(0x1F600), change.Text);
+    }
+
+    [Fact]
     public async Task InvalidSelectedProjectPathsAreLogged()
     {
         await using var client = new LspTestClient();
@@ -292,5 +343,32 @@ public sealed class LspProtocolTest
         await client.NotifyAsync("initialized", "{}");
         await client.RequestAsync("custom/barrier");
         Assert.Single(client.Received, static x => x.TryGetProperty("method", out var method) && method.GetString() == "client/registerCapability");
+    }
+
+    private sealed class FailingStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("The input failed.");
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw new InvalidOperationException("The input failed.");
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
