@@ -1,247 +1,283 @@
-# Design Change: 整数範囲
+# 仕様変更案：整数範囲と位置範囲
 
 日付: 2026-09-28
 
-状態: 合意した設計方針に基づく変更提案。正式仕様への取り込み・実装・新仕様の動作検証は未実施。
+状態: 最終提案。正式仕様への取り込み・実装・新仕様の動作検証は未実施。
 
-本書で変更する事項は `SPEC.md` とその参照先より優先し、変更しない事項には既存仕様を適用する。
+本書は採用後の変更内容を定める。取り込みまでは `docs/SPEC.md` とその参照先が正式仕様であり、本書だけで現行仕様を変更しない。明記しない事項には既存仕様を適用する。
 
-## 1. 現状と目的
+## 1. 目的と変更概要
 
-現在の `0..10` は、対象の長さに対する未解決の区間指定 `Range` を作る。整数境界は `isize` から `Index` に正規化される。`Range` は反復できず、非負の確定区間 `ResolvedRange` だけが反復できる（SPEC §4.6.2–4.6.4）。
+整数値の範囲を直接反復できるようにし、対象長に依存する位置指定と型で区別する。範囲を変数に保存しても、関数に渡しても意味は変わらず、`for` や添字内だけの特例は設けない。
 
-一般の整数範囲 `IntegerRange<T>` を導入し、負数や整数型を保ちながら、次のように反復できるようにする。変数への保存や関数への受け渡しでも同じ意味を保ち、`for` だけの特例は設けない。
-
-```kimi
-let numbers = -3..3
-for var x in numbers
-    Console.writeLine("Count \(x)") // Count -3 ～ Count 2
-```
-
-## 2. 型と共通要件
-
-### 2.1. 三つの範囲型
-
-| 型 | 保証・役割 | 単独の反復 |
+| 変更前の名前 | 採用する名前 | 役割 |
 | --- | --- | --- |
-| `IntegerRange<T>`（新設） | 同じ整数型Tの確定した両端と包含指定。負数も通常の値として扱う。 | Tの値を生成する。 |
-| `Range` | 先頭相対・末尾相対・省略を含む位置の指定。対象長に対して解決する。 | 不可。 |
-| `ResolvedRange` | 非負・順序保証付きの半開区間。両端はisizeで、`length = end - start` は常に表現可能。 | `isize`を生成する。 |
+| 旧提案の `IntegerRange<T>` | `Range<T>` | 同じ整数型Tの確定した両端と包含指定。負数も扱い、Tの値を生成する。 |
+| 旧提案の `IntegerRangeIterator<T>` | `RangeIterator<T>` | 整数範囲の反復状態を保持する。 |
+| 現行仕様の非ジェネリック `Range` | `IndexRange` | 先頭相対・末尾相対・省略を含む位置指定。対象長に対して解決する。 |
+| 現行仕様の `ResolvedRange` | 変更なし | 検査済みの非負の半開区間。安全な長さ計算とisizeの反復を提供する。 |
 
-三つの型を維持し、`Range.resolve` / `tryResolve` と `values.indices` の結果も `ResolvedRange` のままとする。適用先の長さは再検査するが、非負性・順序・安全な長さ計算の保証は失われない。`IntegerRange<isize>` への統合や `Range` の改名は行わず、検査・反復の内部処理を共有する。
-
-### 2.2. 閉じた整数要件 `Kimi.Integer`
-
-メソッド要求を持たないコンパイラー内在の要件 `Kimi.Integer` を導入する。満たすのは、外側のSemanticsがownerで、Coreが `i8/u8`、`i16/u16`、`i32/u32`、`i64/u64`、`i128/u128`、`isize/usize` のいずれかである型だけとする。浮動小数点・`char`・参照・ユーザー定義型は満たさない。同名宣言やユーザー適合では付与できず、コンパイラーが認識する宣言IDで識別する。
-
-`T is Integer` から、次の能力を定義時に証明できるようにする。
-
-- Tは整数Scalarであり、Copy・Owned・Equatable・Comparableを満たす。参照からのScalar readには既存の取得規則を使う。
-- 全許容型に定義された組み込み整数演算・比較と、Integerを満たす型間の明示的な検査付き整数変換を利用できる。単項 `-` は符号付き整数に限られるため、Integerだけでは許可しない。二項演算の同型要件、シフトの右辺に任意の整数型を許す規則、更新対象の要件、結果型・失敗条件は既存規則に従う。
-- 未確定リテラルは、すべての許容型に収まる場合にTへ適合できる。この共通域は0〜127。具体型が決まっている場合は、その型の通常のリテラル適合規則を使う。
-
-`IntegerRange<T>`・`IntegerRangeIterator<T>` と、それらを型引数未確定のまま使う宣言には `T is Integer` を明記する。型を署名に書いたことから制約を逆算しない。範囲型自身のCopy導出やEquatable実装は通常どおり検査する。
-
-これは新しい組み込み証明規則である。既存の `T is i8 or u8 or …` という選択制約だけでは、§8.7に場合分けの証明がないため共通の演算能力を導けない。一般的な型列挙・場合分け推論や、ユーザーが拡張するNumeric Contractは導入しない。
-
-言語上の演算能力と実装プロファイルの対応範囲は区別する。初期プロファイルのi128/u128除算・剰余の制限（impl §21、STATUS）はInteger要件を弱めず、具体型が確定したコードを最適化前に診断する既知の実装制限として扱う。整数範囲の構築・反復・正規化はこれらの演算に依存させない。
-
-## 3. 整数範囲の仕様
-
-### 3.1. 構文と型推論
-
-| 境界 | 結果 |
-| --- | --- |
-| 同じ整数型Tの `a..b` / `a..=b` | `IntegerRange<T>`。終端を除く／含む。 |
-| 境界に `Index` を含む | `Range`。整数側は位置として正規化する（§3.2）。 |
-| 片側または両側を省略する | `Range`。省略開始は0、省略終了は `^0`。包含終端の省略は不可。 |
-
-本書の**未確定の整数式**は、未確定整数リテラル、括弧、およびそれらだけを被演算子とする既存の組み込み算術・ビット・シフト演算からなる、型の既定化前の式を指す。型付きの値・明示変換・呼び出しは含めない。新しい構文ではなく、期待型を伝えられる式の分類である。
-
-まず構文と独立に判明する境界型から種別を決め、未確定の整数式を種別判定のために既定化しない。整数への参照は通常のScalar readで終端の型を調べる。省略もIndexもない整数式同士は整数範囲とする。期待型が `Range` でも再解釈せず、添字内だけの型決定や実行時の値による型変更も行わない。
-
-整数範囲では両端に同じTを要求する。確定した境界型や期待型から、既存の式規則に従って未確定部分へ型を伝える。確定済みの異なる整数型は変換せず、エラーとする。整数範囲の境界には、SPEC §4.6.2の位置に対するisize期待型を適用しない。
-
-両端が未確定の整数式である範囲式を、配列リテラルと同様の**合成リテラル**として定義し、SPEC §4.3–4.4・§10.2・§12.3.1・§14.9.1の期待型伝播と既定化に接続する。
-
-- 候補の `IntegerRange<I>` へ直接値として適合する場合のクラスはLiteral fitting。別途借用などが必要なら、その取得の適合クラスを用いる。型付き境界や保存済みの範囲は確定型を保ち、他の適応がなければExactとなる。
-- 期待型・他の引数・配列の兄弟要素・分岐結果から得られる制約を、既定化より先に集める。既存規則が認める型情報だけを使い、未解決の呼び出しを推測しない。
-- 候補比較中は既定化せず、曖昧さの解消にも使わない。制約処理後に他の型情報がない場合だけ、Tをi32に既定化する。
-- 境界内の呼び出しを外側の候補ごとに再束縛しない。既存の共通または選択済み期待型で決まらなければ、注釈を要求する。
-
-直接リテラルの適合と、演算の実行は区別する。直接リテラルの括弧・符号の扱いはSPEC §13.5.4に従い、算術式全体を数学的な定数として適合させない。例えばi8の期待型では `127 + 1` の各リテラルは適合するが、加算は実行時にAbortする。演算子の適用条件・中間結果の検査・シフト右辺の型決定も既存規則を保つ。
-
-例えば `accept(IntegerRange<i32>)` と `accept(IntegerRange<i64>)` の両方がある場合、`accept(0..10)` は曖昧であり、先にi32へ既定化しない。`let r = 0..10` で独立に型を確定した後の `accept(r)` はi32側を選ぶ。
+`Range<isize>` は他の整数型と同じ整数範囲であり、IndexRangeやResolvedRangeの代用にはしない。`Range<Index>` は導入しない。これらはKimi直下の宣言とし、旧名の互換エイリアスや、型引数を省略したRangeの別名は設けない。
 
 ```kimi
-let a = 0..10                       // IntegerRange<i32>
-let b = 0@i64..10                   // IntegerRange<i64>
-let c: IntegerRange<i64> = 0..10     // 未確定リテラルをi64に適合
-let n = 10
-let d = 0..n@ref                    // Scalar read。IntegerRange<i32>
-let e = 1..^1                       // Range
-let f = ..10                        // Range。0..10へ読み替えない。
-let ranges = [0..3, 5..8@i64]        // Array<IntegerRange<i64>>
-let product: IntegerRange<i64> = 0..(2 * 5)
-let shifted: IntegerRange<i64> = 0..(1 << 4)
+let numbers = -3..3                  // Range<i32>。-3から2まで。
+let positions: Range<isize> = 0..4    // isizeでも直接反復できる。
+let inner: IndexRange = 1..^1        // 対象の先頭と末尾を一つずつ除く。
+let values: [4 of i32] = [10, 20, 30, 40]
+let middle = values[inner]           // 20、30の共有Slice。
+let resolved = inner.resolve(values.length) // ResolvedRange [1, 3)。
+
+for var number in numbers
+    Console.writeLine("Count \(number)")
 ```
 
-`if ready => 0..3 else => 0..n`（readyはbool）でも、nの確定整数型が未確定の分岐に伝わる。型決定後に範囲構築へ下げ、合成した内部呼び出しで型推論をやり直さない。
+## 2. 型と公開契約
 
-### 3.2. 位置としての整数
+### 2.1. 閉じた整数要件 `Kimi.Integer`
 
-`Range` を作る `..` / `..=` の整数境界は、任意の `I is Integer` を受け付ける。各整数境界を「非負かつisizeで表現可能」な位置へ検査付きで正規化し、失敗ならAbortする。未確定の整数式にはisize期待型を伝え、確定済みのIは変更しない。Indexは引き続き `offset: isize` を保持する。
+メソッド要求を持たないコンパイラー内在の要件Integerを導入する。適合するのは、外側のSemanticsがownerで、Coreが `i8/u8`、`i16/u16`、`i32/u32`、`i64/u64`、`i128/u128`、`isize/usize` のいずれかである型だけとする。浮動小数点・char・参照・ユーザー定義型は適合せず、同名宣言やユーザー適合でも付与できない。識別には正規の宣言IDを使う。
 
-Range式は左境界、右境界を各1回評価した後、整数境界を左から検査・正規化する。境界式内の `^` / `Index.init` はその評価中に検査し、失敗すれば後続を評価しない。対象長による順序・上限の検査はRangeの解決時に行う。
+`T is Integer` は、定義時に次の能力を証明する。
+
+- Tは整数Scalarであり、Copy・Owned・Equatable・Comparableを満たす。整数への参照の取得には既存のScalar read規則を使う。
+- 全許容型に定義された組み込み整数演算・比較、およびIntegerを満たす型間の明示的な検査付き整数変換を利用できる。同型の被演算子、シフト右辺、更新対象、結果型、失敗条件の規則は変更しない。単項 `-` は符号付き整数に限られるため、Integerだけでは許可しない。
+- 未確定リテラルは、すべての許容型に収まる0〜127に限りTへ適合できる。具体型が決まった位置では、その型の通常のリテラル適合規則を使う。
+
+`Range<T>`・`RangeIterator<T>`の宣言と、これらを未確定のTで使う宣言には `T is Integer` を明記する。署名から制約を逆算しない。範囲型自身のCopy導出とEquatable実装も通常どおり検査する。
+
+これは新しい組み込み証明規則である。既存の `T is i8 or u8 or …` だけでは、SPEC §8.7に場合分けの証明がないため共通の演算能力を導けない。一般的な型列挙・場合分け推論や、拡張可能なNumeric Contractは追加しない。
+
+初期実装プロファイルのi128/u128除算・剰余の制限は、Integerの言語上の保証を弱めない。具体型が確定したコードを最適化前に診断する既知の実装制限として扱い、範囲の構築・反復・正規化をこれらの演算に依存させない。
+
+### 2.2. 整数範囲 `Range<T>`
+
+`Range<T>`はOwned・Copy・Equatableで、構築後は `start <= end` を満たす。比較順序や範囲の算術は提供しない。
+
+| 公開API | 契約 |
+| --- | --- |
+| `start: T`、`end: T`、`isInclusive: bool` | 読み取り専用。構築時の両端と包含指定を保持する。 |
+| `isEmpty: bool` | 終端非包含かつ `start == end` のときだけtrue。 |
+| `tryCreate(! start: T, end: T, inclusive: bool = false) -> Option<Self>` | `start <= end` ならSome、逆転ならNone。引数評価中のAbortは捕捉しない。 |
+
+通常の生成は範囲構文を正準形とし、同義の公開init / createは設けない。逆転した範囲式は構築時にAbortし、空範囲や降順へ読み替えない。`a..a` は空、`a..=a` は1要素とする。Tの最小値・最大値も使用でき、包含終端が最大値でも反復できる。
+
+失敗を値で扱う場合は `Range<i32>.tryCreate(start: 0, end: 10)` を使う。コンテナーのTを引数から推論する新規則は追加しない。生成時の引数名は `inclusive:`、観測Propertyは `isInclusive` とする。
+
+等価性は同じTのstart・end・isInclusiveを比較する。`0..3` と `0..=2`、位置の異なる空範囲は等しくない。異なるTや他の範囲型への暗黙変換・交差型等価性は設けない。
+
+全整数域の要素数はTにもusizeにも収まるとは限らないため、lengthは提供しない。resolve / tryResolveも追加せず、スライスとの接続は§4で定める。
+
+### 2.3. 反復と `RangeIterator<T>`
+
+`Range<T>`は次の三つに適合し、昇順・刻み幅1でTの値を生成する。入口ごとに先頭から新しい反復を開始し、`for var` の反復変数を再代入しても生成順序は変わらない。
+
+| 入口 | 結果 |
+| --- | --- |
+| `iterate(self: ref/Self)`（Iterable） | `RangeIterator<T>` |
+| `iterateUniq(self: uniq/Self)`（UniqIterable） | `RangeIterator<T>` |
+| `intoIterator(self: Self)`（IntoIterable） | `RangeIterator<T>` |
+
+`RangeIterator<T>`はOwned・Non-Copyで、Iteratorに適合する。関連型ItemはT、`next(self: uniq/Self)` は `Option<T>` を返す。最終要素の後では加算せず、一度Noneになった後はNoneのままとする。取得した要素はIteratorのStorageやLoanに依存せず、Iteratorの効果上限（SPEC §22.1.2.4）を満たす。
+
+三入口は境界を値として取り込み、元の範囲を変更せず、そのStorage・Origin・Loanを結果に保持しない。IterableとUniqIterableの各 `IteratorType(source)` は、どのsourceにも同じ`RangeIterator<T>`を対応させる。IntoIterableのIteratorTypeも同じ型とする。取得中の借用、Subjectの取得、早期終了時のcleanupには既存の反復規則を適用する。
+
+進行状態の移譲には通常の `@move` を使い、再走査には範囲から新しいIteratorを得る。RangeIteratorの公開コンストラクターやIterable・UniqIterable・IntoIterable適合は追加しない。forで使う場合は既存のアダプターを通す。
+
+```kimi
+func makeNumbers() -> RangeIterator<i32>
+    let numbers = 0..3
+    return numbers.iterate() // ローカルnumbersの借用を結果に残さない。
+
+for number in Kimi.Iteration.owned(makeNumbers())
+    Console.writeLine("Count \(number)")
+```
+
+### 2.4. 位置指定 `IndexRange` と `ResolvedRange`
+
+現行の非ジェネリックRangeをIndexRangeに改名する。整数境界の受理範囲を§3.3のとおり拡張し、それ以外はSPEC §4.6.2–4.6.4の契約を維持する。
+
+| 型 | 境界と保証 | 長さ・反復 |
+| --- | --- | --- |
+| `IndexRange` | 読み取り専用の `start: Index`、`end: Index`、`isInclusive: bool`。省略開始は先頭相対0、省略終了は `^0`。構築時には順序を検査しない。 | 対象に依存しないlength・isEmptyはなく、直接反復できない。絶対位置だけでも同じ。 |
+| `ResolvedRange` | 読み取り専用の `start: isize`、`end: isize`。常に `0 <= start <= end <= maximum isize` の半開区間。 | `length: isize = end - start`、`isEmpty: bool`。三つの反復入口からisizeを生成する。 |
+
+両型ともOwned・Copy・Equatableで、対象のStorage・Origin・Loanを保持せず、Comparableや算術は提供しない。IndexRangeの等価性は正規化したIndexの方向・オフセットと包含指定、ResolvedRangeの等価性は両端で決める。例えば `..` と `0..^0` は等しい。型をまたぐ暗黙変換や等価比較はない。
+
+IndexRangeは構文でのみ生成し、公開init / factoryは設けない。公開 `resolve(length: isize)` はResolvedRange、`tryResolve(length: isize)` は `Option<ResolvedRange>` を返す。負のlength、解決不能な境界、逆転、対象外の包含終端では、resolveはAbort、tryResolveはNoneとする。境界解決と半開区間への正規化は§4.2に従う。
+
+ResolvedRangeの公開 `init(! start: isize, end: isize)` は上記の不変条件を検査し、不正ならAbortする。`values.indices` は引き続きResolvedRangeで、取得時の `[0, values.length)` のスナップショットとなる。保存後のサイズ変更は反映せず、添字・スライスに使う際には現在の対象長を再検査する。
+
+## 3. 範囲構文と型推論
+
+### 3.1. 種別の決定
+
+まず省略の有無と、独立に判明する境界型から種別を決める。境界には整数またはIndexを要求し、整数への参照は通常のScalar readで取得する。
+
+| 構文・境界 | 結果 |
+| --- | --- |
+| 両端が同じ整数型Tの `a..b` / `a..=b` | `Range<T>`。終端を除く／含む。 |
+| 境界にIndexを含む | `IndexRange`。整数側は位置へ正規化する。 |
+| 片側または両側を省略する | `IndexRange`。`a..`、`..b`、`..=b`、`..`。包含終端は省略できない。 |
+
+種別決定のために未確定の整数式を先に既定化しない。省略もIndexもない整数式同士は整数範囲とし、期待型がIndexRangeでも再解釈しない。逆に、期待型が`Range<T>`でも位置指定を整数範囲に変えない。型は実行時の値や添字内かどうかに依存しない。
+
+```kimi
+let integers = 1..3                          // Range<i32>
+let relative = 1..^1                         // IndexRange
+let head = ..3                               // IndexRange。0..3とは異なる型。
+let explicit: IndexRange = Index.init(1)..Index.init(3)
+let invalid: IndexRange = 1..3               // 型エラー。
+```
+
+範囲演算子の優先順位・非結合性と接頭辞 `^` の優先順位は変更しない。`a..b..c` は構文エラー、`(a..b)..c` は境界型のエラーとする。構文は正規のKimi宣言を参照し、同名のユーザー宣言では置き換わらない。
+
+### 3.2. 整数範囲の推論
+
+**未確定の整数式**とは、未確定整数リテラル、括弧、およびそれらだけを被演算子とする既存の組み込み算術・ビット・シフト演算からなる、既定化前の式をいう。型付きの値・明示変換・呼び出しは含めない。これは期待型を伝えられる式の分類であり、新しい構文ではない。
+
+`Range<T>`の両端には同じTを要求する。確定した境界型や期待型から未確定部分へ型を伝え、確定済みの異なる整数型は変換せずエラーとする。整数範囲の境界には、位置指定のisize期待型を適用しない。
+
+両端が未確定の整数式である範囲式を**合成リテラル**とし、SPEC §4.3–4.4・§10.2・§12.3.1・§14.9.1の期待型伝播・候補適合・共通型推論に接続する。
+
+1. 期待型、他の引数、配列の兄弟要素、分岐結果から、既存規則で得られる制約を先に集める。未解決の呼び出しを推測しない。
+2. 候補の `Range<I>` へ直接値として適合するクラスはLiteral fittingとする。別途借用などが必要なら、その取得の適合クラスを使う。型付き境界や保存済みの範囲は確定型を保ち、他の適応がなければExactとなる。
+3. 候補比較中は既定化せず、曖昧さの解消にも使わない。制約処理後に他の型情報がない場合だけTをi32に既定化する。
+4. 境界内の呼び出しを外側の候補ごとに再束縛しない。既存の共通または選択済み期待型で決まらなければ注釈を要求する。型決定後の内部生成呼び出しで推論をやり直さない。
+
+```kimi
+let a = 0..10                       // Range<i32>
+let b = 0@i64..10                   // Range<i64>
+let c: Range<i64> = 0..10            // 未確定リテラルをi64に適合。
+let n = 10
+let d = 0..n@ref                    // Scalar read。Range<i32>
+let ranges = [0..3, 5..8@i64]        // Array<Range<i64>>
+let product: Range<i64> = 0..(2 * 5)
+let shifted: Range<i64> = 0..(1 << 4)
+```
+
+`if ready => 0..3 else => 0..n`（readyはbool）でも、nの確定整数型を未確定の分岐へ伝える。`accept(Range<i32>)` と `accept(Range<i64>)` の両候補があるとき、`accept(0..10)` は曖昧となる。一方、`let r = 0..10` で独立に型を確定した後の `accept(r)` はi32側を選ぶ。
+
+リテラルの適合と演算の実行は区別する。直接リテラルの括弧・符号にはSPEC §13.5.4を適用し、算術式全体を数学的な定数として適合させない。i8の期待型で `127 + 1` の各リテラルは適合するが、加算は実行時にAbortする。演算子の適用条件・中間結果の検査・シフト右辺の型決定も維持する。
+
+### 3.3. 評価順と位置への正規化
+
+範囲式は左境界、右境界を各1回評価し、両方の評価が完了してから次の構築検査を行う。境界式自体がAbortすれば、後続は評価しない。
+
+| 種別 | 構築検査 |
+| --- | --- |
+| `Range<T>` | `start <= end` を検査し、逆転ならAbortする。 |
+| `IndexRange` | 整数境界を左から「非負かつisizeで表現可能」な先頭相対Indexへ正規化し、不適合ならAbortする。順序・対象長による上限は解決時に検査する。 |
+
+IndexRangeの整数境界は任意の `I is Integer` を受け付ける。未確定の整数式にはisize期待型を伝え、確定済みのIは変更しない。境界内の `^` / `Index.init` は、その式の評価中に通常の検査を行う。
 
 ```kimi
 let a: i32 = 1
 let b: i32 = 3
-let whole = a..b  // IntegerRange<i32>
-let tail = a..    // Range。aを位置へ検査付きで正規化。
-let inner = a..^1 // Range
-let last = ^(a@isize) // Index。^の被演算子はisizeのまま。
+let numbers = a..b       // Range<i32>
+let tail = a..           // IndexRange。aを位置へ正規化。
+let inner = a..^1        // IndexRange
+let last = ^(a@isize)    // Index。^の被演算子はisizeのまま。
 ```
 
-接頭辞 `^`、公開 `Index.init(offset: isize, fromEnd: bool = false)`、単一要素添字・位置APIは既存のisize/Index規則を維持する。したがってaがi32なら `values[a]` と `values[^a]` はともに型エラーとなる。拡張は範囲演算子が直接受け取る整数境界だけに限定し、境界内の `^` には伝えない。
+接頭辞 `^`、公開 `Index.init(offset: isize, fromEnd: bool = false)`、単一要素添字・位置APIは既存のisize/Index規則を維持する。上のaに対する `values[a]` と `values[^a]` は型エラーとなる。範囲演算子の整数境界の拡張を、境界内の `^` にまで伝えない。
 
-### 3.3. 整数範囲の構築と失敗
+通常の式のAbortを、定数が見えるという理由でコンパイルエラーへ変えない。必須定数評価・型不適合・リテラル範囲外には既存の静的エラー規則を適用する。
 
-- 範囲式は左境界、右境界を各1回評価し、完了後に順序を検査する。評価自体がAbortすれば以降は評価しない。
-- 開始値 > 終了値なら構築時にAbort。空範囲や降順へ読み替えない。`a..a` は空、`a..=a` は1要素。
-- 負数と各Tの最小値・最大値を許す。包含終端に最大値を指定しても構築・反復できる。
-- 通常の式のAbortを、定数が見えるという理由でコンパイルエラーに変えない。必須定数評価、型の不適合、リテラル範囲外には既存の静的エラー規則を適用する。
+## 4. 配列・添字・スライス
 
-### 3.4. 公開API
+### 4.1. 受理する型
 
-| 宣言 | 保証 |
-| --- | --- |
-| `IntegerRange<T>` | Owned、Copy、Equatable。比較順序や範囲の算術は追加しない。 |
-| `start: T`、`end: T`、`isInclusive: bool` | 読み取り専用。構築時の境界と包含指定を保持する。 |
-| `isEmpty: bool` | 終端非包含かつ開始と終了が等しいときだけtrue。 |
-| `tryCreate(! start: T, end: T, inclusive: bool = false) -> Option<Self>` | 有効ならSome、逆転ならNone。通常の引数評価順に従い、引数評価中のAbortは捕捉しない。 |
-
-通常の生成は範囲構文を正準形とし、同義の公開 `init` / `create` は追加しない。`tryCreate` は失敗を値で扱う入口であり、`IntegerRange<i32>.tryCreate(start: 0, end: 10)` のように使う。コンテナーのTを引数から推論する新規則は設けない。引数名は既存の生成処理と揃えて `inclusive:`、観測Propertyは `isInclusive` とする。
-
-等価性は同じTの `start`・`end`・`isInclusive` を比較する。`0..3` と `0..=2` は異なり、異なる位置の空範囲も同一視しない。異なるTや他の範囲型への暗黙変換・交差型等価性は追加しない。
-
-`length` は設けない。全整数域の要素数はTにも `usize` にも収まるとは限らない。範囲値の `Utf8Format` 適合も今回追加しない。
-
-### 3.5. 反復と寿命
-
-昇順、刻み幅1でTの値を生成する。各反復は先頭から始まり、`for var x` のxを再代入しても生成順序は変わらない。
-
-| 入口 | 返す型 |
-| --- | --- |
-| `iterate(self: ref/Self)`（Iterable） | `IntegerRangeIterator<T>` |
-| `iterateUniq(self: uniq/Self)`（UniqIterable） | `IntegerRangeIterator<T>` |
-| `intoIterator(self: Self)`（IntoIterable） | `IntegerRangeIterator<T>` |
-
-`IntegerRangeIterator<T>` はOwned・Non-Copyで `Iterator` に適合し、`Item` はT、`next(self: uniq/Self)` の結果は `Option<T>` とする。進行状態を暗黙に複製せず、移譲には通常の `@move` を使い、再走査には範囲から新しいIteratorを得る。公開コンストラクターやIntoIterable適合は追加せず、Iteratorを直接forに渡す場合は既存のアダプターを使う。
-
-三入口は境界の値を取り込み、元の範囲を変更せず、そのStorageやOriginを結果に保持しない。借用入口の関連型 `IteratorType(source)` は、どのsourceにも同じ `IntegerRangeIterator<T>` を返す。取得中の借用とSubjectの取得規則は維持し、呼び出し後は結果のために元の範囲のLoanを延長しない。
+固定配列・Array・Sliceのスライスは `Range<I>`（`I is Integer`）・IndexRange・ResolvedRangeを受け付ける。Slice.trySliceの既存入口はIndexRangeへの改名後も維持し、整数範囲には次の単一ジェネリック宣言を追加する。12個の具体型別オーバーロードにはしない。
 
 ```kimi
-func makeNumbers() -> IntegerRangeIterator<i32>
-    let numbers = 0..3
-    return numbers.iterate() // ローカルnumbersを借用し続けない。
-
-for x in Kimi.Iteration.owned(makeNumbers())
-    Console.writeLine("Count \(x)")
-```
-
-進行状態はIteratorだけが持つ。成功した `next` の値はIteratorから独立し、終了後は `None` のままとする。最終要素の後で加算せず、早期終了時のcleanupは通常の反復規則に従う。
-
-## 4. 配列・スライスとの接続
-
-### 4.1. 配列と単一要素の添字
-
-`[0..10]` は `IntegerRange<i32>` を1個含む配列で、自動展開しない。範囲を変数rに保存した `[r]` と同じ意味になる。
-
-単一要素の添字は既存の `isize` / `Index` 規則を維持する。`for i in 0..10` のiは `i32` なので、必要なら明示変換する。添字走査の標準形は `for i in values.indices`（iは `isize`）とする。
-
-raw pointerの添字は従来どおり単一のisizeだけを受け付け、`IntegerRange`・`Range`・`ResolvedRange` は受け付けない。
-
-### 4.2. スライスの共通検査
-
-組み込みの固定配列・Array・Sliceのスライスと `Slice.trySlice` に整数範囲を追加する。整数範囲用のAPIは `I is Integer` を持つ単一のジェネリック宣言とし、12個の具体型別オーバーロードにはしない。既存のRange用・ResolvedRange用の入口は維持する。
-
-例えばSliceの追加宣言は次の形とする。組み込みスライス添字も同じIの規則で型付けする。
-
-```kimi
-public func trySlice<I>(self: Self, range: IntegerRange<I>) -> Option<Slice<T> during source>
+// Slice<T>{source} 内の追加宣言。本文は省略。
+public func trySlice<I>(self: Self, range: Range<I>) -> Option<Slice<T> during source>
     I is Integer
 ```
 
-これにより `slice.trySlice(1..3)` は、他の制約がなければIをi32に既定化できる。
+組み込みスライス添字も同じIの推論規則を使う。`slice.trySlice(1..3)` は他の制約がなければIをi32に既定化する。範囲添字は引き続きIndexable系列とは別であり、ユーザー型へ新しいキー型の適合を自動付与しない。
 
-対象長Lは非負のisizeとする。成功条件を**数学的整数上の条件**として定め、比較回数や機械命令の順序は規定しない。
+`[0..10]` は`Range<i32>`を1個含む配列であり、保存したrに対する `[r]` と同じく自動展開しない。単一要素添字はisize/Indexのままとする。`for i in 0..10` のiはi32なので必要なら明示変換し、添字走査の標準形には `for i in values.indices` を使う。`0..values.length` なら`Range<isize>`となり直接反復できる。
 
-| 整数範囲 | 成功条件 | 正規化後 |
+raw pointerの添字は従来どおり単一のisizeだけを受け付け、Indexおよび三つの範囲型を受け付けない。
+
+### 4.2. 境界検査と半開区間への正規化
+
+対象長Lは非負のisizeとする。IndexRangeでは各Indexの `offset <= L` を確認し、先頭相対ならoffset、末尾相対なら `L - offset` を得る。`^0` は終端境界であり、要素ではない。`Range<I>`では元の整数値を使う。いずれも成功条件を**数学的整数上**で次のように定める。
+
+| 境界形式 | 成功条件 | 正規化後 |
 | --- | --- | --- |
 | 半開 | `0 <= start <= end <= L` | `[start, end)` |
 | 包含 | `0 <= start <= end < L` | `[start, end + 1)` |
 
-成功時は境界を正確にisizeで表し、包含終端の加算が溢れないことも保証する。成功条件・成功時の境界値・AbortとNoneの区別・評価と失敗の時点を保つ限り、内部の変換方法は制限しない。切り詰めによる誤受理や、try系の検査中の変換による余分なAbortは許さない。結果をResolvedRangeと同じ半開区間に正規化し、以後のStorage・借用・Place処理を共有する。
+包含終端を半開区間へ変換する前の両端に順序条件を適用する。逆転を `end + 1` によって空区間として受理しない。ResolvedRangeを適用する場合も現在のLに対して半開の条件を検査する。
 
-直接書いた範囲と保存した範囲に同じ規則を適用する。受け手・境界を再評価せず、既存のアクセス予約・Loan規則を保つ。ユーザーのIndexable実装に新しいキー型の適合は自動付与しない。
+成功時は両端を正確にisizeで表し、包含終端の加算が溢れないことを保証する。比較回数や命令順序は固定しないが、切り詰めによる誤受理や、try系の検査中の変換による余分なAbortは許さない。成功条件・結果・評価と失敗の時点を保ちながら、正規化後のStorage・借用・Place処理を共有する。
 
-### 4.3. 失敗の責任と外部入力
+直接記述した範囲と保存した範囲には同じ規則を適用する。受け手・境界を再評価せず、既存のアクセス予約・Loan規則を維持する。
 
-通常のスライスは不適合でAbortし、`trySlice` は自身の検査失敗だけをNoneにする。引数評価中の失敗は捕捉しない。
+### 4.3. 失敗と外部入力
+
+通常のスライスは検査失敗でAbortし、trySliceは自身の検査失敗だけをNoneにする。引数評価中の失敗は捕捉しない。
 
 | 操作 | 結果 |
 | --- | --- |
-| `values[-3..3]` | 整数範囲の構築は成功。スライス操作でAbort。 |
-| `slice.trySlice(-3..3)` | スライス検査に失敗しNone。 |
-| `slice.trySlice(10..0)` | 呼び出し前の範囲構築でAbort。 |
+| `values[-3..3]` | Rangeの構築は成功し、スライスでAbort。 |
+| `slice.trySlice(-3..3)` | スライス検査に失敗してNone。 |
+| `slice.trySlice(10..0)` | 呼び出し前のRange構築でAbort。 |
+| `slice.trySlice(Index.init(10)..Index.init(0))` | IndexRangeの構築は成功し、解決時の検査でNone。 |
 
-従来は負数がRange構築時にAbortし、逆転は `trySlice` でNoneになっていた。この変化は既存呼び出しの見直しが必要となる副作用である。Range境界は非負の**位置**、整数範囲の境界は負数も許す**値**として扱う。
+現行仕様では両端が整数でも位置指定となるため、負数は構築時にAbortし、逆転はtrySliceでNoneになる。整数範囲への切り替えで失敗の時点が変わる既存呼び出しを点検する。
 
-外部入力は元の整数型を保ったまま `tryCreate` で検査し、成功した範囲を `trySlice` に渡す。先にisizeへ明示変換してAbortさせない。
+外部入力は元の整数型のままtryCreateで順序を検査し、成功した範囲をtrySliceへ渡す。先にisizeへ変換して、回復可能な不適合をAbortへ変えない。
 
 ```kimi
 func tryWindow<T, I>(values: Slice<T>, ! start: I, end: I) -> Option<Slice<T> during values.source>
     I is Integer
-    return match IntegerRange<I>.tryCreate(start: start, end: end)
+    return match Range<I>.tryCreate(start: start, end: end)
         .Some(let range) => values.trySlice(range)
         .None => .None
 ```
 
-Abortコードの再割り当ては行わない。Kimiで書く構築検査には既存の `$abort(message)`（`KIMI_E_ABORT`）を用い、コード指定の内部組込み処理は追加しない。既存仕様が定める演算・変換・添字等のコードは維持する。API横断のコード統一には範囲以外の失敗契約と実装も整理する必要があるため、診断改善とともに別提案へ回す。
+Abortコードの再割り当ては行わない。Kimiで書く構築検査には既存の `$abort(message)`（`KIMI_E_ABORT`）を使う。コード指定の内部組込み処理は追加せず、既存仕様の演算・変換・添字などのコードも維持する。
 
-## 5. 実装・性能の方針
+## 5. 実装と性能
 
-### 5.1. 共通処理と定義時の検証
+### 5.1. 束縛・生成経路
 
-- 現行 `Binding.Ranges.cs` の一律なisize/Index化を、種別決定・推論・適合・位置正規化に分ける。具体整数型またはInteger要件が証明されたTを決めてから、宣言IDで特定した内部生成経路へ下げる。
-- 構築・tryCreate・反復は可能な限りKimiで実装する。新たな専用LLVMループより、通常のIteratorとモノモーフィゼーションを使う。
-- 演算・比較・取得はIntegerの証明規則で定義時に検査し、具体化時に再束縛しない。
-- 位置とスライスの境界正規化は共通の内部処理にまとめる。
+現行の一律なisize/Index化を、種別決定・推論・適合・位置正規化へ分離する。具体整数型またはInteger要件が証明されたTを決めた後、宣言IDで特定する内部生成処理へ下げる。演算・比較・取得は定義時に検査し、具体化時に再束縛しない。
 
-内部関数 `tryPosition<I>(value: I, limit: isize) -> Option<isize>` を `I is Integer` 付きで用意し、数学的条件 `0 <= value <= limit` を満たせば正確なisize値、満たさなければNoneを返す。スライスでは対象長を上限として使い、順序・包含終端の検査と組み合わせる。Range構文の正規化では、コンパイラーがターゲットのisize最大値を通常の定数引数として渡す。新しい内部定数宣言や `isize.MaxValue` APIは不要とする。
+構築・tryCreate・反復は可能な限りKimiで実装し、通常のIteratorとモノモーフィゼーションを使う。構文からの生成入口はinternalとし、既存の公開 `Index.init(! unchecked:)` と、旧Rangeのbetween / from / to / all / through / upToも内部化する。
 
-一般形はvalueとlimitの負数を先に除外し、両者をu128へ変換して比較した後、成功値をisizeへ変換する。現行ターゲットの全許容型を扱え、追加の変換構文は要らない。頻出するisize・i32・usizeには、SPEC §8.8の明示的な完全特殊化を用意する。現行64-bitターゲットではisizeまたはusize上で直接検査し、O0でもu128を経由しない。追加の特殊化は測定で判断する。
+内部化した入口は、コンパイラーが合成する正規の生成処理だけに宣言IDと内部のアクセス規則で接続する。利用者の同名呼び出しにはアクセス権を与えない。境界の評価と必要な構築検査が完了する前に、不正な公開値を生成してはならない。
 
-特殊化は同じ結果・失敗・評価の契約を守る。元のジェネリック定義も単独で検査を通し、特殊化で不正な定義を救済しない。構文展開からの内部呼び出しにも通常の特殊化選択を適用する。選択は型引数確定後なので、公開オーバーロードや推論の分岐を増やさない。
+### 5.2. 位置の共通正規化
 
-構文からの生成入口はinternalとし、利用者が検証を迂回して不正な値を得られないようにする。既存の公開 `Index.init(! unchecked:)` と、仕様にない公開 `Range.between` 等も内部化する。前者は検証迂回、後者は生成APIの重複を解消するためである。
+内部関数 `tryPosition<I>(value: I, limit: isize) -> Option<isize>` を `I is Integer` 付きで用意する。数学的条件 `0 <= value <= limit` を満たせば正確なisize値、それ以外ならNoneを返す。
 
-internal化だけでは、利用者のスコープで通常の呼び出しとして束縛する現行loweringが失敗し得る。コンパイラーが合成する既知の生成処理だけを、正規の宣言IDと内部のアクセス規則で接続する。一般のソース呼び出しにアクセス権を与えない。境界の評価・必要な検査が完了するまで、公開値を生成しない。
+- スライスでは対象長をlimitとし、§4.2の順序・包含終端の検査と組み合わせる。
+- IndexRange構文では、コンパイラーがターゲットのisize最大値を通常の定数引数として渡す。新しい内部定数宣言や `isize.MaxValue` APIは設けない。
 
-### 5.2. Iterator内部の終端正規化
+一般実装はvalueとlimitの負数を先に除外し、u128へ変換して比較した後、成功値をisizeへ変換する。現行ターゲットの全許容型を扱え、除算・剰余は不要となる。
 
-公開範囲の包含指定は等価性のため保持する。一方、Iteratorでは生成時に「最後に返す値」へ正規化できる。
+頻出するisize・i32・usizeにはSPEC §8.8の明示的な完全関数特殊化を用意する。現行64-bitターゲットではisizeまたはusize上で検査し、O0でもu128を経由しない。追加の特殊化は測定で判断する。
+
+特殊化も一般実装と同じ結果・失敗・評価契約を守り、不正なジェネリック定義を救済しない。構文からの内部呼び出しにも通常の選択規則を適用する。選択は型引数確定後なので、公開オーバーロードや推論の分岐を増やさない。
+
+### 5.3. Iteratorと検査除去
+
+公開Rangeの包含指定は等価性のため保持する。Iterator内部では、生成時に「最後に返す値」へ正規化できる。
 
 | 元の範囲 | 初期状態 |
 | --- | --- |
-| 空の半開区間 | 最初から終了。終端の減算をしない。 |
-| 空でない半開区間 | 最終値は `end - 1`。`start < end` が成立するのでTで表現できる。 |
+| 空の半開区間 | 終了状態。終端の減算はしない。 |
+| 空でない半開区間 | 最終値は `end - 1`。`start < end` によりTで表現可能。 |
 | 包含区間 | 最終値はend。 |
 
-活動中は `start <= current <= last` を保ち、Kimiの `next` は厳密な大小比較で分岐する。現在値を一度読み取り、その同じ値を比較・加算・返却に使う。
+活動中は `start <= current <= last` を保ち、nextでは現在値を一度取得して比較・加算・返却に使う。
 
 ```kimi
+// RangeIterator<T>.nextの本文例。
 require not self.done else => return .None
 let value = self.current
 if value < self.last => self.current = value + 1
@@ -249,74 +285,73 @@ else => self.done = true
 return .Some(value)
 ```
 
-加算を支配する `value < last` だけから `value + 1` の非オーバーフローが分かるため、検査除去に呼び出し間の不変条件の復元は不要となる。通常の検査付き加算を用い、非検査プリミティブやIterator宣言の特別扱いは追加しない。O2で実際に検査が除去されるかは生成コードで確認する。物理レイアウトは固定しない。
+`value < last` から `value + 1` の非オーバーフローを証明できる。通常の検査付き加算を使い、非検査プリミティブやIterator宣言の特別扱いは追加しない。O2で検査が除去されるかは生成コードで確認し、物理レイアウトは固定しない。
 
-### 5.3. スライスとループの検査除去
+境界の検査は、§4.2の意味を保つ限り統合・除去できる。幅を狭める前に表現可能性を検査する。負数へのソース上の `@usize` はAbortし得るため、内部の符号なし比較による最適化と同一視しない。
 
-§4.2の意味を保つなら、検査の統合・除去を許す。適切な拡張と符号なし比較、幅を狭める前の表現可能性検査などを利用できる。負数へのソース上の `@usize` はAbortし得るため、この内部最適化と同一視しない。
-
-`for i in 0..values.length` 内の `values[i]` も、生成値の範囲を境界検査除去の根拠にできる。ただし同じ長さ・同じStorageが維持され、評価順・Abort・借用・反復の副作用を変えないことを証明する。一般のユーザー定義Iteratorへ無条件には適用しない（§4.6.8）。
+`for i in 0..values.length` 内の `values[i]` も、同じ長さ・Storageが維持されることを証明できれば検査除去の対象となる。評価順・Abort・借用・反復の副作用を保ち、一般のユーザー定義Iteratorへ無条件に適用しない（SPEC §4.6.8）。
 
 ### 5.4. 計算量と測定
 
-固定したTについて、構築・tryCreate・範囲値のCopy・反復開始・各next・破棄・スライスの境界正規化はO(1)、n要素の反復はO(1+n)、Iteratorの追加領域はO(1)とする。これら自身のヒープ確保・参照カウント更新はゼロとし、境界式・本体などのユーザー処理は別に数える。
+固定したTについて、構築・tryCreate・範囲値のCopy・反復開始・各next・破棄・境界正規化はO(1)、n要素の反復はO(1+n)、Iteratorの追加領域はO(1)とする。これら自身のヒープ確保・参照カウント更新はゼロとし、境界式や本体などのユーザー処理は別に数える。
 
-整数反復のホットパスと完了時に時間・割当量を測定する。標準呼び出しのインライン化、Optionの中間コピー除去を既存の最適化条件で許す。数値としての性能改善は測定後に記録する。
+標準呼び出しのインライン化、Optionの中間コピー除去は既存の最適化条件に従う。整数反復のホットパスと完了時に時間・割当量を測定し、数値としての性能改善は測定後に記録する。
 
-## 6. 既存仕様・実装への影響
+## 6. 取り込みと検証
 
-| 領域 | 必要な変更 |
+### 6.1. 変更対象
+
+| 対象 | 反映内容 |
 | --- | --- |
-| 型・証明 | §3.5.3にIntegerのScalar証明と範囲境界のScalar read、§8.4.7・§8.7にIntegerの識別・閉じた適合・証明規則を追加する。 |
-| 推論 | §4.3–4.4・§10.2・§12.3.1・§14.9.1に未確定の整数式と合成リテラルを接続し、期待型伝播・候補適合・既定化・共通結果型を揃える。 |
-| 範囲・位置 | §4.6.2–4.6.4に三型の役割・範囲境界の正規化・失敗段階を反映する。「負の範囲は利用できない」を改め、適合が値や綴りに依存しない原則は維持する。§13.2の `^value` はisizeのままとし、§4.6.2との整合を確認する。 |
-| 添字・Sliceの操作表 | §4.6.1・§4.6.6・§4.6.9の範囲添字の受理型とSlice操作表を更新し、IntegerRange用の単一ジェネリックtrySliceを追加する。§5.3でraw pointerの範囲添字を明示的に除外する。 |
-| 反復・最適化 | §14.6.2・§22に三入口と寿命を追加し、§4.6.8に不変条件に基づく検査除去を反映する。 |
-| 宣言・失敗契約 | §22.1にInteger・IntegerRange・Non-CopyのIntegerRangeIteratorと追加API、§17.3.1に逆転時のAbortを追加する。§22.5.4のコード指定規則は変更しない。 |
-| Kimi・公開索引 | Core・反復・Sliceの宣言と内部生成経路を更新し、同じ単位で `LIBRARY.md` に公開宣言の追加・削除を反映する。実装方針はKimiのREADME、規約を変更する場合はSTYLEも整合させる。 |
-| Compiler | `Binding.Ranges.cs`、`Binding.Sequences.cs`、期待型推論、制約証明、ライブラリ宣言ID・型識別、`BodyLowering.Sequences.cs`等を整合させる。 |
-| 用語・関連文書 | 付録EにInteger・合成リテラル・未確定の整数式を追加し、規範節を参照させる。SPECの索引も更新する。§12–15の取得・評価規則、実装仕様、付録Fを点検し、重複を避ける。 |
-| 例・テスト | 範囲・数値推論・反復・スライス・所有権・補間を更新する。Milestone 2/7/27/28/32/39等の関連コード・期待値・ハーネスを確認する。 |
+| SPEC §3.5.3・§8.4.7・§8.7 | Integerの識別・閉じた適合・演算とScalar readの証明規則。 |
+| SPEC §4.3–4.4・§10.2・§12.3.1・§14.9.1 | 未確定の整数式・合成リテラル・候補適合・期待型伝播・既定化。 |
+| SPEC §4.6・§5.3・§13.2 | IndexRangeへの改名、三型の契約、範囲構文、位置正規化、スライスの受理型。^と単一添字の規則を維持。 |
+| SPEC §14.6.2・§17.3.1・§22 | Range・RangeIterator・Integer、反復三入口と寿命、逆転時のAbort、公開API。§22.5.4のコード指定規則は維持。 |
+| Kimi・Compiler | Core・反復・Slice、宣言IDと型識別、`Binding.Ranges.cs`・`Binding.Sequences.cs`・推論・制約証明・`BodyLowering.Sequences.cs`など。 |
+| 公開索引・規約 | `docs/LIBRARY.md` の宣言一覧と内部化したAPI、`docs/STYLE.md` の旧Range名、`src/Kimi/Library/README.md` の実装方針を整合させる。 |
+| 用語・関連文書 | SPEC索引、付録Eの用語、付録F、§12–15、実装仕様の旧Range名と関連規則を点検する。 |
+| 例・テスト | 範囲・数値推論・反復・スライス・所有権・補間、およびMilestone 2/7/27/28/32/39などを更新する。 |
 
-既存例は次のように改める。
+型名の一括置換だけでは、整数境界の意味変更を反映できない。既存コードは用途を確認して更新する。
 
-- `let r: Range = 1..3` は、位置指定が必要なら `Index.init(1)..Index.init(3)` と明示する。値の範囲ならIntegerRangeとして保持する。
-- §14.6.2の `(0..n).resolve(n)` は、目的に応じて `0..n` の直接反復または `values.indices` にする。旧Rangeとの等価比較や既定isizeへの依存も点検する。
-- §4.6.4の `(-1)..sideEffect()` は、終端が-1以上なら有効な整数範囲となる。`^(-1)..sideEffect()` が終端評価前にAbortする規則は維持する。
+- `let r: Range = 1..3` は、整数範囲なら `Range<isize>` など必要な整数型を指定する。位置指定なら `let r: IndexRange = Index.init(1)..Index.init(3)` とする。
+- `(0..n).resolve(n)` は目的に応じて直接反復・`values.indices`・明示したIndexRangeの解決へ置き換える。旧Rangeとの等価比較や既定isizeへの依存も点検する。
+- `(-1)..sideEffect()` は、右境界が同じ整数型で-1以上なら有効な整数範囲となる。`^(-1)..sideEffect()` が右境界の評価前にAbortする規則は維持する。
 
-pre-alphaのため移行用の構文や言語バージョン分岐は追加しない。実装時にPLAN・PLAN_HISTORYへ進捗を記録し、STATUSは検証済みの対応範囲が変わった時だけ更新する。正式仕様へ取り込んだら `draft/INTEGRATED.md` に記録して本書を固定する。
+pre-alphaのため言語バージョン分岐や移行用構文は追加しない。正式仕様・公開索引は対応する実装単位で更新する。正式仕様は本書を参照せず自己完結させ、取り込み後に `draft/INTEGRATED.md` へ対象節またはコミットを記録して本書を固定する。
 
-## 7. 検証と実装順序
+### 6.2. 受け入れ条件
 
-### 7.1. 受け入れ条件
-
-| 対象 | 検証事項 |
+| 分類 | 検証事項 |
 | --- | --- |
-| 構築 | 全整数型、負数、空、1要素、逆転、最小・最大値近傍、包含最大値、tryCreateの成否と名前付き引数の評価順。巨大範囲の全走査は不要。 |
-| Integer要件 | 12整数型だけが適合し、ユーザー適合・参照型を拒否すること。Integerのみを仮定したTでの共通演算・取得・変換、リテラル0・1・127の適合と128・-1の拒否、単項マイナスと制約不足の定義時拒否。対応演算の具体化後の意味と、既知の128-bit除算・剰余の実装制限による診断を区別する。 |
-| 推論 | 型付き・参照境界、異型の拒否、Literal fittingとExact、曖昧性、兄弟要素・分岐結果、保存前後の既定化、境界内の呼び出し、単一ジェネリックtrySlice。リテラルだけの算術・ビット・シフト式への期待型伝播と、リテラル不適合・演算時Abortの区別。 |
-| 位置・生成経路 | 任意整数型のRange境界、未確定の整数式へのisize期待型、負数・表現不能値、評価・検査順。^と単一位置APIが引き続きisizeを要求すること、内部生成入口へ利用者がアクセスできないこと。 |
-| 反復 | 三入口、範囲の再利用、独立したIteratorの寿命、IteratorのCopy拒否とMove、for var再代入、終了後None、exit/continue・cleanup、最大値の後で加算しないこと。 |
-| スライス | 保存・直接記述の一致、符号・幅・対象長、空・包含境界、tryCreateからの接続、失敗段階、借用・アクセス予約、既存Indexableの選択、raw pointerの拒否。正規化の一般形と特殊化の成功値・失敗の一致。 |
-| コスト | 確保数ゼロ、O(1)の初期化とnext、O0/O2の意味の一致。isize・i32・usizeの正規化がO0でもu128を使わないこと、O2のnextで加算検査が除去されることを生成コードで確認する。 |
+| 名前と型 | `Range<T>`・`RangeIterator<T>`・IndexRangeの宣言と構文の接続、旧名の除去、`Range<Index>`の拒否。`Range<isize>`の負数・反復とIndexRangeの非反復を区別する。 |
+| 構築 | 全12整数型、負数、空、1要素、逆転、最小・最大値近傍、包含最大値、等価性、tryCreateと名前付き引数の評価順。巨大範囲の全走査は不要。 |
+| Integer | ユーザー適合・参照型の拒否。Integerだけを仮定した演算・取得・変換、0・1・127の適合と128・-1の拒否、単項マイナスと制約不足の定義時拒否。既知の128-bit実装制限は言語上の拒否と区別する。 |
+| 推論 | 型付き・参照境界、異型の拒否、Literal fittingとExact、曖昧性、兄弟要素・分岐結果、保存前後、境界内の呼び出し、単一ジェネリックtrySlice。リテラルだけの算術・ビット・シフト式への期待型伝播と演算時Abort。 |
+| 位置・評価 | 任意整数型のIndexRange境界、isize期待型、負数・表現不能値、左右の評価・検査順。^と単一位置APIの型制約、内部入口へのアクセス拒否。 |
+| 反復 | 三入口、再走査、Iteratorの独立した寿命、Copy拒否とMove、for var再代入、終了後None、exit/continue・cleanup、最大値の後で加算しないこと。 |
+| 解決・スライス | 省略・末尾相対・^0、負の解決長、保存／直接記述の一致、符号・幅・対象長・包含境界、逆転を空にしないこと、ResolvedRangeの再検査、tryCreateからの接続と失敗段階、借用・予約・Indexable・raw pointerの境界。 |
+| コスト | 確保数ゼロ、O(1)の初期化とnext、O0/O2の意味の一致、正規化の一般実装と特殊化の結果・失敗の一致。頻出3型でO0でもu128を経由しないこと、O2の加算検査除去を生成コードで確認する。 |
 
-### 7.2. 作業単位
+### 6.3. 実装順序
 
-1. **利用側を先に追加する。** Integer要件、IntegerRange・tryCreate、Iteratorと三入口、正規化の一般形・頻出型の完全特殊化、スライスの受け付けを実装する。範囲構文は切り替えず、tryCreate経由で検証する。必要なら、既存コードが通る複数の検証単位に分ける。
-2. **構文を切り替える。** 範囲式の種別・合成リテラル推論・位置正規化を変更し、同じ単位で既存の呼び出し、例、Milestone、テストを更新する。internal化に必要なloweringも揃える。
-3. **内部処理を整理する。** ResolvedRangeは維持し、不要になったloweringを除去する。検査・反復処理の共有と最適化を進め、性能を測定する。
+1. **位置指定を改名する。** 現行RangeをIndexRangeに改名し、宣言・構文の生成先・API・既存例・テストを同じ単位で揃える。この段階では範囲構文の意味を変えない。
+2. **整数範囲の利用側を追加する。** Integer、`Range<T>`とtryCreate、RangeIteratorと三入口、共通正規化と頻出型の特殊化、スライスの受理を実装する。構文切り替え前はtryCreate経由で検証する。
+3. **構文を切り替える。** 種別決定・合成リテラル推論・位置正規化を有効にし、既存の呼び出し・例・Milestoneを更新する。内部化とその生成経路も揃える。
+4. **共通処理と性能を検証する。** ResolvedRangeの保証を維持して不要な処理を整理し、検査・反復の共有と最適化を測定する。
 
-正式仕様・公開索引は対応する実装単位で更新する。各単位は `verify.ps1 -Class ...` と関連O0/O2 fixture・Milestoneで検証してコミットし、実装セッション末尾に `-Mode Session` を実行する。NativeAOTは対象外。本書だけの更新では正式仕様・実装・STATUSを変更しない。
+各段階は必要に応じて整合した検証単位へ分ける。実装単位ごとに `./scripts/verify.ps1 -Class ...` と関連O0/O2 fixture・Milestoneで検証してコミットし、実装セッション末尾に `./scripts/verify.ps1 -Mode Session` を実行する。NativeAOTは対象外とする。
 
-## 8. 対象外と参照
+`docs/dev/PLAN.md`・`docs/dev/PLAN_HISTORY.md` は実装時に進捗を記録し、`docs/STATUS.md` は検証済みの対応範囲が変わった時だけ更新する。本提案書だけの更新では、正式仕様・実装・STATUSを変更しない。
 
-診断改善は今回の対象外とする。降順・任意刻み・無限範囲、配列の自動展開、範囲の自動文字列化、一般Numeric Contract、単一要素添字の整数型拡張も含めない。
+## 7. 対象外と参照
 
-- [範囲・添字・スライス](../../spec/04-arrays-indexing-and-slices.md)
-- [整数型とScalar read](../../spec/03-types-and-values.md)
-- [ジェネリックと制約](../../spec/08-generics-constraints-and-contracts.md)
-- [オーバーロードと推論](../../spec/10-overload-resolution-and-inference.md)
-- [反復と取得規則](../../spec/14-control-flow.md)
-- [Kimiの反復Contract](../../spec/22-core-execution-and-foreign-functions.md)
-- [コード生成の実装プロファイル](../../impl/21-layout-runtime-and-code-generation.md)、[検証済みの対応範囲](../../STATUS.md)
-- [公開宣言](../../LIBRARY.md)、[コーディング規約](../../STYLE.md)
+降順・任意刻み・無限範囲、配列の自動展開、範囲値のUtf8Format適合、一般Numeric Contract、単一要素添字の整数型拡張、API横断のAbortコード統一と診断改善は対象外とする。
+
+- [範囲・添字・スライス](../../docs/spec/04-arrays-indexing-and-slices.md)
+- [整数型とScalar read](../../docs/spec/03-types-and-values.md)
+- [ジェネリックと制約](../../docs/spec/08-generics-constraints-and-contracts.md)
+- [オーバーロードと推論](../../docs/spec/10-overload-resolution-and-inference.md)
+- [反復と取得規則](../../docs/spec/14-control-flow.md)、[Kimiの反復Contract](../../docs/spec/22-core-execution-and-foreign-functions.md)
+- [コード生成の実装プロファイル](../../docs/impl/21-layout-runtime-and-code-generation.md)、[検証済みの対応範囲](../../docs/STATUS.md)
+- [公開宣言](../../docs/LIBRARY.md)、[コーディング規約](../../docs/STYLE.md)
