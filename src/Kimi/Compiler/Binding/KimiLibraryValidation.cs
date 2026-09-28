@@ -106,20 +106,14 @@ public sealed partial class KimiLibrary
                 matches = this.ValidBoundIterationEntry(symbol, entry.Id);
             }
 
-            if (matches && entry.Id == KimiDeclarationId.Comparable)
+            if (matches && entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable)
             {
-                matches = symbol.Contract is { } contract && contract.Ancestors.Contains(this.GetSymbol(KimiDeclarationId.Equatable)!);
+                matches = this.ValidBoundComparisonContract(symbol, entry.Id);
             }
 
-            if (matches && entry.Id == KimiDeclarationId.UniqIndexable)
+            if (matches && entry.Id is KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable)
             {
-                // The refined parent is a bound reference Indexable<Key> of the recognized Indexable declaration.
-                var indexable = this.GetSymbol(KimiDeclarationId.Indexable)!.Declaration;
-                matches = false;
-                for (var a = 0; symbol.Contract is { } refined && a < refined.Ancestors.Count && !matches; a++)
-                {
-                    matches = ReferenceEquals(refined.Ancestors[a].Declaration, indexable);
-                }
+                matches = this.ValidBoundIndexableContract(symbol, entry.Id);
             }
 
             if (!matches)

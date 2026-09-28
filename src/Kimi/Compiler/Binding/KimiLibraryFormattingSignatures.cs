@@ -77,7 +77,7 @@ public sealed partial class KimiLibrary
     private static bool FormattingOwnOrigin(BoundOrigin? origin, FunctionKoto function, int input)
         => origin is { Kind: OriginKind.Input } && origin.InputIndex == input && ReferenceEquals(origin.Binder, function);
 
-    private static bool FormattingInputBorrow(BoundType type, SemanticsKind semantics, FunctionKoto function, int input, out BoundType referent)
+    private static bool OwnInputBorrow(BoundType type, SemanticsKind semantics, FunctionKoto function, int input, out BoundType referent)
     {
         referent = type.Components.Count == 1 ? type.Components[0] : type;
         return type is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components.Count: 1 } && type.Semantics == semantics &&
@@ -209,15 +209,15 @@ public sealed partial class KimiLibrary
             FormattingKind.String => ReferenceEquals(type, BoundType.String),
             FormattingKind.RawBytes => BoundStoragePointer(type, u8),
             FormattingKind.Self => FormattingSelf(type, self),
-            FormattingKind.RefSelf => FormattingInputBorrow(type, SemanticsKind.Ref, function, input, out referent) && FormattingSelf(referent, self),
-            FormattingKind.UniqSelf => FormattingInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) && FormattingSelf(referent, self),
-            FormattingKind.RefString => FormattingInputBorrow(type, SemanticsKind.Ref, function, input, out referent) && ReferenceEquals(referent, BoundType.String),
-            FormattingKind.RefValue or FormattingKind.UniqDestination => FormattingInputBorrow(type, expected.Kind == FormattingKind.RefValue ? SemanticsKind.Ref : SemanticsKind.Uniq, function, input, out referent) &&
+            FormattingKind.RefSelf => OwnInputBorrow(type, SemanticsKind.Ref, function, input, out referent) && FormattingSelf(referent, self),
+            FormattingKind.UniqSelf => OwnInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) && FormattingSelf(referent, self),
+            FormattingKind.RefString => OwnInputBorrow(type, SemanticsKind.Ref, function, input, out referent) && ReferenceEquals(referent, BoundType.String),
+            FormattingKind.RefValue or FormattingKind.UniqDestination => OwnInputBorrow(type, expected.Kind == FormattingKind.RefValue ? SemanticsKind.Ref : SemanticsKind.Uniq, function, input, out referent) &&
                 function.GenericArguments.Count != 0 && referent is { Kind: BoundTypeKind.Parameter } && ReferenceEquals(referent, function.GenericArguments[0].BoundType),
-            FormattingKind.UniqBytes => FormattingInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) &&
+            FormattingKind.UniqBytes => OwnInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) &&
                 referent is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var element], LengthExpression: { Parameter: { } length, Left: null, Right: null } } &&
                 ReferenceEquals(element, u8) && function.GenericArguments.Count != 0 && ReferenceEquals(length, function.GenericArguments[^1].BoundSymbol),
-            FormattingKind.UniqWriter => FormattingInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) && this.FormattingNamed(referent, KimiDeclarationId.Utf8Writer) &&
+            FormattingKind.UniqWriter => OwnInputBorrow(type, SemanticsKind.Uniq, function, input, out referent) && this.FormattingNamed(referent, KimiDeclarationId.Utf8Writer) &&
                 referent.OriginArguments is [var target] && FormattingOwnOrigin(target, function, input) && !ReferenceEquals(target, type.Origin),
             FormattingKind.Bytes => type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner, OriginArguments.Count: 0, Components: [var slice] } &&
                 ReferenceEquals(type.Symbol, this.Slice) && ReferenceEquals(slice, u8) && Carries(type.Origin),
