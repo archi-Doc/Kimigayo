@@ -175,6 +175,13 @@ internal static partial class LlvmModuleWriter
             output.Write("(ptr %slot)\n");
         }
 
+        if (aggregate.GenericDestructor is { } genericDestructor)
+        {
+            output.Write("  call void @");
+            output.Write(genericDestructor);
+            output.Write("(ptr %slot)\n");
+        }
+
         if (aggregate.Cases is { } cases)
         {
             output.Write("  %tag = load i32, ptr %slot, align 4\n  %payload = getelementptr i8, ptr %slot, i64 ");

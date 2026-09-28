@@ -257,7 +257,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if ((this.eraseReceiver && ReceiverField(body, p)) || (ReferenceEquals(place.Type, BoundType.Never) && place.Kind == OwnershipPlaceKind.Result))
+            if (ReferenceEquals(place.Type, BoundType.Never) && place.Kind == OwnershipPlaceKind.Result)
             {
                 continue;
             }

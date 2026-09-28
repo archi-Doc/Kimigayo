@@ -93,11 +93,6 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (this.eraseReceiver && ReceiverField(body, p))
-            {
-                continue;
-            }
-
             if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
             {
                 continue;

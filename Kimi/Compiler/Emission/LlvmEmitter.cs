@@ -20,7 +20,10 @@ public sealed class LlvmEmitter
     private bool resourceLimit;
 
     internal LlvmEmitter(Compilation compilation)
-        => this.compilation = compilation;
+    {
+        this.compilation = compilation;
+        this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
+    }
 
     /// <summary>Verifies the entire selected input against the implemented execution subset.</summary>
     /// <param name="failure">A concrete reason when generation cannot proceed.</param>
@@ -54,6 +57,7 @@ public sealed class LlvmEmitter
         var c = this.compilation;
         failure = null;
         this.resourceLimit = false;
+        this.generics.Clear();
         try
         {
             var destructorOrdinal = 0;
@@ -148,6 +152,18 @@ public sealed class LlvmEmitter
 
                 module.NeedsStringComparison |= function.NeedsStringComparison;
                 this.lowering.RegisterAggregates(module);
+            }
+
+            // Destructors can introduce further closed local Types. Drain their ordinary generic entries
+            // to a fixed point, after each body has finished using the reusable layout scratch storage.
+            while (this.generics.HasPendingDestructors)
+            {
+                if (!this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
+                    !this.LowerInstances(c, module, out failure))
+                {
+                    this.resourceLimit = this.generics.ResourceLimitExceeded;
+                    return false;
+                }
             }
 
             if (c.IsTestBuild)
@@ -421,7 +437,7 @@ public sealed class LlvmEmitter
             }
 
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
-            if ((!body.IsConcrete && !BodyLowering.CanEraseReceiver(body)) || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
+            if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
                 (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
                 (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
                 (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)

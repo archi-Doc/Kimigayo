@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -35,6 +35,9 @@ internal sealed class AggregateLayoutPool
     /// <summary>Gets or sets the source of the element-specific drop helper that an Array field's destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
     internal Func<BoundType, string?>? CollectionDrop { get; set; }
+
+    /// <summary>Gets or sets the reservation of a concrete generic destructor entry, before its body is lowered.</summary>
+    internal Func<BoundType, string?>? InstantiateDestructor { get; set; }
 
     /// <summary>Gets the Array field layouts of the current body, whose destructors release the buffers.</summary>
     internal List<AggregateLayout> UsedCollectionFields => this.usedCollectionFields;
@@ -170,8 +173,10 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = null;
         }
 
-        var destructor = StructStorage.Destructor(type) is { } body ? this.destructors.GetValueOrDefault(body, -1) : -1;
-        if (destructor < 0 && StructStorage.Destructor(type) is not null)
+        var body = StructStorage.Destructor(type);
+        var destructor = body is not null ? this.destructors.GetValueOrDefault(body, -1) : -1;
+        var genericDestructor = body is not null && GenericStoragePlan.IsGeneric(body) ? this.InstantiateDestructor?.Invoke(type) : null;
+        if (destructor < 0 && genericDestructor is null && body is not null)
         {
             return this.resolved[type] = null; // An unprepared destructor must never become trivial cleanup.
         }
@@ -211,7 +216,7 @@ internal sealed class AggregateLayoutPool
 
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || !ReferenceEquals(candidate.Base, baseLayout))
+                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout))
                 {
                     continue;
                 }
@@ -232,7 +237,7 @@ internal sealed class AggregateLayoutPool
             var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
             // SPEC 22.1.2.5: an owning remainder destroys its unreturned elements and buffer through the element drop helper.
             var collectionDrop = structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.OwnedRemainder ? this.CollectionDrop?.Invoke(type) : null;
-            var destroy = destructor >= 0 || baseLayout?.NeedsDestruction == true || collectionDrop is not null;
+            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true || collectionDrop is not null;
             for (var i = 0; i < fieldCount; i++)
             {
                 alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
@@ -324,7 +329,7 @@ internal sealed class AggregateLayoutPool
             }
 
             var representation = new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
-            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, CollectionDrop: collectionDrop);
+            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, CollectionDrop: collectionDrop, GenericDestructor: genericDestructor);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

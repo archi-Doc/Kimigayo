@@ -29,7 +29,6 @@ internal sealed partial class BodyLowering
     private int[] deferredOwners = [];
     private int[] deliveries = [];
     private int pointerWidth;
-    private bool eraseReceiver;
     private Binding? instanceBinding;
     private BoundCall? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
@@ -52,7 +51,6 @@ internal sealed partial class BodyLowering
     internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
         this.pointerWidth = pointerWidth;
-        this.eraseReceiver = CanEraseReceiver(body);
         this.functions = functions;
         this.flow = flow;
         this.arguments.Clear();

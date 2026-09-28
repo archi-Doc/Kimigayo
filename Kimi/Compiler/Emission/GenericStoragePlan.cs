@@ -56,7 +56,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || (!function.IsDestructor && function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 }));
+        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 });
 
     internal void Clear()
     {
@@ -83,11 +83,13 @@ internal sealed partial class GenericStoragePlan
         this.ResourceLimitExceeded = false;
         this.functions = null;
         this.entryNames = 0;
+        this.destructorNames.Clear();
+        this.destructorQueue.Clear();
+        this.preparedDestructors = 0;
     }
 
     internal bool Prepare(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, IReadOnlyDictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
     {
-        this.Clear();
         this.functions = functions;
         failure = null;
         for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
@@ -240,7 +242,7 @@ internal sealed partial class GenericStoragePlan
             return Fail("Generic entry result has no concrete representation.", out failure);
         }
 
-        var resultSlot = target.IsConstructor || FunctionAbi.HasResultSlot(result, layouts);
+        var resultSlot = target.IsConstructor || target.IsDestructor || FunctionAbi.HasResultSlot(result, layouts);
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
@@ -283,7 +285,7 @@ internal sealed partial class GenericStoragePlan
         }
 
         // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
-        var name = this.EntryName(this.entryNames++);
+        var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
         entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
             new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
