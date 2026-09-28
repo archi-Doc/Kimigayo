@@ -518,11 +518,11 @@ public sealed partial class KimiLibrary
     // SPEC 22.1.2.5: an internal remainder record of the standard storage boundary. The compiler writes its fields.
     private bool ValidRemainder(BindingSymbol symbol, KimiDeclarationId id)
         => symbol.Intrinsic == IntrinsicKind.None &&
-        symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "S", SemanticsParameter: null, AttributeChain: null }] } declaration &&
+        symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] } declaration &&
         declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) &&
         declaration.OriginNames.Count == (id == KimiDeclarationId.OwnedRemainder ? 0 : 1) && (id == KimiDeclarationId.OwnedRemainder || declaration.OriginNames[0] == "source") &&
         StorageFields(declaration) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
-        ValidStorageField(declaration, 0, VariableKind.Let, "storage", "u8") && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize") && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize") &&
+        ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E") && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize") && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize") &&
         (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize"));
 
     // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing

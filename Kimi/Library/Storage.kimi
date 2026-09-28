@@ -2,21 +2,21 @@
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
 // The compiler supplies construction, splitting and the record contents; ordinary Field operations grant no capability.
 internal group Storage
-    /// The shared Loan of its `source` slot and the traversal position of the untaken part; it does not own `S`.
-    internal struct RefRemainder<S> {source}
-        let storage: unsafe/u8
+    /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
+    internal struct RefRemainder<E> {source}
+        let storage: unsafe/E
         var position: isize
         var count: isize
 
-    /// The parent Loan of its `source` slot and exclusive access to the untaken part; it does not own `S`.
-    internal struct UniqRemainder<S> {source}
-        let storage: unsafe/u8
+    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
+    internal struct UniqRemainder<E> {source}
+        let storage: unsafe/E
         var position: isize
         var count: isize
 
-    /// The Storage transferred from `S` and the destruction responsibility for its unreturned elements.
-    internal struct OwnedRemainder<S>
-        let storage: unsafe/u8
+    /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
+    internal struct OwnedRemainder<E>
+        let storage: unsafe/E
         var position: isize
         var count: isize
         var capacity: isize

@@ -75,7 +75,7 @@ internal sealed partial class BodyLowering
     {
         if (array.Symbol?.LibraryDeclaration == KimiDeclarationId.OwnedRemainder)
         {
-            return array.Components is [{ Kind: BoundTypeKind.Array, Components: [var owned] }] && this.TryGetArrayElement(owned, out var unreturned)
+            return array.Components is [var owned] && this.TryGetArrayElement(owned, out var unreturned)
                 ? this.GetArrayHelper(ArrayHelperKind.OwnedDrop, unreturned).Abi.Name : null;
         }
 
@@ -370,7 +370,7 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation has an unsupported argument acquisition.", out failure);
         }
 
-        if ((borrow ? referent : referent.Components is [var collection] ? collection : null) is not { Kind: BoundTypeKind.Array, Components: [var elementType] } ||
+        if (referent.Components is not [var elementType] || (borrow && referent.Kind != BoundTypeKind.Array) ||
             !this.TryGetArrayElement(elementType, out var element))
         {
             return Fail("Storage operation has an unsupported collection or element Type.", out failure);

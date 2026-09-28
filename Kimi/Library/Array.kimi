@@ -142,8 +142,8 @@ public struct Array<T>
 public struct ArrayIterator<T> {source}
     Self is Iterator
     associate Iterator.Item is ref/T during source
-    var state: Storage.RefRemainder<Array<T>> during source
-    internal init(state: Storage.RefRemainder<Array<T>> during source) => self.state = state@move
+    var state: Storage.RefRemainder<T> during source
+    internal init(state: Storage.RefRemainder<T> during source) => self.state = state@move
     public func next(self: uniq/Self) -> Option<ref/T during source>
         return Storage.splitFirst(self.state@uniq)
 
@@ -152,8 +152,8 @@ public struct ArrayIterator<T> {source}
 public struct ArrayUniqIterator<T> {source}
     Self is Iterator
     associate Iterator.Item is uniq/T during source
-    var state: Storage.UniqRemainder<Array<T>> during source
-    internal init(state: Storage.UniqRemainder<Array<T>> during source) => self.state = state@move
+    var state: Storage.UniqRemainder<T> during source
+    internal init(state: Storage.UniqRemainder<T> during source) => self.state = state@move
     public func next(self: uniq/Self) -> Option<uniq/T during source>
         return Storage.splitFirst(self.state@uniq)
 
@@ -161,7 +161,7 @@ public struct ArrayUniqIterator<T> {source}
 public struct ArrayOwningIterator<T>
     Self is Iterator
     associate Iterator.Item is T
-    var state: Storage.OwnedRemainder<Array<T>>
-    internal init(state: Storage.OwnedRemainder<Array<T>>) => self.state = state@move
+    var state: Storage.OwnedRemainder<T>
+    internal init(state: Storage.OwnedRemainder<T>) => self.state = state@move
     public func next(self: uniq/Self) -> Option<T>
         return Storage.takeFirst(self.state@uniq)

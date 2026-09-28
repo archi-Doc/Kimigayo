@@ -196,31 +196,29 @@ The internal group `Kimi.Storage` holds the operations that split standard colle
 
 | Type | Responsibility |
 | --- | --- |
-| `RefRemainder<S>` | The shared Loan of its `source` slot and the traversal position of the untaken part; it does not own `S` |
-| `UniqRemainder<S>` | The parent Loan of its `source` slot and exclusive access to the untaken part; it does not own `S` |
-| `OwnedRemainder<S>` | The Storage transferred from `S` and the destruction responsibility for unreturned elements, with `S`'s internal dependencies |
+| `RefRemainder<E>` | The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them |
+| `UniqRemainder<E>` | The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements |
+| `OwnedRemainder<E>` | Heap Storage transferred from `Array<E>` and the destruction responsibility for unreturned elements, retaining `E`'s internal dependencies |
 
-`S` is one of `Array<E>`, `[N of E]` or `Dictionary<K, V>`. A borrowing remainder requires `ref/S during source` or `uniq/S during source` to be well formed. Each operation is an overload with the corresponding `E`, `K`, `V`, `length N` where needed, and the ordinary Type constraints. The result families below are descriptive:
-
-- `R(a)` is `ref/E during a` for arrays and `(ref/K during a, ref/V during a)` for Dictionary;
-- `U(a)` is `uniq/E during a` for arrays and `(ref/K during a, uniq/V during a)` for Dictionary;
-- `O` is `E` for arrays and `(K, V)` for Dictionary.
+The contiguous remainders are parameterized by the complete element Type `E`, with `storage: unsafe/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder holds the Loan of the Array or fixed-array source from which it was constructed. Its safe results keep that source and `E`'s internal dependencies; the raw pointer field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads.
 
 | Signature template | Contract |
 | --- | --- |
-| `borrowStorage(value: ref/S during a) -> RefRemainder<S> during a` | Holds the shared Loan and traverses from the first element |
-| `borrowStorage(value: uniq/S during a) -> UniqRemainder<S> during a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains |
-| `ownStorage(value: S) -> OwnedRemainder<S>` | Transfers the Storage of `S` and its cleanup responsibility |
-| `splitFirst(state: uniq/RefRemainder<S>{r}) -> Option<R(r.source)>` | Lends the untaken first element for shared access and advances |
-| `splitFirst(state: uniq/UniqRemainder<S>{r}) -> Option<U(r.source)>` | Splits the untaken first element off as a child Loan and updates the remainder |
-| `takeFirst(state: uniq/OwnedRemainder<S>) -> Option<O>` | Moves the unreturned first element out, updating its state and responsibility first |
+| `borrowStorage(value: ref/S during a) -> RefRemainder<E> during a` | Holds the shared Loan and traverses from the first element |
+| `borrowStorage(value: uniq/S during a) -> UniqRemainder<E> during a` | Transfers the received whole-collection capability to the untaken part; no independent whole access remains |
+| `ownStorage(value: Array<E>) -> OwnedRemainder<E>` | Transfers the heap Storage and its cleanup responsibility |
+| `splitFirst(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>` | Lends the untaken first element for shared access and advances |
+| `splitFirst(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>` | Splits the untaken first element off as a child Loan and updates the remainder |
+| `takeFirst(state: uniq/OwnedRemainder<E>) -> Option<E>` | Moves the unreturned first element out, updating its state and responsibility first |
+
+Fixed-array owning storage and Dictionary storage use distinct internal remainder families, with their own `ownStorage`, `borrowStorage`, `splitFirst` and `takeFirst` overloads as applicable. A fixed-array owning remainder retains inline storage and its remaining initialization state; it does not deallocate inline memory. Dictionary remainders retain the ordered-entry state and both complete stored Types `K` and `V`, including their constraints and dependencies. Their shared, exclusive and owning items are respectively `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` and `(K, V)`; keys never become exclusive references. These families have the same Loan, transfer and cleanup guarantees below, but are not instantiations of the contiguous heap-owning remainder.
 
 ```kimi
-internal func splitFirst<E>(state: uniq/RefRemainder<Array<E>>{r})
-    -> Option<ref/E during r.source>
-internal func splitFirst<E>(state: uniq/UniqRemainder<Array<E>>{r})
-    -> Option<uniq/E during r.source>
-internal func takeFirst<E>(state: uniq/OwnedRemainder<Array<E>>)
+internal func splitFirst<E>(state: uniq/RefRemainder<E>)
+    -> Option<ref/E during state.source>
+internal func splitFirst<E>(state: uniq/UniqRemainder<E>)
+    -> Option<uniq/E during state.source>
+internal func takeFirst<E>(state: uniq/OwnedRemainder<E>)
     -> Option<E>
 ```
 
