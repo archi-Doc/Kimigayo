@@ -8,43 +8,36 @@
 
 ## 1. Current Specification — 現在の仕様
 
-範囲構文 `..`（半開）と `..=`（閉）は同じ型の値を作り、`isInclusive: bool` で区別する。
-
-| 型 | フィールド | x64 のサイズ |
-| --- | --- | --- |
-| `Range<T>` | `start: T`・`end: T`・`isInclusive: bool` | `u8` 3 B、`i32` 12 B、`i64` 24 B |
-| `IndexRange` | `start: Index`・`end: Index`・`isInclusive: bool` | 40 B（`Index` は `isize` と `bool` で 16 B） |
-| `ResolvedRange` | `start: isize`・`end: isize` | 16 B。常に半開 |
-
-- **種別**: 両端が整数なら `Range<T>`。Index の境界か省略があれば `IndexRange` になり、`..=b`（開始の省略）も `IndexRange` になる。包含の終端は省略できない。
+- **包含の表し方**: `..`（半開）と `..=`（閉）は同じ型の値を作り、フィールド `isInclusive: bool` で区別する。対象は `Range<T>`（`start: T`・`end: T`）と `IndexRange`（`start: Index`・`end: Index`）である。`ResolvedRange` は常に半開である。
+- **Index**: 格納フィールド `offset: isize`・`isFromEnd: bool` を公開する。
+- **種別**: 両端が整数なら `Range<T>`。Index の境界か省略があれば `IndexRange` で、`..=b`（開始の省略）もこちらになる。包含の終端は省略できない。
 - **等価性**: `isInclusive` も比較するので、`0..3 != 0..=2` となる。
-- **解決**: 半開は `0 <= s <= e <= L` のとき `[s, e)`、包含は `0 <= s <= e < L` のとき `[s, e + 1)`。`tryResolve` は包含の終端 `^0` に対して None を返す。
-- **反復**: `RangeIterator<T>.starting(start, end, inclusive)`。`includesEnd` を持つので、T の最大値でも加算しない。
-- **実装**: `resolve`・`tryResolve`・反復入口が、実行時に `isInclusive` で分岐する。
+- **解決**: 半開は `0 <= s <= e <= L` のとき `[s, e)`、包含は `0 <= s <= e < L` のとき `[s, e + 1)`。
+- **実装**:
+  - `resolve`・`tryResolve` は、実行時に `isInclusive` で分岐する。
+  - 反復入口は、フラグを共用の `RangeIterator<T>` へ渡す。
+  - 範囲の整数境界は、`Index.unchecked` が不正値を offset -1 の番兵にしておき、`IndexRange.init` が左から検査して Abort する。
 
 ## 2. Proposed Specification — 新しい仕様
 
-### 2.1. 型の構成
+### 2.1. 型と共通規則
 
-| 型 | 区間 | 構文 | 反復 | x64 のサイズ |
-| --- | --- | --- | --- | --- |
-| `Range<T>` | 半開 `[start, end)` | 両端が整数の `a..b` | `RangeIterator<T>` | 2 × T（`i32` 8 B、`i64` 16 B） |
-| `ClosedRange<T>`（新設） | 閉 `[start, end]` | 両端が整数の `a..=b` | `RangeIterator<T>` | 2 × T |
-| `IndexRange` | 半開 | Index の境界を含む `a..b`、`a..`・`..b`・`..` | なし | 32 B（§2.6 を採用すれば 16 B） |
-| `ResolvedRange` | 半開 | 変更なし | `RangeIterator<isize>` | 16 B |
-
-共通規則:
+| 型 | 区間 | 構文 | 反復 |
+| --- | --- | --- | --- |
+| `Range<T>` | 半開 `[start, end)` | 両端が整数の `a..b` | `RangeIterator<T>` |
+| `ClosedRange<T>`（新設） | 閉 `[start, end]` | 両端が整数の `a..=b` | `RangeIterator<T>` |
+| `IndexRange` | 半開 | Index の境界を含む `a..b`、`a..`・`..b`・`..` | なし |
+| `ResolvedRange` | 半開 | 変更なし | `RangeIterator<isize>` |
 
 1. **包含の有無は、値ではなく型が表す。** どの範囲型も包含フラグを持たない。
-2. **位置の範囲は半開とする。** `IndexRange` と `ResolvedRange` がこれにあたる。閉区間は、整数値の範囲 `ClosedRange<T>` だけとする。
+2. **位置の範囲は半開とする。** 閉区間は、整数値の範囲 `ClosedRange<T>` だけとする。
 3. **`start`・`end` は、書いた境界そのものとする。** `ClosedRange<T>` の `end` は区間に含まれる。
 
 ### 2.2. 構文と種別
 
 | 構文 | 結果 |
 | --- | --- |
-| 両端が整数の `a..b` | `Range<T>` |
-| 両端が整数の `a..=b` | `ClosedRange<T>` |
+| 両端が整数の `a..b` / `a..=b` | `Range<T>` / `ClosedRange<T>` |
 | Index の境界を含む `a..b`、`a..`・`..b`・`..` | `IndexRange` |
 | Index の境界を含む `a..=b` | 型エラー（位置の範囲は半開） |
 | `..=b`・`..=` | 構文エラー（`..=` には両端が必要） |
@@ -55,48 +48,53 @@ RangeExpression      := OrExpression
                       | OrExpression "..=" OrExpression
 ```
 
-- `Range<T>` の型の規則は、`ClosedRange<T>` にもそのまま適用する（両端が同じ T であること、リテラル式への伝播、Scalar read）。
-- 両端がリテラル式の `a..=b` は、既定で `ClosedRange<i32>` になる。期待型に適合するのは、演算子に対応する型だけとする。`0..=3` は `Range<X>` に適合せず、`0..3` は `ClosedRange<X>` に適合しない。
+`Range<T>` の型規則（両端で同じ T、リテラル式への伝播、Scalar read）は、`ClosedRange<T>` にもそのまま適用する。両端がリテラル式の `a..=b` は、既定で `ClosedRange<i32>` になる。期待型に適合するのは、演算子に対応する型だけとする。
 
 ```kimi
 let a = 0..10             // Range<i32>
 let b = 0..=255@u8        // ClosedRange<u8>。半開では書けない。
 let c = 1..^1             // IndexRange
-let d = 1..=^2            // エラー: 位置の範囲は半開。1..^1 と書く。
-let e = ..=3              // 構文エラー: 0..=3 と書く。
+let d = 1..=^2            // エラー: 位置の範囲は半開。
+let e = ..=3              // 構文エラー: 両端が必要。
 let f = (0..3) == (0..=2) // エラー: 型が異なる。
 ```
 
 ### 2.3. `ClosedRange<T>`
 
-- `T is PrimitiveInteger` の整数範囲。Owned・Copy・Equatable で、等価性は `start` と `end` で決める。
-- 公開メンバーは、読み取り専用の `start: T`・`end: T`、`resolve`・`tryResolve`、反復の三入口とする。
-- 生成は範囲構文だけとし、公開の `init`・factory は設けない。逆転した値（`start > end`）も作れる。
-- 空の閉区間はない。`start > end` は逆転として扱う。`length`・`isEmpty` を設けない理由は `Range<T>` と同じである。
+`Range<T>` と次の点だけが異なる。
+
+- **区間**: `end` を含む。
+- **解決**: `0 <= s <= e < L` のとき `[s, e + 1)`。
+- **反復**: `end` まで生成し、T の最大値でも加算しない。
+
+次の点は `Range<T>` と同じである。
+
+- `T is PrimitiveInteger` で、Owned・Copy・Equatable。等価性は `start` と `end` で決める。
+- 公開メンバーは、読み取り専用の `start`・`end`、`resolve`・`tryResolve`、反復の三入口とする。
+- 生成は範囲構文だけとする。
+- 逆転（`start > end`）した値も作れ、反復の入口で Abort する。空の閉区間はない。
+- `length`・`isEmpty` は設けない。
 
 ### 2.4. 解決とスライス
 
-| 型 | 成功条件 | 結果 |
-| --- | --- | --- |
-| `Range<I>`・`IndexRange` | `0 <= s <= e <= L` | `[s, e)` |
-| `ClosedRange<I>` | `0 <= s <= e < L` | `[s, e + 1)` |
+- **解決**: `Range<I>`・`IndexRange` は半開の条件、`ClosedRange<I>` は §2.3 の条件で解決する。
+- **スライス**: `x[r]` と `trySlice(r)` は `ClosedRange<I>` も受け付ける。`Slice<T>` には `trySlice<I>(range: ClosedRange<I>)` を加える。
+- **削除する記述**: 「包含の終端 `^0` は無効」。もう書けないためである。
 
-- `x[r]` と `trySlice(r)` は `ClosedRange<I>` も受け付ける。`Slice<T>` には `trySlice<I>(range: ClosedRange<I>)` を加える。
-- 「包含終端 `^0` は無効」という記述は削除する。包含終端の `^0` は、もう書けないためである。
+### 2.5. `Index` のプロパティ
 
-### 2.5. 反復
+`offset: isize`・`isFromEnd: bool` を、格納フィールドから読み取り専用のプロパティ（getter）に変える。
 
-- `Range<T>`・`ClosedRange<T>`・`ResolvedRange` は、いずれも `RangeIterator` を返す。`ClosedRange<T>` は `start` から `end` までを、`end` を含めて昇順に生成する。
-- 入口で `start > end` なら Abort する。閉区間でも同じである。
-- `RangeIterator` の内部状態は規定しない。
+- **変わらないもの**: 取得する値と、`init`・`resolve`・`tryResolve`・等価性。
+- **変わるもの**: 格納場所への借用は提供しない。`@ref` は、§11.2.3 の getter 一時値の共通規則に従う。
 
-### 2.6. `Index` の単一表現（性能改善）
+```kimi
+inspect(index.offset@ref) // OK: 呼び出し中だけの一時値の借用。
+let view = index.offset@ref
+inspect(view)             // エラー: 初期化子の一時値は終了している。
+```
 
-公開 API は変えずに、`Index` の格納を `isize` 1 個にする。変えない API は、`init`・`offset`・`isFromEnd`・`resolve`・`tryResolve`・等価性である。
-
-- 格納値は、先頭相対の n なら `n`、末尾相対の n なら `~n`（= `-1 - n`）とする。n は 0 以上なので、符号だけで方向が決まり、両者は重ならない。
-- `offset` と `isFromEnd` は読み取り専用の計算プロパティとする。
-- サイズは `Index` が 16 B から 8 B、`IndexRange` が 40 B から 16 B になる。等価比較は 1 回の比較で済み、解決は符号による 1 回の分岐で済む。
+格納の方式は実装仕様で定める（§3.3）。
 
 ## 3. Changes — 変更点
 
@@ -109,75 +107,101 @@ let f = (0..3) == (0..=2) // エラー: 型が異なる。
 | Index の境界を含む `a..=b` | `IndexRange`（包含） | 型エラー |
 | `..=b` | `IndexRange` | 構文エラー |
 | `(0..3) == (0..=2)` | false | 型エラー |
-| `Index` の `offset`・`isFromEnd` | 格納フィールド | 計算プロパティ（値は同じ） |
+| `Index.offset`・`isFromEnd` | 格納フィールド | getter（値は同じ。格納場所の借用なし） |
 
-### 3.2. 移行と修復候補
+### 3.2. 修復候補
 
-| 現行のコード | 移行先 | 前提と差異 |
+修復候補は、§23.5.3 に従って前提と保証を明示する。
+
+位置の閉区間から半開への書き換えが保証するのは、「元の範囲が成功する長さでは、同じ区間を選ぶ」ことまでである。失敗条件は保存しない。元が失敗する一部の場合で、書き換え後は成功する。
+
+| 現行のコード | 候補 | 前提と差異 |
 | --- | --- | --- |
-| `values[..=b]` | `values[0..=b]` | 結果が `ClosedRange<T>` になり、負の b はIndex化のAbortではなくスライスで失敗する（`trySlice` では None） |
-| `a..=^n` | `a..^(n - 1)`（n が 1 なら `a..`） | n >= 1 が前提。n = 0 は現行でも常に失敗する |
-| `Index.init(i)..=Index.init(j)` | `Index.init(i)..Index.init(j + 1)` | j + 1 が溢れないことが前提 |
-| `Range<i32>` の引数に `0..=2` を渡す | `0..3` を渡すか、`ClosedRange<i32>` のオーバーロードを加える | ― |
-| `r.isInclusive` | 型で判断する | ― |
+| `a..=^n`（n を書いたもの） | `a..^(n - 1)`、n が 1 なら `a..` | 前提は n >= 1。1 だけの逆転（長さ 3 の `^1..=^2` が `^1..^1`）と、n = L + 1（長さ 0 の `0..=^1` が `0..`）は、失敗から空区間の成功に変わる |
+| `Index.init(i)..=Index.init(j)` | `Index.init(i)..Index.init(j + 1)` | 前提は j + 1 が溢れないこと。i = j + 1 の逆転は、失敗から空区間の成功に変わる |
+| `..=b`（b が整数） | `0..=b` | 結果は `ClosedRange<T>`。負の b は、Index化での Abort ではなく解決の失敗になる（`trySlice` では None） |
+| 終端が Index の値の `..=` | なし | 方向が実行時に決まるので、共通の書き換えがない |
+| `Range<i32>` の引数に `0..=2` | `0..3`、または `ClosedRange<i32>` のオーバーロード | ― |
 
-これらは、前提と差異を明示した修復候補として診断に載せる。
+### 3.3. 実装仕様への追加（§21.2）
 
-### 3.3. 修正が必要な箇所
+- **符号化**: `Index` の格納は `isize` 1 個とする。先頭相対の n は `n`、末尾相対の n は `~n`（= `-1 - n`）で表す。
+- **番兵がない**: すべてのビットパターンが有効な Index を表すので、不正値の番兵は確保できない。
+- **方向判定**: 符号の検査に置き換わる。解決に必要な `length >= 0` と `offset <= length` の検査は残る。
+- **`^x` の下げ**: この表現を直接書き込む。
+
+### 3.4. 修正が必要な箇所
 
 | 対象 | 内容 |
 | --- | --- |
-| `src/Kimi/Library/Core.kimi` | `Range<T>`・`IndexRange` から `isInclusive`・`through`・`upTo` を削除し、`tryResolve` を半開専用にする。`ClosedRange<T>` を追加する。`RangeIterator` は共用する。§2.6 は `Index` の格納と `unchecked` |
+| `src/Kimi/Library/Core.kimi` | `Range<T>`・`IndexRange` から `isInclusive`・`through`・`upTo` を削除し、`tryResolve` を半開専用にする。`ClosedRange<T>` を追加する。`Index` を単一表現にし、`unchecked` を廃止する（§3.5 項4） |
 | `src/Kimi/Library/Slice.kimi` | `trySlice<I>(range: ClosedRange<I>)` |
 | `KimiDeclarationId`・`KimiLibraryCatalog`・`KimiLibrary` | `ClosedRange` の宣言IDとシンボル |
-| `KimiLibraryValidation.cs` | `ValidRange`・`ValidIndexRange` のフィールド数、`ValidClosedRange` の新設、§2.6 の `Index` 検査 |
-| `RangeKoto`・パーサー | `..=` の開始を必須にし、構文エラーと修復候補を出す |
-| `Binding.Ranges.cs` | `..=` から `ClosedRange` を作る。Index の境界を含む `..=` を拒否する。`BindIndexRange` の形を `between`・`from`・`to`・`all` にする。`TryBindKeyedSelection` の未解決キーに `ClosedRange` を加える |
-| `Binding.Expressions.cs`（リテラル式範囲の既定と適合）・`Binding.Calls.cs`（Scalar read） | 範囲型の判定を、演算子と型シンボルの対応で行う |
-| `Binding.Elements.cs`・`BodyLowering.Sequences.cs` の直接選択 | 半開の経路は変えない。閉区間の直接選択は測定で判断する |
-| `BodyLowering.Sequences.cs` の `FromEnd` | §2.6 の 1 フィールドへの書き込みとレイアウト検査 |
-| テスト | `IntegerRangeTest`・`RangeValueTest`・`RangeIndexParseTest`・`ExpressionPrecedenceTest`・`KeyedIndexingTest`・`SliceOperationsTest`、`test-milestone27.ps1`（`1..=^2`）、Playground、範囲と `Index` のレイアウトが現れるネイティブ fixture |
-| 文書 | `docs/LIBRARY.md`、`docs/impl/appendices/A-compiler-requirements.md`。`docs/STATUS.md` は対応範囲の変化に合わせて更新する |
+| `KimiLibraryValidation.cs` | `Range`・`IndexRange` のフィールド数、`ClosedRange` の検査の新設、`Index` の getter |
+| `RangeKoto`・パーサー | `..=` の開始を必須にする |
+| `Binding.Ranges.cs` | `..=` から `ClosedRange` を作る。Index の境界を含む `..=` を拒否する。`IndexRange` の形を `between`・`from`・`to`・`all` にする。範囲キーに `ClosedRange` を加える。境界のIndex化を改める（§3.5 項4） |
+| `Binding.Expressions.cs`・`Binding.Calls.cs` | リテラル式の範囲の既定・適合と Scalar read で、範囲型を演算子と型シンボルの対応で判定する |
+| `BodyLowering.Sequences.cs` | `FromEnd` の単一表現への書き込みとレイアウト検査。半開の直接選択は変えない |
+| 診断 | §3.2 の候補を、前提と保証つきで出す |
+| テスト | `IntegerRangeTest`・`RangeValueTest`・`RangeIndexParseTest`・`ExpressionPrecedenceTest`・`KeyedIndexingTest`・`SliceOperationsTest`、`test-milestone27.ps1`（`1..=^2`）、Playground。範囲と `Index` のレイアウトが現れるネイティブ fixture は全件を走査する |
+| 文書 | `docs/LIBRARY.md`、`docs/impl/21-layout-runtime-and-code-generation.md`、`docs/impl/appendices/A-compiler-requirements.md`。`docs/STATUS.md` は対応範囲の変化に合わせて更新する |
 
-### 3.4. 実装上の問題点
+### 3.5. 実装上の問題点
 
-1. **期待型への適合の混同。** `RangeElement` は、`Range<T>` の T を返すだけである。これを `ClosedRange` にも広げると、`0..=3` が `Range<i32>` の引数に適合してしまう。演算子と型の対応は 1 か所で判定する。
-2. **合成呼び出しの再利用。** `rangeCalls` はノードごとに再利用される。編集で `..` と `..=` が入れ替わると宣言が変わるので、再束縛で `ClosedRange` 側へ解決し直すことをテストで確かめる。
-3. **開始を省略した `..=` の位置づけ。** 現在は構文として受理し、束縛で終端の欠落だけを拒否している。構文エラーに移すと、パーサーの回復と、`ExpressionPrecedenceTest` の `..=end + 1` の期待が変わる。
-4. **§2.6 の番兵。** `Index.unchecked` は、offset -1 を「不正」の番兵に使っている。新しい表現では -1 は `^0` を表すので、この番兵は使えない。範囲の境界のIndex化は、検査結果を `Option<isize>` などで運び、`IndexRange` の構築で左から Abort する形に改める。あわせて、`FromEnd` の生成コードとレイアウト検査（2 フィールド前提）も直す。計算プロパティにするので、`index.offset@ref` のような借用はできなくなる。
-5. **ネイティブ fixture。** `Range<T>`・`IndexRange`・`Index` のレイアウトが変わる。1 系統の実行では古い期待値が隠れるので、全 fixture を走査する。
+1. **期待型への適合の混同。** `RangeElement` は `Range<T>` の T を返すだけである。これを広げると、`0..=3` が `Range<i32>` の引数に適合してしまう。演算子と型の対応は 1 か所で判定する。
+2. **合成呼び出しの再利用。** `rangeCalls` はノードごとに再利用される。編集で `..` と `..=` が入れ替わったときに、再束縛で宣言が切り替わることをテストで確かめる。
+3. **開始を省略した `..=`。** 現在は構文として受理し、束縛で終端の欠落だけを拒否している。構文エラーに移すと、パーサーの回復と `ExpressionPrecedenceTest` の `..=end + 1` が変わる。
+4. **境界のIndex化の順序。** 単一表現では番兵が使えない。そこで範囲式を「両境界の評価 → 整数境界の左からのIndex化 → 構築」の順で処理し、不正な Index も、失敗を運ぶ `Option` も作らない。
+   - Index化を後回しにする必要があるのは、開始が整数の 2 境界（整数と整数、整数と Index）だけである。これらは、境界を元の型で受け取る内部生成関数で構築し、関数の中でIndex化する。
+   - その他の整数境界は、評価の直後にIndex化しても順序は同じである。
+   - 接頭辞 `^` が評価中にIndex化する規則は変えない。
+   - 構築時の検査が不要になり、現行の「番兵 → 再検査」より処理が減る見込みである。生成コードで確かめる。
+5. **レイアウトの変更。** `Range<T>`・`IndexRange`・`Index` のレイアウトが変わる。1 系統の実行では古い期待値が隠れるので、全 fixture を走査する。
 6. **作業順序。** 進行中の整数範囲の実装と同じファイルを変更する。その実装単位をコミットしてから着手する。
 
 ## 4. Rationale — 変更する理由
 
 ### 4.1. 目的
 
-- 範囲値から、包含フラグによるパディングをなくす。
+- 範囲値と `Index` の格納サイズを減らす。
 - 包含の有無を型で表し、局所的に読めるようにする（原則 2・3）。
 - 位置の範囲を半開に統一する。`^0` を終端の境界とする Index の考え方と、`ResolvedRange` とに揃えるためである。
 
 ### 4.2. 理由
 
-1. **サイズ。** `Range<i32>` は 12 B から 8 B、`Range<i64>` は 24 B から 16 B、`IndexRange` は 40 B から 32 B になる（§2.6 を採用すれば 16 B）。配列やフィールドに保存した範囲、`Option` の中の範囲にも同じ比率で効く。
-2. **実行時分岐の除去。** `resolve`・`tryResolve`・反復入口にある `isInclusive` の分岐が、単相化によって型ごとの静的なコードになる。
-3. **閉区間は型として残す必要がある。** `0..=255@u8` や `T.min..=T.max` は、終端 + 1 が溢れるので半開では書けない。正規化で消すことはできない。
-4. **位置の範囲には閉区間が要らない。** 位置の境界は終端の `^0` まで表せるので、どの区間も半開で書ける。`a..=^n` は `a..^(n - 1)` と同じである。
-5. **等価性の落とし穴の除去。** `(0..3) == (0..=2)` が黙って false になっていたが、型エラーになる。
+1. **格納サイズ。** windows-x64-v1 の配置規則（実装仕様 §21.1.3・§21.1.5）による値を示す。配列では stride がそのまま減る。一方、`Option` や外側の構造体では、タグと切り上げのために削減の一部または全部が消えることがある。
+
+   | 型 | 単体 | `Option<…>` |
+   | --- | --- | --- |
+   | `Range<u8>` | 3 → 2 B | 8 → 8 B |
+   | `Range<i32>` | 12 → 8 B | 16 → 12 B |
+   | `Range<i64>` | 24 → 16 B | 32 → 24 B |
+   | `Index` | 16 → 8 B | 24 → 16 B |
+   | `IndexRange` | 40 → 16 B | 48 → 24 B |
+
+2. **解決の分岐の除去。** `resolve`・`tryResolve` は型ごとの処理になり、包含の判定が消える。
+3. **反復への効果は測定で確かめる。**
+   - 入口は、包含しないことを定数で Iterator に渡す。直接書いた `for` では現行でも定数になり得るが、保存・受け渡しされた範囲でも定数になる。
+   - Iterator を保存・返却した場合、共用型の状態は残り得る。
+4. **閉区間は型として残す必要がある。** `0..=255@u8` や `T.min..=T.max` は、終端 + 1 が溢れるので半開では書けない。
+5. **位置の閉区間は、要素集合なら半開で表せる。** 違いは閉区間に固有の失敗条件（1 だけの逆転、終端が要素でないこと）だけであり、そのために型を増やす用途は乏しい。
+6. **等価性の落とし穴の除去。** `(0..3) == (0..=2)` が黙って false になっていたが、型エラーになる。
 
 ### 4.3. 検討した代替案
 
 | 案 | 内容 | 不採用の理由 |
 | --- | --- | --- |
-| A. `IndexRange` の `..=` を構築時に正規化する | `a..=k` を `a..(k + 1)` に、`a..=^n` を `a..^(n - 1)` にする | 1 だけ逆転した区間が空になる（`^1..=^2` が `^1..^1` になる）。これは「逆転を空にしない」規則に反し、同じ形で Abort する `ClosedRange<T>` とも食い違う。`..=^0` の失敗が解決から構築へ移るので、`trySlice` が None を返せなくなる。`start`・`end` も書いた境界と異なる |
-| B. `ClosedIndexRange` を新設する | 位置の閉区間型を設ける | 型とスライス API が増える一方、§4.2 の 4 のとおり表現力は増えない |
-| C. 閉区間専用の反復器を設ける | `ClosedRangeIterator<T>` | 要素ごとの処理（比較と加算）は同じである。終端フラグを読むのは最後の 1 回だけなので、型を増やす利点がない |
+| A. `IndexRange` の `..=` を構築時に正規化する | `a..=k` を `a..(k + 1)` に、`a..=^n` を `a..^(n - 1)` にする | 言語の意味として、失敗を成功に変えてしまう（§3.2 の差異）。これは「逆転を空にしない」規則と、`ClosedRange<T>` の挙動に反する。`..=^0` の失敗が構築時に移るので、`trySlice` が None を返せない。`start`・`end` も書いた境界と異なる |
+| B. `ClosedIndexRange` を新設する | 位置の閉区間型を設ける | 失敗条件は保てるが、型とスライス API が増える。§4.2 の 5 のとおり用途が乏しい |
+| C. 閉区間専用の反復器を設ける | `ClosedRangeIterator<T>` | 型と API の増加に見合う効果が未確認なので、今回は共用する。フラグを読むのは、半開では終了時の 1 回、閉区間では最終要素とその後の終了確認である |
 | D. フラグを残してビットを詰める | 境界の余りビットを使う | T は全値域を使うので、余りビットがない |
 
 ### 4.4. 副作用
 
-- 両方の範囲を受け取る API には、オーバーロードが 2 つ要る。Kimi の中では `trySlice` だけである。範囲型を束ねる Contract は、本書の対象外とする。
-- 空の閉区間は書けない。`0..=n - 1` は n = 0 のとき逆転し、反復で Abort する（現行と同じ）。空になりうる場合は `0..n` を使う。
-- `..=b` と、Index の境界を含む閉区間は書けなくなる。§3.2 の修復候補で機械的に移行できる。
+- 両方の範囲を受け取る API には、オーバーロードが 2 つ要る。Kimi の中では `trySlice` だけである。範囲型を束ねる Contract は対象外とする。
+- 空の閉区間は書けない。`0..=n - 1` は n = 0 のとき逆転して Abort する（現行と同じ）。空になりうる場合は `0..n` を使う。
+- `..=b` と、Index の境界を含む閉区間は書けなくなる。§3.2 の候補は、失敗条件までは保たない。
+- `index.offset@ref` を束縛に保存するコードは、値を先にローカルへ保存する必要がある。
 - 等価比較や引数の型不一致が、新たにコンパイルエラーになる。
 
 ## 5. Impact on SPEC.md — SPEC.md への影響
@@ -186,18 +210,18 @@ let f = (0..3) == (0..=2) // エラー: 型が異なる。
 | --- | --- |
 | `docs/SPEC.md`（Kimi の宣言一覧） | `ClosedRange<T>` を追加する |
 | §3（Copy の表） | `ClosedRange<T>` を追加する |
-| §4.6.3 | 型の表に `ClosedRange<T>` を加える。共通規則に「包含は型が表す」「位置の範囲は半開」を加える |
+| §4.6.2 | `offset`・`isFromEnd` を読み取り専用のプロパティ（getter）とする |
+| §4.6.3 | 型の表に `ClosedRange<T>` を加え、§2.1 の共通規則を加える |
 | §4.6.3.1 | 構文の表・種別の表・`..=` の制限・例 |
-| §4.6.3.2 | 題を「`Range<T>` and `ClosedRange<T>`」とし、両者を記述する。`isInclusive` を削除し、等価性を改める。節番号は変えない |
+| §4.6.3.2 | 題を「`Range<T>` and `ClosedRange<T>`」とし、§2.3 の差分を記す。`isInclusive` を削除し、等価性を改める。節番号は変えない |
 | §4.6.3.3 | `isInclusive` を削除し、等価性を改める |
 | §4.6.3.5 | 反復の表に `ClosedRange<T>` を加える |
-| §4.6.4 | 解決の表を型で分ける。包含終端 `^0` の記述を削除する。スライスが受け付ける型を改める |
+| §4.6.4 | 解決の表を型で分ける。包含の終端 `^0` の記述を削除する。スライスが受け付ける型を改める |
 | §12.3.1 | `..=` の既定を `ClosedRange<i32>` とし、適合を演算子に対応する型に限る |
 | §14.6.2 | Subject の表に `ClosedRange<T>` を加える |
-| §22.1 | 必須宣言の表に `ClosedRange<T>` を加える。§2.6 を採用すれば、`Index` の「read-only fields」を「read-only properties」にする |
+| §22.1 | 必須宣言の表に `ClosedRange<T>` を加える。`Index` の「read-only fields」を「read-only properties」にする |
 | 付録 E・F | 用語と文法（§2.2） |
-
-§4.6.2 の `Index` の意味は、§2.6 を採用しても変わらない。
+| 実装仕様 §21.2 | §3.3 の `Index` の表現 |
 
 ## 6. Decision — 最終決定
 
@@ -205,9 +229,9 @@ let f = (0..3) == (0..=2) // エラー: 型が異なる。
 
 1. `Range<T>`・`IndexRange` から `isInclusive` を削除し、半開区間専用にする。
 2. `ClosedRange<T>` を新設し、両端が整数の `a..=b` はこれを作る。
-3. `..=` は両端とも整数の場合に限る。Index の境界を含めば型エラー、開始を省略すれば構文エラーとする。
+3. `..=` は、両端とも整数の場合に限る。
 4. 反復器は `RangeIterator<T>` を共用する。
-5. `Index` を `isize` 1 個の表現にする。公開 API は変えない。独立した実装単位とし、測定で退行があれば見送る。
+5. `Index` の格納を `isize` 1 個にし、`offset`・`isFromEnd` を getter にする。範囲の整数境界は、番兵を使わない順序でIndex化する（§3.5 項4）。
 
 採用しない: §4.3 の案 A–D。範囲型を束ねる Contract と、降順・刻みの範囲は対象外とする。
 
@@ -215,6 +239,31 @@ let f = (0..3) == (0..=2) // エラー: 型が異なる。
 
 1. `ClosedRange<T>` の新設、`..=` の切り替え、`Range<T>.isInclusive` の削除
 2. `IndexRange.isInclusive` の削除と `..=` の制限
-3. `Index` の単一表現
+3. `Index` の単一表現と、境界のIndex化の順序の変更
 
-各単位は `./scripts/verify.ps1 -Class ...` と、関連する O0・O2 の fixture で検証してからコミットする。性能は各単位の直前のコミットを基準とし、条件をそろえて交互に実行して測る。対象は、`for i in 0..n`・`for i in 0..=n`、`values[a..=b]`、`values[1..^1]`、`s.trySlice(1..^1)` である。O2 の生成コードで残る検査が増えず、時間の悪化が 3% 以内であることを条件とする。範囲型と `Index` のサイズを記録する。
+各単位は `./scripts/verify.ps1 -Class ...` と、関連する O0・O2 の fixture で検証してからコミットする。
+
+**正しさの検証**:
+
+- `Index` の表現の境界: `0`・`^0`・`Index.init(isize.max)`・`^isize.max` について、生成・取得・等価・解決を確かめる。
+- Index化の順序と Abort。
+- §3.2 の各候補の前提と差異。
+
+**性能の検証**: 各単位の直前のコミットを基準とする。
+
+| 観点 | 対象 |
+| --- | --- |
+| 直接の使用 | `for i in 0..n`・`0..=n`、`values[a..=b]`・`values[1..^1]`・`s.trySlice(1..^1)` |
+| 保存と受け渡し | 範囲の配列の走査とコピー、保存した範囲からの反復、関数から返した Iterator の反復 |
+| 長さ | 空・1 要素・8 要素・10^6 要素 |
+| Index | 実行時に方向が決まる Index の解決と、`offset` の取得 |
+
+- **指標と合格条件**:
+  - 時間: 最小値が、基準より 3% を超えて悪化しない。
+  - 格納サイズ（単体・`Option`・配列の stride）: 基準以下である。
+  - O2 の生成コード: 検査数などを記録し、差の分析に使う。単独の合格条件にはしない。
+  - O0 の時間: 記録だけとする。
+- **測定条件**:
+  - 入力は実行時に与える。結果は計測の外で検証し、測定対象が生成コードに残ることを確かめる。
+  - 短い処理は、多数回をまとめて 1 回の計測とする。
+  - ビルド条件をそろえ、ウォームアップ 3 回の後、基準版と変更版をコアを固定して交互に各 21 回測る。
