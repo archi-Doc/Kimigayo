@@ -21,6 +21,7 @@ public sealed partial class Binding
     // transitive effect summary of every implementation against its bound; an effect it cannot classify is a conflict.
     private void ValidateEffectBounds()
     {
+        this.effectSummary?.BeginPass();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var path = this.activeConformancePaths[i];
@@ -147,6 +148,10 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
+        // Keep one pool slot per call across the whole validation pass. Resetting for each implementation makes
+        // unrelated signatures repeatedly resize the same call's argument and substitution arrays on every rebind.
+        internal void BeginPass() => this.callCount = 0;
+
         // SPEC 8.4.8.2: the bound is judged in the conformance scope (D and the conditions P); the implementation's item
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`.
@@ -162,7 +167,6 @@ public sealed partial class Binding
             this.contextIndex.Clear();
             this.contexts.Add(null);
             this.context = 0;
-            this.callCount = 0;
             this.implementation = implementation.Declaration as FunctionKoto;
             this.receiverType = null;
             this.steppedField = null;
