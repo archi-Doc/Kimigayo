@@ -12,4 +12,4 @@ one layer
 
 `_ = expression` intentionally discards its whole result at statement end. It can ignore a Result, including an error. In a `for` binding, `_` omits only the name; acquisition and cleanup follow the binding's shape.
 
-See [optional Types](../../spec/03-types-and-values.md#323-optional-type-spelling), [propagation](../../spec/17-failure-handling.md#1724-try-propagation), and [explicit discard](../../spec/14-control-flow.md#1424-explicit-discard). `OptionalTryDiscardTest` verifies this example and native success/failure cleanup paths.
+See [optional Types](../../docs/spec/03-types-and-values.md#323-optional-type-spelling), [propagation](../../docs/spec/17-failure-handling.md#1724-try-propagation), and [explicit discard](../../docs/spec/14-control-flow.md#1424-explicit-discard). `OptionalTryDiscardTest` verifies this example and native success/failure cleanup paths.

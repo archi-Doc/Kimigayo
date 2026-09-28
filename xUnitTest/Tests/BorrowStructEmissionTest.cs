@@ -108,7 +108,7 @@ public class BorrowStructEmissionTest
     private static string FindRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SPEC.md")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
         {
             directory = directory.Parent;
         }

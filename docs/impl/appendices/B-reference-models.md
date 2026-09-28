@@ -1,6 +1,6 @@
 # Appendix B. Non-normative reference models
 
-[Implementation specification index](../../IMPLEMENTATION.md)
+[Implementation specification index](../../IMPL.md)
 
 **Non-normative.** All algorithms in this appendix are optional. An alternative must preserve the language and Appendix A, including excluded-syntax validation and committed lookup decisions.
 

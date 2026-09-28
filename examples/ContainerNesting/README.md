@@ -14,7 +14,7 @@ value Field and does not capture a Family instance. IntegerSink implements the
 specific Family<i32>.Sink reference.
 
 Different outer bindings give different nested Types even when their Fields do
-not mention T. See [container environments](../../spec/06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)
-and [bound paths](../../spec/09-names-signatures-and-access.md#961-bound-container-paths).
+not mention T. See [container environments](../../docs/spec/06-declarations-and-containers.md#613-inherited-environments-and-declaration-references)
+and [bound paths](../../docs/spec/09-names-signatures-and-access.md#961-bound-container-paths).
 This example covers the executable paths tested by ContainerNestingTest;
-[STATUS.md](../../STATUS.md) records the remaining implementation boundaries.
+[STATUS.md](../../docs/STATUS.md) records the remaining implementation boundaries.

@@ -32,4 +32,4 @@ taken
 element moves complete
 ```
 
-Exit is 0 with empty stderr. Tests audit logical destruction of Static-backed strings; this example does not add Heap-string construction APIs. See [Move Paths](../../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [destruction](../../spec/16-scope-exit-and-destruction.md), and [implementation status](../../STATUS.md).
+Exit is 0 with empty stderr. Tests audit logical destruction of Static-backed strings; this example does not add Heap-string construction APIs. See [Move Paths](../../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [destruction](../../docs/spec/16-scope-exit-and-destruction.md), and [implementation status](../../docs/STATUS.md).

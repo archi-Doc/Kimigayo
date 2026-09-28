@@ -27,4 +27,4 @@ last
 middle
 ```
 
-See [parameter rules](../../spec/07-functions-and-callable-values.md), [static Move Paths](../../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [local Move and repair](../ElementMoves/README.md), and [implementation status](../../STATUS.md).
+See [parameter rules](../../docs/spec/07-functions-and-callable-values.md), [static Move Paths](../../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [local Move and repair](../ElementMoves/README.md), and [implementation status](../../docs/STATUS.md).

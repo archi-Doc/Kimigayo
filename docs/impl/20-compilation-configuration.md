@@ -1,6 +1,6 @@
 # 20. Compilation configuration
 
-[Implementation specification index](../IMPLEMENTATION.md)
+[Implementation specification index](../IMPL.md)
 
 A Compilation processes one Project for fixed source, dependency, target and configuration inputs. The source-language rules determine meaning. This chapter defines compilation invariants and configuration; Appendices A and B hold implementation requirements and reference algorithms.
 

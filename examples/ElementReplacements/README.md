@@ -27,4 +27,4 @@ dotnet run --project Kimi/Kimi.csproj -c Release --no-build -- run examples/Elem
 
 Expected stdout is `element replacements complete` followed by a newline, exit 0, and empty stderr.
 
-The tests audit logical string destruction counts and order, including Static-backed strings. They do not establish source-level Heap-string construction support. See [simple assignment](../../spec/13-operators-and-assignment.md#1371-simple-assignment), [index protection](../../spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure), and [implementation status](../../STATUS.md).
+The tests audit logical string destruction counts and order, including Static-backed strings. They do not establish source-level Heap-string construction support. See [simple assignment](../../docs/spec/13-operators-and-assignment.md#1371-simple-assignment), [index protection](../../docs/spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure), and [implementation status](../../docs/STATUS.md).

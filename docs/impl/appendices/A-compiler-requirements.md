@@ -1,6 +1,6 @@
 # Appendix A. Compiler implementation requirements
 
-[Implementation specification index](../../IMPLEMENTATION.md)
+[Implementation specification index](../../IMPL.md)
 
 **Normative.** These compiler requirements preserve the language's information and invariants; they add no source syntax or failure behavior. Appendix B gives optional algorithms. The verification coverage below is required, and parsing alone does not establish it.
 

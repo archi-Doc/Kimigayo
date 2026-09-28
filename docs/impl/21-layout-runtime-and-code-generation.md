@@ -1,6 +1,6 @@
 # 21. Layout, runtime metadata, and code generation
 
-[Implementation specification index](../IMPLEMENTATION.md)
+[Implementation specification index](../IMPL.md)
 
 Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 

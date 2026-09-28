@@ -32,4 +32,4 @@ beta
 element borrows complete
 ```
 
-See [comparison](../../spec/13-operators-and-assignment.md#134-comparison-and-logical-operators), [Loan conflicts](../../spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts), and [implementation status](../../STATUS.md). Destruction audits cover logical responsibility of Static-backed strings, not a new Heap-string construction API.
+See [comparison](../../docs/spec/13-operators-and-assignment.md#134-comparison-and-logical-operators), [Loan conflicts](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts), and [implementation status](../../docs/STATUS.md). Destruction audits cover logical responsibility of Static-backed strings, not a new Heap-string construction API.

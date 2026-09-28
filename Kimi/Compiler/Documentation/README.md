@@ -3,8 +3,8 @@
 `DocumentationMarkdown` uses the independent limited-profile parser. Compiler
 assemblies and packages have no Markdig dependency; Markdig remains a private
 dependency of comparison tests and benchmarks only. The adopted language rules
-are in [§2.3](../../../spec/02-source-and-lexical-structure.md#231-documentation-text)
-and the [Documentation Markdown profile](../../../spec/documentation-markdown.md).
+are in [§2.3](../../../docs/spec/02-source-and-lexical-structure.md#231-documentation-text)
+and the [Documentation Markdown profile](../../../docs/spec/documentation-markdown.md).
 
 ## Parsing and declaration context
 

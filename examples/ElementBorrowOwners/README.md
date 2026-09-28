@@ -30,4 +30,4 @@ conditional lifetime
 delivered result
 ```
 
-See [local element borrowing](../ElementBorrows/README.md), [temporary lifetimes](../../spec/03-types-and-values.md#36-temporary-values-places-and-lifetimes), [destruction](../../spec/16-scope-exit-and-destruction.md), and [implementation status](../../STATUS.md). Native audits verify the logical destruction responsibility of Static-backed strings.
+See [local element borrowing](../ElementBorrows/README.md), [temporary lifetimes](../../docs/spec/03-types-and-values.md#36-temporary-values-places-and-lifetimes), [destruction](../../docs/spec/16-scope-exit-and-destruction.md), and [implementation status](../../docs/STATUS.md). Native audits verify the logical destruction responsibility of Static-backed strings.

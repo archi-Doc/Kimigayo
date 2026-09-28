@@ -11,7 +11,7 @@ public class VerifiedSpecExampleTest
     [Fact]
     public void ComparisonInspectionUsesExplicitTransferAndKeepsItsLoan()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "../../../../spec/13-operators-and-assignment.md");
+        var path = Path.Combine(AppContext.BaseDirectory, "../../../../docs/spec/13-operators-and-assignment.md");
         var text = File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
         const string marker = "<!-- verified-example: comparison-inspection (positive; commented line is a rejection) -->";
         var markerStart = text.IndexOf(marker, StringComparison.Ordinal);

@@ -1,6 +1,6 @@
 # Documentation Markdown verification data
 
-The authority is the formal [Documentation Markdown profile](../../../spec/documentation-markdown.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
+The authority is the formal [Documentation Markdown profile](../../../docs/spec/documentation-markdown.md), with unchanged syntax defined by CommonMark 0.31.2. Markdig 1.3.2 is a comparison implementation, not the oracle. Tests are offline and embed the JSON fixtures; no data download or external executable is needed for managed conformance tests.
 
 ## Upstream corpus and attribution
 
@@ -65,9 +65,9 @@ remains test-only. This is bounded coverage, not exhaustive conformance or
 cross-OS/runtime certification. Culture variation uses the current Windows/.NET
 environment. [Product API](../../../Kimi/Compiler/Documentation/README.md),
 [measurements](../../../Benchmark/DocumentationMarkdown.md), and
-[execution evidence](../../../PLAN_HISTORY.md#documentation-markdown-product-switch-20260920)
+[execution evidence](../../../docs/dev/PLAN_HISTORY.md#documentation-markdown-product-switch-20260920)
 record conditions and limits; current next actions belong in
-[PLAN.md](../../../PLAN.md#6-next-actions).
+[PLAN.md](../../../docs/dev/PLAN.md#6-next-actions).
 
 ## 2026-09-20 parser review
 

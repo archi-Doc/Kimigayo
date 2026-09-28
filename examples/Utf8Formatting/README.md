@@ -20,4 +20,4 @@ ready=true
 
 `Text.fixed` borrows an initialized byte array. It starts empty; `clear()` retains its storage for reuse. `buffer.text()` returns a validated shared view, so its uses must end before clearing the buffer. `Text.tryFormat` handles a single value and returns a view retaining the array's exclusive Loan. The exact three-byte destination fits `123` without allocation.
 
-See the [formatting profile](../../spec/utf8-formatting.md) for representations, borrowing, failure and cost requirements. `Utf8IntegrationTest` executes this example at O0/O2; [Milestone 32](../../milestones/Milestone32.kimi) also exercises generic formatting and source/result independence.
+See the [formatting profile](../../docs/spec/utf8-formatting.md) for representations, borrowing, failure and cost requirements. `Utf8IntegrationTest` executes this example at O0/O2; [Milestone 32](../../milestones/Milestone32.kimi) also exercises generic formatting and source/result independence.

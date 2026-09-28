@@ -11,11 +11,11 @@ The plan must serve as both an implementation design and a maintained execution 
 - **Target and objective:** `Complete the Kimigayo compiler.`
 - **Included and excluded scope:** `Cover all features defined in the finalized specification. Undefined APIs and deferred features are out of scope and should be handled separately.`
 - **Relevant specifications, expected behavior, and constraints:** `Minimize allocations as much as possible, and aggressively optimize for performance and execution speed.`
-- **Plan output path:** `PLAN.md`
+- **Plan output path:** `docs/dev/PLAN.md`
 
 Use information already established in the conversation. If the target is still unclear, ask for clarification instead of selecting a feature yourself.
 
-Do not assume that `PLAN.md` or any other planning file exists. Do not create a file unless an output path is specified.
+Do not assume that `docs/dev/PLAN.md` or any other planning file exists. Do not create a file unless an output path is specified.
 
 ## 1. Working Boundaries
 
@@ -36,8 +36,8 @@ Inspect:
 
 - Current commit and relevant uncommitted changes.
 - Applicable development rules.
-- `SPEC.md`, relevant `spec/` chapters and appendices, and related documents.
-- `STATUS.md` and any planning material explicitly supplied by the user.
+- `docs/SPEC.md`, relevant `docs/spec/` chapters and appendices, and related documents.
+- `docs/STATUS.md` and any planning material explicitly supplied by the user.
 - Relevant implementation, callers, callees, and similar features.
 - Tests, shared helpers, fixture generators, and verification scripts.
 - SDK, test runner, toolchain, build configuration, and artifact handling.
@@ -143,7 +143,7 @@ If independent verification is impractical, explain the minimum set of changes t
 
 Provide an implementation checklist linked to milestones and requirements. Do not mechanically add syntax nodes, Bound nodes, runtime work, or other changes that the feature does not require.
 
-Include necessary future updates to specification documents, `STATUS.md`, usage documentation, and examples. Do not mark planned support as implemented.
+Include necessary future updates to specification documents, `docs/STATUS.md`, usage documentation, and examples. Do not mark planned support as implemented.
 
 Specify execution steps using references:
 
@@ -246,7 +246,7 @@ Do not initialize items as `DONE` without adequate evidence. Historical success 
 
 Keep IDs stable. Retain removed or superseded work with its disposition and rationale rather than silently deleting it. Record significant decisions, not every command or edit.
 
-The plan tracks this effort; `STATUS.md` tracks product-wide support. Avoid duplicating detailed execution history across documents.
+The plan tracks this effort; `docs/STATUS.md` tracks product-wide support. Avoid duplicating detailed execution history across documents.
 
 ## 8. Final Review and Output
 

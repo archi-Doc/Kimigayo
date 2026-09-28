@@ -1,10 +1,10 @@
 # Kimigayo Implementation Execution
 
-Implement the target milestone of [PLAN.md](../PLAN.md) with verified, committed units. Spend the time on implementation, not on records: commits and `bin/verify/` are the evidence.
+Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, committed units. Spend the time on implementation, not on records: commits and `bin/verify/` are the evidence.
 
 ## Inputs
 
-- **Plan:** `PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
+- **Plan:** `docs/dev/PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
 - **Target:** the milestone named by the request; otherwise the first milestone in PLAN §4 that is not DONE.
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
 - **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only when a PLAN §7 issue records its conflict with the SPEC and the user has approved the change. Creating or completing the target milestone's harness (`backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
@@ -38,7 +38,7 @@ reproducer (a failing test or program variant)
 
 ## 3. Correctness rules
 
-- SPEC.md and its chapters are the authority; Appendix D items are out of scope. Never weaken SPEC, tests or diagnostics to match the implementation.
+- docs/SPEC.md and its chapters are the authority; Appendix D items are out of scope. Never weaken SPEC, tests or diagnostics to match the implementation.
 - Report invalid source through the existing diagnostics at the correct stage. Unsupported generation must be diagnosed and must never produce wrong code.
 - Removing an unsupported guard requires every newly reachable analysis and generation path to be implemented and tested.
 - Preserve ownership, Loan, Origin, evaluation order, cleanup and Abort semantics; keep internal invariant checks.
@@ -56,10 +56,10 @@ reproducer (a failing test or program variant)
 1. The duration covers unit work only. Stop starting units when it has elapsed; finish or cleanly revert the current unit.
 2. Then run `./verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
 3. Update the documents briefly, then commit:
-   - **PLAN.md:** §3 position (HEAD, test count), milestone states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds.
-   - **PLAN_HISTORY.md:** one table row for the session (date, what changed, result).
-   - **STATUS.md:** only if a support boundary changed; state it in one or two sentences.
-   - **SPEC.md:** only if the user approved a language change.
+   - **docs/dev/PLAN.md:** §3 position (HEAD, test count), milestone states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds.
+   - **docs/dev/PLAN_HISTORY.md:** one table row for the session (date, what changed, result).
+   - **docs/STATUS.md:** only if a support boundary changed; state it in one or two sentences.
+   - **docs/SPEC.md:** only if the user approved a language change.
 
 ## 6. Final report
 

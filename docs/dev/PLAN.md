@@ -1,10 +1,10 @@
 # Kimigayo Compiler Plan
 
-Current plan only: position, milestone order, completion conditions, next actions and open issues. Required behavior is in [SPEC.md](SPEC.md); implemented support is in [STATUS.md](STATUS.md); a few lines per session are in [PLAN_HISTORY.md](PLAN_HISTORY.md). Items deferred by [Appendix D](spec/appendices/D-deferred-features.md) are not planned here.
+Current plan only: position, milestone order, completion conditions, next actions and open issues. Required behavior is in [SPEC.md](../SPEC.md); implemented support is in [STATUS.md](../STATUS.md); a few lines per session are in [PLAN_HISTORY.md](PLAN_HISTORY.md). Items deferred by [Appendix D](../spec/appendices/D-deferred-features.md) are not planned here.
 
 ## 1. Scope
 
-Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the implementation contracts of [IMPLEMENTATION.md](IMPLEMENTATION.md) (Chapters 20–21, the test execution profile and Appendix A) for the Windows x64 profile, excluding Appendix D. Progress is driven vertically by the [Milestone Programs](milestones/README.md): each milestone completes one program end to end (Binding, ownership, generation, native execution and required rejections).
+Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the implementation contracts of [IMPLEMENTATION.md](../IMPL.md) (Chapters 20–21, the test execution profile and Appendix A) for the Windows x64 profile, excluding Appendix D. Progress is driven vertically by the [Milestone Programs](../../milestones/README.md): each milestone completes one program end to end (Binding, ownership, generation, native execution and required rejections).
 
 - **Generics:** the initial profile monomorphizes (§21.3.1). Generic code sharing is deferred; milestone P22 replaced the existing shared generation path.
 - **Origins and the Contract/type system** (§8, §15) remain complete requirements; implementation limits never narrow them.
@@ -28,7 +28,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 - **P31 IN_PROGRESS:** the unchanged target and all 71 Debug/Release harness checks pass. Search, ordered links, slot reuse, initialization, reverse cleanup and shrink-to-fit compile from `DictionaryStorage.kimi`. Public generic API/capacity migration, nonempty runtime literals and borrowed/nested storage forms remain; the indexing and iteration bridges wait for P27/P28.
 - **P25/P33 paused (IN_PROGRESS):** Program 25 stops at inherited field ownership projection; Program 33 stops at flow-refined member lookup.
 - **Verified implementation HEAD:** `1dca1516`; final Session `20260928-073155-750-session-p28-contracts-final` passes warning-free Debug/Release builds, 13,029 tests per configuration, 872 native O0/O2 executions and 31 Release harnesses (1,635 checks). Evidence is retained under `bin/worktrees/p28-contracts-20260928/bin/verify/`. No NativeAOT run.
-- The program status table is [milestones/README.md](milestones/README.md); product support boundaries are in STATUS. Source authoring or a successful target alone does not complete a milestone.
+- The program status table is [milestones/README.md](../../milestones/README.md); product support boundaries are in STATUS. Source authoring or a successful target alone does not complete a milestone.
 
 ## 4. Milestones (execution order)
 
@@ -63,9 +63,9 @@ P22, P19, P20, P21, P29, P32, P30, P23, P27, P37 and P39 are done. P28 is the ac
 
 ### Toolchain track (after P38, or earlier when instructed)
 
-The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
+The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](../../draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
 
-The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
+The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](../../Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
 
 | ID | Subject | Acceptance |
 | --- | --- | --- |

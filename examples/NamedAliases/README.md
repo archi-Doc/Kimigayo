@@ -6,4 +6,4 @@ Both names apply only to this source document. They do not open members or creat
 new Types. The last call uses the mandatory default alias that opens Kimi.
 
 To use bare `writeLine`, put `alias Kimi.Console` before the executable items.
-See [source aliases](../../spec/18-modules-and-dependencies.md#181-external-references-and-aliases).
+See [source aliases](../../docs/spec/18-modules-and-dependencies.md#181-external-references-and-aliases).

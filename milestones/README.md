@@ -1,9 +1,9 @@
 # Language milestones
 
-Forty independent programs are planned from the current [SPEC](../SPEC.md).
+Forty independent programs are planned from the current [SPEC](../docs/SPEC.md).
 Programs 1–33 have source files; programs 34–40 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
-boundaries are recorded in [STATUS.md](../STATUS.md); expected output alone is
+boundaries are recorded in [STATUS.md](../docs/STATUS.md); expected output alone is
 not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
 verified executable coverage; the status table below distinguishes untested
 programs from attempted builds that failed.
@@ -11,7 +11,7 @@ Milestones 6–9 were originally added without compiler capability checks, build
 or execution; subsequent verification is documented per program below.
 Milestones 10–14 were originally added from the specification without compiler
 capability checks, builds, or execution. Subsequent verification is recorded below
-and in [STATUS.md](../STATUS.md).
+and in [STATUS.md](../docs/STATUS.md).
 
 | Program | Added concepts |
 | --- | --- |
@@ -51,7 +51,7 @@ and in [STATUS.md](../STATUS.md).
 
 ## Program status
 
-As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks and, where a harness exists, its variants/rejections. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -96,26 +96,26 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 10 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 11 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 12 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `Iterator.Item`), O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 13 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25: `Iterator.Item`), O0/O2 variants and required rejections (harness added 2026-09-23); [evidence](../docs/dev/PLAN_HISTORY.md#program20-completion) |
 | 14 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrows) |
-| 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program15-completion) |
-| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrow), O0/O2 variants and rejections; [completion](../PLAN_HISTORY.md#program16-completion) |
-| 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../PLAN_HISTORY.md#program17-completion) |
-| 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../PLAN_HISTORY.md#program18-completion) |
-| 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program19-completion) |
-| 20 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../PLAN_HISTORY.md#program20-completion) |
+| 15 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [completion](../docs/dev/PLAN_HISTORY.md#program15-completion) |
+| 16 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target (re-spelled 2026-09-25 and 2026-09-26: `@follow@uniq` reborrow), O0/O2 variants and rejections; [completion](../docs/dev/PLAN_HISTORY.md#program16-completion) |
+| 17 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and rejections; [evidence](../docs/dev/PLAN_HISTORY.md#program17-completion) |
+| 18 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 composite transfers, variants and rejections; [evidence](../docs/dev/PLAN_HISTORY.md#program18-completion) |
+| 19 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../docs/dev/PLAN_HISTORY.md#program19-completion) |
+| 20 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections; [evidence](../docs/dev/PLAN_HISTORY.md#program20-completion) |
 | 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
-| 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../PLAN_HISTORY.md#program22-completion) |
+| 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../docs/dev/PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
-| 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../PLAN_HISTORY.md#p27-completion). |
+| 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../docs/dev/PLAN_HISTORY.md#programs25-28-authoring). |
+| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../docs/dev/PLAN_HISTORY.md#p27-completion). |
 | 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | IN_PROGRESS | The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references. The harness additionally checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Session verification passes; borrowing entry protocols, parameterized associated Types, LendingIterator and standard storage/adapter migration remain. |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
-| 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../PLAN_HISTORY.md#review-remediation). |
-| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../PLAN_HISTORY.md#p31-kimigayo-library). |
-| 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../PLAN_HISTORY.md#program32-completion). |
+| 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../docs/dev/PLAN_HISTORY.md#review-remediation). |
+| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
+| 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../docs/dev/PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
 | 34 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnresolvedBinding_Kd` at `Kimi.Intrinsics.makeRc`: the rc/arc creation and clone intrinsics have no declarations (PLAN G4). The payload, dependency-carrying payload, consuming `rc/Payload` parameter and `objref` view declarations bind. |
 | 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Node>`: `Weak<S>` is not formed and the Weak/cyclic intrinsics are undeclared (PLAN G4). |
@@ -125,7 +125,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `bin/verify/20260926-225920-160-session-p39-completion`). |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 
-[Restructuring audit](../PLAN_HISTORY.md#programs38-restructure) records source/DLL
+[Restructuring audit](../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
 warnings/errors; 57 alias/syntax tests PASS; 577 checks across the existing
 program 1–12/14 harnesses PASS; program 13 passes two native O0/O2 executions.
@@ -133,14 +133,14 @@ That historical audit covered the 24 sources then present. Later completions
 supersede its failed probes; the table above records current support. Debug,
 full managed regressions and NativeAOT were not run for that restructuring.
 
-Earlier [program 14 regressions](../PLAN_HISTORY.md#program14-completion),
-[units 62–67 audit](../PLAN_HISTORY.md#units62-67-verification) and
-[18–20 authoring probes](../PLAN_HISTORY.md#programs18-20-design) remain historical
+Earlier [program 14 regressions](../docs/dev/PLAN_HISTORY.md#program14-completion),
+[units 62–67 audit](../docs/dev/PLAN_HISTORY.md#units62-67-verification) and
+[18–20 authoring probes](../docs/dev/PLAN_HISTORY.md#programs18-20-design) remain historical
 records of their own inputs. In particular, the old combined program-20 result
 is not evidence for new program 20 or 21. The current table uses the new audit.
 
 Each file is a separate Application; do not combine them into one project.
-Under [single-source input rules](../impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
+Under [single-source input rules](../docs/impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects),
 the intended build/run commands, once the required features are implemented, are:
 
 ```powershell
@@ -159,7 +159,7 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 The current plan has **40 programs**, including **26 programs numbered 15–40**.
 Programs 15–33 are concrete; 34–40 are future source targets. Programs 39 and 40
 were added on 2026-09-26 for the two collection designs that the Place foundation
-leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../PLAN.md#4-milestones-execution-order).
+leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../docs/dev/PLAN.md#4-milestones-execution-order).
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
 estimate. Passing programs 13/14 does not
 establish general Slice, Iterator, callable, or object support.
@@ -168,11 +168,11 @@ Here, core completion means combining the finalized language features and basic
 collections in a useful single Application. Full Package distribution, Mod host
 integration, the test runner, and comprehensive FFI/platform integration are
 separate product work. Unintroduced/deferred features in
-[Appendix D](../spec/appendices/D-deferred-features.md) are excluded, including
+[Appendix D](../docs/spec/appendices/D-deferred-features.md) are excluded, including
 mutable-element Slice, lending iterators, virtual/override members and runtime
 Contract Views. "Complete generics" means the adopted specification, not future
 generic forms. ObjectCallCompatible inference/publication and release checking
-remain subject to the [explicit deferral](../spec/appendices/D-deferred-features.md#objectcallcompatible).
+remain subject to the [explicit deferral](../docs/spec/appendices/D-deferred-features.md#objectcallcompatible).
 
 | Program | Main subject | Intended coverage |
 | --- | --- | --- |
@@ -251,9 +251,9 @@ programs and the exercises below define future targets; they are not an automate
 conformance suite. Companion fixtures and verification scripts belong to the
 subsequent implementation work.
 
-This README owns program design and expected behavior. [PLAN.md](../PLAN.md)
+This README owns program design and expected behavior. [PLAN.md](../docs/dev/PLAN.md)
 continues to own active execution scope, acceptance tracking, dependencies,
-states and exact next actions; [PLAN_HISTORY.md](../PLAN_HISTORY.md) owns run
+states and exact next actions; [PLAN_HISTORY.md](../docs/dev/PLAN_HISTORY.md) owns run
 history. This roadmap does not replace the active target or mark any work done.
 
 ### Verification scopes for programs 22–40
@@ -288,13 +288,13 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 39 / 8, 18, 27 | Generic code over `Collection<s/T>` follows a pair Place to its stored target for every admitted `s`: shared under `value or valueborrow`, exclusive under `owner or uniq`. | Reject an exclusive follow whose admitted set includes `ref`, Take through the followed Place and any layer choice that would differ between instantiations; the followed Place depends on the outer borrow Origin whenever `s` is a borrow. | The Access Effect is fixed per admitted set at definition checking; monomorphized bodies select the owner Place or the referent without a runtime test and without allocation. Written after the G21 decision. |
 | 40 / 27–29, 31 | Borrow two distinct elements of an Array exclusively at once through a splitting operation, update both, and observe `None` for equal indices. | Reject two `@uniq` element borrows of one collection, conflicting whole-collection access while a split part is live, and retention of a part after the collection is moved or resized. | Region splitting through `Kimi.Storage` in O(1) without allocation; both child Loans end before the parent is reused. Written after the G22 decision. |
 
-Owning clauses: [Properties](../spec/11-properties.md),
-[generics and Contracts](../spec/08-generics-constraints-and-contracts.md),
-[sequences and collections](../spec/04-arrays-indexing-and-slices.md),
-[interpolation](../spec/12-expressions.md#1233-interpolation-formatting),
-[comparison and objects](../spec/13-operators-and-assignment.md),
-[generation/runtime representation](../impl/21-layout-runtime-and-code-generation.md),
-and [startup/static storage](../spec/22-core-execution-and-foreign-functions.md).
+Owning clauses: [Properties](../docs/spec/11-properties.md),
+[generics and Contracts](../docs/spec/08-generics-constraints-and-contracts.md),
+[sequences and collections](../docs/spec/04-arrays-indexing-and-slices.md),
+[interpolation](../docs/spec/12-expressions.md#1233-interpolation-formatting),
+[comparison and objects](../docs/spec/13-operators-and-assignment.md),
+[generation/runtime representation](../docs/impl/21-layout-runtime-and-code-generation.md),
+and [startup/static storage](../docs/spec/22-core-execution-and-foreign-functions.md).
 These scopes partition work; neither source brevity nor one passing representative
 program certifies the full owning chapter. Package/Mod/test-runner/FFI integration
 remains separate product work, as defined above.
@@ -307,7 +307,7 @@ Expected stdout:
 Hello, world!
 ```
 
-Focus: [startup and console output](../spec/22-core-execution-and-foreign-functions.md).
+Focus: [startup and console output](../docs/spec/22-core-execution-and-foreign-functions.md).
 
 Milestone 1 uses the existing compiler implementation without source changes.
 With the pinned Windows x64 LLVM toolchain installed, reproduce its full checks:
@@ -341,8 +341,8 @@ Change `expected` from `55` to `54` to take the Abort branch. The process must
 emit an Abort diagnostic to stderr, exit with code 1, and never print `Done.`.
 Abort is process termination, not a catchable exception.
 
-Focus: [control flow](../spec/14-control-flow.md) and
-[explicit Abort](../spec/17-failure-handling.md#173-abort-termination).
+Focus: [control flow](../docs/spec/14-control-flow.md) and
+[explicit Abort](../docs/spec/17-failure-handling.md#173-abort-termination).
 
 Milestone 2 is verified through native execution, including the `expected = 54`
 variant. Reproduce with the pinned Windows x64 toolchain:
@@ -382,8 +382,8 @@ Change `sumTo(10)` to `sumTo(-1)` to exercise Abort. Neither deferred message
 runs, even though both defers have been registered: Abort does not unwind.
 Normal runs must not mix explicit `main` with top-level executable statements.
 
-Focus: [functions](../spec/07-functions-and-callable-values.md) and
-[cleanup and result delivery](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+Focus: [functions](../docs/spec/07-functions-and-callable-values.md) and
+[cleanup and result delivery](../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
 
 Milestone 3 passes with the existing compiler, including the explicit Abort
 implementation completed for Milestone 2. With the pinned Windows x64 toolchain:
@@ -423,9 +423,9 @@ As a separate rejection exercise, add `counter.value` after `finish(counter)`:
 reading a moved value must be rejected. A struct with user-defined `deinit`
 cannot opt into Copy or permit Partial Move that makes it incomplete.
 
-Focus: [construction](../spec/06-declarations-and-containers.md#623-constructors),
-[Move](../spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
-[destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+Focus: [construction](../docs/spec/06-declarations-and-containers.md#623-constructors),
+[Move](../docs/spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
+[destruction](../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
 
 Reproduce Milestone 4 with the pinned Windows x64 toolchain:
 
@@ -476,9 +476,9 @@ Try each of these independently as a compile-time rejection exercise:
 - Replace `borrowCounter`'s body with construction of a local Counter followed
   by `return local@ref`: a local lifetime cannot satisfy the caller's Origin.
 
-Focus: [Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
-[Loans and lifetimes](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
-and [destruction lifetime checking](../spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
+Focus: [Origins](../docs/spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
+[Loans and lifetimes](../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
+and [destruction lifetime checking](../docs/spec/15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking).
 
 Milestone 5 is verified through native execution. Reproduce with the pinned
 Windows x64 toolchain:
@@ -516,9 +516,9 @@ Change `yield found * 10` to `yield 0` to take the do's early false exit and
 the final Abort. An unlabeled `exit` would skip the `do` rather than return its
 result. `require` is an ordinary statement, distinct from test-only `$require`.
 
-Focus: [loop results](../spec/14-control-flow.md#1463-loop),
-[transfer targets](../spec/14-control-flow.md#1452-target-lookup),
-and [require](../spec/14-control-flow.md#1411-require-statement).
+Focus: [loop results](../docs/spec/14-control-flow.md#1463-loop),
+[transfer targets](../docs/spec/14-control-flow.md#1452-target-lookup),
+and [require](../docs/spec/14-control-flow.md#1411-require-statement).
 
 Milestone 6 uses the existing compiler implementation without compiler source
 changes. Reproduce its complete checks with the pinned Windows x64 toolchain:
@@ -571,9 +571,9 @@ As separate rejection exercises, change the outer length to 2 without removing
 a row, or attempt to write an element through the Slice. To exercise runtime
 bounds failure, change the final `matrix[2][2]` check to `matrix[3][2]`.
 
-Focus: [arrays](../spec/04-arrays-indexing-and-slices.md),
-[iteration acquisition](../spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
-and [transfer cleanup](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+Focus: [arrays](../docs/spec/04-arrays-indexing-and-slices.md),
+[iteration acquisition](../docs/spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
+and [transfer cleanup](../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
 
 Milestone 7 is verified through native execution. Reproduce with the pinned
 Windows x64 toolchain:
@@ -621,9 +621,9 @@ As separate rejection exercises, reuse `selected` after `selected.take()`, or
 add a `deinit` to Box while retaining its generic extracting `take`: the latter
 cannot permit a Non-Copy field Move that makes a destructor-bearing Box incomplete.
 
-Focus: [nested containers](../spec/06-declarations-and-containers.md#611-root-and-nested-containers),
-[generic checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
-and [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
+Focus: [nested containers](../docs/spec/06-declarations-and-containers.md#611-root-and-nested-containers),
+[generic checking](../docs/spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
+and [partial Move](../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
 
 ## Milestone 9: a generic search pipeline
 
@@ -655,10 +655,10 @@ As separate rejection exercises, remove `T is Copy`, use a mismatched explicit
 length in the first call, or remove the unguarded Found fallback. The guarded
 Found arm alone does not prove coverage of every Found value.
 
-Focus: [function length parameters](../spec/04-arrays-indexing-and-slices.md#44-function-length-parameters),
-[function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
-[enum results](../spec/06-declarations-and-containers.md#63-enums), and
-[Origins](../spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
+Focus: [function length parameters](../docs/spec/04-arrays-indexing-and-slices.md#44-function-length-parameters),
+[function expressions](../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
+[enum results](../docs/spec/06-declarations-and-containers.md#63-enums), and
+[Origins](../docs/spec/15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision).
 
 Reproduce the Milestone 9 integration checks with the pinned Windows x64 toolchain:
 
@@ -697,9 +697,9 @@ a coverage error, or replace the array's Stop input with Skip to reach 112 and
 the final Abort.
 On Abort the main defer does not run.
 
-Focus: [patterns and matching](../spec/14-control-flow.md#148-match-expressions-and-patterns),
-[transfer targets](../spec/14-control-flow.md#1452-target-lookup), and
-[conditional conformance](../spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
+Focus: [patterns and matching](../docs/spec/14-control-flow.md#148-match-expressions-and-patterns),
+[transfer targets](../docs/spec/14-control-flow.md#1452-target-lookup), and
+[conditional conformance](../docs/spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
 
 Reproduce the complete program checks with the pinned Windows x64 toolchain:
 
@@ -733,7 +733,7 @@ Type or length. The generic forwarding call must preserve specialization selecti
 
 This static-member step uses only a literal initializer and Copy reads, with no
 mutation, user-defined cleanup, or initialization dependencies. It still obeys
-[per-slot first-access initialization](../spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown);
+[per-slot first-access initialization](../docs/spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown);
 constant folding may remove machinery only when it preserves the specified
 behavior. It does not establish coverage of general static initialization.
 
@@ -754,8 +754,8 @@ As a source exercise, remove the explicit specialization and change the expected
 Tuple to `(3, 3, 2)`. Do not add a specialization directive: `specialize func`
 selects a source implementation, while baseline sharing is a compiler policy.
 
-Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [generic code generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+Focus: [full specialization](../docs/spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
+and [generic code generation](../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 Reproduce the current executable integration with the pinned Windows x64 toolchain:
 
@@ -798,9 +798,9 @@ binding to let while keeping its exclusive call, or convert next to a common
 Removing offset from the outer factory's explicit capture list must also fail;
 the inner closure cannot bypass the enclosing capture boundary.
 
-Focus: [captures and calls](../spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable constraints](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [closure generation](../impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+Focus: [captures and calls](../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable constraints](../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+and [closure generation](../docs/impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
 
 ## Milestone 13: a Slice-backed Iterator
 
@@ -828,9 +828,9 @@ changing next's result, or Move samples while first still has a later use.
 Changing the next result Origin to self would break the advertised external
 Element contract and the retained-reference use case.
 
-Focus: [Kimi iteration contracts](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
-[associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
-and [Slice iteration](../spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
+Focus: [Kimi iteration contracts](../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
+[associated Types](../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
+and [Slice iteration](../docs/spec/04-arrays-indexing-and-slices.md#467-slice-iteration-and-nested-origins).
 
 ## Milestone 14: an object-backed processing pipeline
 
@@ -864,10 +864,10 @@ callback's final use, reuse accumulator after capture into complete, or call
 complete twice. Change the acceptance limit from 3 to 4 to process 100 as well:
 the accepted-count check then Aborts and skips ordinary cleanup.
 
-Focus: [object creation](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
-[object calls](../spec/12-expressions.md#1243-object-member-calls),
-[Callable contracts](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [destruction](../spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+Focus: [object creation](../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
+[object calls](../docs/spec/12-expressions.md#1243-object-member-calls),
+[Callable contracts](../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+and [destruction](../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
 
 Verified program-14 reproduction (build the selected compiler configuration first):
 
@@ -878,7 +878,7 @@ Verified program-14 reproduction (build the selected compiler configuration firs
 Debug is also supported. The script checks the unchanged target, O0/O2 copies,
 input/name/limit variants and rejected ownership/call variants. It writes reports
 under `bin/milestone14/<configuration>/<run-id>/` and does not run NativeAOT.
-[STATUS](../STATUS.md) and [execution evidence](../PLAN_HISTORY.md#program14-completion)
+[STATUS](../docs/STATUS.md) and [execution evidence](../docs/dev/PLAN_HISTORY.md#program14-completion)
 record the verified source state and remaining object/generic boundaries.
 
 ## Milestone 15: ownership across control-flow joins
@@ -931,9 +931,9 @@ through direct execution and both CLI run forms. Builds verify LLVM before
 linking. Debug is also supported; NativeAOT is not run. Source/compiler hashes
 and reports are saved under `bin/milestone15/<configuration>/<run-id>/`.
 
-Focus: [initialization and Move](../spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
-[Loan conflicts](../spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
-and [scope-exit cleanup](../spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
+Focus: [initialization and Move](../docs/spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
+[Loan conflicts](../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
+and [scope-exit cleanup](../docs/spec/16-scope-exit-and-destruction.md#162-scope-exit-destruction).
 This target does not alone close arbitrary CFG, divergent cleanup or effect analysis.
 
 ## Milestone 16: forwarding external Origins
@@ -975,10 +975,10 @@ and a Missing-path variant handled without Abort. Those variants extend coverage
 this program alone does not certify the full Origin solver, variance, recursive
 dependencies or universal-region checking.
 
-Focus: [Origin intersections](../spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
-[abstract Origins](../spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
-[call propagation](../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
-and [reborrowing](../spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting).
+Focus: [Origin intersections](../docs/spec/15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection),
+[abstract Origins](../docs/spec/15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations),
+[call propagation](../docs/spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation),
+and [reborrowing](../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting).
 
 ## Milestone 17: repair, replacement and ordered cleanup
 
@@ -1034,13 +1034,13 @@ requirements.
 Each run checks the unchanged target, byte-identical O0/O2 renamed copies,
 name/value/implicit/typed/literal-index variants, and nine rejection cases at both
 optimization levels. Reports include compiler/source hashes, exact output and
-exit checks; [the completion record](../PLAN_HISTORY.md#program17-completion)
+exit checks; [the completion record](../docs/dev/PLAN_HISTORY.md#program17-completion)
 describes the managed and native regression scope. NativeAOT is not used.
 
-Focus: [partial Move](../spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move),
-[whole-value updates](../spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),
-[secured results](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers),
-and [aggregate cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+Focus: [partial Move](../docs/spec/15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move),
+[whole-value updates](../docs/spec/15-ownership-and-lifetime-analysis.md#157-whole-value-updates),
+[secured results](../docs/spec/16-scope-exit-and-destruction.md#1622-results-and-transfers),
+and [aggregate cleanup](../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
 
 ## Milestone 18: generic composite values and destruction
 
@@ -1096,9 +1096,9 @@ seven concrete entries with fixed scratch reservations. General shared
 ABI/frame/resource guarantees remain program 22's broader acceptance criteria;
 program 18 does not require later dedicated features.
 
-Focus: [generic body checking](../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
-[generic generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
-and [secured results and cleanup](../spec/16-scope-exit-and-destruction.md#1622-results-and-transfers).
+Focus: [generic body checking](../docs/spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations),
+[generic generation](../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation),
+and [secured results and cleanup](../docs/spec/16-scope-exit-and-destruction.md#1622-results-and-transfers).
 
 ## Milestone 19: Contracts, associated Types and conditional conformance
 
@@ -1158,12 +1158,12 @@ and resource limits belong to program 22.
 
 Debug/Release full suites pass 11,342 tests each; all existing milestone harnesses
 (1–12 and 14–19) pass in Release, and program 13 passes exact-source O0/O2 probes.
-Reports and identities are linked from the [completion record](../PLAN_HISTORY.md#program19-completion).
+Reports and identities are linked from the [completion record](../docs/dev/PLAN_HISTORY.md#program19-completion).
 No NativeAOT verification was run.
 
-Focus: [associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
-[implementation matching](../spec/08-generics-constraints-and-contracts.md#845-implementation-matching),
-and [conditional conformance](../spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
+Focus: [associated Types](../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
+[implementation matching](../docs/spec/08-generics-constraints-and-contracts.md#845-implementation-matching),
+and [conditional conformance](../docs/spec/08-generics-constraints-and-contracts.md#848-conditional-conformance).
 
 ## Milestone 20: inference and ordinary defaults
 
@@ -1205,9 +1205,9 @@ owned/default-result dependencies and rejected Move/retention cases in focused
 fixtures. Explicit specialization belongs to 21; generation budgets belong to 22.
 The canonical program does not attempt to close the entire inference/default family.
 
-Focus: [inference](../spec/10-overload-resolution-and-inference.md#108-generic-argument-inference),
-[Origin inference](../spec/15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference),
-and [argument preparation](../spec/07-functions-and-callable-values.md#72-parameters-and-defaults).
+Focus: [inference](../docs/spec/10-overload-resolution-and-inference.md#108-generic-argument-inference),
+[Origin inference](../docs/spec/15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference),
+and [argument preparation](../docs/spec/07-functions-and-callable-values.md#72-parameters-and-defaults).
 
 ## Milestone 21: explicit full specialization and inherited contracts
 
@@ -1252,8 +1252,8 @@ lifetimes without changing selection. Inspect direct and forwarded selected
 Member Identities. Program 22 separately checks concrete entry ABI and finite
 generation limits; this program introduces no partial/conditional specialization.
 
-Focus: [full specialization](../spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
-and [implementation selection and generation](../impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
+Focus: [full specialization](../docs/spec/08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization)
+and [implementation selection and generation](../docs/impl/21-layout-runtime-and-code-generation.md#213-generic-code-generation).
 
 ## Milestone 22: concrete generic generation
 
@@ -1288,9 +1288,9 @@ transitional shared fallback. Allocation measurements belong to implementation
 completion. Shared contexts, scratch frames and optional sharing-budget tests are
 deferred, not acceptance conditions of this initial profile.
 
-Focus: [generation policy](../impl/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
-[finite generation](../impl/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
-and [calls and frames](../impl/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
+Focus: [generation policy](../docs/impl/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions),
+[finite generation](../docs/impl/21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging),
+and [calls and frames](../docs/impl/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi).
 
 ## Milestone 23: basic Copy Properties
 
@@ -1330,10 +1330,10 @@ Debug/Release full suites each pass 12,440 tests. Evidence is in
 regression portion was cancelled at the user's request, and target verification
 finished separately. No later-program implementation was started.
 
-Focus: [standard operations](../spec/11-properties.md#111-standard-access-and-acquisition),
-[accessor functions](../spec/11-properties.md#112-accessor-functions),
-[construction](../spec/11-properties.md#1131-construction-and-destruction),
-and [assignment](../spec/13-operators-and-assignment.md#137-assignment).
+Focus: [standard operations](../docs/spec/11-properties.md#111-standard-access-and-acquisition),
+[accessor functions](../docs/spec/11-properties.md#112-accessor-functions),
+[construction](../docs/spec/11-properties.md#1131-construction-and-destruction),
+and [assignment](../docs/spec/13-operators-and-assignment.md#137-assignment).
 
 ## Milestone 24: ownership-bearing Properties
 
@@ -1367,9 +1367,9 @@ field, use of a consumed Parcel, direct Move/exclusive borrow through the custom
 setter, and incompatible requirement operations. Verify exact destruction counts,
 temporary lifetimes and retained witness identity without hidden copies.
 
-Focus: [Non-Copy setters](../spec/11-properties.md#1124-non-copy-custom-setters),
-[getter temporaries](../spec/11-properties.md#1123-getter-results-and-temporaries),
-and [standard witnesses](../spec/11-properties.md#1142-standard-operation-witnesses).
+Focus: [Non-Copy setters](../docs/spec/11-properties.md#1124-non-copy-custom-setters),
+[getter temporaries](../docs/spec/11-properties.md#1123-getter-results-and-temporaries),
+and [standard witnesses](../docs/spec/11-properties.md#1142-standard-operation-witnesses).
 
 ## Milestone 25: inheritance, base storage and layered cleanup
 
@@ -1407,10 +1407,10 @@ storage and Type members require no ObjectCallCompatible publication; borrowed
 method/custom-accessor projection remains subject to that separate deferred proof
 boundary and is not silently assumed by this program.
 
-Focus: [inheritance](../spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
-[constructors](../spec/06-declarations-and-containers.md#623-constructors),
-[member projection](../spec/09-names-signatures-and-access.md#951-base-subobject-receiver-projection),
-and [layered cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+Focus: [inheritance](../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
+[constructors](../docs/spec/06-declarations-and-containers.md#623-constructors),
+[member projection](../docs/spec/09-names-signatures-and-access.md#951-base-subobject-receiver-projection),
+and [layered cleanup](../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
 
 ## Milestone 26: general closures, Callable and owning erasure
 
@@ -1445,10 +1445,10 @@ non-Owned or exclusive/consuming-only environments. Inspect concrete entries,
 indirect-call ABI and exact remaining-capture cleanup. Measure no per-call
 environment allocation; account for permitted erasure allocation separately.
 
-Focus: [captures and invocation](../spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-[closure dependencies](../spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
-and [environment/erasure layout](../impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
+Focus: [captures and invocation](../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable](../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+[closure dependencies](../docs/spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
+and [environment/erasure layout](../docs/impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
 
 ## Milestone 27: general Slice, Index and Range
 
@@ -1503,12 +1503,12 @@ specification, and a conformance that omits `indexUniq` while claiming
 `pair[0] = ...`; the exclusive receiver of `indexUniq` is reserved before the key
 is evaluated (§15.6.7). The Place result ABI is the reference ABI (§21.2).
 
-Focus: [bounds and failure](../spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure),
-[Slice lifetimes](../spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
-[element results](../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
-[Indexable Contracts](../spec/04-arrays-indexing-and-slices.md#469-indexable-contracts),
-[Place results](../spec/07-functions-and-callable-values.md#711-place-results),
-and [required costs](../spec/04-arrays-indexing-and-slices.md#468-representation-and-performance).
+Focus: [bounds and failure](../docs/spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure),
+[Slice lifetimes](../docs/spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
+[element results](../docs/spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
+[Indexable Contracts](../docs/spec/04-arrays-indexing-and-slices.md#469-indexable-contracts),
+[Place results](../docs/spec/07-functions-and-callable-values.md#711-place-results),
+and [required costs](../docs/spec/04-arrays-indexing-and-slices.md#468-representation-and-performance).
 
 ## Milestone 28: user Iterable/Iterator and element responsibilities
 
@@ -1547,10 +1547,10 @@ retained requirement mappings, short `next` receiver Loans and exact yielded/
 unyielded cleanup. No hidden clone or array of iteration values is permitted;
 measure O(1) iterator state and no per-element management allocation.
 
-Focus: [iteration acquisition](../spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
-[associated Types](../spec/08-generics-constraints-and-contracts.md#843-associated-types),
-[Kimi protocol requirements](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
-and [component cleanup](../spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
+Focus: [iteration acquisition](../docs/spec/14-control-flow.md#1462-iteration-protocol-and-acquisition),
+[associated Types](../docs/spec/08-generics-constraints-and-contracts.md#843-associated-types),
+[Kimi protocol requirements](../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations),
+and [component cleanup](../docs/spec/16-scope-exit-and-destruction.md#1632-field-cleanup).
 
 ## Milestone 29: dynamic Array growth, mutation and owning iteration
 
@@ -1601,10 +1601,10 @@ validation, emission and whole-pipeline probes allocate zero bytes. Zero-sized
 elements and shared string iteration, which are outside the verified generation
 boundary, are rejected by ownership analysis with `UnsupportedOwnership_Kd`.
 
-Focus: [Array operations](../spec/04-arrays-indexing-and-slices.md#472-array-operations),
-[capacity](../spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
-[Loans and effects](../spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects)
-and [commit and destruction order](../spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
+Focus: [Array operations](../docs/spec/04-arrays-indexing-and-slices.md#472-array-operations),
+[capacity](../docs/spec/04-arrays-indexing-and-slices.md#474-capacity-and-allocation),
+[Loans and effects](../docs/spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects)
+and [commit and destruction order](../docs/spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
 
 ## Milestone 30: comparison Contracts and composed mappings
 
@@ -1641,12 +1641,12 @@ Composite comparisons preserve witness effects and short-circuit order; floating
 Tuple operators retain unordered NaN results, while Contract equality is reflexive.
 The measured warm Tuple-operator Binding and native floating-composition workloads
 allocate zero bytes. Debug/Release full suites and all 26 Release harnesses now pass; see the
-[completion session](../PLAN_HISTORY.md#review-remediation). The [earlier failed probes](../PLAN_HISTORY.md#p30-session1) are historical evidence.
+[completion session](../docs/dev/PLAN_HISTORY.md#review-remediation). The [earlier failed probes](../docs/dev/PLAN_HISTORY.md#p30-session1) are historical evidence.
 
-Focus: [comparison mapping](../spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
-[floating key equality](../spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
-[Contracts](../spec/08-generics-constraints-and-contracts.md), and
-[required declarations](../spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
+Focus: [comparison mapping](../docs/spec/13-operators-and-assignment.md#1341-contract-comparison-mapping),
+[floating key equality](../docs/spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
+[Contracts](../docs/spec/08-generics-constraints-and-contracts.md), and
+[required declarations](../docs/spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations).
 
 ## Milestone 31: Dictionary keys, insertion order and entry ownership
 
@@ -1694,11 +1694,11 @@ allocations for empty construction, lookup, duplicate/absence, replacement and
 full-capacity churn, plus the specified management bounds; unchanged capacity
 alone is not evidence of allocation-free execution. No public Hash is required.
 
-Focus: [Dictionary operations](../spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement),
-[duplicate keys](../spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
-[Loans and effects](../spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects),
-[cleanup](../spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order)
-and [required costs](../spec/04-arrays-indexing-and-slices.md#477-performance-and-extension-boundary).
+Focus: [Dictionary operations](../docs/spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement),
+[duplicate keys](../docs/spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys),
+[Loans and effects](../docs/spec/04-arrays-indexing-and-slices.md#475-loans-retained-dependencies-and-call-effects),
+[cleanup](../docs/spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order)
+and [required costs](../docs/spec/04-arrays-indexing-and-slices.md#477-performance-and-extension-boundary).
 
 ## Milestone 33: exclusive object views and complete dynamic destruction
 
@@ -1741,12 +1741,12 @@ the source makes no address-equality claim. Direct standard Fields and complete
 Sealed projections require no deferred ObjectCallCompatible inference. Runtime
 Contract Views and checked-cast syntax remain outside this program.
 
-Focus: [object views](../spec/03-types-and-values.md#335-object-views-and-identity),
-[upcasts](../spec/13-operators-and-assignment.md#1357-object-upcasts),
-[runtime tests](../spec/13-operators-and-assignment.md#1361-runtime-is-tests),
-[refinement](../spec/14-control-flow.md#1410-type-refinement),
-[payload projection](../spec/13-operators-and-assignment.md#13551-follow)
-and [dynamic release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
+Focus: [object views](../docs/spec/03-types-and-values.md#335-object-views-and-identity),
+[upcasts](../docs/spec/13-operators-and-assignment.md#1357-object-upcasts),
+[runtime tests](../docs/spec/13-operators-and-assignment.md#1361-runtime-is-tests),
+[refinement](../docs/spec/14-control-flow.md#1410-type-refinement),
+[payload projection](../docs/spec/13-operators-and-assignment.md#13551-follow)
+and [dynamic release](../docs/spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ## Milestone 34: shared object ownership
 
@@ -1776,10 +1776,10 @@ allocation or payload copy, single destruction and `arc` atomic ordering through
 internal tests; count-overflow Aborts use separate probes. No source concurrency
 is introduced.
 
-Focus: [object ownership creation and sharing](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
-[payload follow](../spec/13-operators-and-assignment.md#13551-follow),
-[object views and identity](../spec/03-types-and-values.md#335-object-views-and-identity)
-and [object release](../spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
+Focus: [object ownership creation and sharing](../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
+[payload follow](../docs/spec/13-operators-and-assignment.md#13551-follow),
+[object views and identity](../docs/spec/03-types-and-values.md#335-object-views-and-identity)
+and [object release](../docs/spec/16-scope-exit-and-destruction.md#1633-ownership-object-release-and-reentry).
 
 ## Milestone 35: Weak references and cyclic construction
 
@@ -1809,9 +1809,9 @@ inside the builder publishes nothing. Inspect separate payload/object/table
 lifetimes, allocation-free `upgrade`/`clone`, the final table release and the
 `arc` upgrade/final-release race internally.
 
-Focus: [Weak reference values](../spec/03-types-and-values.md#322-weak-reference-values),
-[Weak reference operations](../spec/13-operators-and-assignment.md#1359-weak-reference-operations)
-and [cyclic construction](../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
+Focus: [Weak reference values](../docs/spec/03-types-and-values.md#322-weak-reference-values),
+[Weak reference operations](../docs/spec/13-operators-and-assignment.md#1359-weak-reference-operations)
+and [cyclic construction](../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
 
 ## Milestone 36: general static storage
 
@@ -1847,10 +1847,10 @@ alone; initialization cycles and access to destroyed storage during shutdown Abo
 in separate inputs. Inspect per-key state/address/destruction identity and
 preserved keys across body sharing and Origin erasure.
 
-Focus: [static storage](../spec/11-properties.md#1132-static-storage),
-[`static` and `Owned`](../spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned),
-[static initialization and shutdown](../spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown)
-and [inherited environments](../spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments).
+Focus: [static storage](../docs/spec/11-properties.md#1132-static-storage),
+[`static` and `Owned`](../docs/spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned),
+[static initialization and shutdown](../docs/spec/22-core-execution-and-foreign-functions.md#2223-os-entry-static-initialization-and-shutdown)
+and [inherited environments](../docs/spec/22-core-execution-and-foreign-functions.md#2224-static-storage-in-inherited-environments).
 
 ## Milestone 37: integrated order processing
 
@@ -1888,11 +1888,11 @@ Array (`MovedPlace_Kd`). Alternate values, an empty Dictionary result, Abort pat
 and the workload's allocation/complexity observations remain for P37; no new
 language mechanism is introduced.
 
-Focus: [function expressions](../spec/07-functions-and-callable-values.md#76-function-expressions),
-[Callable constraints](../spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-[Slice operations](../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
-[Dictionary operations](../spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement)
-and [iteration](../spec/14-control-flow.md#146-iteration-constructs).
+Focus: [function expressions](../docs/spec/07-functions-and-callable-values.md#76-function-expressions),
+[Callable constraints](../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
+[Slice operations](../docs/spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
+[Dictionary operations](../docs/spec/04-arrays-indexing-and-slices.md#473-dictionary-operations-and-indexed-replacement)
+and [iteration](../docs/spec/14-control-flow.md#146-iteration-constructs).
 
 ## Milestone 38: integrated device registry
 
@@ -1930,12 +1930,12 @@ accessor through an open view without ObjectCallCompatible, and a static Weak
 whose payload borrows a local. Check identity across replacement, the single
 destruction of each object and the shutdown release of the registry.
 
-Focus: [Properties](../spec/11-properties.md),
-[inheritance](../spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
-[object views](../spec/03-types-and-values.md#335-object-views-and-identity),
-[Weak operations](../spec/13-operators-and-assignment.md#1359-weak-reference-operations),
-[static storage](../spec/11-properties.md#1132-static-storage)
-and [UTF-8 formatting](../spec/utf8-formatting.md).
+Focus: [Properties](../docs/spec/11-properties.md),
+[inheritance](../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
+[object views](../docs/spec/03-types-and-values.md#335-object-views-and-identity),
+[Weak operations](../docs/spec/13-operators-and-assignment.md#1359-weak-reference-operations),
+[static storage](../docs/spec/11-properties.md#1132-static-storage)
+and [UTF-8 formatting](../docs/spec/utf8-formatting.md).
 
 ## Milestone 39: Semantics-generic follow
 
@@ -1965,10 +1965,10 @@ or `unsafe` Semantics, and a result that drops the outer borrow's dependency.
 Inspect that monomorphized bodies select the owner Place or the referent without a
 runtime test or allocation.
 
-Focus: [reference-path selection](../spec/03-types-and-values.md#341-reference-path-selection),
-[slots and projections](../spec/08-generics-constraints-and-contracts.md#811-slots-and-projections),
-[generic access effects](../spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
-[follow](../spec/13-operators-and-assignment.md#13551-follow) and the proposal
+Focus: [reference-path selection](../docs/spec/03-types-and-values.md#341-reference-path-selection),
+[slots and projections](../docs/spec/08-generics-constraints-and-contracts.md#811-slots-and-projections),
+[generic access effects](../docs/spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
+[follow](../docs/spec/13-operators-and-assignment.md#13551-follow) and the proposal
 `draft/Design/2026-09-26 Semantics-Generic Follow.md`, which owns the pending decision.
 
 ### Programs 22–24 authoring verification (2026-09-22)
@@ -1982,7 +1982,7 @@ rejected at Binding with `InvalidInlineLayout_Kd`); its remaining separate check
 finite substitution sets (bounded at 1024 contexts per body), is covered by a unit test. Programs 23
 and 24 fail final Binding; no native output/exit test ran for them, and their
 expected outputs and separate checks above are targets, not passing test claims.
-See [session evidence](../PLAN_HISTORY.md#programs22-24-authoring).
+See [session evidence](../docs/dev/PLAN_HISTORY.md#programs22-24-authoring).
 
 ### Programs 25–28 authoring verification (2026-09-24)
 
@@ -1996,7 +1996,7 @@ builds; the final source catalog/alias checks pass 58 tests in each configuratio
 No new milestone completion, rejection-harness or allocation evidence is claimed.
 Existing native harness results retain their prior scope. Source/compiler hashes,
 commands, diagnostics and logs are recorded in the
-[authoring session](../PLAN_HISTORY.md#programs25-28-authoring).
+[authoring session](../docs/dev/PLAN_HISTORY.md#programs25-28-authoring).
 
 ### Programs 31 and 33 authoring verification (2026-09-24)
 
@@ -2009,7 +2009,7 @@ native execution. Their native tests are NOT_RUN, and expected output above is
 specification-derived. P31/P33 remain TODO, with no new native harness, rejection
 or allocation evidence; existing harness results retain their prior scope.
 Commands, source/compiler hashes and diagnostics are in the
-[authoring session](../PLAN_HISTORY.md#programs31-33-authoring).
+[authoring session](../docs/dev/PLAN_HISTORY.md#programs31-33-authoring).
 
 ### Programs 34–39 authoring verification (2026-09-27)
 
@@ -2023,7 +2023,7 @@ pending programs is specification-derived (Program 39: proposal-derived), not a
 passing test claim, and their native tests are NOT_RUN. Program 37's Release
 harness, allocation observations and remaining separate checks are P37 scope.
 Catalog/alias checks and both full suites pass in the
-[authoring session](../PLAN_HISTORY.md#programs34-39-authoring).
+[authoring session](../docs/dev/PLAN_HISTORY.md#programs34-39-authoring).
 
 For all unmodified programs, successful output lines end with LF, stderr is empty,
 and normal termination returns exit code 0. Abort variants skip any remaining

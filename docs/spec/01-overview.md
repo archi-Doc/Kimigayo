@@ -6,7 +6,7 @@
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-This specification defines the intended language. The [implementation specification](../IMPLEMENTATION.md) defines the build, runtime and code-generation contracts and the compiler requirements of the initial implementation, and [STATUS.md](../STATUS.md) records what is implemented; these are separate concerns.
+This specification defines the intended language. The [implementation specification](../IMPL.md) defines the build, runtime and code-generation contracts and the compiler requirements of the initial implementation, and [STATUS.md](../STATUS.md) records what is implemented; these are separate concerns.
 
 Kimigayo puts consistency and language quality ahead of compatibility between versions. A reproducible build must pin the compiler build, sources, dependencies and configuration; a language-version label alone does not identify a pre-alpha compiler.
 
