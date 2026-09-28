@@ -1,0 +1,237 @@
+{
+  "name": "kimi-ext",
+  "publisher": "local",
+  "displayName": "Kimi Extension",
+  "description": "Kimi language diagnostics, build, run, and check commands for Visual Studio Code.",
+  "version": "0.0.7",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/archi-Doc/Kimigayo.git",
+    "directory": "kimi-ext"
+  },
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onDebugResolve:kimi"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "kimi",
+        "label": "Kimi (Run Without Debugging)",
+        "languages": [
+          "kimi",
+          "kimiproj"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Optional .kimi or .kimiproj path, absolute or relative to the launch configuration's workspace folder. Omit to select an unambiguous target automatically."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "kimi",
+            "request": "launch",
+            "name": "Kimi: Build and Run",
+            "noDebug": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Kimi: Build and Run (no debugging)",
+            "body": {
+              "type": "kimi",
+              "request": "launch",
+              "name": "Kimi: Build and Run",
+              "noDebug": true
+            }
+          }
+        ]
+      }
+    ],
+    "languages": [
+      {
+        "id": "kimi",
+        "aliases": [
+          "Kimi",
+          "kimi"
+        ],
+        "extensions": [
+          ".kimi"
+        ]
+      },
+      {
+        "id": "kimiproj",
+        "aliases": [
+          "Kimi Project",
+          "kimiproj"
+        ],
+        "extensions": [
+          ".kimiproj"
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Kimi",
+      "properties": {
+        "kimi.serverPath": {
+          "type": "string",
+          "default": "Kimi.exe",
+          "scope": "machine",
+          "description": "Absolute path to the Kimi executable, or an executable name on PATH. Used for language diagnostics and build/run/check commands. The language server restarts automatically when this setting changes."
+        },
+        "kimi.runBuilds": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "description": "Enable for current Kimi executables whose run command builds before running. Build and Run then saves inputs and invokes run once, without a separate build. Run also saves inputs in this mode. Leave disabled for older run-only executables."
+        },
+        "kimi.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace language server communication in the Kimi output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "kimi.restartServer",
+        "title": "Kimi: Restart Language Server"
+      },
+      {
+        "command": "kimi.build",
+        "title": "Kimi: Build",
+        "enablement": "isWorkspaceTrusted",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "kimi.run",
+        "title": "Kimi: Run",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "kimi.buildAndRun",
+        "title": "Kimi: Build and Run",
+        "enablement": "isWorkspaceTrusted",
+        "icon": "$(play)"
+      },
+      {
+        "command": "kimi.check",
+        "title": "Kimi: Check",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "kimi.buildWithTarget",
+        "title": "Kimi: Select Target and Build",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "kimi.runWithTarget",
+        "title": "Kimi: Select Target and Run",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "kimi.buildAndRunWithTarget",
+        "title": "Kimi: Select Target and Build and Run",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "kimi.checkWithTarget",
+        "title": "Kimi: Select Target and Check",
+        "enablement": "isWorkspaceTrusted"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "kimi.commands",
+        "label": "Kimi"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "kimi.buildAndRun",
+          "when": "resourceScheme == file && (resourceExtname == .kimi || resourceExtname == .kimiproj)",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "kimi.commands",
+          "when": "resourceScheme == file && (resourceExtname == .kimi || resourceExtname == .kimiproj)",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "submenu": "kimi.commands",
+          "when": "resourceScheme == file && (resourceExtname == .kimi || resourceExtname == .kimiproj)",
+          "group": "navigation"
+        }
+      ],
+      "kimi.commands": [
+        {
+          "command": "kimi.build",
+          "group": "1_commands@0"
+        },
+        {
+          "command": "kimi.run",
+          "group": "1_commands@1"
+        },
+        {
+          "command": "kimi.buildAndRun",
+          "group": "1_commands@2"
+        },
+        {
+          "command": "kimi.check",
+          "group": "1_commands@3"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile && node scripts/prepare-package.mjs",
+    "package": "npx @vscode/vsce@4.0.0 package -o kimi-ext.vsix",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "node --test out/test/unit/*.test.js",
+    "test:integration": "npm run compile && vscode-test",
+    "version:patch": "npm version patch --no-git-tag-version"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.138.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "eslint": "^10.5.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

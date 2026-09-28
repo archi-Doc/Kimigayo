@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "kimi-ext: watch",
+      "type": "npm",
+      "script": "watch",
+      "path": "kimi-ext",
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true,
+      "presentation": { "reveal": "never" }
+    }
+  ]
+}

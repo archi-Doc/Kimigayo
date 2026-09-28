@@ -43,3 +43,13 @@
 - Unit verification: `./verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (non-incremental Debug build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses). A direct `dotnet build` may leave analyzer warnings unreported to later incremental builds, so only the script's build counts as evidence.
 - Session verification, once at the end of a session: `./verify.ps1 -Mode Session [...]` (Debug and Release builds and full suites). Never edit sources while a build or verification run is in progress.
 - Measure allocations only on hot paths and at milestone completion.
+
+# VS Code Extension (`kimi-ext/`)
+
+- Keep extension source, regression tests, lockfile and build configuration in `kimi-ext/`. Root `.vscode/` contains its development launch/task configuration.
+- Maintain extension usage and QuickStart in the root `README.md`, under **Visual Studio Code**. Packaging generates the extension's README and LICENSE from the root documents; do not edit or commit these generated copies.
+- Run `npm --prefix kimi-ext ci`, then `npm --prefix kimi-ext test` for extension changes. Before packaging a release, run `npm --prefix kimi-ext run test:integration` with a managed Kimi executable and its toolchain; integration tests use isolated VS Code profiles. These checks complement compiler verification when compiler code also changes.
+- Use `npm --prefix kimi-ext run package` to build a VSIX. Keep dependencies, compiled output, test profiles and VSIX files out of Git; exclude development-only files from the VSIX.
+- Kimi.exe owns toolchain discovery and management. Do not duplicate that logic in the extension.
+- Extension versions use `major.minor.patch`. Automatic or agent-initiated releases may increment only `patch`; change `major` or `minor` only on explicit user instruction, including for feature additions.
+- Run `npm --prefix kimi-ext run version:patch` once per new release. It updates the package and lockfile without a Git tag. Keep `kimi-ext/CHANGELOG.md`, the VSIX and the installed version consistent; compilation, tests, packaging retries and reinstalls do not increment the version.

@@ -4,6 +4,8 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
+- **VS Code extension:** [kimi-ext](kimi-ext/) is maintained in this repository. It provides diagnostics, executable-path validation, automatic or explicit target selection, build/run/check tasks and Ctrl+F5 with Stop support. Current Kimi uses `kimi.runBuilds: true` for one build-and-run invocation; compatibility with older run-only executables remains configurable. Setup and limits are in the [README](README.md#visual-studio-code).
+
 - **Generic Self and deferred cleanup (2026-09-28):** constructor and destructor receivers carry the declaring Type's complete parameters and Origins; concrete field-dependent generic destructors execute their body before field cleanup, including deferred interpolation on early-return and fallthrough paths (G29/G30 resolved), with zero warm allocation in the repeated deferred analysis/IR regression.
 - **Core declaration validation (2026-09-28):** ordinary bound identities now validate the storage boundary, 24 Array/Dictionary/basic operation signatures, seven UTF-8 layouts with fixed Origin authority, and LendingIterator's receiver, item family and formation dependency; remaining compiler-known signatures are tracked in PLAN §6.
 
