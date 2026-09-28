@@ -9,6 +9,73 @@ internal static partial class LlvmModuleWriter
         var operands = function.GetOperands(instruction);
         var address = operands[0];
         var id = instruction.Operation;
+        if (instruction.ScalarOperator == "DictionaryEntryAddress")
+        {
+            // A key or value inside a validated live slot (SPEC 22.1.2.5).
+            output.Write("  %v");
+            WriteNumber(output, id);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteOperand(output, address);
+            output.Write(", i64 ");
+            WriteNumber(output, operands[1].Value);
+            output.Write("\n");
+            return;
+        }
+
+        if (instruction.ScalarOperator == "DictionaryBorrowStorage")
+        {
+            // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle.
+            output.Write("  %dbuf");
+            WriteNumber(output, id);
+            output.Write(" = load ptr, ptr ");
+            Address();
+            output.Write(", align 8\n  %dlenp");
+            WriteNumber(output, id);
+            output.Write(" = getelementptr i8, ptr ");
+            Address();
+            output.Write(", i64 24\n  %dlen");
+            WriteNumber(output, id);
+            output.Write(" = load i64, ptr %dlenp");
+            WriteNumber(output, id);
+            output.Write(", align 8\n  %dheadp");
+            WriteNumber(output, id);
+            output.Write(" = getelementptr i8, ptr ");
+            Address();
+            output.Write(", i64 32\n  %dhead");
+            WriteNumber(output, id);
+            output.Write(" = load i64, ptr %dheadp");
+            WriteNumber(output, id);
+            output.Write(", align 8\n  store ptr %dbuf");
+            WriteNumber(output, id);
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n");
+            Field(8, "i64 ", operands[1].Value);
+            Field(16, "i64 %dhead", id);
+            Field(24, "i64 %dlen", id);
+            return;
+
+            void Field(int offset, string prefix, Int128 number)
+            {
+                output.Write("  %dfield");
+                WriteNumber(output, id);
+                output.Write('_');
+                WriteNumber(output, offset);
+                output.Write(" = getelementptr i8, ptr ");
+                WriteSlot(output, function, instruction.Place);
+                output.Write(", i64 ");
+                WriteNumber(output, offset);
+                output.Write("\n  store ");
+                output.Write(prefix);
+                WriteNumber(output, number);
+                output.Write(", ptr %dfield");
+                WriteNumber(output, id);
+                output.Write('_');
+                WriteNumber(output, offset);
+                output.Write(", align 8\n");
+            }
+        }
+
         if (instruction.ScalarOperator == "DictionaryEnd")
         {
             output.Write("  %v");
