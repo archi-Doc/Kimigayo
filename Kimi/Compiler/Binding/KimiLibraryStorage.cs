@@ -24,8 +24,37 @@ public sealed partial class KimiLibrary
     private static bool StorageInputOrigin(BoundOrigin? origin, FunctionKoto function)
         => origin is { Kind: OriginKind.Input, InputIndex: 0 } && ReferenceEquals(origin.Binder, function);
 
+    // The boundary primitives write these records directly, so the ordinary bound field identities
+    // must agree with the checked source layout as well as each operation's signature.
+    private static bool ValidBoundRemainder(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        if (symbol.Declaration is not StructKoto { GenericParameterNodes: [var parameter] } declaration ||
+            parameter.BoundType is not { Kind: BoundTypeKind.Parameter } element)
+        {
+            return false;
+        }
+
+        var count = id == KimiDeclarationId.OwnedRemainder ? 4 : 3;
+        for (var i = 0; i < count; i++)
+        {
+            if (StorageField(declaration, i) is not { BoundSymbol.Type: { } type } field ||
+                !ReferenceEquals(field.TypeKoto?.BoundType, type) ||
+                (i == 0 ? !BoundStoragePointer(type, element) : !ReferenceEquals(type, BoundType.ISize)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
+        if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)
+        {
+            return ValidBoundRemainder(symbol, id);
+        }
+
         if (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageRelease)
         {
             return true;

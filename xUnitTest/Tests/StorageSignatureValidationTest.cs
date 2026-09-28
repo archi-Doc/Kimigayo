@@ -9,6 +9,28 @@ namespace XunitTest;
 public class StorageSignatureValidationTest
 {
     [Theory]
+    [InlineData(KimiDeclarationId.RefRemainder, 0)]
+    [InlineData(KimiDeclarationId.RefRemainder, 1)]
+    [InlineData(KimiDeclarationId.RefRemainder, 2)]
+    [InlineData(KimiDeclarationId.UniqRemainder, 0)]
+    [InlineData(KimiDeclarationId.UniqRemainder, 1)]
+    [InlineData(KimiDeclarationId.UniqRemainder, 2)]
+    [InlineData(KimiDeclarationId.OwnedRemainder, 0)]
+    [InlineData(KimiDeclarationId.OwnedRemainder, 1)]
+    [InlineData(KimiDeclarationId.OwnedRemainder, 2)]
+    [InlineData(KimiDeclarationId.OwnedRemainder, 3)]
+    public void RemainderFieldsRetainTheirBoundStorageTypes(KimiDeclarationId id, int index)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var declaration = (StructKoto)c.Library.GetSymbol(id)!.Declaration;
+        var field = declaration.Members.OfType<VariableKoto>().ElementAt(index);
+        field.BoundSymbol!.Type = BoundType.Primitives["u8"];
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(declaration, c.Library.InvalidDeclaration);
+    }
+
+    [Theory]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
