@@ -57,7 +57,7 @@ public class SequenceEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nfor (i, j) in a => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => i = 2")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => ()\ni")]
-    [InlineData("for i in 0..3 => ()")]
+    [InlineData("for i in ..3 => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor (i, j) in a.indices => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor (i, i) in a.indices => ()")]
     [InlineData("let a: [1 of i32] = [1]\nfor i in a.indices => exit 1")]

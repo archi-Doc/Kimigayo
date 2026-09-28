@@ -43,6 +43,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
                         KimiDeclarationId.Index => this.ValidIndex(symbol),
                         KimiDeclarationId.IndexRange => this.ValidIndexRange(symbol),
+                        KimiDeclarationId.Range => this.ValidRange(symbol),
                         KimiDeclarationId.ResolvedRange => this.ValidResolvedRange(symbol),
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
@@ -213,7 +214,32 @@ public sealed partial class KimiLibrary
         field.NameKoto.IdentifierName == name &&
         (name == "storage" ? field.TypeKoto is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, type) : BareName(field.TypeKoto, type));
 
+    // Every member from `index` on is a function: the declaration adds no storage the compiler does not lay out.
+    private static bool OnlyFunctionsFrom(DeclarationContainerKoto declaration, int index)
+    {
+        for (var i = index; i < declaration.Members.Count; i++)
+        {
+            if (declaration.Members[i] is not FunctionKoto)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // A public read-only field of the named Type at the member position.
+    private static int FirstStorage(DeclarationContainerKoto declaration)
+    {
+        var index = 0;
+        while (index < declaration.Members.Count && declaration.Members[index] is IsKoto)
+        {
+            index++;
+        }
+
+        return index;
+    }
+
     private static bool ValidField(DeclarationContainerKoto declaration, int index, string name, string type)
         => index < declaration.Members.Count &&
         declaration.Members[index] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } field &&
@@ -579,7 +605,7 @@ public sealed partial class KimiLibrary
     // Prefix ^ writes this ordinary Copy struct's two fields directly, so its shape is a compiler contract.
     private bool ValidIndex(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is StructKoto { Name: "Index", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 2, Members.Count: 7, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        symbol.Declaration is StructKoto { Name: "Index", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 2, Members.Count: >= 7, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
         BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
         declaration.Members[0] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } offset &&
@@ -588,7 +614,22 @@ public sealed partial class KimiLibrary
         fromEnd.NameKoto.IdentifierName == "isFromEnd" && BareName(fromEnd.TypeKoto, "bool") &&
         declaration.Members[2] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, ReturnType: null, Body: not null, ExpressionBody: null, AttributeChain: null } constructor &&
         constructor.Parameters[0] is { InternalName: "offset", ExternalName: "offset", DefaultValue: null, AttributeChain: null } offsetParameter && BareName(offsetParameter.Type, "isize") &&
-        constructor.Parameters[1] is { InternalName: "fromEnd", ExternalName: "fromEnd", DefaultValue: BoolLiteralKoto { Value: false }, AttributeChain: null } fromEndParameter && BareName(fromEndParameter.Type, "bool");
+        constructor.Parameters[1] is { InternalName: "fromEnd", ExternalName: "fromEnd", DefaultValue: BoolLiteralKoto { Value: false }, AttributeChain: null } fromEndParameter && BareName(fromEndParameter.Type, "bool") &&
+        OnlyFunctionsFrom(declaration, 2); // Prefix ^ relies on these two fields being the whole storage.
+
+    // SPEC 4.6.3.2: public struct Range<T> under T is PrimitiveInteger, with T start and end and an isInclusive flag; range
+    // syntax calls its internal between and through Type functions.
+    private bool ValidRange(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is StructKoto { Name: "Range", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 2, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        declaration.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
+        BareName(declaration.ConstraintNodes[0].Left, "T") && BareName(declaration.ConstraintNodes[0].Right, "PrimitiveInteger") &&
+        BareName(declaration.ConstraintNodes[1].Left, "Self") && BareName(declaration.ConstraintNodes[1].Right, "Copy") &&
+        FirstStorage(declaration) is var first && // The associated iterator Types precede the fields.
+        ValidField(declaration, first, "start", "T") && ValidField(declaration, first + 1, "end", "T") && ValidField(declaration, first + 2, "isInclusive", "bool") &&
+        FindDeclaration(declaration, "between", true) is FunctionKoto { Modifier: ModifierKind.Internal } &&
+        FindDeclaration(declaration, "through", true) is FunctionKoto { Modifier: ModifierKind.Internal };
 
     // SPEC 4.6.3.3: public struct IndexRange with Index start and end and an isInclusive flag; its constructors are the normal
     // forms of range syntax, and it resolves against a length in Kimigayo.

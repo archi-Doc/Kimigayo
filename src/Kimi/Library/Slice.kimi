@@ -26,6 +26,13 @@ public struct Slice<T> {source}
             .Some(let resolved) => return .Some(self[resolved])
             .None => return .None
 
+    /// Returns the sub-Slice selected by the integer `range`, or `None` when it does not resolve within this Slice.
+    public func trySlice<I>(self: Self, range: Range<I>) -> Option<Slice<T> during source>
+        I is PrimitiveInteger
+        match range.tryResolve(self.length)
+            .Some(let resolved) => return .Some(self[resolved])
+            .None => return .None
+
     /// Returns the sub-Slice selected by `range`, or `None` when its end exceeds this Slice's length.
     public func trySlice(self: Self, range: ResolvedRange) -> Option<Slice<T> during source>
         require range.end <= self.length else => return .None

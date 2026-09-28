@@ -83,6 +83,7 @@ $variants = [ordered]@{
     Exhaust = @{ source = (Edit-KimiSource $original 'value == 7' 'value == 99' 'total == 42' 'total == 72' 'matrix[2][2] == 7' 'matrix[2][2] == 14'); stdout = $expected }
     MatrixBounds = @{ source = (Edit-KimiSource $original 'matrix[2][2] == 7' 'matrix[3][2] == 7'); stdout = "Row finished.`n" * 3; bounds = 'matrix[3][2]' }
     SliceBounds = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index + 1]'); stdout = ("Row finished.`n" * 3) + "Matrix total is 42.`n"; bounds = 'rowView[index + 1]' }
+    IntegerRows = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0@isize..3'); stdout = $expected }
 }
 foreach ($level in @('O0', 'O2')) {
     foreach ($entry in $variants.GetEnumerator()) {
@@ -122,7 +123,7 @@ $invalid = [ordered]@{
     EscapedIndex = @{ source = (Edit-KimiSource $original 'require total == 42' 'require row == 0'); diagnostic = 'UnresolvedBinding_Kd' }
     WrongExitResult = @{ source = (Edit-KimiSource $original 'exit to rows //' 'exit to rows: 1 //'); diagnostic = 'TypeMismatch_Kd' }
     MissingTarget = @{ source = (Edit-KimiSource $original 'continue to rows' 'continue to missing'); diagnostic = 'ControlFlow_Kd' }
-    RawRange = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0..3'); diagnostic = 'UnsupportedBinding_Kd' }
+    I32Rows = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0..3'); diagnostic = 'TypeMismatch_Kd' } # Range<i32> items are not positions.
     WrongIndexType = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index@i32]'); diagnostic = 'TypeMismatch_Kd' }
     TupleBinding = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for (row, other) in matrix.indices'); diagnostic = 'TypeMismatch_Kd' }
     Uninitialized = @{ source = (Edit-KimiSource $original 'let rowView = matrix[0][..]' "let other: [4 of i32]`n    let rowView = other[..]"); diagnostic = 'UninitializedPlace_Kd' }

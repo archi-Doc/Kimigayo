@@ -427,7 +427,7 @@ let failed = shortArray[r]              // Abort if executed.
 Integers from external input are passed in their own Type:
 
 ```kimi
-func tryWindow<T, I>(values: Slice<T>, ! start: I, end: I) -> Option<Slice<T> during values.source>
+func tryWindow<T, I>(values: Slice<T> ! start: I, end: I) -> Option<Slice<T> during values.source>
     I is PrimitiveInteger
     return values.trySlice(start..end) // None for negative, reversed or out-of-range boundaries.
 ```

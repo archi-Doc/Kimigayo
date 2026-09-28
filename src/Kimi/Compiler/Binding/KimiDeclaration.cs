@@ -111,6 +111,7 @@ public enum KimiDeclarationId : byte
     StorageSplit,
     StorageRelease,
     PrimitiveInteger,
+    Range,
 }
 
 public enum KimiDeclarationState : byte

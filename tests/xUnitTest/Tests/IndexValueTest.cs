@@ -13,12 +13,12 @@ public class IndexValueTest
     [InlineData("Constructor", "let first = Index.init(3)\nlet last = Index.init(2, fromEnd: true)\nrequire first.offset == 3 and not first.isFromEnd and last.offset == 2 and last.isFromEnd else => $abort(\"index\")")]
     [InlineData("Prefix", "let n: isize = 2\nlet last: Index = ^(n + 1)\nlet copy = last\nrequire last.offset == 3 and copy.offset == 3 and copy.isFromEnd else => $abort(\"index\")")]
     [InlineData("Passing", "func keep(index: Index) -> Index => index\nlet last = keep(^1)\nlet start = keep(Index.init(0))\nrequire last.offset == 1 and last.isFromEnd and start.offset == 0 and not start.isFromEnd else => $abort(\"index\")")]
+    [InlineData("AnyInteger", "let n: i32 = 1\nlet wide: u64 = 2\nlet a = ^n\nlet b = ^wide\nrequire a.offset == 1 and a.isFromEnd and b.offset == 2 else => $abort(\"index\")")]
     [InlineData("Shadow", "struct Index\n    public let different: i32 = 7\nlet last: ::Kimi.Index = ^1\nrequire last.offset == 1 and last.isFromEnd else => $abort(\"index\")")]
     public void ConstructsStoresAndPassesIndices(string name, string source)
         => ScalarEmissionTest.EmitFixture("IndexValue" + name, source, string.Empty);
 
     [Theory]
-    [InlineData("let n: i32 = 1\nlet index = ^n")]
     [InlineData("let index = ^true")]
     [InlineData("let index: isize = ^1")]
     [InlineData("let index = Index.init(true)")]

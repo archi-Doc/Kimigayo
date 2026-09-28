@@ -88,7 +88,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, function, types, lengths: lengths);
+        return this.LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, function, types, lengths: lengths);
     }
 
     // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
@@ -129,7 +129,7 @@ public sealed partial class Binding
             }
         }
 
-        return fitLiterals ? LiteralDefault(source) : null;
+        return fitLiterals ? this.LiteralDefault(source) : null;
     }
 
     private bool PrepareAggregateArgument(Koto source, BindingScope scope)

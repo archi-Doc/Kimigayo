@@ -20,6 +20,7 @@ public sealed partial class Binding
 
     private BoundType? CallDeclaringType(Koto callee, BindingSymbol member)
         => callee is FormattingKoto { DeclaringType: { } formattingType } ? formattingType
+            : callee is SyntheticKoto { DeclaringType: { } syntheticType } ? syntheticType
             : callee is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType
             : this.ImportedEnvironment(callee) is { } environment ? environment
             : member.Scope.Owner is StructKoto or EnumKoto || member.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;

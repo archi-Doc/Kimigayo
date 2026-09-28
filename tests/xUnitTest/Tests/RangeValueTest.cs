@@ -5,9 +5,9 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.2–4.6.4: Index, Range and ResolvedRange are library structs. Range syntax outside an index position
-/// constructs a Range, boundaries evaluate in order before their signs are checked, and resolution against a length
-/// produces or refuses a ResolvedRange.</summary>
+/// <summary>SPEC 4.6.2–4.6.4: Index, Range&lt;T&gt;, IndexRange and ResolvedRange are library structs. Two integer
+/// boundaries construct a Range&lt;T&gt; and any other range an IndexRange; boundaries evaluate in order before IndexRange
+/// checks their signs, and resolution against a length produces or refuses a ResolvedRange.</summary>
 public class RangeValueTest
 {
     private const string Resolve =
@@ -45,9 +45,9 @@ public class RangeValueTest
         => ScalarEmissionTest.EmitFixture("RangeValue" + name, source, stdout);
 
     [Fact]
-    public void RangeIsNotIterable()
+    public void IndexRangeIsNotIterable()
     {
-        var c = MinimalEmissionTest.Analyze("for i in 0..3\n    ()");
+        var c = MinimalEmissionTest.Analyze("for i in 1..^1\n    ()");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
     }

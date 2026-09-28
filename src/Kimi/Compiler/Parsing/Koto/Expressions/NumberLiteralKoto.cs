@@ -97,6 +97,19 @@ public sealed class NumberLiteralKoto : ExpressionKoto
         }
     }
 
+    /// <summary>Initializes a new instance of the <see cref="NumberLiteralKoto"/> class for a compiler-synthesized
+    /// decimal integer operand at the span of its source root, such as the isize limit of Index formation (SPEC 4.6.2).</summary>
+    /// <param name="root">The source node whose position the literal takes.</param>
+    /// <param name="value">The nonnegative integer value.</param>
+    internal NumberLiteralKoto(Koto root, ulong value)
+        : base(root.CodeContext, root.Span)
+    {
+        this.relocatedSpelling = value.ToString(CultureInfo.InvariantCulture);
+        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(this.relocatedSpelling, out this.uv);
+        this.hasParsedValue = true;
+        this.Parent = root;
+    }
+
     /// <summary>Attempts to convert the literal to a compile-time value.</summary>
     /// <param name="basicValue">The converted value.</param>
     /// <returns><see langword="true"/> when the literal is supported.</returns>

@@ -58,14 +58,14 @@ public sealed partial class Binding
             var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
             if (sequence?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is RangeKoto range && !range.IsInclusive)
             {
-                if (range.Start is { } start)
+                // SPEC 4.6.4: integer or omitted boundaries select directly. Two boundaries share the Type of Range<T>; a single
+                // boundary is formed into an Index, a literal-only one at isize. Ownership converts other integer Types to isize
+                // after both boundaries are evaluated.
+                if (range.Start is not null && range.End is not null
+                    ? this.IntegerRangeElement(range, scope, this.IndependentBoundary(range.Start, scope, out _), this.IndependentBoundary(range.End, scope, out _), null) is null
+                    : !this.DirectPosition(range.Start ?? range.End, scope))
                 {
-                    this.RequireType(start, scope, BoundType.ISize);
-                }
-
-                if (range.End is { } end)
-                {
-                    this.RequireType(end, scope, BoundType.ISize);
+                    return Complete(source, null);
                 }
 
                 Complete(range, BoundType.Range);

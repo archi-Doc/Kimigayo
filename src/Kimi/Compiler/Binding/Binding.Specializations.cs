@@ -12,6 +12,9 @@ public sealed partial class Binding
     private readonly BoundCall forwardedRequirement = new();
     // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
+    // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.
+    private readonly Dictionary<FunctionKoto, Specialization> specializationStorage = new(ReferenceEqualityComparer.Instance);
+    private readonly Stack<List<FunctionKoto>> siblingPool = new();
 
     internal bool IsVerifiedSpecialization(FunctionKoto function) => this.specializations.ContainsKey(function);
 
@@ -136,6 +139,11 @@ public sealed partial class Binding
         }
     }
 
+    /// <summary>Lists the verified specializations of a generic original (SPEC 8.8).</summary>
+    /// <param name="original">The original generic function.</param>
+    /// <returns>The specializations, or null when it has none.</returns>
+    internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
+
     internal FunctionKoto? SelectSpecialization(BoundCall call)
     {
         if (!this.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
@@ -197,6 +205,18 @@ public sealed partial class Binding
         return true;
     }
 
+    private void ResetSpecializations()
+    {
+        this.specializations.Clear();
+        foreach (var siblings in this.specializationsByOriginal.Values)
+        {
+            siblings.Clear();
+            this.siblingPool.Push(siblings);
+        }
+
+        this.specializationsByOriginal.Clear();
+    }
+
     private void PrepareSpecializations()
     {
         foreach (var node in this.nodes)
@@ -210,7 +230,7 @@ public sealed partial class Binding
             // Do not accept their syntax by merely erasing the generic header. Written binder names
             // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.8.1).
-            if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || function.Parameters.Any(x => x.AttributeChain is not null))
+            if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -219,14 +239,21 @@ public sealed partial class Binding
             // SPEC 8.8.2: a specialization header inherits the original's access, boundary, defaults and
             // Constraints; it redeclares none of them.
             if (function.Modifier != ModifierKind.NoModifier || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 ||
-                function.Parameters.Any(x => x.DefaultValue is not null))
+                HasParameterDefaults(function))
             {
                 Fail(function, BindingFailure.IncompatibleImplementation);
                 continue;
             }
 
-            var arguments = new BoundType?[function.GenericArguments.Count];
-            var lengths = new BoundLength?[function.GenericArguments.Count];
+            if (!this.specializationStorage.TryGetValue(function, out var entry) || entry.Arguments.Length != function.GenericArguments.Count)
+            {
+                this.specializationStorage[function] = entry = new(new BoundType?[function.GenericArguments.Count], new BoundLength?[function.GenericArguments.Count]);
+            }
+
+            var arguments = entry.Arguments;
+            var lengths = entry.Lengths;
+            Array.Clear(arguments);
+            Array.Clear(lengths);
             var closed = true;
             var scope = this.scopes[function];
             for (var i = 0; i < arguments.Length; i++)
@@ -290,8 +317,7 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            if (definition.AttributeChain is not null ||
-                definition.Parameters.Any(x => x.AttributeChain is not null))
+            if (definition.AttributeChain is not null || HasParameterAttributes(definition))
             {
                 Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -319,7 +345,8 @@ public sealed partial class Binding
 
             if (!this.specializationsByOriginal.TryGetValue(original!, out var siblings))
             {
-                this.specializationsByOriginal.Add(original!, siblings = new());
+                siblings = this.siblingPool.Count != 0 ? this.siblingPool.Pop() : new();
+                this.specializationsByOriginal.Add(original!, siblings);
             }
 
             for (var i = 0; i < siblings.Count; i++)
@@ -335,7 +362,8 @@ public sealed partial class Binding
 
             if (valid)
             {
-                this.specializations.Add(function, new(original!, arguments, lengths));
+                entry.Original = original!;
+                this.specializations.Add(function, entry);
                 siblings.Add(function);
             }
         }
@@ -355,9 +383,57 @@ public sealed partial class Binding
         }
 
         static bool Closed(BoundType type)
-            => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection) &&
-                type.LengthExpression is null && type.Components.All(Closed);
+        {
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
+                type.LengthExpression is not null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!Closed(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool HasParameterAttributes(FunctionKoto function)
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].AttributeChain is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool HasParameterDefaults(FunctionKoto function)
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].DefaultValue is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
-    private sealed record Specialization(BindingSymbol Original, BoundType?[] Arguments, BoundLength?[] Lengths);
+    private sealed class Specialization(BoundType?[] arguments, BoundLength?[] lengths)
+    {
+        internal BindingSymbol Original { get; set; } = null!;
+
+        internal BoundType?[] Arguments { get; } = arguments;
+
+        internal BoundLength?[] Lengths { get; } = lengths;
+    }
 }

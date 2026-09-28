@@ -31,13 +31,40 @@ public struct Index
         self.offset = offset
         self.isFromEnd = fromEnd
 
-    /// Creates a from-start position without checking its sign.
-    ///
-    /// Range syntax normalizes an integer boundary through this form; IndexRange construction then checks the
-    /// signs in boundary order after both boundaries are evaluated (SPEC 4.6.4).
-    public init(! unchecked: isize)
+    /// Creates a from-start position without checking its sign; only the forms below and range syntax use it.
+    init(! unchecked: isize)
         self.offset = unchecked
         self.isFromEnd = false
+
+    /// Forms a from-start position from an integer boundary of range syntax (SPEC 4.6.2).
+    ///
+    /// An offset that is negative or not representable as isize becomes `-1`, so IndexRange construction checks
+    /// the boundaries in order after both are evaluated (SPEC 4.6.4). `limit` is the target's isize maximum.
+    internal func unchecked<I>(offset: I, limit: isize) -> Index
+        I is PrimitiveInteger
+        match Index.tryPosition(offset, limit)
+            .Some(let position) => return Index.init(unchecked: position)
+            .None => return Index.init(unchecked: -1)
+
+    /// Returns `value` as an isize when `0 <= value <= limit`, or None; shared by Index formation and range resolution.
+    internal func tryPosition<I>(value: I, limit: isize) -> Option<isize>
+        I is PrimitiveInteger
+        require value >= 0 and limit >= 0 else => return .None
+        require value@u128 <= limit@u128 else => return .None
+        return .Some(value@isize)
+
+    specialize func tryPosition<isize>(value: isize, limit: isize) -> Option<isize>
+        require value >= 0 and value <= limit else => return .None
+        return .Some(value)
+
+    specialize func tryPosition<i32>(value: i32, limit: isize) -> Option<isize>
+        let wide = value@isize
+        require wide >= 0 and wide <= limit else => return .None
+        return .Some(wide)
+
+    specialize func tryPosition<usize>(value: usize, limit: isize) -> Option<isize>
+        require limit >= 0 and value <= limit@usize else => return .None
+        return .Some(value@isize)
 
     /// Compares both the offset and the direction; `^0` and `0` are different positions.
     public func equals(self: ref/Self, other: ref/Self) -> bool
@@ -59,10 +86,10 @@ public struct Index
         if self.isFromEnd => return .Some(length - self.offset)
         return .Some(self.offset)
 
-/// Unresolved start and end boundaries with an end-inclusion flag (SPEC 4.6.3).
+/// Unresolved start and end positions with an end-inclusion flag (SPEC 4.6.3.3).
 ///
-/// Range syntax constructs an IndexRange through the Type functions below, its normal forms: an omitted start is
-/// `0` and an omitted end is `^0`. They check the signs of integer boundaries in boundary order after both
+/// Range syntax constructs an IndexRange through the internal Type functions below, its normal forms: an omitted
+/// start is `0` and an omitted end is `^0`. They check the integer boundaries in boundary order after both
 /// boundaries are evaluated (SPEC 4.6.4). An IndexRange is a Copy value, retains no target and is not iterable;
 /// resolve it against a length to obtain a ResolvedRange.
 public struct IndexRange
@@ -72,50 +99,33 @@ public struct IndexRange
     public let end: Index
     public let isInclusive: bool
 
+    /// Checks both boundaries in order after range syntax evaluated them (SPEC 4.6.4).
+    ///
+    /// - abort: A boundary offset is negative or not representable as isize.
     init(start: Index, end: Index, inclusive: bool)
+        require start.offset >= 0 else => $abort("Invalid range start")
+        require end.offset >= 0 else => $abort("Invalid range end")
         self.start = start
         self.end = end
         self.isInclusive = inclusive
 
     /// Creates the half-open range `start..end`.
-    ///
-    /// - abort: A boundary has a negative offset.
-    public func between(start: Index, end: Index) -> IndexRange
-        require start.offset >= 0 else => $abort("Negative Range start")
-        require end.offset >= 0 else => $abort("Negative Range end")
-        return IndexRange.init(start, end, false)
+    internal func between(start: Index, end: Index) -> IndexRange => IndexRange.init(start, end, false)
 
     /// Creates the range `start..`, which ends at `^0`.
-    ///
-    /// - abort: `start` has a negative offset.
-    public func from(start: Index) -> IndexRange
-        require start.offset >= 0 else => $abort("Negative Range start")
-        return IndexRange.init(start, Index.init(0, fromEnd: true), false)
+    internal func from(start: Index) -> IndexRange => IndexRange.init(start, Index.init(0, fromEnd: true), false)
 
     /// Creates the range `..end`, which starts at `0`.
-    ///
-    /// - abort: `end` has a negative offset.
-    public func to(end: Index) -> IndexRange
-        require end.offset >= 0 else => $abort("Negative Range end")
-        return IndexRange.init(Index.init(0), end, false)
+    internal func to(end: Index) -> IndexRange => IndexRange.init(Index.init(0), end, false)
 
     /// Creates the range `..`, which covers a whole sequence.
-    public func all() -> IndexRange => IndexRange.init(Index.init(0), Index.init(0, fromEnd: true), false)
+    internal func all() -> IndexRange => IndexRange.init(Index.init(0), Index.init(0, fromEnd: true), false)
 
     /// Creates the inclusive range `start..=end`.
-    ///
-    /// - abort: A boundary has a negative offset.
-    public func through(start: Index, end: Index) -> IndexRange
-        require start.offset >= 0 else => $abort("Negative Range start")
-        require end.offset >= 0 else => $abort("Negative Range end")
-        return IndexRange.init(start, end, true)
+    internal func through(start: Index, end: Index) -> IndexRange => IndexRange.init(start, end, true)
 
     /// Creates the inclusive range `..=end`, which starts at `0`.
-    ///
-    /// - abort: `end` has a negative offset.
-    public func upTo(end: Index) -> IndexRange
-        require end.offset >= 0 else => $abort("Negative Range end")
-        return IndexRange.init(Index.init(0), end, true)
+    internal func upTo(end: Index) -> IndexRange => IndexRange.init(Index.init(0), end, true)
 
     /// Compares the unresolved boundaries and the inclusion flag; `0..2` and `0..=1` are different values.
     public func equals(self: ref/Self, other: ref/Self) -> bool
@@ -149,7 +159,111 @@ public struct IndexRange
         require first <= last else => return .None
         return .Some(ResolvedRange.init(start: first, end: last))
 
-/// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3).
+/// An interval of integers of `T` (SPEC 4.6.3.2).
+///
+/// Range syntax with two integer boundaries constructs it through the internal Type functions below. Construction
+/// checks no order; iteration, resolution and slicing check the boundaries when they use the value.
+public struct Range<T>
+    T is PrimitiveInteger
+    Self is Copy
+    Self is Equatable
+    Self is Iterable
+    associate Iterable.IteratorType(source) is RangeIterator<T>
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(source) is RangeIterator<T>
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is RangeIterator<T>
+    public let start: T
+    public let end: T
+    public let isInclusive: bool
+
+    init(start: T, end: T, inclusive: bool)
+        self.start = start
+        self.end = end
+        self.isInclusive = inclusive
+
+    /// Creates the half-open range `start..end` for range syntax.
+    internal func between(start: T, end: T) -> Range<T> => Range<T>.init(start, end, false)
+
+    /// Creates the inclusive range `start..=end` for range syntax.
+    internal func through(start: T, end: T) -> Range<T> => Range<T>.init(start, end, true)
+
+    /// Compares both boundaries and the inclusion flag; `0..3` and `0..=2` are different values.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
+
+    /// Resolves the integers as positions against `length` into a validated half-open interval (SPEC 4.6.4).
+    ///
+    /// - abort: `length` is negative, the range is reversed, or a boundary lies outside the target.
+    public func resolve(self, length: isize) -> ResolvedRange
+        match self.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => $abort("Range out of range")
+
+    /// Resolves the integers as positions against `length`, returning `None` instead of Aborting.
+    ///
+    /// A half-open range needs `0 <= start <= end <= length` and an inclusive one `0 <= start <= end < length`.
+    public func tryResolve(self, length: isize) -> Option<ResolvedRange>
+        require length >= 0 else => return .None
+        var limit = length
+        if self.isInclusive => limit = length - 1
+        match Index.tryPosition(self.end, limit)
+            .Some(let last)
+                match Index.tryPosition(self.start, last)
+                    .Some(let first)
+                        if self.isInclusive => return .Some(ResolvedRange.init(start: first, end: last + 1))
+                        return .Some(ResolvedRange.init(start: first, end: last))
+                    .None => return .None
+            .None => return .None
+
+    /// Starts a shared enumeration from `start` upward; a reversed range Aborts (SPEC 4.6.3.5).
+    public func iterate(self: ref/Self during source) -> RangeIterator<T>
+        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+
+    /// Starts an enumeration through an exclusive borrow; the range itself does not change.
+    public func iterateUniq(self: uniq/Self during source) -> RangeIterator<T>
+        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+
+    /// Starts an enumeration of the consumed range value.
+    public func intoIterator(self: Self) -> RangeIterator<T>
+        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+
+/// The standard integer range iterator (SPEC 4.6.3.5).
+///
+/// It yields the values below `end` in unit steps, then `end` once when the range included it, and never adds past
+/// its last value, so it also ends at the maximum of `T`.
+public struct RangeIterator<T>
+    T is PrimitiveInteger
+    Self is Iterator
+    associate Iterator.Item is T
+    var current: T
+    let end: T
+    var includesEnd: bool
+
+    init(current: T, end: T, includesEnd: bool)
+        self.current = current
+        self.end = end
+        self.includesEnd = includesEnd
+
+    /// Starts at `start` after checking the order of a range entry.
+    ///
+    /// - abort: `start > end`.
+    internal func starting(start: T, end: T, inclusive: bool) -> RangeIterator<T>
+        require start <= end else => $abort("Reversed range")
+        return RangeIterator<T>.init(start, end, inclusive)
+
+    /// Returns the next value, or None after the last one.
+    public func next(self: uniq/Self) -> Option<T>
+        let value = self.current
+        if value < self.end
+            self.current = value + 1
+            return .Some(value)
+        if self.includesEnd
+            self.includesEnd = false
+            return .Some(value)
+        return .None
+
+/// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3.4).
 ///
 /// The compiler produces it for `indices` and iterates it directly; selection with a ResolvedRange still
 /// checks `end` against the target's length.

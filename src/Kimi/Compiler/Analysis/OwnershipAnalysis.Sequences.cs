@@ -19,9 +19,12 @@ public sealed partial class OwnershipAnalysis
         }
         else
         {
+            // SPEC 4.6.4: both boundaries are evaluated before either is converted to an isize position.
             var range = (RangeKoto)source.Right;
-            var start = range.Start is { } begin ? this.Value(this.Expression(begin)) : -1;
-            var end = range.End is { } finish ? this.Value(this.Expression(finish)) : -1;
+            var startPlace = range.Start is { } begin ? this.Expression(begin) : -1;
+            var endPlace = range.End is { } finish ? this.Expression(finish) : -1;
+            var start = range.Start is null ? -1 : this.Value(this.PositionPlace(range.Start, startPlace));
+            var end = range.End is null ? -1 : this.Value(this.PositionPlace(range.End, endPlace));
             result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
                 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
         }
@@ -74,6 +77,22 @@ public sealed partial class OwnershipAnalysis
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;
+    }
+
+    // SPEC 4.6.2, 4.6.4: an integer position of another Type is converted to isize, with its check, where the plan places
+    // it; the universal verification of a generic integer has no value to convert.
+    private int PositionPlace(Koto source, int place)
+    {
+        if (place < 0 || this.Value(place) < 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.ISize))
+        {
+            return place;
+        }
+
+        var converted = this.Place(source, BoundType.ISize, OwnershipPlaceKind.Temporary, false);
+        this.Emit(OwnershipOperationKind.Produce, source, converted);
+        this.RegisterTemporary(converted);
+        this.SetValue(this.Value(converted), OwnershipValueKind.Convert, [this.Value(place)]);
+        return converted;
     }
 
     private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int element = -1)

@@ -435,7 +435,10 @@ public sealed partial class Binding
                 return Complete(conversion, target);
             }
 
-            if (ScalarTypes.Width(source, this.compilation.PointerWidth) == 0 || ScalarTypes.Width(target, this.compilation.PointerWidth) == 0)
+            // SPEC 13.5.4: an integer conversion is checked against the target's range, whatever its width; only lowering
+            // needs the width of isize and usize.
+            if (!(source.IsInteger && target.IsInteger) &&
+                (ScalarTypes.Width(source, this.compilation.PointerWidth) == 0 || ScalarTypes.Width(target, this.compilation.PointerWidth) == 0))
             {
                 var integer = source.IsInteger ? source : target;
                 if (ScalarTypes.Width(integer, this.compilation.PointerWidth) is > 0 and <= 64)

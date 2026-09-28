@@ -28,6 +28,13 @@ public sealed partial class Binding
     public ConstraintProof ProveOwned(BoundType type, Koto context)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
 
+    /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.4.7.3) under lexical Constraints.</summary>
+    /// <param name="type">The complete Type.</param>
+    /// <param name="context">The use site providing assumptions.</param>
+    /// <returns>The proof result; a proven Type is an owner integer scalar in every instance.</returns>
+    public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
+
     /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>

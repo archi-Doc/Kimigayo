@@ -457,7 +457,7 @@ public sealed partial class Binding
                         foreach (var candidate in candidates)
                         {
                             if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
-                                this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
+                                (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
                             {
                                 lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
                                 typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
@@ -499,7 +499,8 @@ public sealed partial class Binding
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
-                if (this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
+                // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
+                if (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
                     this.BindHeader(candidate);
                     if (function.IsConstructor)
@@ -831,7 +832,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee }))
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -988,7 +989,7 @@ public sealed partial class Binding
                 if (type is null)
                 {
                     // Default only otherwise unconstrained literals; all established inputs were processed above.
-                    if (LiteralDefault(argument) is not { } literalDefault)
+                    if (this.LiteralDefault(argument) is not { } literalDefault)
                     {
                         return CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                     }
@@ -1037,7 +1038,7 @@ public sealed partial class Binding
                 }
 
                 if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
-                    ScalarTypes.Supports(borrowed.Components[0]) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
+                    (ScalarTypes.Supports(borrowed.Components[0]) || this.RangeElement(borrowed.Components[0]) is not null) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
                 {
                     // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
                     // its Place Origin binds the parameter's input Origin like any other borrowed temporary.

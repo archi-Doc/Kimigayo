@@ -113,6 +113,7 @@ public sealed partial class KimiLibrary
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
         this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
         this.IndexRange = this.GetSymbol(KimiDeclarationId.IndexRange)!;
+        this.Range = this.GetSymbol(KimiDeclarationId.Range)!;
         this.ResolvedRange = this.GetSymbol(KimiDeclarationId.ResolvedRange)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
@@ -210,6 +211,9 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the designated unresolved IndexRange Type that range syntax constructs for positions (SPEC 4.6.3).</summary>
     public BindingSymbol IndexRange { get; }
+
+    /// <summary>Gets the designated generic integer Range Type that range syntax constructs for two integers (SPEC 4.6.3.2).</summary>
+    public BindingSymbol Range { get; }
 
     /// <summary>Gets the designated validated ResolvedRange Type (SPEC 4.6.3).</summary>
     public BindingSymbol ResolvedRange { get; }

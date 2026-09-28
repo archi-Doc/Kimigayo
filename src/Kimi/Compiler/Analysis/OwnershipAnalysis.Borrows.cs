@@ -269,7 +269,7 @@ public sealed partial class OwnershipAnalysis
 
         var root = ElementAccess.BorrowedPathRoot(field)!;
         if (ElementAccess.AccessType(root)?.Semantics != SemanticsKind.Uniq ||
-            !ReferenceTypes.IsValue(field.BoundType))
+            !(ReferenceTypes.IsValue(this.Concrete(field.BoundType)) || this.GenericInteger(field)))
         {
             this.Unsupported(assignment);
             return -1;
@@ -287,12 +287,18 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
+    // SPEC 8.4.7.3: a generic integer field is an owner scalar in every instance. Universal verification accepts it,
+    // and each instance plan sees the concrete scalar.
+    private bool GenericInteger(Koto source)
+        => this.instance is null && source.BoundType is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } type &&
+        this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven;
+
     private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
         var receiverType = ElementAccess.AccessType(root);
-        if (receiverType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
+        if (receiverType?.Semantics != SemanticsKind.Uniq || !(this.Concrete(field.BoundType)?.IsNumeric == true || this.GenericInteger(field)) || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);
             return -1;

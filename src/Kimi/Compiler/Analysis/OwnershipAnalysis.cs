@@ -662,7 +662,7 @@ public sealed partial class OwnershipAnalysis
         switch (node)
         {
             case FromEndIndexKoto fromEnd:
-                var offset = this.Expression(fromEnd.Operand);
+                var offset = this.PositionPlace(fromEnd.Operand, this.Expression(fromEnd.Operand));
                 return offset < 0 ? -1 : this.SequenceValue(fromEnd, fromEnd.BoundType!, SequenceOperation.FromEnd, offset, index: this.Value(offset));
             case FunctionKoto { BoundClosure: { } } closure:
                 return this.CreateClosure(closure);
@@ -1305,6 +1305,15 @@ public sealed partial class OwnershipAnalysis
             ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) && !this.libraryBodies.Contains(function))
         {
             this.libraryBodies.Add(function);
+            if (function.GenericArguments.Count != 0 && function.BoundSymbol is { } original &&
+                this.compilation.Binding.Specializations(original) is { } specializations)
+            {
+                // SPEC 8.8.3: an instance may select any specialization at emission.
+                foreach (var specialization in specializations)
+                {
+                    this.CollectLibraryBody(specialization);
+                }
+            }
         }
     }
 
