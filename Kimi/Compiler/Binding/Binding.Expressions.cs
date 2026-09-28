@@ -19,7 +19,8 @@ public sealed partial class Binding
     // grants Read only (SPEC 14.8.3).
     private static BindingFailure? ReferenceBindingAssignment(Koto target)
         => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, BindsReference: true, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } }
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+                (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);

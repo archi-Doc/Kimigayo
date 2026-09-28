@@ -66,8 +66,9 @@ public sealed partial class Binding
         }
 
         var exclusive = source.Mode == SubjectMode.Exclusive;
-        var sequence = iterable?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && IsBarePlace(source.Iterable) ? iterable :
-            ReferenceTypes.IsArray(iterable) || ReferenceTypes.IsDynamicArray(iterable) ? iterable!.Components[0] : null;
+        // Dynamic Array uses its ordinary Kimigayo entry and iterator; fixed arrays retain the sequence boundary.
+        var sequence = iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable) ? iterable :
+            ReferenceTypes.IsArray(iterable) ? iterable!.Components[0] : null;
         if (sequence is not null)
         {
             // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and a shared borrow value of an array is
@@ -87,9 +88,9 @@ public sealed partial class Binding
         }
 
         var view = source.SharedIterable ?? iterable;
-        var element = view is null ? null : view.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? view.Components[0] : view.Kind == BoundTypeKind.Slice
+        var element = view is null ? null : view.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize
-            : exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view)) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
+            : exclusive && ReferenceTypes.IsArray(view) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
         if (dictionary is not null)
         {
             // SPEC 14.6.2: shared Dictionary iteration yields (ref/K, ref/V) and exclusive iteration (ref/K, uniq/V),
@@ -165,8 +166,8 @@ public sealed partial class Binding
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) &&
-            !(exclusive && (ReferenceTypes.IsArray(view) || ReferenceTypes.IsDynamicArray(view))))
+        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
+            !(exclusive && ReferenceTypes.IsArray(view)))
         {
             return Fail(source, BindingFailure.Unsupported);
         }

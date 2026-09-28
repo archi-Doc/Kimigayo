@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -8,6 +9,20 @@ namespace XunitTest;
 public class DynamicArrayIterationTest
 {
     private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        match self.id\n            1 => Console.writeLine(\"drop 1\")\n            2 => Console.writeLine(\"drop 2\")\n            _ => Console.writeLine(\"drop 3\")\n";
+
+    [Theory]
+    [InlineData("values", "iterate")]
+    [InlineData("values@ref", "iterate")]
+    [InlineData("values@uniq", "iterateUniq")]
+    [InlineData("values@move", "intoIterator")]
+    public void SelectsTheLibraryIterationEntry(string subject, string entry)
+    {
+        var c = MinimalEmissionTest.Analyze("var values: Array<i32> = [1, 2]\nfor value in " + subject + " => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.NotNull(loop.EntryCall);
+        Assert.Equal(entry, Assert.IsType<IdentifierNameKoto>(Assert.IsType<MemberAccessKoto>(loop.EntryCall.Method).Right).IdentifierName);
+    }
 
     [Theory]
     [InlineData("Scalar", "let values: Array<i32> = [10, 20, 12]\nvar total = 0\nfor value in values@move => total += value\nrequire total == 42 else => $abort(\"sum\")", "")]
@@ -18,6 +33,8 @@ public class DynamicArrayIterationTest
     [InlineData("Nested", "let values: Array<i32> = [1, 2]\nvar count = 0\nfor value in values@move\n    let inner: Array<i32> = [10, 20]\n    for item in inner@move => count += value + item\nrequire count == 66 else => $abort(\"nested\")", "")]
     [InlineData("Reinitialize", "var values: Array<i32> = [1, 2]\nfor value in values@move => ()\nvalues = [42]\nrequire values[0] == 42 else => $abort(\"reinitialize\")", "")]
     [InlineData("StringReturn", "func first(values: Array<string>) -> string\n    for value in values@move => return value@move\n    $abort(\"empty\")\nlet values: Array<string> = [\"first\", \"second\"]\nConsole.writeLine(first(values@move))", "first\n")]
+    [InlineData("Tuple", "let values: Array<(i32, i32)> = [(20, 22)]\nfor (first, second) in values@move\n    require first + second == 42 else => $abort(\"tuple\")", "")]
+    [InlineData("OwnedTuple", "let values: Array<(string, string)> = [(\"first\", \"second\")]\nfor (first, second) in values@move\n    Console.writeLine(first)\n    Console.writeLine(second)", "first\nsecond\n")]
     public void ConsumesElementsInIndexOrder(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("DynamicArrayIteration" + name, source, stdout);
 
@@ -52,7 +69,6 @@ public class DynamicArrayIterationTest
     [InlineData("var values: Array<i32> = [1]\nlet borrow = values@ref\nfor value in values@move => ()\nlet n = borrow.length")]
     [InlineData("let values: Array<i32> = [1]\nfor value in values@move => value = 2")]
     [InlineData("let values: Array<i32> = [1]\nfor value in (if true => values@move else => values@move) => ()\nlet n = values.length")]
-    [InlineData("let values: Array<(i32, i32)> = [(1, 2)]\nfor (first, second) in values@move => ()")]
     public void RejectsInvalidConsumption(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
