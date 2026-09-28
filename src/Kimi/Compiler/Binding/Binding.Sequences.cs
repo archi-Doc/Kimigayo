@@ -163,31 +163,58 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
+        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
+            !(exclusive && ReferenceTypes.IsArray(view)))
+        {
+            return this.FailIterationSubject(source, scope, iterable);
+        }
+
         if (source.IsTupleBinding && (tuple?.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count))
         {
             return Fail(source, BindingFailure.TypeMismatch);
         }
 
-        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
-            !(exclusive && ReferenceTypes.IsArray(view)))
+        return this.FinishResult(source, result);
+    }
+
+    // SPEC 14.6.2: a missing entry conformance is an error of the Subject, decided like any other Contract requirement:
+    // refuted for a Type that lacks it, unproven for one whose conformance is not established, such as an unconstrained Type
+    // parameter. A proven conformance whose entry or step did not bind remains an implementation boundary of the loop.
+    private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
+    {
+        var entry = this.IterationEntry(source, ref subject);
+        var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
+        if (proof == ConstraintProof.Proven)
         {
             return Fail(source, BindingFailure.Unsupported);
         }
 
-        return this.FinishResult(source, result);
+        Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
+        return Complete(source, null);
+    }
+
+    // SPEC 14.6.2, 3.4.1: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
+    // reference layer.
+    private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
+    {
+        if (source.Mode == SubjectMode.ByValue)
+        {
+            return this.Library.IntoIterable;
+        }
+
+        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            subject = subject.Components[0];
+        }
+
+        return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
     }
 
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = source.Mode == SubjectMode.ByValue ? this.Library.IntoIterable :
-            source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
+        var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        while (source.Mode != SubjectMode.ByValue && subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            subject = subject.Components[0]; // SPEC 3.4.1: the entry is selected at the referent of every reference layer.
-        }
-
         var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {

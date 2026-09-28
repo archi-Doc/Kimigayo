@@ -44,7 +44,7 @@ $variants = [ordered]@{
 Invoke-MilestoneVariants $variants $expected
 # Rejections must name the actual diagnostic and must leave neither IR nor an executable.
 $invalid = [ordered]@{
-    IndexRangeIteration = @{ source = "for i in 1..^1`n    ()`n"; diagnostic = 'UnsupportedBinding_Kd' }
+    IndexRangeIteration = @{ source = "for i in 1..^1`n    ()`n"; diagnostic = 'UnsatisfiedConstraint_Kd' }
     IntegerIndex = @{ source = "let values: [3 of i32] = [1, 2, 3]`nlet i: i32 = 1`nlet v = values[i]`n"; diagnostic = 'TypeMismatch_Kd' }
     NonCopyIndexedMove = @{ source = "let text: [2 of string] = [`"a`", `"b`"]`nlet words = text[..]`nlet taken = words[0]@move`n"; diagnostic = 'SharedPathAccess_Kd' }
     SliceElementWrite = @{ source = "var text: [2 of string] = [`"a`", `"b`"]`nlet words = text[..]`nwords[0] = `"c`"`n"; diagnostic = 'SharedPathAccess_Kd' }

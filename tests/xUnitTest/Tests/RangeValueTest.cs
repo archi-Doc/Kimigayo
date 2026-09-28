@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -44,12 +45,18 @@ public class RangeValueTest
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("RangeValue" + name, source, stdout);
 
-    [Fact]
-    public void IndexRangeIsNotIterable()
+    [Theory]
+    [InlineData("for i in 1..^1\n    ()")]
+    [InlineData("let inner = 1..^1\nfor i in inner => ()")]
+    [InlineData("for i in ..3 => ()")]
+    public void IndexRangeIsNotIterable(string source)
     {
-        var c = MinimalEmissionTest.Analyze("for i in 1..^1\n    ()");
+        // SPEC 4.6.3.5, 14.6.2: IndexRange declares no entry conformance, so its Subject refutes the loop's requirement.
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, issue.Code);
+        Assert.Same(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable, issue.Node);
     }
 
     [Fact]

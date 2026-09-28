@@ -211,12 +211,13 @@ public class SharedSubjectTest
     }
 
     [Fact]
-    public void UnsupportedIterablesReportOnlyTheBoundary()
+    public void NonIterableSubjectReportsOnlyItsConformance()
     {
         var c = MinimalEmissionTest.Analyze("struct Box\n    var id: i32 = 0\nlet box = Box.init()\nvar sum: i32 = 0\nfor v in box\n    sum += v");
         Assert.False(c.Binding.Result.IsComplete);
         var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, issue.Code);
+        Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, issue.Code);
+        Assert.Same(FindIterable(c), issue.Node);
     }
 
     private static Koto FindIterable(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable;

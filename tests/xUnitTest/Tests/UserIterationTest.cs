@@ -133,9 +133,12 @@ public class UserIterationTest
     [Fact]
     public void MissingEntryConstraintIsRejected()
     {
+        // SPEC 14.6.2: without a `B is IntoIterable` fact the entry conformance of an unconstrained parameter is unproven.
         var c = MinimalEmissionTest.Analyze("func count<B>(batch: B)\n    for _ in batch@move => ()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, issue.Code);
+        Assert.Same(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>()).Iterable, issue.Node);
     }
 
     [Fact]
@@ -302,16 +305,26 @@ public class UserIterationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 14.6.2: a Subject without the entry conformance of its mode is a Contract error at the Subject, never a method-name
+    // fallback or an implementation limit; a binding shape that does not fit the item is a mismatch of the loop.
     [Theory]
-    [InlineData(Counter + "for item in Counter.init() => ()")]
-    [InlineData(Counter + "struct Fake\n    public func intoIterator(self: Self) -> Counter => Counter.init()\nfor item in Fake.init() => ()")]
-    [InlineData(Counter + Three + "let values = Three.init()\nfor item in values => ()")]
-    [InlineData(Counter + Three + "var values = Three.init()\nfor item in values@uniq => ()")]
-    [InlineData(Counter + Three + "for (one, two) in Three.init() => ()")]
-    public void MissingEntriesAndWrongBindingShapesAreRejected(string source)
+    [InlineData(Counter + "for item in Counter.init() => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData(Counter + "struct Fake\n    public func intoIterator(self: Self) -> Counter => Counter.init()\nfor item in Fake.init() => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData(Counter + Three + "let values = Three.init()\nfor item in values => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData(Counter + Three + "var values = Three.init()\nfor item in values@uniq => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("for i in 5 => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("let i = ^1\nfor x in i => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("struct S\n    public let x: i32 = 0\nfor i in S.init() => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("func f(values: ref/Index)\n    for v in values => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("for (a, b) in 5 => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData(Counter + Three + "for (one, two) in Three.init() => ()", DiagnosticCode.TypeMismatch_Kd, false)]
+    public void MissingEntriesAndWrongBindingShapesAreRejected(string source, DiagnosticCode code, bool atSubject)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.NotEmpty(c.Binding.Issues);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(code, issue.Code);
+        var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
+        Assert.Same(atSubject ? loop.Iterable : loop, issue.Node);
     }
 }
