@@ -159,6 +159,21 @@ public class DictionaryRemainderTest
         }
     }
 
+    // SPEC 14.6.2: `for` selects the entry by its Subject mode. Exclusive decomposition writes values through the split
+    // items; an owning loop that exits early leaves the unreturned entries to its iterator, which destroys them in reverse
+    // insertion order after the returned entry's binding.
+    [Fact]
+    public void ForSelectsTheDictionaryEntryByMode()
+    {
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+            "public func main()\n    var totals: Dictionary<string, i32> = [:]\n    _ = totals.tryInsert(\"a\", 1)\n    _ = totals.tryInsert(\"b\", 2)\n" +
+            "    for (key, value) in totals@uniq\n        value@follow += 10\n    var sum: i32 = 0\n    for (key, value) in totals\n        let n: i32 = value\n        sum += n\n" +
+            "    require sum == 23 else => $abort(\"sum\")\n" +
+            "    var map: Dictionary<i32, Tracked> = [:]\n    _ = map.tryInsert(1, Tracked.init(10))\n    _ = map.tryInsert(2, Tracked.init(20))\n    _ = map.tryInsert(3, Tracked.init(30))\n" +
+            "    for (key, value) in map@move\n        require key == 1 and value.id == 10 else => $abort(\"first\")\n        exit\n    Console.writeLine(\"After.\")";
+        ScalarEmissionTest.EmitFixture("DictionaryRemainderFor", Source, "Dropped 10\nDropped 30\nDropped 20\nAfter.\n");
+    }
+
     // The owning remainder releases the transferred buffer exactly once, including after a partial enumeration.
     [Fact]
     public void OwningIterationReleasesTheBufferOnce()
