@@ -138,52 +138,6 @@ internal sealed partial class BodyLowering
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
-        if (plan.Kind is SequenceOperation.ArrayIterator or SequenceOperation.ArrayMoveRead)
-        {
-            var initialization = this.arrayIterators[plan.Receiver];
-            if (borrowedArray || receiver.Kind != BoundTypeKind.Array || plan.Projection != -1 || plan.End != -1 || plan.Element != -1 ||
-                operation.Source is not ForKoto { SharedIterable: null, IsTupleBinding: false } || initialization < 0 ||
-                !ReferenceEquals(body.Operations[initialization].Source, operation.Source) ||
-                !this.TryGetArrayElement(receiver.Components[0], out var item) ||
-                !this.TryGetLocation(operation.Source, directory, constants, out var iteratorLocation))
-            {
-                return Fail("Array iteration requires its acquired owning handle and element layout.", out failure);
-            }
-
-            this.arrayRuntimeUsed = true;
-            if (plan.Kind == SequenceOperation.ArrayIterator)
-            {
-                if (initialization != id || plan.Index != -1 || !ReferenceEquals(ValueType(body, id), BoundType.Unit))
-                {
-                    return Fail("Array iterator initialization has an invalid result or cursor.", out failure);
-                }
-
-                function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, 0)], op: "ArrayIterator");
-                return true;
-            }
-
-            if (!ReferenceEquals(ValueType(body, id), item.Type) || (uint)plan.Index >= (uint)id ||
-                !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                (body.IsReachable(id) && (!this.Dominates(initialization, id) || !this.Dominates(plan.Index, id))))
-            {
-                return Fail("Array iteration must initialize its cursor before taking an element.", out failure);
-            }
-
-            var take = this.GetArrayHelper(ArrayHelperKind.Take, item).Abi;
-            Span<EmissionOperand> arguments = stackalloc EmissionOperand[4];
-            arguments[0] = address;
-            var count = 1;
-            if (!item.IsScalar)
-            {
-                arguments[count++] = new(EmissionOperandKind.SlotAddress, operation.Place);
-            }
-
-            arguments[count++] = new(EmissionOperandKind.ConstantAddress, iteratorLocation);
-            arguments[count++] = new(EmissionOperandKind.ConstantLength, iteratorLocation);
-            function.AddCall(id, take, arguments[..count]);
-            return true;
-        }
-
         if (plan.Kind == SequenceOperation.Borrow)
         {
             var reference = ValueType(body, id);

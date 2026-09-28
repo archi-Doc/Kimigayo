@@ -443,8 +443,6 @@ internal enum SequenceOperation : byte
     FromEnd,
     Borrow,
     ArrayRead,
-    ArrayIterator,
-    ArrayMoveRead,
     Indices,
     Length,
     Start,

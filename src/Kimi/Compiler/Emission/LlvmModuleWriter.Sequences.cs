@@ -17,18 +17,6 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator == "ArrayIterator")
-        {
-            // The consumed private handle no longer exposes capacity; that word becomes the next-element cursor.
-            Name(output, "  %iterator_cursor", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 16\n  store i64 0, ptr ");
-            Name(output, "%iterator_cursor", id);
-            output.Write(", align 8\n");
-            return;
-        }
-
         if (instruction.ScalarOperator == "FromEnd")
         {
             Name(output, "  %invalid", id);

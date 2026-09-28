@@ -356,8 +356,6 @@ internal enum ArrayHelperKind : byte
     Place,
     Clear,
     Drop,
-    Take,
-    IteratorDrop,
     Swap,
 
     // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.

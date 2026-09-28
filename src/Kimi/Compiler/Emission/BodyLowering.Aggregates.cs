@@ -591,12 +591,6 @@ internal sealed partial class BodyLowering
             return Fail("Array destruction has an unsupported element Type.", out failure);
         }
 
-        var iterator = this.arrayIterators[place];
-        if (iterator >= 0 && body.IsReachable(id) && !this.Dominates(iterator, id))
-        {
-            return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
-        }
-
         FunctionAbi callee;
         if (dictionary)
         {
@@ -610,13 +604,12 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
         }
 
         if (conditional)
         {
-            // An owning iterator always has a dominating unconditional cursor.
-            if (iterator >= 0 || this.continuations[id] < 0 || this.liveFlags[place] == 0)
+            if (this.continuations[id] < 0 || this.liveFlags[place] == 0)
             {
                 return Fail("Conditional Array destruction requires a live flag and one split.", out failure);
             }
