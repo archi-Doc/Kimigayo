@@ -21,6 +21,13 @@ internal group Storage
         internal var count: isize
         internal var capacity: isize
 
+        deinit
+            let storage: unsafe/E = self.storage
+            while self.count > 0
+                self.count -= 1
+                unsafe => _ = storage[self.position + self.count]
+            unsafe => release(storage)
+
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
         require state.count > 0 else => return .None

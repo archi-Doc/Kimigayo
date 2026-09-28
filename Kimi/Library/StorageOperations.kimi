@@ -6,3 +6,4 @@ internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E
 internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source
 internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
+internal unsafe func release<E>(storage: unsafe/E)

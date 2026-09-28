@@ -235,9 +235,7 @@ internal sealed class AggregateLayoutPool
             }
 
             var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
-            // SPEC 22.1.2.5: an owning remainder destroys its unreturned elements and buffer through the element drop helper.
-            var collectionDrop = structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.OwnedRemainder ? this.CollectionDrop?.Invoke(type) : null;
-            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true || collectionDrop is not null;
+            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true;
             for (var i = 0; i < fieldCount; i++)
             {
                 alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
@@ -329,7 +327,7 @@ internal sealed class AggregateLayoutPool
             }
 
             var representation = new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
-            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, CollectionDrop: collectionDrop, GenericDestructor: genericDestructor);
+            var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, GenericDestructor: genericDestructor);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

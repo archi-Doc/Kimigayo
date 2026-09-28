@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Source is InvocationKoto storageCall && resolved is { } storagePlan && KimiLibraryCatalog.IsStorageOperation(storagePlan.Target.CompilerFunction))
         {
-            return this.LowerStorageOperation(body, function, id, storageCall, storagePlan, out failure);
+            return this.LowerStorageOperation(body, function, constants, directory, id, storageCall, storagePlan, out failure);
         }
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;

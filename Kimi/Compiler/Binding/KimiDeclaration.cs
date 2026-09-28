@@ -109,6 +109,7 @@ public enum KimiDeclarationId : byte
     StorageTakeFirst,
     StorageLend,
     StorageSplit,
+    StorageRelease,
 }
 
 public enum KimiDeclarationState : byte

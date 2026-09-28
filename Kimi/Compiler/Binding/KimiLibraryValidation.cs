@@ -48,7 +48,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
-                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageSplit => this.ValidStorageOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageRelease => this.ValidStorageOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -170,14 +170,19 @@ public sealed partial class KimiLibrary
     }
 
     // The number of fields, or -1 when the record declares anything else; Binding may add a generated constructor.
-    private static int StorageFields(DeclarationContainerKoto declaration)
+    private static int StorageFields(DeclarationContainerKoto declaration, bool requireDestructor = false)
     {
         var count = 0;
+        var destructors = 0;
         for (var i = 0; i < declaration.Members.Count; i++)
         {
             if (declaration.Members[i] is VariableKoto)
             {
                 count++;
+            }
+            else if (declaration.Members[i] is FunctionKoto { IsDestructor: true })
+            {
+                destructors++;
             }
             else if (declaration.Members[i] is not FunctionKoto { IsGenerated: true })
             {
@@ -185,7 +190,7 @@ public sealed partial class KimiLibrary
             }
         }
 
-        return count;
+        return destructors == (requireDestructor ? 1 : 0) ? count : -1;
     }
 
     private static VariableKoto? StorageField(DeclarationContainerKoto declaration, int ordinal)
@@ -522,7 +527,7 @@ public sealed partial class KimiLibrary
         symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] } declaration &&
         declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) &&
         declaration.OriginNames.Count == (id == KimiDeclarationId.OwnedRemainder ? 0 : 1) && (id == KimiDeclarationId.OwnedRemainder || declaration.OriginNames[0] == "source") &&
-        StorageFields(declaration) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
+        StorageFields(declaration, id == KimiDeclarationId.OwnedRemainder) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
         ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E", true) && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize", true) && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize", true) &&
         (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize", true));
 
@@ -532,6 +537,7 @@ public sealed partial class KimiLibrary
     {
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
         var capability = id is KimiDeclarationId.StorageLend or KimiDeclarationId.StorageSplit;
+        var release = id == KimiDeclarationId.StorageRelease;
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
@@ -539,13 +545,13 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.StorageLend => ("lend", "state", SemanticsKind.Ref, "RefRemainder"),
             KimiDeclarationId.StorageSplit => ("split", "state", SemanticsKind.Uniq, "UniqRemainder"),
             KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
-            _ => (string.Empty, string.Empty, SemanticsKind.Owner, string.Empty),
+            _ => ("release", "storage", SemanticsKind.Unsafe, "E"),
         };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
-            function.Name != name || function.Modifier != (capability ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
+            function.Name != name || function.Modifier != (capability || release ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
-            function.Parameters.Count != (capability ? 2 : 1) || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
+            function.Parameters.Count != (capability ? 2 : 1) || function.TypeConstraints.Count != 0 || (release ? function.ReturnType is not null : function.ReturnType is null) ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
             function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != parameterName || parameter.ExternalName != parameter.InternalName)
         {
@@ -557,6 +563,11 @@ public sealed partial class KimiLibrary
             result.OriginExpression is not MemberAccessKoto origin || !BareName(origin.Left, "state") || !BareName(origin.Right, "source")))
         {
             return false;
+        }
+
+        if (release)
+        {
+            return BareType(parameter.Type) is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } releasePointer && BareName(releasePointer.Type, "E");
         }
 
         return semantics == SemanticsKind.Owner

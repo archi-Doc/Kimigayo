@@ -78,4 +78,5 @@ public enum CompilerFunctionKind : byte
     StorageOwn,
     StorageLend,
     StorageSplit,
+    StorageRelease,
 }

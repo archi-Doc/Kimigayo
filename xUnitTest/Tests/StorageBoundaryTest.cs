@@ -129,7 +129,8 @@ public class StorageBoundaryTest
             "public func main()\n    var items: Array<Tracked> = [Tracked.init(1), Tracked.init(2), Tracked.init(3), Tracked.init(4)]\n    var it = (items@move).intoIterator()\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 1 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 2 else => $abort(\"second\")\n        .None => $abort(\"empty\")\n    Console.writeLine(\"Stop.\")";
-        ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedDrop", Source, "Dropped 1\nDropped 2\nStop.\nDropped 4\nDropped 3\n");
+        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedDrop", Source, "Dropped 1\nDropped 2\nStop.\nDropped 4\nDropped 3\n");
+        Assert.DoesNotContain("__kimi_array_owned_drop_", ir);
     }
 
     // SPEC 9.3, 22.1.2.5: the boundary is internal to the Kimi Kotonoha; no user source reaches it.
@@ -138,6 +139,7 @@ public class StorageBoundaryTest
     [InlineData("let r = Storage.borrowStorage(values@ref)")]
     [InlineData("let r = Kimi.Storage.lend(values@ref, null)")]
     [InlineData("let r = Kimi.Storage.split(values@uniq, null)")]
+    [InlineData("unsafe => Kimi.Storage.release(null@unsafe/i32)")]
     [InlineData("func f(r: Kimi.Storage.RefRemainder<Array<i32>>) => ()")]
     public void UserSourceCannotReachTheBoundary(string use)
     {

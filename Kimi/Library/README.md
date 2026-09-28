@@ -27,8 +27,9 @@ embedded, validated and implemented.
   public syntax for declaring a user intrinsic or omitting a function body.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal
   unsafe `lend`/`split` capabilities, and owning `takeFirst` through typed raw reads.
-  Construction and owning-remainder destruction still use compiler implementations;
-  the latter's source migration requires generic destructor instantiation (PLAN G29).
+  Its owning remainder destroys unreturned elements in reverse order in a concrete
+  generic `deinit`, then calls the internal unsafe `release` primitive. Only handle
+  construction, capability creation and raw region release remain compiler operations.
 - Register compiler-recognized identities in `KimiLibraryCatalog` and validate
   their contracts in `KimiLibraryValidation`. Append new stable declaration IDs;
   never derive them from source order. Ordinary helper declarations need no ID. `SourceExpected` distinguishes a
