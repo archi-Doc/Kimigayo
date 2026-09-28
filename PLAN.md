@@ -65,6 +65,8 @@ P22, P19, P20, P21, P29, P32, P30, P23, P27, P37 and P39 are done. P28 is the ac
 
 The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
 
+The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; [measurements and verification](Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
+
 | ID | Subject | Acceptance |
 | --- | --- | --- |
 | T1 | Foreign imports across modules | Dependency-module imports link against that module's own `NativeLibraries` supplies through link manifest schema 4 with scoped requirement identities (§20.8.3, §18.5.2), plus archive member kind/provider validation (§20.8.2.3). Two-module native test. |

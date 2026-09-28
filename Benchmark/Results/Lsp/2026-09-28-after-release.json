@@ -1,0 +1,47 @@
+{
+  "runtime": "10.0.12",
+  "results": [
+    {
+      "name": "equalLengthEdit105KB",
+      "cost": {
+        "nanoseconds": 32.825,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "noOpEdit105KB",
+      "cost": {
+        "nanoseconds": 7.525,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "deduplicate200Diagnostics",
+      "cost": {
+        "nanoseconds": 1316.715,
+        "bytes": 824
+      }
+    },
+    {
+      "name": "deduplicate200DiagnosticsBefore",
+      "cost": {
+        "nanoseconds": 1416.725,
+        "bytes": 1680
+      }
+    },
+    {
+      "name": "listing1000WithExistingOverlay",
+      "cost": {
+        "nanoseconds": 139.18,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "listing1000WithNewOverlay",
+      "cost": {
+        "nanoseconds": 8180.08,
+        "bytes": 8192
+      }
+    }
+  ]
+}
