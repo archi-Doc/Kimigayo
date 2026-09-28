@@ -183,6 +183,33 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // SPEC 22.1.2.4 (G28): matching an item of the stored Iterator by value destroys nothing when every arm either matches a
+    // Case without payload or binds the whole payload and transfers it at once, so a wrapper that inspects an item before
+    // returning it keeps the inner bound.
+    [Fact]
+    public void AWrapperMayInspectAnItemBeforeTransferringIt()
+    {
+        const string Retry = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n" +
+            "            .Some(let item) => return .Some(item@move)\n            .None\n                self.retries += 1\n                return self.inner.next()\n";
+        var source = Counter + Retry + "var retry = Retry<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match retry.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and retry.retries == 1 else => $abort(\"retry\")\nConsole.writeLine(\"retried\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorRetry", source, "retried\n");
+    }
+
+    // A payload that is discarded, or bound and left to its scope, runs an unknown destructor inside next.
+    [Theory]
+    [InlineData(".Some(_) => return self.inner.next()")]
+    [InlineData(".Some(let item) => return self.inner.next()")]
+    [InlineData(".Some(let item)\n                let again = self.inner.next()\n                return .Some(item@move)")]
+    public void AnInspectedItemThatIsNotTransferredAtOnceIsRejected(string arm)
+    {
+        var source = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n            " + arm + "\n            .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A call without a published effect bound, such as a requirement of a Type parameter, cannot certify next.
     [Fact]
     public void UnboundedRequirementCallsAreRejected()

@@ -323,6 +323,56 @@ public sealed partial class Binding
         // An owned temporary is destroyed where it is discarded or borrowed. A value that is returned, stored, passed by
         // value or placed into another value is destroyed by its new owner, which the summary visits there; a match arm or
         // expression-bodied branch passes its value on to the enclosing expression.
+        // G28: a by-value Subject destroys nothing when every arm matches a Case without payload, or binds the whole payload
+        // and transfers the binding at once (`return .Some(item@move)`, `return item@move`) before any other effect.
+        private bool PayloadsTransferred(MatchKoto match)
+        {
+            if (!binding.TryGetMatch(match, out var plan) || plan is not { Mode: SubjectMode.ByValue } || plan.Arms.Count == 0)
+            {
+                return false;
+            }
+
+            for (var a = 0; a < plan.Arms.Count; a++)
+            {
+                var arm = plan.Arms[a];
+                if (arm.Syntax.Guard is not null || (uint)arm.Pattern >= (uint)plan.Positions.Count ||
+                    plan.Positions[arm.Pattern] is not { Kind: BoundPatternKind.Case, Case: { } matched } root)
+                {
+                    return false;
+                }
+
+                if (matched.Payload.Length == 0 && root.End == arm.Pattern + 1)
+                {
+                    continue; // Nothing is left to destroy for a Case without payload.
+                }
+
+                if (matched.Payload.Length != 1 || root.End != arm.Pattern + 2 ||
+                    plan.Positions[arm.Pattern + 1] is not { Kind: BoundPatternKind.Binding, AccessMode: PatternAccessMode.Owned, ImplicitFollows: 0, BodySymbol: { } item } payload ||
+                    payload.Parent != arm.Pattern || !TransfersAtOnce(arm.Syntax.Body, item))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+
+            bool TransfersAtOnce(Koto body, BindingSymbol item)
+            {
+                while (body is CodeBlockKoto { Items: [var only] })
+                {
+                    body = only;
+                }
+
+                var value = body is ReturnKoto { Expression: { } returned } ? returned : null;
+                if (value is InvocationKoto { ArgumentNodes: [var argument] } construction && binding.TryGetEnumConstruction(construction, out _))
+                {
+                    value = argument; // A Case construction stores its one payload first.
+                }
+
+                return value is ConversionKoto { ConversionBinding: ConversionBinding.Transfer, Left: IdentifierNameKoto moved } && ReferenceEquals(moved.BoundSymbol, item);
+            }
+        }
+
         private bool Consumed(Koto node)
         {
             for (var depth = 0; depth < 64; depth++)
@@ -336,6 +386,8 @@ public sealed partial class Binding
                     case MatchKoto match when !ReferenceEquals(match.Expression, node):
                         node = parent;
                         continue;
+                    case MatchKoto match:
+                        return this.PayloadsTransferred(match);
                     case IfKoto when node is CodeBlockKoto:
                         node = parent;
                         continue;
