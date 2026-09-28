@@ -197,6 +197,30 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorRetry", source, "retried\n");
     }
 
+    // An immutable local holding the item is not destroyed when the very next statement transfers it, directly or as a match
+    // Subject whose arms transfer the payload.
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        return first@move")]
+    public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
+    {
+        var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
+        var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void ADroppedLocalItemIsRejected()
+    {
+        const string Source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        return self.inner.next()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A payload that is discarded, or bound and left to its scope, runs an unknown destructor inside next.
     [Theory]
     [InlineData(".Some(_) => return self.inner.next()")]

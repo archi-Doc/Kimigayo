@@ -87,7 +87,11 @@ public sealed partial class Binding
             if (node is FieldKoto local)
             {
                 this.Queue(local.InitializerKoto);
-                this.Destruction(local.BoundSymbol?.Type is { } type ? this.Type(type) : null, local);
+                if (!this.TransferredNext(local))
+                {
+                    this.Destruction(local.BoundSymbol?.Type is { } type ? this.Type(type) : null, local);
+                }
+
                 return;
             }
 
@@ -199,6 +203,9 @@ public sealed partial class Binding
 
             return this.valid;
         }
+
+        private static bool IsTransferOf(Koto? value, BindingSymbol item)
+            => value is ConversionKoto { ConversionBinding: ConversionBinding.Transfer, Left: IdentifierNameKoto moved } && ReferenceEquals(moved.BoundSymbol, item);
 
         // SPEC 8.4.3: a parameter, projection or Semantics application stands for any complete Type of an instance.
         private static bool IsAbstract(BoundType type)
@@ -348,29 +355,51 @@ public sealed partial class Binding
 
                 if (matched.Payload.Length != 1 || root.End != arm.Pattern + 2 ||
                     plan.Positions[arm.Pattern + 1] is not { Kind: BoundPatternKind.Binding, AccessMode: PatternAccessMode.Owned, ImplicitFollows: 0, BodySymbol: { } item } payload ||
-                    payload.Parent != arm.Pattern || !TransfersAtOnce(arm.Syntax.Body, item))
+                    payload.Parent != arm.Pattern || !this.TransfersAtOnce(arm.Syntax.Body, item))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
 
-            bool TransfersAtOnce(Koto body, BindingSymbol item)
+        // Whether the body is exactly `return item@move` or `return .Some(item@move)`: the binding is transferred first.
+        private bool TransfersAtOnce(Koto body, BindingSymbol item)
+        {
+            while (body is CodeBlockKoto { Items: [var only] })
             {
-                while (body is CodeBlockKoto { Items: [var only] })
-                {
-                    body = only;
-                }
-
-                var value = body is ReturnKoto { Expression: { } returned } ? returned : null;
-                if (value is InvocationKoto { ArgumentNodes: [var argument] } construction && binding.TryGetEnumConstruction(construction, out _))
-                {
-                    value = argument; // A Case construction stores its one payload first.
-                }
-
-                return value is ConversionKoto { ConversionBinding: ConversionBinding.Transfer, Left: IdentifierNameKoto moved } && ReferenceEquals(moved.BoundSymbol, item);
+                body = only;
             }
+
+            var value = body is ReturnKoto { Expression: { } returned } ? returned : null;
+            if (value is InvocationKoto { ArgumentNodes: [var argument] } construction && binding.TryGetEnumConstruction(construction, out _))
+            {
+                value = argument; // A Case construction stores its one payload first.
+            }
+
+            return IsTransferOf(value, item);
+        }
+
+        // G28: an immutable local is not destroyed when the very next statement transfers it at once, directly or as the
+        // Subject of a match that transfers its payload; nothing runs in between.
+        private bool TransferredNext(FieldKoto local)
+        {
+            if (local.VariableKind != VariableKind.Let || local.BoundSymbol is not { } symbol || local.Parent is not CodeBlockKoto block)
+            {
+                return false;
+            }
+
+            for (var i = 0; i + 1 < block.Items.Count; i++)
+            {
+                if (ReferenceEquals(block.Items[i], local))
+                {
+                    var next = block.Items[i + 1];
+                    return this.TransfersAtOnce(next, symbol) || (next is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match));
+                }
+            }
+
+            return false;
         }
 
         private bool Consumed(Koto node)
