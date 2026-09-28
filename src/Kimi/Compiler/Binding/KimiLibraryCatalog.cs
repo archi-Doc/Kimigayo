@@ -122,7 +122,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.OwnedRemainder, "OwnedRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
         new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
-        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn),
+        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn, Overload: 0),
         new(KimiDeclarationId.StorageLend, "lend", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLend),
         new(KimiDeclarationId.StorageSplit, "split", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplit),
         new(KimiDeclarationId.StorageRelease, "release", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageRelease),
@@ -135,6 +135,10 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 3),
         new(KimiDeclarationId.StorageLendUniqKey, "lendKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLendUniqKey, Overload: 1),
         new(KimiDeclarationId.StorageSplitValue, "splitValue", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplitValue),
+        new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 1),
+        new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
+        new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -145,7 +149,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSplitValue;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageValueAt;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

@@ -260,8 +260,9 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 | `clear(self: uniq/Self) -> ()` | Destroys entries in reverse insertion order, each value before its key; retains capacity. |
 | `iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source` | The Iterable entry: a shared enumeration of the live entries in insertion order. |
 | `iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source` | The UniqIterable entry: keys stay shared and each value is lent exclusively exactly once, so earlier items stay valid across later steps. |
+| `intoIterator(self: Self) -> DictionaryOwningIterator<K, V>` | The IntoIterable entry: each entry is transferred out once as `(K, V)`; unreturned entries are destroyed with the iterator in reverse insertion order, each value before its key. |
 
-`DictionaryIterator<K, V> {source}` and `DictionaryUniqIterator<K, V> {source}` are the standard borrowing Dictionary iterators: each is an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)` or `(ref/K during source, uniq/V during source)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. `for` over a Dictionary still uses the compiler-provided enumeration.
+`DictionaryIterator<K, V> {source}` and `DictionaryUniqIterator<K, V> {source}` are the standard borrowing Dictionary iterators and `DictionaryOwningIterator<K, V>` the owning one: each is an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` or `(K, V)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. `for` over a Dictionary still uses the compiler-provided enumeration.
 
 Duplicate literal keys in the specification's statically comparable literal forms are compile-time errors. Other duplicates Abort at runtime after evaluating the key, before its value or later entries. Capacity operations are in §3.3; iteration modes are in §2.
 

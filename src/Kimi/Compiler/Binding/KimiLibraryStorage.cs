@@ -55,7 +55,7 @@ public sealed partial class KimiLibrary
             return ValidBoundRemainder(symbol, id);
         }
 
-        if (id is >= KimiDeclarationId.DictionaryRefRemainder and <= KimiDeclarationId.StorageLendValue or >= KimiDeclarationId.DictionaryUniqRemainder and <= KimiDeclarationId.StorageSplitValue)
+        if (id is >= KimiDeclarationId.DictionaryRefRemainder and <= KimiDeclarationId.StorageLendValue or >= KimiDeclarationId.DictionaryUniqRemainder and <= KimiDeclarationId.StorageValueAt)
         {
             return this.ValidBoundDictionaryStorage(symbol, id);
         }
@@ -129,15 +129,17 @@ public sealed partial class KimiLibrary
     private bool ValidBoundDictionaryStorage(BindingSymbol symbol, KimiDeclarationId id)
     {
         var u8 = BoundType.Primitives["u8"];
-        var remainderId = id >= KimiDeclarationId.DictionaryUniqRemainder ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder;
-        if (id is KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder)
+        var remainderId = id >= KimiDeclarationId.DictionaryOwnedRemainder ? KimiDeclarationId.DictionaryOwnedRemainder :
+            id >= KimiDeclarationId.DictionaryUniqRemainder ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder;
+        if (id is KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder)
         {
-            if (symbol.Declaration is not StructKoto declaration)
+            var fields = id == KimiDeclarationId.DictionaryOwnedRemainder ? 5 : 4;
+            if (symbol.Declaration is not StructKoto declaration || StorageField(declaration, fields) is not null)
             {
                 return false;
             }
 
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < fields; i++)
             {
                 if (StorageField(declaration, i) is not { BoundSymbol.Type: { } type } field || !ReferenceEquals(field.TypeKoto?.BoundType, type) ||
                     (i == 0 ? !BoundStoragePointer(type, u8) : !ReferenceEquals(type, BoundType.ISize)))
@@ -146,7 +148,12 @@ public sealed partial class KimiLibrary
                 }
             }
 
-            return StorageField(declaration, 4) is null;
+            return true;
+        }
+
+        if (id is >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt)
+        {
+            return this.ValidBoundOwnedDictionaryStorage(symbol, id, u8);
         }
 
         if (symbol.Declaration is not FunctionKoto { GenericArguments: [var keyParameter, var valueParameter] } function ||
@@ -172,8 +179,28 @@ public sealed partial class KimiLibrary
             ReferenceEquals(lent, id is KimiDeclarationId.StorageLendKey or KimiDeclarationId.StorageLendUniqKey ? key : value) && ReferenceEquals(result.Origin, source.OriginArguments[0]);
     }
 
-    private bool DictionaryRemainder(BoundType type, KimiDeclarationId id, BoundType key, BoundType value)
-        => type is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 1, Components: [var storedKey, var storedValue] } &&
+    // ownStorage takes the Dictionary by value; keyAt and valueAt address one slot's key or value with no Loan.
+    private bool ValidBoundOwnedDictionaryStorage(BindingSymbol symbol, KimiDeclarationId id, BoundType u8)
+    {
+        if (symbol.Declaration is not FunctionKoto { GenericArguments: [var keyParameter, var valueParameter] } function ||
+            keyParameter.BoundType is not { Kind: BoundTypeKind.Parameter } key || valueParameter.BoundType is not { Kind: BoundTypeKind.Parameter } value ||
+            symbol.Type is not { } result || function.Parameters[0].Type.BoundType is not { } input)
+        {
+            return false;
+        }
+
+        if (id == KimiDeclarationId.StorageOwnDictionary)
+        {
+            return input is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var storedKey, var storedValue] } &&
+                ReferenceEquals(input.Symbol, this.GetSymbol(KimiDeclarationId.Dictionary)) && ReferenceEquals(storedKey, key) && ReferenceEquals(storedValue, value) &&
+                this.DictionaryRemainder(result, KimiDeclarationId.DictionaryOwnedRemainder, key, value, 0);
+        }
+
+        return function.Parameters.Count == 1 && BoundStoragePointer(input, u8) && BoundStoragePointer(result, id == KimiDeclarationId.StorageKeyAt ? key : value);
+    }
+
+    private bool DictionaryRemainder(BoundType type, KimiDeclarationId id, BoundType key, BoundType value, int origins = 1)
+        => type is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, Components: [var storedKey, var storedValue] } && type.OriginArguments.Count == origins &&
             ReferenceEquals(type.Symbol, this.GetSymbol(id)) && ReferenceEquals(storedKey, key) && ReferenceEquals(storedValue, value);
 
     private bool BoundStorageContainer(BoundType type, KimiDeclarationId id, BoundType element, int origins)

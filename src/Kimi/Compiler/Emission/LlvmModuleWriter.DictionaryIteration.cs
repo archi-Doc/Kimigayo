@@ -22,9 +22,11 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        if (instruction.ScalarOperator == "DictionaryBorrowStorage")
+        if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage")
         {
-            // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle.
+            // {storage, stride, link, count} = {buffer, slot stride, head, length} of the borrowed handle; the owning
+            // remainder also keeps the tail link before its count.
+            var owning = instruction.ScalarOperator == "DictionaryOwnStorage";
             output.Write("  %dbuf");
             WriteNumber(output, id);
             output.Write(" = load ptr, ptr ");
@@ -52,7 +54,21 @@ internal static partial class LlvmModuleWriter
             output.Write(", align 8\n");
             Field(8, "i64 ", operands[1].Value);
             Field(16, "i64 %dhead", id);
-            Field(24, "i64 %dlen", id);
+            if (owning)
+            {
+                output.Write("  %dtailp");
+                WriteNumber(output, id);
+                output.Write(" = getelementptr i8, ptr ");
+                Address();
+                output.Write(", i64 40\n  %dtail");
+                WriteNumber(output, id);
+                output.Write(" = load i64, ptr %dtailp");
+                WriteNumber(output, id);
+                output.Write(", align 8\n");
+                Field(24, "i64 %dtail", id);
+            }
+
+            Field(owning ? 32 : 24, "i64 %dlen", id);
             return;
 
             void Field(int offset, string prefix, Int128 number)

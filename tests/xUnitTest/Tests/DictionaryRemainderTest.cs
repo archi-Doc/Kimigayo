@@ -126,6 +126,30 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.WriteFixture("DictionaryRemainderExclusive", CompilationTestHelper.WriteIr(c), "exclusive\n");
     }
 
+    // SPEC 22.1.2.3, 4.7.6: owning enumeration transfers each returned entry once; the unreturned entries are destroyed with
+    // the iterator in reverse insertion order, each value before its key, and the buffer is released.
+    [Fact]
+    public void OwningIterationTransfersEntriesAndDestroysTheRest()
+    {
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+            "public func main()\n    var map: Dictionary<i32, Tracked> = [:]\n    _ = map.tryInsert(1, Tracked.init(10))\n    _ = map.tryInsert(2, Tracked.init(20))\n" +
+            "    _ = map.tryInsert(3, Tracked.init(30))\n    _ = map.tryInsert(4, Tracked.init(40))\n    _ = map.remove(2)\n    Console.writeLine(\"Removed.\")\n" +
+            "    var it = (map@move).intoIterator()\n" +
+            "    match it.next()\n        .Some((let key, let value)) => require key == 1 and value.id == 10 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
+            "    Console.writeLine(\"Stop.\")";
+        ScalarEmissionTest.EmitFixture("DictionaryRemainderOwned", Source, "Dropped 20\nRemoved.\nDropped 10\nStop.\nDropped 40\nDropped 30\n");
+    }
+
+    // The owning remainder releases the transferred buffer exactly once, including after a partial enumeration.
+    [Fact]
+    public void OwningIterationReleasesTheBufferOnce()
+        => NativeAllocationAudit.WriteFixture(
+            "DictionaryRemainderOwnedRelease",
+            "var map: Dictionary<i32, i32> = [:]\nmap.reserve(3)\n_ = map.tryInsert(1, 10)\n_ = map.tryInsert(2, 20)\nvar it = (map@move).intoIterator()\nmatch it.next()\n    .Some((let k, let v)) => require k == 1 and v == 10 else => $abort(\"first\")\n    .None => $abort(\"empty\")",
+            1,
+            1,
+            96);
+
     [Theory]
     [InlineData("_ = map.length", false)]
     [InlineData("_ = map.tryInsert(5, 50)", false)]

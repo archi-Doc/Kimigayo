@@ -351,6 +351,11 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryStorageOperation(body, function, id, call, plan, out failure);
         }
 
+        if (kind is >= CompilerFunctionKind.StorageOwnDictionary and <= CompilerFunctionKind.StorageValueAt)
+        {
+            return this.LowerOwnedDictionaryStorage(body, function, id, call, plan, out failure);
+        }
+
         if (kind is CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit)
         {
             return this.LowerStorageCapability(body, function, id, call, plan, out failure);

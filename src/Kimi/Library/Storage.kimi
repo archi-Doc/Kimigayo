@@ -44,6 +44,27 @@ internal group Storage
         internal var link: isize
         internal var count: isize
 
+    /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
+    /// are the last `count` live entries ending at `tail`.
+    internal struct DictionaryOwnedRemainder<K, V>
+        internal let storage: unsafe/u8
+        internal let stride: isize
+        internal var link: isize
+        internal var tail: isize
+        internal var count: isize
+
+        // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
+        deinit
+            let storage: unsafe/u8 = self.storage
+            while self.count > 0
+                self.count -= 1
+                unsafe
+                    let slot = storage + (self.tail - 1) * self.stride
+                    self.tail = (slot@unsafe/isize)[0]
+                    _ = *valueAt<K, V>(slot)
+                    _ = *keyAt<K, V>(slot)
+            unsafe => release(storage)
+
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
         require state.count > 0 else => return .None
@@ -90,3 +111,12 @@ internal group Storage
             let slot = state.storage + (state.link - 1) * state.stride
             state.link = (slot@unsafe/isize)[1]
             return .Some((lendKey(state, slot), splitValue(state, slot)))
+
+    /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
+    internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
+        require state.count > 0 else => return .None
+        state.count -= 1
+        unsafe
+            let slot = state.storage + (state.link - 1) * state.stride
+            state.link = (slot@unsafe/isize)[1]
+            return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))

@@ -86,4 +86,7 @@ public enum CompilerFunctionKind : byte
     StorageBorrowDictionaryExclusive,
     StorageLendUniqKey,
     StorageSplitValue,
+    StorageOwnDictionary,
+    StorageKeyAt,
+    StorageValueAt,
 }

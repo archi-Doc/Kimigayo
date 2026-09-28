@@ -17,6 +17,9 @@ public class DictionaryStorageValidationTest
     [InlineData(KimiDeclarationId.DictionaryRefRemainder, 3)]
     [InlineData(KimiDeclarationId.DictionaryUniqRemainder, 0)]
     [InlineData(KimiDeclarationId.DictionaryUniqRemainder, 3)]
+    [InlineData(KimiDeclarationId.DictionaryOwnedRemainder, 0)]
+    [InlineData(KimiDeclarationId.DictionaryOwnedRemainder, 3)]
+    [InlineData(KimiDeclarationId.DictionaryOwnedRemainder, 4)]
     public void RemainderFieldsRetainTheirBoundTypes(KimiDeclarationId id, int index)
     {
         var c = Compilation.CreateForTest();
@@ -51,6 +54,10 @@ public class DictionaryStorageValidationTest
     [InlineData(KimiDeclarationId.StorageSplitValue, "result-state")]
     [InlineData(KimiDeclarationId.StorageSplitValue, "result-mode")]
     [InlineData(KimiDeclarationId.StorageSplitValue, "pointer")]
+    [InlineData(KimiDeclarationId.StorageOwnDictionary, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageKeyAt, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageKeyAt, "result-mode")]
+    [InlineData(KimiDeclarationId.StorageValueAt, "result-swapped")]
     public void OperationsKeepTheirCompleteSignatures(KimiDeclarationId id, string mutation)
     {
         var c = Compilation.CreateForTest();

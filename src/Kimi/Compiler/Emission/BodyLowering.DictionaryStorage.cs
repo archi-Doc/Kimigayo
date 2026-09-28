@@ -82,4 +82,82 @@ internal sealed partial class BodyLowering
         function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryBorrowStorage");
         return true;
     }
+
+    // SPEC 22.1.2.5: ownStorage transfers the acquired Dictionary handle's buffer, first and last links and live count into
+    // the owning remainder, which then destroys the unreturned entries and releases the buffer; keyAt and valueAt address
+    // one slot's key or value.
+    private bool LowerOwnedDictionaryStorage(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        var owning = plan.Target.CompilerFunction == CompilerFunctionKind.StorageOwnDictionary;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || target.Parameters.Count != 1 ||
+            plan.ArgumentToParameter.Length != 1 || plan.ArgumentToParameter[0] != 0 || plan.TypeArguments.Length != 2)
+        {
+            return Fail("Owned Dictionary storage operation has an unsupported argument plan.", out failure);
+        }
+
+        // keyAt and valueAt name K and V explicitly; ownStorage reads them from the Dictionary.
+        var input = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var keyType = owning ? input?.Components is [var ownedKey, _] ? ownedKey : null : SignatureType(this, plan.TypeArguments[0]);
+        var valueType = owning ? input?.Components is [_, var ownedValue] ? ownedValue : null : SignatureType(this, plan.TypeArguments[1]);
+        if (input is null || keyType is null || valueType is null ||
+            (owning ? input.Kind != BoundTypeKind.Dictionary || plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value
+                : plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)) ||
+            !this.TryGetArrayElement(keyType, out var key, allowEmpty: true) || !this.TryGetArrayElement(valueType, out var value, allowEmpty: true))
+        {
+            return Fail("Owned Dictionary storage operation has an unsupported Dictionary or entry Type.", out failure);
+        }
+
+        var returnType = SignatureType(this, plan.ReturnType);
+        var pointer = owning ? null : input;
+        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) ||
+            (!owning && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+                returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var addressed] } ||
+                !ReferenceEquals(addressed, plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? keyType : valueType))))
+        {
+            return Fail("Owned Dictionary storage operation result does not match its entry Types.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value);
+        if (!owning)
+        {
+            if (!this.ScalarArrayArgument(body, id, 0, pointer!, out var slot))
+            {
+                return Fail("Owned Dictionary storage addressing arguments are unavailable at the call.", out failure);
+            }
+
+            var offset = plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? helper.KeyOffset : helper.ValueOffset;
+            function.AddScalar(EmissionOpcode.Sequence, id, [slot, new(EmissionOperandKind.Integer, offset)], op: "DictionaryEntryAddress");
+            return true;
+        }
+
+        // The Dictionary's acquired slot is transferred into the remainder {storage, stride, link, tail, count}; the call consumes it.
+        var entry = this.parameterArguments[0];
+        var place = entry < 0 ? -1 : body.Operations[entry].Place;
+        if (place < 0 || !ReferenceTypes.StorageMatches(input, body.Places[place].Type) || !this.IsSlotValue(body.Places[place]) ||
+            (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0))
+        {
+            return Fail("Owned Dictionary storage argument is not an initialized acquired Dictionary.", out failure);
+        }
+
+        if (this.aggregateLayouts.Get(returnType) is not { IsArray: false } owned || !SlotTypes.IsResult(returnType) || owned.Fields.Length != 5 ||
+            owned.Offset(0) != 0 || owned.Offset(1) != 8 || owned.Offset(2) != 16 || owned.Offset(3) != 24 || owned.Offset(4) != 32 || !this.ValidateSlotCallResult(body, id, out failure))
+        {
+            return Fail(failure ?? "Owned Dictionary remainder does not have the boundary's shape.", out failure);
+        }
+
+        function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryOwnStorage");
+        return true;
+    }
 }

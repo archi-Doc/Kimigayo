@@ -6,6 +6,8 @@ public struct Dictionary<K, V>
     associate Iterable.IteratorType(source) is DictionaryIterator<K, V> during source
     Self is UniqIterable
     associate UniqIterable.IteratorType(source) is DictionaryUniqIterator<K, V> during source
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is DictionaryOwningIterator<K, V>
 
     /// Starts a shared enumeration of the entries in insertion order.
     public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source
@@ -14,6 +16,11 @@ public struct Dictionary<K, V>
     /// Starts an exclusive enumeration in insertion order: keys stay shared and each value is lent exclusively once.
     public func iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source
         return DictionaryUniqIterator<K, V>.init(Storage.borrowStorage(self))
+
+    /// Starts an owning enumeration: each entry is transferred out once as (key, value), and the unreturned entries are
+    /// destroyed with the iterator in reverse insertion order, each value before its key (SPEC 4.7.6).
+    public func intoIterator(self: Self) -> DictionaryOwningIterator<K, V>
+        return DictionaryOwningIterator<K, V>.init(Storage.ownStorage(self@move))
 
 /// The standard shared Dictionary iterator: each `next` lends the key and value of the next live entry in insertion order
 /// (SPEC 14.6.2, 22.1.2.3).
@@ -34,3 +41,12 @@ public struct DictionaryUniqIterator<K, V> {source}
     internal init(state: Storage.DictionaryUniqRemainder<K, V> during source) => self.state = state@move
     public func next(self: uniq/Self) -> Option<(ref/K during source, uniq/V during source)>
         return Storage.splitFirst(self.state@uniq)
+
+/// The standard owning Dictionary iterator: each `next` transfers the next unreturned entry out (SPEC 22.1.2.3).
+public struct DictionaryOwningIterator<K, V>
+    Self is Iterator
+    associate Iterator.Item is (K, V)
+    var state: Storage.DictionaryOwnedRemainder<K, V>
+    internal init(state: Storage.DictionaryOwnedRemainder<K, V>) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<(K, V)>
+        return Storage.takeFirst(self.state@uniq)
