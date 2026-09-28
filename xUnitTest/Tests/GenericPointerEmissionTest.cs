@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -75,13 +74,24 @@ public class GenericPointerEmissionTest
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc read(pointer: unsafe/({type})) => take(pointer)\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.UnsupportedCount > 0);
-        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
-        var caller = c.Ownership.Bodies.Single(x => x.Function.Name == "read");
-        var call = caller.Operations.Select(x => x.Source).OfType<InvocationKoto>().First().BoundCall!;
-        Assert.Null(c.Ownership.AnalyzeInstance(generic, call));
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("ref/i32 during static")]
+    [InlineData("(ref/i32 during static, i32)")]
+    public void VerifiedTemplateStillRefusesDependentConcreteReads(string type)
+    {
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc input(pointer: unsafe/({type})) => ()\npublic func main() => ()");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
+        var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
+        var element = input.Function.Parameters[0].Type.BoundType!.Components[0];
+        var call = new BoundCall();
+        call.Set(generic.Function.BoundSymbol!, element, null, [0], [element]);
+        Assert.Null(c.Ownership.AnalyzeInstance(generic, call));
     }
 
     [Fact]

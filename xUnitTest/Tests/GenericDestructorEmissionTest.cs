@@ -7,6 +7,22 @@ namespace XunitTest;
 
 public class GenericDestructorEmissionTest
 {
+    [Fact]
+    public void ZeroSizedInstancesSelectTheirOwnSpecializedCalls()
+    {
+        var source = """
+            group Support
+                public func tag<T>() -> i32 => 0
+                specialize func tag<i32>() -> i32 => 1
+                specialize func tag<i64>() -> i32 => 2
+            struct Marker<T>
+                deinit => Console.writeLine("\(Support.tag<T>())")
+            let first = Marker<i32>.init()
+            let second = Marker<i64>.init()
+            """;
+        ScalarEmissionTest.EmitFixture("GenericDestructorZeroSize", source, "2\n1\n");
+    }
+
     [Theory]
     [InlineData("T", "ref/T", true)]
     [InlineData("unsafe/T", "unsafe/T", true)]

@@ -13,6 +13,29 @@ public class StorageBoundaryTest
 {
     private const string Values = "var values: Array<i32> = [1, 2, 3]\n";
 
+    [Fact]
+    public void OwningStringRemainderCleansEachOwnerExactlyOnce()
+    {
+        var source = """
+            func first(values: Array<string>) -> string
+                var iterator = (values@move).intoIterator()
+                match iterator.next()
+                    .Some(let item) => return item@move
+                    .None => $abort("empty")
+            let taken = first(["first", "second", "third"])
+            Console.writeLine(taken)
+            """;
+        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryStrings", source, "first\n");
+        StringEmissionTest.WriteAuditedFixture("StorageBoundaryStrings", source, ir, "first\n", "first=1;second=1;third=1", order: [2, 1, 0]);
+    }
+
+    [Fact]
+    public void AbortInRemainderCleanupStopsRemainingCleanup()
+    {
+        var source = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 2 => $abort(\"stop\")\n        Console.writeLine(\"drop\")\nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nvar iterator = (values@move).intoIterator()\n_ = iterator.next()\nConsole.writeLine(\"stop\")";
+        ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedAbort", source, "drop\nstop\ndrop\n", 1, "Hello.kimi:5:28: abort KIMI_E_ABORT: stop\n");
+    }
+
     [Theory]
     [InlineData("iterateUniq")]
     [InlineData("iterate")]
