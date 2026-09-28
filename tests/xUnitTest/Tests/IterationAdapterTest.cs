@@ -5,8 +5,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 22.1.2.3: Kimi.Iteration.owned and borrowed adapt a LendingIterator without an entry conformance, and a
-/// Type may return Borrowed of itself as its UniqIterable entry.</summary>
+/// <summary>SPEC 22.1.2.3: Kimi.Iteration.owning and borrowing adapt a LendingIterator without an entry conformance, and
+/// a Type may return a BorrowingIterator of itself as its UniqIterable entry.</summary>
 public class IterationAdapterTest
 {
     private const string Counter = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    var value: i32 = 0\n    public init() => ()\n" +
@@ -25,36 +25,37 @@ public class IterationAdapterTest
     public void CountdownEnumeratesThroughBorrowedAndOwnedEntries()
     {
         const string Source = "struct Countdown\n    Self is Iterator\n    Self is IntoIterable\n    Self is UniqIterable\n    associate Iterator.Item is i32\n" +
-            "    associate IntoIterable.IteratorType is Self\n    associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self> during a\n    var remaining: i32 = 3\n    public init() => ()\n" +
+            "    associate IntoIterable.IteratorType is Self\n    associate UniqIterable.IteratorType(a) is Kimi.Iteration.BorrowingIterator<Self> during a\n    var remaining: i32 = 3\n    public init() => ()\n" +
             "    public func next(self: uniq/Self) -> Option<i32>\n        if self.remaining == 0 => return .None\n        self.remaining -= 1\n        return .Some(self.remaining)\n" +
             "    public func intoIterator(self: Self) -> Self\n        return self@move\n" +
-            "    public func iterateUniq(self: uniq/Self during source) -> Kimi.Iteration.Borrowed<Self> during source\n        return Kimi.Iteration.borrowed(self)\n" +
+            "    public func iterateUniq(self: uniq/Self during source) -> Kimi.Iteration.BorrowingIterator<Self> during source\n        return Kimi.Iteration.borrowing(self)\n" +
             "var total: i32 = 0\nvar countdown = Countdown.init()\nfor number in countdown@uniq\n    total += number\n    exit\nfor number in countdown@move\n    total += number\n" +
             "require total == 3 else => $abort(\"total\")\nConsole.writeLine(\"countdown\")";
         ScalarEmissionTest.EmitFixture("IterationAdapterCountdown", Source, "countdown\n");
     }
 
     [Theory]
-    [InlineData("owned", "var sum: i32 = 0\nfor n in Kimi.Iteration.owned(Counter.init())\n    sum += n\nrequire sum == 6 else => $abort(\"owned\")\nConsole.writeLine(\"owned\")", "owned\n")]
-    [InlineData("borrowed", "var counter = Counter.init()\nvar sum: i32 = 0\nfor n in Kimi.Iteration.borrowed(counter@uniq)\n    sum += n\n    if n == 2 => exit\nfor n in Kimi.Iteration.borrowed(counter@uniq)\n    sum += n\nrequire sum == 6 else => $abort(\"borrowed\")\nConsole.writeLine(\"borrowed\")", "borrowed\n")]
+    [InlineData("owning", "var sum: i32 = 0\nfor n in Kimi.Iteration.owning(Counter.init())\n    sum += n\nrequire sum == 6 else => $abort(\"owning\")\nConsole.writeLine(\"owning\")", "owning\n")]
+    [InlineData("borrowing", "var counter = Counter.init()\nvar sum: i32 = 0\nfor n in Kimi.Iteration.borrowing(counter@uniq)\n    sum += n\n    if n == 2 => exit\nfor n in Kimi.Iteration.borrowing(counter@uniq)\n    sum += n\nrequire sum == 6 else => $abort(\"borrowing\")\nConsole.writeLine(\"borrowing\")", "borrowing\n")]
     public void AdaptersEnumerateAnIteratorWithoutAnEntry(string name, string program, string stdout)
         => ScalarEmissionTest.EmitFixture("IterationAdapter" + name, Counter + program, stdout);
 
     // A lending item keeps the actual Reborrow of the adapter's next as its step.
     [Fact]
-    public void BorrowedForwardsLendingItems()
+    public void BorrowingIteratorForwardsLendingItems()
     {
-        const string Source = Cursor + "var cursor = Cursor.init()\nvar sum: i32 = 0\nfor item in Kimi.Iteration.borrowed(cursor@uniq)\n    sum += item\nrequire sum == 3 else => $abort(\"lending\")\nConsole.writeLine(\"lending\")";
+        const string Source = Cursor + "var cursor = Cursor.init()\nvar sum: i32 = 0\nfor item in Kimi.Iteration.borrowing(cursor@uniq)\n    sum += item\nrequire sum == 3 else => $abort(\"lending\")\nConsole.writeLine(\"lending\")";
         ScalarEmissionTest.EmitFixture("IterationAdapterLending", Source, "lending\n");
     }
 
-    // SPEC 22.1.2.3: an adapter is an Iterator exactly when its input is, so generic code may retain its items; Borrowed
-    // steps its input through the borrow of that input's Storage, which no Item of the input keeps (SPEC 22.1.2.4).
+    // SPEC 22.1.2.3: an adapter is an Iterator exactly when its input is, so generic code may retain its items;
+    // BorrowingIterator steps its input through the borrow of that input's Storage, which no Item of the input keeps
+    // (SPEC 22.1.2.4).
     [Fact]
     public void AdaptersAreIteratorsWhenTheirInputIs()
     {
-        const string Source = Counter + NextPair + "var owned = Kimi.Iteration.owned(Counter.init())\nlet first = sum(nextPair(owned@uniq))\n" +
-            "var counter = Counter.init()\nvar borrowed = Kimi.Iteration.borrowed(counter@uniq)\nlet second = sum(nextPair(borrowed@uniq))\n" +
+        const string Source = Counter + NextPair + "var owning = Kimi.Iteration.owning(Counter.init())\nlet first = sum(nextPair(owning@uniq))\n" +
+            "var counter = Counter.init()\nvar borrowing = Kimi.Iteration.borrowing(counter@uniq)\nlet second = sum(nextPair(borrowing@uniq))\n" +
             "require first == 3 and second == 3 else => $abort(\"pairs\")\nConsole.writeLine(\"iterators\")";
         ScalarEmissionTest.EmitFixture("IterationAdapterIterators", Source, "iterators\n");
     }
@@ -76,15 +77,15 @@ public class IterationAdapterTest
     [Fact]
     public void ALendingAdapterIsNotAnIterator()
     {
-        var c = MinimalEmissionTest.Analyze(Cursor + NextPair + "var cursor = Cursor.init()\nvar adapter = Kimi.Iteration.borrowed(cursor@uniq)\nlet pair = nextPair(adapter@uniq)");
+        var c = MinimalEmissionTest.Analyze(Cursor + NextPair + "var cursor = Cursor.init()\nvar adapter = Kimi.Iteration.borrowing(cursor@uniq)\nlet pair = nextPair(adapter@uniq)");
         Assert.False(c.Binding.Result.IsComplete);
         // The refuted condition makes the only candidate inapplicable (SPEC 8.4.8.2).
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
     [Theory]
-    [InlineData("let a = Kimi.Iteration.owned(7)")]
-    [InlineData("var n: i32 = 1\nlet a = Kimi.Iteration.borrowed(n@uniq)")]
+    [InlineData("let a = Kimi.Iteration.owning(7)")]
+    [InlineData("var n: i32 = 1\nlet a = Kimi.Iteration.borrowing(n@uniq)")]
     public void AdaptersRequireALendingIterator(string program)
     {
         var c = MinimalEmissionTest.Analyze(program);

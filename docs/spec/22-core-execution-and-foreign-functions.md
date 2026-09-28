@@ -33,7 +33,7 @@ The table is the minimal set that language rules name, not a promise of a genera
 | `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and the effect bound of §22.1.2.4 |
 | `Iterable`, `UniqIterable`, `IntoIterable` | The exact declarations of §22.1.2.2: `IteratorType(source)` or `IteratorType` bound to a LendingIterator, and `iterate`, `iterateUniq` or `intoIterator` |
 | `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place ref/Element during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self` (§4.6.9) |
-| `Iteration` group | `Owned<I>`, `Borrowed<I>` and `owned`, `borrowed` under §22.1.2.3 |
+| `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>` and `owning`, `borrowing` under §22.1.2.3 |
 | `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
 | Copy, Owned, Callable, Sealed, ObjectPayload | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed and ObjectPayload); not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
@@ -75,8 +75,8 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.upgrade<S>` | `ref/Weak<S> -> Option<S>` | §13.5.9 |
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
-| `Kimi.Iteration.owned<I>` | `I -> Owned<I>` | §22.1.2.3 |
-| `Kimi.Iteration.borrowed<I>` | `uniq/I during source -> Borrowed<I> during source` | §22.1.2.3 |
+| `Kimi.Iteration.owning<I>` | `I -> OwningIterator<I>` | §22.1.2.3 |
+| `Kimi.Iteration.borrowing<I>` | `uniq/I during source -> BorrowingIterator<I> during source` | §22.1.2.3 |
 
 Container members stay with their owning Types and Contracts: the iteration and Indexable requirements are in §22.1.2 and §4.6.9; collection, indexing, range and Slice APIs in §4.6–7; comparison requirements in §22.1; formatting members in the [profile](utf8-formatting.md). `Option.Some` / `None` and `Result.Ok` / `Err` are enum Cases. Compiler built-ins such as `$abort` and `$tryWrite` are not declarations in these groups.
 
@@ -128,7 +128,7 @@ struct Countdown
     Self is UniqIterable
     associate Iterator.Item is i32
     associate IntoIterable.IteratorType is Self
-    associate UniqIterable.IteratorType(a) is Kimi.Iteration.Borrowed<Self> during a
+    associate UniqIterable.IteratorType(a) is Kimi.Iteration.BorrowingIterator<Self> during a
     var remaining: i32 = 3
 
     public func next(self: uniq/Self) -> Option<i32>
@@ -140,8 +140,8 @@ struct Countdown
         return self@move
 
     public func iterateUniq(self: uniq/Self during source)
-        -> Kimi.Iteration.Borrowed<Self> during source
-        return Kimi.Iteration.borrowed(self)
+        -> Kimi.Iteration.BorrowingIterator<Self> during source
+        return Kimi.Iteration.borrowing(self)
 
 var total: i32 = 0
 var countdown = Countdown.init()
@@ -154,14 +154,14 @@ for number in countdown@move
 
 #### 22.1.2.3. Standard adapters
 
-The public group `Kimi.Iteration` declares the following functions and result Types. `I` is a LendingIterator; each result is an ordinary generic struct that conforms to `LendingIterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `Borrowed<Self>`).
+The public group `Kimi.Iteration` declares the following functions and result Types. `I` is a LendingIterator; each result is an ordinary generic struct that conforms to `LendingIterator`, `IntoIterable` (transferring itself) and `UniqIterable` (returning `BorrowingIterator<Self>`).
 
 | Operation | Result Type | Contract |
 | --- | --- | --- |
-| `owned(iterator)` | `Owned<I>` | Takes `I` by value and forwards its `LentItem(step)` and dependencies; a Non-Copy Place is written `@move` |
-| `borrowed(iterator)` | `Borrowed<I>` | Takes `uniq/I` and advances it without Moving it; items keep `I`'s contract |
+| `owning(iterator)` | `OwningIterator<I>` | Takes `I` by value and forwards its `LentItem(step)` and dependencies; a Non-Copy Place is written `@move` |
+| `borrowing(iterator)` | `BorrowingIterator<I>` | Takes `uniq/I` and advances it without Moving it; items keep `I`'s contract |
 
-`Borrowed`'s slot `source` is the outer Origin of its input, and the `step` of each item is the actual Reborrow of `next`. `Owned` and `Borrowed` inherit their input's exhaustion guarantee. They conform to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound.
+`BorrowingIterator`'s slot `source` is the outer Origin of its input, and the `step` of each item is the actual Reborrow of `next`. `OwningIterator` and `BorrowingIterator` inherit their input's exhaustion guarantee. They conform to `Iterator` exactly when `I` does, with the same `Item`, dependencies and effect bound.
 
 No adapter allocates, updates a reference count or materializes items in advance. Draining is an ordinary Iterator API that publishes how items are taken and how an early exit treats the remainder; it is not a language protocol.
 
