@@ -20,8 +20,14 @@ public sealed class NumberLiteralKoto : ExpressionKoto
 
     private bool hasParsedValue;
 
+    private string? relocatedSpelling;
+
     /// <summary>Gets the exact source spelling without allocating or rounding.</summary>
-    public ReadOnlySpan<char> SourceSpelling => this.CodeContext.SourceDocument!.AsSpan().Slice(this.Span.Start, this.Span.Length);
+    public ReadOnlySpan<char> SourceSpelling => this.relocatedSpelling is { } spelling ? spelling.AsSpan() : this.CodeContext.SourceDocument!.AsSpan().Slice(this.Span.Start, this.Span.Length);
+
+    // Diagnostic relocation must not change the digits used for exact fitting.
+    // Normal parsed literals continue to borrow the immutable source snapshot.
+    internal void PreserveSourceSpelling() => this.relocatedSpelling ??= this.SourceSpelling.ToString();
 
     /// <summary>Gets a value indicating whether the literal has an integer representation.</summary>
     public bool IsInteger => IsIntegerText(this.SourceSpelling);

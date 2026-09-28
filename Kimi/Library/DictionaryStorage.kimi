@@ -1,0 +1,151 @@
+// Private ordered-storage algorithms. The compiler supplies allocation and typed
+// acquisition/destruction; this source owns slot links and free-slot reuse.
+group DictionaryStorage
+    // Private physical records shared with the backend; not a public collection ABI.
+    #Layout("C")
+    struct Handle
+        public var buffer: unsafe/u8
+        public var used: isize
+        public var capacity: isize
+        public var length: isize
+        public var head: isize
+        public var tail: isize
+        public var free: isize
+
+    #Layout("C")
+    struct Links
+        public var previous: isize
+        public var next: isize
+
+    unsafe func shrinkToFit(handle: unsafe/Handle, stride: isize, allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (), transfer: (unsafe/u8, unsafe/u8, isize) -> ())
+        unsafe
+            let length = (*handle).length
+            if (*handle).capacity <= length
+                return
+            if length == 0
+                release((*handle).buffer)
+                initialize(handle)
+                return
+            // Existing capacity guarantees that length * stride is representable.
+            let memory = allocate(length * stride)
+            if memory == null
+                return
+            let old = compact(handle, memory, stride, transfer@move)
+            release(old)
+
+    // The caller allocates memory before calling; failure leaves the old handle
+    // intact. Transfer does not acquire or destroy entries or call user code.
+    unsafe func compact(handle: unsafe/Handle, memory: unsafe/u8, stride: isize, transfer: (unsafe/u8, unsafe/u8, isize) -> ()) -> unsafe/u8
+        unsafe
+            let buffer = (*handle).buffer
+            let length = (*handle).length
+            var link = (*handle).head
+            var position: isize = 0
+            while link != 0
+                let slot = buffer + (link - 1) * stride
+                let next = (*(slot@unsafe/Links)).next
+                let destination = memory + position * stride
+                transfer(destination, slot, stride)
+                let links = destination@unsafe/Links
+                (*links).previous = position
+                position += 1
+                if position == length
+                    (*links).next = 0
+                else
+                    (*links).next = position + 1
+                link = next
+            (*handle).buffer = memory
+            (*handle).used = length
+            (*handle).capacity = length
+            if length == 0
+                (*handle).head = 0
+            else
+                (*handle).head = 1
+            (*handle).tail = length
+            (*handle).free = 0
+            return buffer
+
+    unsafe func clear(handle: unsafe/Handle, stride: isize, keyOffset: isize, valueOffset: isize, destroyEntry: (unsafe/u8, unsafe/u8) -> ())
+        unsafe
+            let buffer = (*handle).buffer
+            var link = (*handle).tail
+            while link != 0
+                let slot = buffer + (link - 1) * stride
+                let previous = (*(slot@unsafe/Links)).previous
+                destroyEntry(slot + keyOffset, slot + valueOffset)
+                link = previous
+            clearLinks(handle)
+
+    unsafe func find(handle: unsafe/Handle, stride: isize, keyOffset: isize, key: unsafe/u8, equals: (unsafe/u8, unsafe/u8) -> bool) -> isize
+        unsafe
+            let buffer = (*handle).buffer
+            var link = (*handle).head
+            while link != 0
+                let slot = buffer + (link - 1) * stride
+                if equals(slot + keyOffset, key)
+                    return link
+                link = (*(slot@unsafe/Links)).next
+            return 0
+
+    // Links are slot index + 1; zero denotes no slot. The caller has already
+    // secured capacity for needed entries before appendSlot changes any links.
+    unsafe func appendSlot(handle: unsafe/Handle, stride: isize, needed: isize) -> unsafe/u8
+        unsafe
+            let buffer = (*handle).buffer
+            let free = (*handle).free
+            var index: isize = 0
+            if free == 0
+                index = (*handle).used
+                (*handle).used = index + 1
+            else
+                index = free - 1
+                let recycled = (buffer + index * stride)@unsafe/Links
+                (*handle).free = (*recycled).next
+            let link = index + 1
+            let slot = buffer + index * stride
+            let links = slot@unsafe/Links
+            let tail = (*handle).tail
+            (*links).previous = tail
+            (*links).next = 0
+            if tail == 0
+                (*handle).head = link
+            else
+                let previous = (buffer + (tail - 1) * stride)@unsafe/Links
+                (*previous).next = link
+            (*handle).tail = link
+            (*handle).length = needed
+            return slot
+
+    unsafe func clearLinks(handle: unsafe/Handle)
+        unsafe
+            (*handle).used = 0
+            (*handle).length = 0
+            (*handle).head = 0
+            (*handle).tail = 0
+            (*handle).free = 0
+
+    unsafe func initialize(handle: unsafe/Handle)
+        unsafe
+            (*handle).buffer = null
+            (*handle).capacity = 0
+            clearLinks(handle)
+
+    unsafe func unlink(handle: unsafe/Handle, stride: isize, link: isize)
+        unsafe
+            let buffer = (*handle).buffer
+            let slot = (buffer + (link - 1) * stride)@unsafe/Links
+            let previous = (*slot).previous
+            let next = (*slot).next
+            if previous == 0
+                (*handle).head = next
+            else
+                let left = (buffer + (previous - 1) * stride)@unsafe/Links
+                (*left).next = next
+            if next == 0
+                (*handle).tail = previous
+            else
+                let right = (buffer + (next - 1) * stride)@unsafe/Links
+                (*right).previous = previous
+            (*slot).next = (*handle).free
+            (*handle).free = link
+            (*handle).length = (*handle).length - 1

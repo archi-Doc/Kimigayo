@@ -10,13 +10,13 @@ namespace XunitTest;
 public class TypeBindingTest
 {
     [Theory]
-    [InlineData("func f origin a(x: ref/i32 from a)")]
-    [InlineData("func f origin a, b(x: ref/(uniq/i32 from b) from a)")]
-    [InlineData("func f origin a(x: owner/(ref/i32 from a))")]
-    [InlineData("struct View<T> origin source\n    let value: ref/T from source\nfunc f origin a(x: View<i32> from a)")]
-    [InlineData("struct View<T> origin source\n    let value: ref/T from source\n    func f(self: ref/Self) -> ref/T from self.source => value")]
+    [InlineData("func f(x: ref/i32 during a)")]
+    [InlineData("func f(x: ref/(uniq/i32 during b) during a)")]
+    [InlineData("func f(x: owner/(ref/i32 during a))")]
+    [InlineData("struct View<T> {source}\n    let value: ref/T during source\nfunc f(x: View<i32>{a})")]
+    [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => value")]
     [InlineData("func identity<s/T>(x: s/T) -> s/T => x\nlet x = identity(1)")]
-    [InlineData("struct Box<T>\n    let value: T\nfunc f origin a(x: Box<ref/i32 from a>)")]
+    [InlineData("struct Box<T>\n    let value: T\nfunc f(x: Box<ref/i32 during a>)")]
     [InlineData("func f(x: unsafe/obj/Thing)\nstruct Thing")]
     public void SupportedCompleteTypesBind(string source)
     {
@@ -28,18 +28,18 @@ public class TypeBindingTest
     [InlineData("func f(x: ref/ref/i32)", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("struct S\n    let value: ref/i32", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func f()\n    var value: ref/i32", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("func f origin a, a()", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("struct S {a, a}", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<s/s>(x: s/s)", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T)\nfunc f<s/U>(x: s/U)", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("func f origin a(x: ref/i32 from a)\nfunc f origin b(x: ref/i32 from b)", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("func f(x: ref/i32 from absent)", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("func f(x: i32, y: ref/i32 from x)", DiagnosticCode.InvalidOriginBinding_Kd)]
-    [InlineData("func f(x: obj/(ref/i32 from static))", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("func f(x: i32 from static)", DiagnosticCode.InvalidOriginBinding_Kd)]
-    [InlineData("group G\n    var x: ref/i32 from static", DiagnosticCode.InvalidTypeFormation_Kd)]
-    [InlineData("struct View origin source\n    let value: ref/i32 from source\nfunc f(x: View)", DiagnosticCode.MissingOriginBinding_Kd)]
-    [InlineData("struct View origin source\n    let value: ref/i32 from source\nfunc f origin a(x: View from (wrong => a))", DiagnosticCode.InvalidOriginBinding_Kd)]
-    [InlineData("struct View origin source\n    let value: ref/i32 from source\nfunc f origin a(x: View from (source => a, source => a))", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("func f(x: ref/i32 during a)\nfunc f(x: ref/i32 during b)", DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("struct S {}\n    let x: ref/i32 during absent", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("func f(x: i32, y: ref/i32 during x)", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("func f(x: obj/(ref/i32 during static))", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("func f(x: i32{slots})", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("group G\n    var x: ref/i32 during static", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("struct View {source}\n    let value: ref/i32 during source\nstruct Stored\n    let value: View", DiagnosticCode.MissingOriginBinding_Kd)]
+    [InlineData("struct View {source}\n    let value: ref/i32 during source\nfunc f(x: View{v})\n    origin v.wrong == static", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("struct View {source}\n    let value: ref/i32 during source\nfunc f(x: View{v}, y: View{v})", DiagnosticCode.DuplicateBinding_Kd)]
     public void InvalidTypeAndOriginFormsAreDiagnosed(string source, DiagnosticCode code)
     {
         var c = Parse(source);
@@ -50,10 +50,10 @@ public class TypeBindingTest
     [Fact]
     public void AppendedStorageChangesInvalidateOriginRequirements()
     {
-        var c = Parse("struct View origin source\n    let shared: ref/i32 from source\nfunc inspect(value: View from static) => ()");
+        var c = Parse("struct View {source}\n    let shared: ref/i32 during source\nfunc inspect(value: View)\n    origin value.source == static\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var view = c.Kotonoha.RootKoto.NestedContainers.Single();
-        c.Kotonoha.CreateCodeContext().Parse(view, "let exclusive: uniq/i32 from source");
+        c.Kotonoha.CreateCodeContext().Parse(view, "let exclusive: uniq/i32 during source");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(LoanRequirement.Uniq, view.BoundSymbol!.Schema!.Origins[0].LoanRequirement);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
@@ -62,7 +62,7 @@ public class TypeBindingTest
     [Fact]
     public void OriginDeclarationSpansAndExpressionBindingsAreRetained()
     {
-        var c = Parse("func f origin first, second(x: ref/i32 from first and second) => ()");
+        var c = Parse("func f(x: ref/i32 during (first and second)) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var schema = f.BoundSymbol!.Schema!;
@@ -76,9 +76,9 @@ public class TypeBindingTest
     [Fact]
     public void StaticStorageDoesNotTreatPointerPointeesAsRetainedBorrows()
     {
-        var c = Parse("struct PointerBox<T>\n    let value: unsafe/T\ngroup Values\n    var p: PointerBox<ref/i32 from static>");
+        var c = Parse("struct PointerBox<T>\n    let value: unsafe/T\ngroup Values\n    var p: PointerBox<ref/i32 during static>");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var retained = Parse("struct Box<T>\n    let value: T\ngroup Values\n    var p: Box<ref/i32 from static>");
+        var retained = Parse("struct Box<T>\n    let value: T\ngroup Values\n    var p: Box<ref/i32 during static>");
         Assert.False(retained.Bind().IsComplete);
         Assert.Contains(retained.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
@@ -86,7 +86,7 @@ public class TypeBindingTest
     [Fact]
     public void ExclusiveReferentsRemainInvariantWhileSharedOriginsMayShorten()
     {
-        var c = Parse("func f origin a, b(x: ref/i32 from a, y: ref/i32 from a and b, u: uniq/(ref/i32 from a) from a, v: uniq/(ref/i32 from a and b) from a) => ()");
+        var c = Parse("func f(x: ref/i32 during a, y: ref/i32 during (a and b), u: uniq/(ref/i32 during a) during a, v: uniq/(ref/i32 during (a and b)) during a) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.True(Binding.FitsType(f.Parameters[0].Type.BoundType!, f.Parameters[1].Type.BoundType!));
@@ -110,9 +110,13 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/i32)\n    var local: ref/i32 = x");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var local = Nodes(c).OfType<FieldKoto>().Single();
-        Assert.Equal(OriginKind.Inference, local.BoundType!.Origin!.Kind);
-        Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
-        Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginOutlives && ReferenceEquals(x.Shorter, local.BoundType.Origin));
+        var input = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[0].Type.BoundType!;
+        // A matching initializer resolves the omitted Origin immediately; the
+        // completed local keeps that same fixed dependency through rebinding.
+        Assert.Equal(OriginKind.Input, local.BoundType!.Origin!.Kind);
+        Assert.Same(input.Origin, local.BoundType.Origin);
+        Assert.DoesNotContain(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
+        Assert.DoesNotContain(c.Binding.Obligations, x => ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Kotonoha));
         var origin = local.BoundType.Origin;
         var count = c.Binding.Obligations.Count;
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -135,7 +139,7 @@ public class TypeBindingTest
     }
 
     [Theory]
-    [InlineData("struct A origin a\nstruct A origin b")]
+    [InlineData("struct A {a}\nstruct A {b}")]
     [InlineData("struct A<T>\nstruct A<U>")]
     public void FragmentSchemasMustAgree(string source)
     {
@@ -147,10 +151,10 @@ public class TypeBindingTest
     [Fact]
     public void RebindingOriginRichHeadersReusesAllScratchStorage()
     {
-        var text = new System.Text.StringBuilder("struct View<T> origin a, b\n    let x: ref/T from a\n    let y: ref/T from b\n");
+        var text = new System.Text.StringBuilder("struct View<T> {a, b}\n    let x: ref/T during a\n    let y: ref/T during b\n");
         for (var i = 0; i < 128; i++)
         {
-            text.Append($"func function{i} origin a, b(x: View<i32> from (a => a, b => b), y: ref/(ref/i32 from a) from b) => ()\n");
+            text.Append($"func function{i}(x: View<i32>{{v}}, y: ref/(ref/i32 during a) during b)\n    origin v.a == a\n    origin v.b == b\n    ()\n");
         }
 
         var c = Parse(text.ToString());
@@ -164,13 +168,13 @@ public class TypeBindingTest
     }
 
     [Fact]
-    public void OriginMappingsAreOrderedByDeclarationAndInterned()
+    public void OriginRelationsUseSchemaIdentityAndInternTypes()
     {
-        var c = Parse("struct Pair origin left, right\n    let x: ref/i32 from left\n    let y: ref/i32 from right\nfunc f origin a, b(x: Pair from (left => a, right => b), y: Pair from (right => b, left => a))");
+        var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: Pair, y: Pair)\n    origin y.right == x.right\n    origin x.left == y.left");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
-        Assert.Equal("a", f.Parameters[0].Type.BoundType!.OriginArguments[0].Name);
+        Assert.Equal(OriginKind.Input, f.Parameters[0].Type.BoundType!.OriginArguments[0].Kind);
         var schema = f.BoundSymbol!.Schema;
         var type = f.Parameters[0].Type.BoundType;
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -179,9 +183,9 @@ public class TypeBindingTest
     }
 
     [Fact]
-    public void ResultElisionUsesOnlyDirectInputsAndPreservesExplicitMappings()
+    public void ResultElisionUsesOnlyDirectInputsAndPreservesExplicitRelations()
     {
-        var c = Parse("struct Pair origin left, right\n    let x: ref/i32 from left\n    let y: ref/i32 from right\nfunc f(x: ref/i32, y: ref/i32, result: Pair from (left => x, right => x and y)) -> Pair from (left => x) => result");
+        var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: ref/i32, y: ref/i32, value: Pair) -> Pair{result}\n    origin value.left == x\n    origin value.right == x and y\n    origin result.left == x\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var result = f.ReturnType!.BoundType!;
@@ -193,7 +197,7 @@ public class TypeBindingTest
     [Fact]
     public void IntersectionsNormalizeWithoutLosingNestedOrigins()
     {
-        var c = Parse("func f origin a, b(x: ref/(ref/i32 from a) from a and b, y: ref/(ref/i32 from a) from b and a and a)");
+        var c = Parse("func f(x: ref/(ref/i32 during a) during (a and b), y: ref/(ref/i32 during a) during (b and a and a))");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
@@ -203,7 +207,7 @@ public class TypeBindingTest
     [Fact]
     public void RequirementsPropagateThroughForwardAndRecursiveDeclarations()
     {
-        var c = Parse("struct A origin a\n    let b: B from a\nstruct B origin b\n    let a: unsafe/(A from b)\n    let value: uniq/i32 from b");
+        var c = Parse("struct A {a}\n    let b: B{bb}\n        origin bb.b == a\nstruct B {b}\n    let a: unsafe/(A{aa})\n        origin aa.a == b\n    let value: uniq/i32 during b");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var a = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "A");
         Assert.Equal(LoanRequirement.Uniq, a.BoundSymbol!.Schema!.Origins[0].LoanRequirement);
@@ -264,17 +268,5 @@ public class TypeBindingTest
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 
-    private static IEnumerable<Koto> Nodes(Compilation c) => Walk(c.Kotonoha.RootKoto);
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static IEnumerable<Koto> Nodes(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto);
 }

@@ -14,6 +14,7 @@ public record class DiagnosticCollection
 
     private SourceDocument? sourceDocument;
     private int errorCount;
+    private long errorVersion;
 
     /// <summary>Gets a value indicating whether this collection contains errors without allocating a diagnostic snapshot.</summary>
     public bool HasErrors => Volatile.Read(ref this.errorCount) != 0;
@@ -22,13 +23,25 @@ public record class DiagnosticCollection
 
     public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
 
+    // Counts attempted error reports, even when location deduplication hides the
+    // message. Clearing displayed diagnostics does not erase source failure history.
+    internal long ErrorVersion => Volatile.Read(ref this.errorVersion);
+
     internal DiagnosticCollection(Kimigayo kimigayo, string name)
     {
         this.kimigayo = kimigayo;
         this.Name = name;
     }
 
-    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null)
+    /// <summary>Adds a diagnostic unless one is already recorded at the same start offset.</summary>
+    /// <param name="range">The source span; ignored for placement when no source document applies.</param>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The first message argument.</param>
+    /// <param name="obj2">The second message argument.</param>
+    /// <param name="sourceDocument">The source document; defaults to the collection's document.</param>
+    /// <param name="hint">An explanation appended to the message.</param>
+    /// <param name="location">The path of an input the diagnostic concerns when no source document exists, such as an unreadable file.</param>
+    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null, string? location = null)
     {
         if (!DiagnosticEntries.TryGet(code, out var entry))
         {
@@ -37,6 +50,11 @@ public record class DiagnosticCollection
 
         using (this.diagnostics.LockObject.EnterScope())
         {
+            if (entry.Severity == DiagnosticSeverity.Error)
+            {
+                this.errorVersion++;
+            }
+
             if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
             {
                 return;
@@ -55,14 +73,22 @@ public record class DiagnosticCollection
                 }
             }
 
-            var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message };
+            if (hint is not null)
+            {
+                message = string.Concat(message, " ", hint);
+            }
+
+            var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message, Location = location };
             diagnostic.Goshujin = this.diagnostics;
             if (entry.Severity == DiagnosticSeverity.Error)
             {
                 this.errorCount++;
             }
 
-            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
+            if (this.kimigayo.RendersDiagnostics)
+            {
+                this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
+            }
         }
     }
 

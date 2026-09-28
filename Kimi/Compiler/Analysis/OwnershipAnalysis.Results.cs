@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<int> resultDeclarations = new();
     private readonly List<PendingResult> pendingResults = new();
 
-    private static bool ScalarResult(BoundType type) => ScalarTypes.Supports(type);
+    private static bool ScalarResult(BoundType type) => ReferenceTypes.IsValue(type);
 
     private int ResultJoin(Koto source, int place)
     {
@@ -32,7 +32,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ResultPlace(Koto source)
     {
-        var stored = SlotTypes.IsResult(source.BoundType);
+        var stored = SlotTypes.IsResult(this.Concrete(source.BoundType)); // An instance stores a substituted owned result.
         var place = stored && this.body.SlotResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
         if (stored)
         {
@@ -62,6 +62,7 @@ public sealed partial class OwnershipAnalysis
 
     private void Deliver(Koto source, int secured)
     {
+        this.CheckConstruction(source);
         var value = secured >= 0 && ScalarResult(this.body.Places[this.resultPlace].Type) && this.body.Values[secured].Kind == OwnershipValueKind.Alias ? this.body.ValueOperands[this.body.Values[secured].Start] : -1;
         var delivery = this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
         this.body.Deliveries.Add(new(delivery, value, secured));

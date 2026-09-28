@@ -10,8 +10,16 @@ namespace Kimi.Compiler.Parsing;
 /// </summary>
 public sealed class InvocationKoto : ApplicationKoto
 {
+    internal InvocationKoto(Koto root, Koto method, IReadOnlyList<Koto> arguments)
+        : base(root, method, arguments)
+    {
+    }
+
     /// <summary>Gets the selected call plan for the current Binding, or null before selection.</summary>
-    public BoundCall? BoundCall => this.BindingState == BindingState.Resolved ? this.CallStorage : null;
+    public BoundCall? BoundCall => this.BindingState == BindingState.Resolved && !this.IsValueCall ? this.CallStorage : null;
+
+    /// <summary>Gets a checked invocation of a common function value.</summary>
+    public BoundValueCall? BoundValueCall => this.BindingState == BindingState.Resolved && this.IsValueCall ? this.ValueCallStorage : null;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
@@ -21,12 +29,20 @@ public sealed class InvocationKoto : ApplicationKoto
 
     internal BoundCall? CallStorage { get; set; }
 
+    internal BoundValueCall? ValueCallStorage { get; set; }
+
+    internal bool IsValueCall { get; set; }
+
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;
 
     /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
     public IReadOnlyList<string?> ArgumentLabels
         => this.argumentLabels ??= new string?[this.ArgumentNodes.Count];
+
+    /// <summary>Sets the argument labels of a synthesized invocation, in argument order.</summary>
+    /// <param name="labels">The labels, or <see langword="null"/> when no argument is labeled.</param>
+    internal void SetArgumentLabels(string?[]? labels) => this.argumentLabels = labels;
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

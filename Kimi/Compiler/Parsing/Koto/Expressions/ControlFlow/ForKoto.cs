@@ -25,6 +25,22 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets a value indicating whether the bindings use tuple syntax.</summary>
     public bool IsTupleBinding { get; private set; }
 
+    // SPEC 14.6.1: bit i is set when slot i is written "var Name"; a bare Name is a let binding.
+    private readonly ulong mutableSlots;
+
+    /// <summary>Gets or sets the borrow through which the loop enumerates its Subject (SPEC 14.6.2): the implicit whole-range Slice of a bare
+    /// array Place, or the shared or exclusive view of an array or Dictionary in the Subject mode; null for a Subject acquired by value.</summary>
+    internal BoundType? SharedIterable { get; set; }
+
+    /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
+    internal SubjectMode Mode { get; set; }
+
+    /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
+    internal InvocationKoto? EntryCall { get; set; }
+
+    /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
+    internal BoundIteration? Iteration { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>
@@ -32,23 +48,52 @@ public sealed class ForKoto : ExpressionKoto
     /// <param name="iterable">The expression that supplies values.</param>
     /// <param name="body">The loop body.</param>
     /// <param name="isTupleBinding">Whether the bindings use tuple syntax.</param>
+    /// <param name="mutableSlots">The bit set of slots declared with <c>var</c>.</param>
     public ForKoto(
         ref TokenReader reader,
         SourceSpan range,
         List<IdentifierNameKoto> bindings,
         Koto iterable,
         CodeBlockKoto body,
-        bool isTupleBinding)
+        bool isTupleBinding,
+        ulong mutableSlots = 0)
         : base(ref reader, range)
     {
         this.bindings = bindings;
         this.Iterable = iterable;
         this.Body = body;
         this.IsTupleBinding = isTupleBinding;
+        this.mutableSlots = mutableSlots;
 
         this.Adopt(bindings);
         iterable.Parent = this;
         body.Parent = this;
+    }
+
+    /// <summary>Gets whether the slot at <paramref name="index"/> is a reassignable iteration local (SPEC 14.6.1).</summary>
+    /// <param name="index">The slot index.</param>
+    /// <returns>Whether the slot was written <c>var Name</c>.</returns>
+    public bool IsMutableSlot(int index) => index >= 0 && index < 64 && ((this.mutableSlots >> index) & 1) != 0;
+
+    /// <summary>Gets whether <paramref name="binding"/> is one of this loop's reassignable iteration locals.</summary>
+    /// <param name="binding">A binding declared by this loop.</param>
+    /// <returns>Whether the binding was written <c>var Name</c>.</returns>
+    public bool IsMutableSlot(IdentifierNameKoto binding)
+    {
+        if (this.mutableSlots == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < this.bindings.Count; i++)
+        {
+            if (ReferenceEquals(this.bindings[i], binding))
+            {
+                return this.IsMutableSlot(i);
+            }
+        }
+
+        return false;
     }
 
     /// <inheritdoc/>
@@ -66,6 +111,12 @@ public sealed class ForKoto : ExpressionKoto
             if (i > 0)
             {
                 builder.AppendCommaAndSpace();
+            }
+
+            if (this.IsMutableSlot(i))
+            {
+                builder.Append(Constants.VarKeyword);
+                builder.AppendSpace();
             }
 
             this.bindings[i].WriteTo(ref builder);
@@ -110,21 +161,26 @@ public sealed class ForKoto : ExpressionKoto
     {
         if (oldKoto is IdentifierNameKoto && ReplaceInList(this.bindings, oldKoto, newKoto))
         {
-            return true;
+            // The replacement slot is adopted by ReplaceChild after the cached protocol is retired below.
         }
-
-        if (this.Iterable == oldKoto)
+        else if (this.Iterable == oldKoto)
         {
             this.Iterable = newKoto;
-            return true;
         }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
+        else if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
         {
             this.Body = block;
-            return true;
+        }
+        else
+        {
+            return false;
         }
 
-        return false;
+        // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
+        this.Iteration?.Decomposition.Reset(null);
+        this.EntryCall = null;
+        this.Iteration = null;
+
+        return true;
     }
 }

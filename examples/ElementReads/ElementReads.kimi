@@ -12,4 +12,4 @@ func make() -> (string, (i32, bool))
 let values: [3 of i32] = [10, 20, 12]
 let selected = make().1
 if sum(values) == selected.0 and selected.1
-    writeLine("element reads complete")
+    Console.writeLine("element reads complete")

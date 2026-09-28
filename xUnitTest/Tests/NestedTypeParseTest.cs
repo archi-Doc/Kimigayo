@@ -17,12 +17,12 @@ public class NestedTypeParseTest
     [InlineData("uniq/ref/T")]
     [InlineData("ref/obj/Node")]
     [InlineData("unsafe/ref/i32")]
-    [InlineData("ref/ref/ref/T from outer")]
-    [InlineData("ref/(ref/T from inner) from outer")]
-    [InlineData("uniq/(ref/(ref/T from a) from b) from c")]
-    [InlineData("ref/(View<T> from (source => inner)) from outer")]
-    [InlineData("ref/(ref/A.B<List<T>> from inner) from outer")]
-    [InlineData("List<ref/(ref/i32 from inner) from outer>")]
+    [InlineData("ref/ref/ref/T during outer")]
+    [InlineData("ref/(ref/T during inner) during outer")]
+    [InlineData("uniq/(ref/(ref/T during a) during b) during c")]
+    [InlineData("ref/(View<T>{view}) during outer")]
+    [InlineData("ref/(ref/A.B<List<T>> during inner) during outer")]
+    [InlineData("List<ref/(ref/i32 during inner) during outer>")]
     [InlineData("s/ref/T")]
     [InlineData("(ref/T)")]
     [InlineData("(ref/T,)")]
@@ -38,22 +38,22 @@ public class NestedTypeParseTest
                 func use(value: {type}) -> {type}
                     return value
             """);
-        var written = Write(tree);
+        var written = ParseTestHelper.Unparse(tree);
         Assert.Contains(type, written);
-        Assert.Equal(written, Write(ParseSuccess(written)));
+        Assert.Equal(written, ParseTestHelper.Unparse(ParseSuccess(written)));
 
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(tree));
         Assert.NotNull(restored);
         restored.OnDeserialized(Compilation.CreateForTest());
         AssertValid(restored);
-        Assert.Equal(written, Write(restored));
+        Assert.Equal(written, ParseTestHelper.Unparse(restored));
         AssertTree(restored.RootKoto);
     }
 
     [Fact]
     public void UngroupedOriginBelongsOnlyToTheOutermostLayer()
     {
-        var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType("ref/uniq/T from outer"));
+        var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType("ref/uniq/T during outer"));
         var inner = Assert.IsType<TypeSemanticsKoto>(outer.Type);
         Assert.Equal(SemanticsKind.Ref, outer.SemanticsKind);
         Assert.Equal("outer", outer.OriginName);
@@ -66,12 +66,12 @@ public class NestedTypeParseTest
     [Fact]
     public void RetainsSeparateOriginsAndParentLinksAtEachLayer()
     {
-        const string Type = "ref/(uniq/T from inner.source and other) from outer";
+        const string Type = "ref/(uniq/T during (inner.source and other)) during outer";
         var outer = Assert.IsType<TypeSemanticsKoto>(ParseParameterType(Type));
         var parentheses = Assert.IsType<ParenthesizedTypeKoto>(outer.Type);
         var inner = Assert.IsType<TypeSemanticsKoto>(parentheses.Type);
         Assert.Equal("outer", outer.OriginName);
-        Assert.Equal("inner.source and other", inner.OriginExpression!.ToString());
+        Assert.Equal("(inner.source and other)", inner.OriginExpression!.ToString());
         Assert.Equal(SemanticsKind.Uniq, parentheses.SemanticsKind);
         Assert.Same(outer, parentheses.Parent);
         Assert.Same(parentheses, inner.Parent);
@@ -92,7 +92,9 @@ public class NestedTypeParseTest
     [Theory]
     [InlineData("ref/(i32) -> bool")]
     [InlineData("i32 -> bool")]
-    [InlineData("(i32) from a -> bool")]
+    [InlineData("i32{a} -> bool")]
+    [InlineData("(Outer).Inner -> bool")]
+    [InlineData("(Outer){a} -> bool")]
     public void FunctionArrowRequiresAParameterList(string type)
     {
         // A bare Type cannot replace the Function Parameter List (SPEC 3.2); recovery still keeps the arrow.
@@ -121,15 +123,16 @@ public class NestedTypeParseTest
         var comparison = Assert.IsType<LessThanKoto>(field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(comparison.Left);
         Assert.Equal(type, conversion.Right.ToString());
-        Assert.Equal(Write(tree), Write(ParseSuccess(Write(tree))));
+        Assert.Equal(ParseTestHelper.Unparse(tree), ParseTestHelper.Unparse(ParseSuccess(ParseTestHelper.Unparse(tree))));
     }
 
     [Theory]
-    [InlineData("value@ref/(ref/T from inner)")]
-    [InlineData("value@Box<ref/T from inner>")]
-    [InlineData("value@ref/((T) -> ref/U from inner)")]
-    public void ParenthesesAndTypeArgumentsDoNotPermitOriginsInAdaptationTargets(string expression)
-        => Assert.NotEmpty(Parse($"let result = {expression}").DiagnosticCollection.GetArray());
+    [InlineData("value@ref/(ref/T during inner)", false)]
+    [InlineData("value@Box<ref/T during inner>", true)]
+    [InlineData("value@(ref/T? during inner)", true)]
+    [InlineData("value@ref/((T) -> ref/U during inner)", true)]
+    public void AdaptationSeparatesPayloadOriginsFromBorrowLayers(string expression, bool valid)
+        => Assert.Equal(valid, Parse($"let result = {expression}").DiagnosticCollection.GetArray().Length == 0);
 
     [Theory]
     [InlineData("ref/ref/")]
@@ -150,7 +153,7 @@ public class NestedTypeParseTest
         Assert.Null(types.GetDeclaredType(ParseParameterType("(i32,)")));
         Assert.Null(types.GetDeclaredType(ParseParameterType("ref/ref/i32")));
         Assert.Equal(new ControlFlowType("unsafe/unsafe/i32"), types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32)")));
-        Assert.Null(types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32 from inner)")));
+        Assert.NotEmpty(Parse("func f(x: unsafe/(unsafe/i32 during inner))").DiagnosticCollection.GetArray());
     }
 
     [Theory]
@@ -180,20 +183,6 @@ public class NestedTypeParseTest
             }
 
             AssertTree(child);
-        }
-    }
-
-    private static string Write(Kotonoha tree)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            tree.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
         }
     }
 }

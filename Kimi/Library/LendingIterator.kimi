@@ -1,0 +1,7 @@
+/// Advances an iterator while preserving each returned item's actual Loan dependencies.
+public contract LendingIterator
+    /// The complete item Type for a receiver borrow that lives during step.
+    associate LentItem(step) for uniq/Self during step
+
+    /// Returns the next item, or None; a retained item may prevent another call.
+    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>

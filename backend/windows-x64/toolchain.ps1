@@ -61,3 +61,15 @@ function Get-KimiLlvmToolIdentity {
     }
     return @{ path = $resolved; version = $report.output; actualVersion = $actual; expectedVersion = $ExpectedVersion; versionMatched = $matched; sha256 = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant() }
 }
+
+function Edit-KimiSource {
+    # Applies anchor/replacement pairs in order. Every anchor must occur in the text it edits, so a
+    # variant or rejection whose anchor drifted from the program fails here instead of running unchanged.
+    param([string] $Text, [Parameter(ValueFromRemainingArguments = $true)] [string[]] $Edits)
+    if ($null -eq $Edits -or $Edits.Count % 2 -ne 0) { throw 'Edit-KimiSource takes anchor/replacement pairs' }
+    for ($i = 0; $i -lt $Edits.Count; $i += 2) {
+        if (-not $Text.Contains($Edits[$i])) { throw "Anchor not found in the source: $($Edits[$i])" }
+        $Text = $Text.Replace($Edits[$i], $Edits[$i + 1])
+    }
+    return $Text
+}

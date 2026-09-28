@@ -1,0 +1,3615 @@
+{
+  "Timestamp": "2026-09-19T16:20:31.0733989+00:00",
+  "Runtime": ".NET 10.0.12",
+  "OS": "Microsoft Windows 10.0.26100",
+  "Architecture": "X64",
+  "ProcessorCount": 20,
+  "TieredCompilation": "0",
+  "ProductSha256": "20531AE7763BB32713A2434CF1BF4540B083323FE85463B7C58866E075A365DA",
+  "MarkdigVersion": "1.3.0.0",
+  "ProcessPeakWorkingSetBytes": 298905600,
+  "Inputs": [
+    {
+      "Name": "Summary",
+      "Length": 64,
+      "Common": true,
+      "Sha256": "BE1C2ACBEF4291B2896989988C20BDB2130D19B5048F335A4F4CF63620A47BAA"
+    },
+    {
+      "Name": "Rich-summary",
+      "Length": 74,
+      "Common": true,
+      "Sha256": "144708CC2B053C4466324222C4549BDA5C40523BEE61B069787AB435F09BFC6F"
+    },
+    {
+      "Name": "Parameters",
+      "Length": 392,
+      "Common": true,
+      "Sha256": "05D62834BF760F702EDE0C7BD3145BD13C6919788F7C2A4802541A9F7D7285A2"
+    },
+    {
+      "Name": "Code-example",
+      "Length": 5653,
+      "Common": true,
+      "Sha256": "ADDC21BB1CD916DAA32FA165F8ED2E56CFC3C61EB666B1CE36D833D49FD2A551"
+    },
+    {
+      "Name": "Nested",
+      "Length": 95,
+      "Common": true,
+      "Sha256": "4FC3288533AF5D2377FB5BA248E3DECB953EEE140E92B7DD4D61120C333A5DCE"
+    },
+    {
+      "Name": "Links-entities",
+      "Length": 1632,
+      "Common": true,
+      "Sha256": "30C264D04CC3B6BA7100DEB02AC85F710783C8430BE0D7F4D2DF505F345E0761"
+    },
+    {
+      "Name": "Prose-256",
+      "Length": 256,
+      "Common": false,
+      "Sha256": "85E62ACD750C4EB56B7B6A1D66DCA5BFAAC5F062608A1A893410D0288936C09A"
+    },
+    {
+      "Name": "Blocks-256",
+      "Length": 1536,
+      "Common": false,
+      "Sha256": "5951A8511003963B68917813374F07712952AE802D46F80DAB000EEF23180CA9"
+    },
+    {
+      "Name": "Failed-links-256",
+      "Length": 1536,
+      "Common": false,
+      "Sha256": "31D55EAC3EA4054B44FCCAAA7F59327AAC9B90CD838EC4428B74B3D6AAC8A2B4"
+    },
+    {
+      "Name": "Failed-titles-256",
+      "Length": 2048,
+      "Common": false,
+      "Sha256": "2F6BD7B8151C71DDA74C545CFBD91280520A4BE0101CFF5673724EFE448ABFC3"
+    },
+    {
+      "Name": "Delimiters-256",
+      "Length": 2048,
+      "Common": false,
+      "Sha256": "9C1096E489A6A17A66FA4AA3E88F336617ED0971A5FC5CF085941CBE2B18041E"
+    },
+    {
+      "Name": "Unmatched-brackets-256",
+      "Length": 256,
+      "Common": false,
+      "Sha256": "DF8A3601906DCE6D75AF7EC43223A71AFD1A9B0AC8B668FEB42C6E3C2108DAF6"
+    },
+    {
+      "Name": "Prose-1024",
+      "Length": 1024,
+      "Common": false,
+      "Sha256": "49ABD65BBF7F7E40C7055093ED2E3FD75F2F602F2C5FCF955C213E3135EB03F7"
+    },
+    {
+      "Name": "Blocks-1024",
+      "Length": 6144,
+      "Common": false,
+      "Sha256": "E353F0A94590787D8BEC545A4AFB1010DBDA13B517300E57E0D3BB49AC74BF78"
+    },
+    {
+      "Name": "Failed-links-1024",
+      "Length": 6144,
+      "Common": false,
+      "Sha256": "F02830DCA224FCBCCC6CCBA4C78D26F1282BD557B6A04F1ABFC50F8612D6DCAD"
+    },
+    {
+      "Name": "Failed-titles-1024",
+      "Length": 8192,
+      "Common": false,
+      "Sha256": "FA1C608D325DA9FD92A644993B70C0507B39846F4C1682CCC638DC2EE51FA26A"
+    },
+    {
+      "Name": "Delimiters-1024",
+      "Length": 8192,
+      "Common": false,
+      "Sha256": "427DDE72E3E3EAFE17757AD3F3CC4A748ECC253447A0F1481A4FAC43D2799B65"
+    },
+    {
+      "Name": "Unmatched-brackets-1024",
+      "Length": 1024,
+      "Common": false,
+      "Sha256": "3078AC4D707D9826111111F26010FCC94A443E23A6960445D5321BFCC5256FD3"
+    },
+    {
+      "Name": "Prose-4096",
+      "Length": 4096,
+      "Common": false,
+      "Sha256": "A2E659DACB4691E887AC0139F8893D04764EE197D70FB73D3190D56113D18E3E"
+    },
+    {
+      "Name": "Blocks-4096",
+      "Length": 24576,
+      "Common": false,
+      "Sha256": "E2F164DCD117F140FAE81C545345CED4B7986876127BF0DD8E11D36B4333E051"
+    },
+    {
+      "Name": "Failed-links-4096",
+      "Length": 24576,
+      "Common": false,
+      "Sha256": "42DE0BD0F2FCF0FBE89EEF7456C6E251F8FEDE1DC337891E17EB6B5851BE9260"
+    },
+    {
+      "Name": "Failed-titles-4096",
+      "Length": 32768,
+      "Common": false,
+      "Sha256": "08FFB6D82FABB3ABB7C6018AF35262AEC87A3045FB790E1A0BFA64ED406BFB05"
+    },
+    {
+      "Name": "Delimiters-4096",
+      "Length": 32768,
+      "Common": false,
+      "Sha256": "3D563EBD48110276C36907283EBB0AEE33DFCB6C3E802AEEFC39B2E8558176C3"
+    },
+    {
+      "Name": "Unmatched-brackets-4096",
+      "Length": 4096,
+      "Common": false,
+      "Sha256": "1EB6BAEC20BC9B85C225913476417D5356471A50EFFE0D77F5E94A033204FFA0"
+    },
+    {
+      "Name": "Prose-16384",
+      "Length": 16384,
+      "Common": false,
+      "Sha256": "1536C422C31CC98834759D7085CDA394A3510A03D78188248986A6B1A7207D03"
+    },
+    {
+      "Name": "Blocks-16384",
+      "Length": 98304,
+      "Common": false,
+      "Sha256": "B00863480EE2F4F42E4E801D63E76D7A7D9DC70E9693537358831537366D6130"
+    },
+    {
+      "Name": "Failed-links-16384",
+      "Length": 98304,
+      "Common": false,
+      "Sha256": "000A96F9EDF30487A78F9A85E76B017FB8C3C6981165856C6031D555B01E98AD"
+    },
+    {
+      "Name": "Failed-titles-16384",
+      "Length": 131072,
+      "Common": false,
+      "Sha256": "2B3AC9DFAEDDC35F225AF8531B039DBE30E64D1FB954A7A3D1779CA50F1DADE6"
+    },
+    {
+      "Name": "Delimiters-16384",
+      "Length": 131072,
+      "Common": false,
+      "Sha256": "66C0DCE0929A32B3A386BAF81BBC3E09D246AF4A4F1A7816A934E2F1B8FBB655"
+    },
+    {
+      "Name": "Unmatched-brackets-16384",
+      "Length": 16384,
+      "Common": false,
+      "Sha256": "D50A93568452C9D57F6F5F9D05BA15982ABF05DDA19C352B9609E7E074B92469"
+    },
+    {
+      "Name": "Quote-depth-32",
+      "Length": 37,
+      "Common": false,
+      "Sha256": "08F4378A4075F364E0DE16C63D4A3D317C75F7672742F573728CF592A3D5C7E4"
+    },
+    {
+      "Name": "Quote-depth-128",
+      "Length": 133,
+      "Common": false,
+      "Sha256": "AB3161EBE2C4CE02C34C8870EB53940D752D77E392B5951D0659CC52038369CF"
+    },
+    {
+      "Name": "Quote-depth-512",
+      "Length": 517,
+      "Common": false,
+      "Sha256": "331EC2AE307B2D12E69508B00166F9C31955EAA7096A59BC56EAEE8C9DB3BA41"
+    },
+    {
+      "Name": "Quote-depth-2048",
+      "Length": 2053,
+      "Common": false,
+      "Sha256": "F370BC1B84D2A62E0B1D6CE28F46055024D48501FC335B0A9C6741F9640D5977"
+    },
+    {
+      "Name": "Backtick-runs-32",
+      "Length": 592,
+      "Common": false,
+      "Sha256": "26E5EA629E1774FA40FA63EA7138E7944815183523038EABA671A49A1732A1EF"
+    },
+    {
+      "Name": "Backtick-runs-64",
+      "Length": 2208,
+      "Common": false,
+      "Sha256": "F4EDACA7998926385DCBF77E82871802E31D8FE67F8A032AFB9A8BD101A840D0"
+    },
+    {
+      "Name": "Backtick-runs-128",
+      "Length": 8512,
+      "Common": false,
+      "Sha256": "885DB20DC7CF1181EBFF3D50CA006E20AC26038A4D011CF645A951E6516601AC"
+    },
+    {
+      "Name": "Backtick-runs-256",
+      "Length": 33408,
+      "Common": false,
+      "Sha256": "B9C81A6DDC049783AA1295A5AD93B16CDDCCC18ED6CD7FC13E1A8C2E566E589E"
+    }
+  ],
+  "Measurements": [
+    {
+      "Phase": "Parse",
+      "Input": "Summary",
+      "Engine": "Independent",
+      "Characters": 64,
+      "OperationsPerSample": 131072,
+      "Nanoseconds": [
+        156.20346069335938,
+        150.71945190429688,
+        141.74728393554688,
+        150.06179809570312,
+        139.6331787109375,
+        152.16293334960938,
+        153.11660766601562
+      ],
+      "Bytes": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Summary",
+      "Engine": "Markdig",
+      "Characters": 64,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        436.541748046875,
+        445.76568603515625,
+        432.9254150390625,
+        437.00103759765625,
+        439.0472412109375,
+        448.21319580078125,
+        436.279296875
+      ],
+      "Bytes": [
+        568,
+        568,
+        568,
+        568,
+        568,
+        568,
+        568
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Summary",
+      "Engine": "Independent",
+      "Characters": 64,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        215.09375
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Summary",
+      "Engine": "Markdig",
+      "Characters": 64,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        455
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Rich-summary",
+      "Engine": "Independent",
+      "Characters": 74,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        1354.840087890625,
+        1365.31982421875,
+        1361.38916015625,
+        1351.86767578125,
+        1302.880859375,
+        1353.30810546875,
+        1350.30517578125
+      ],
+      "Bytes": [
+        920,
+        920,
+        920,
+        920,
+        920,
+        920,
+        920
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Rich-summary",
+      "Engine": "Markdig",
+      "Characters": 74,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        1519.268798828125,
+        1589.605712890625,
+        1513.18359375,
+        1537.90283203125,
+        1504.4189453125,
+        1477.86865234375,
+        1474.346923828125
+      ],
+      "Bytes": [
+        1856,
+        1856,
+        1856,
+        1856,
+        1856,
+        1856,
+        1856
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Rich-summary",
+      "Engine": "Independent",
+      "Characters": 74,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        667.75
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Rich-summary",
+      "Engine": "Markdig",
+      "Characters": 74,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        1311.625
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Parameters",
+      "Engine": "Independent",
+      "Characters": 392,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        4384.33837890625,
+        4326.20849609375,
+        4397.44873046875,
+        4354.00390625,
+        4322.25341796875,
+        4425.10986328125,
+        4362.7197265625
+      ],
+      "Bytes": [
+        2608,
+        2608,
+        2608,
+        2608,
+        2608,
+        2608,
+        2608
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Parameters",
+      "Engine": "Markdig",
+      "Characters": 392,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        6882.6416015625,
+        7022.55859375,
+        7165.673828125,
+        7097.55859375,
+        7199.21875,
+        7125.7568359375,
+        7153.125
+      ],
+      "Bytes": [
+        7080,
+        7080,
+        7080,
+        7080,
+        7080,
+        7080,
+        7080
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Parameters",
+      "Engine": "Independent",
+      "Characters": 392,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        2343.75
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Parameters",
+      "Engine": "Markdig",
+      "Characters": 392,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        6699.125
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Code-example",
+      "Engine": "Independent",
+      "Characters": 5653,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        8836.4990234375,
+        8731.0302734375,
+        8654.39453125,
+        8639.1845703125,
+        8778.22265625,
+        8792.822265625,
+        8622.6806640625
+      ],
+      "Bytes": [
+        608,
+        608,
+        608,
+        608,
+        608,
+        608,
+        608
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Code-example",
+      "Engine": "Markdig",
+      "Characters": 5653,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        19247.119140625,
+        19139.0625,
+        19362.40234375,
+        19129.00390625,
+        18882.32421875,
+        19209.08203125,
+        19157.470703125
+      ],
+      "Bytes": [
+        21040,
+        21040,
+        21040,
+        21040,
+        21040,
+        21040,
+        21040
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Code-example",
+      "Engine": "Independent",
+      "Characters": 5653,
+      "OperationsPerSample": 35,
+      "Nanoseconds": [],
+      "Bytes": [
+        357.9428571428571
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Code-example",
+      "Engine": "Markdig",
+      "Characters": 5653,
+      "OperationsPerSample": 35,
+      "Nanoseconds": [],
+      "Bytes": [
+        12493.942857142858
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Nested",
+      "Engine": "Independent",
+      "Characters": 95,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        2154.4921875,
+        2150.091552734375,
+        2258.2275390625,
+        2171.923828125,
+        2132.9345703125,
+        2157.16552734375,
+        2127.862548828125
+      ],
+      "Bytes": [
+        1336,
+        1336,
+        1336,
+        1336,
+        1336,
+        1336,
+        1336
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Nested",
+      "Engine": "Markdig",
+      "Characters": 95,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        4275.3173828125,
+        4381.494140625,
+        4278.99169921875,
+        4307.48291015625,
+        4197.05810546875,
+        4227.55126953125,
+        4267.49267578125
+      ],
+      "Bytes": [
+        3944,
+        3944,
+        3944,
+        3944,
+        3944,
+        3944,
+        3944
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Nested",
+      "Engine": "Independent",
+      "Characters": 95,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        1071.75
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Nested",
+      "Engine": "Markdig",
+      "Characters": 95,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [],
+      "Bytes": [
+        3143.625
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Links-entities",
+      "Engine": "Independent",
+      "Characters": 1632,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        16425.5859375,
+        16787.451171875,
+        16546.142578125,
+        16622.8515625,
+        17051.85546875,
+        16725.244140625,
+        16850.9765625
+      ],
+      "Bytes": [
+        15664,
+        15664,
+        15664,
+        15664,
+        15664,
+        15664,
+        15664
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Links-entities",
+      "Engine": "Markdig",
+      "Characters": 1632,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        23320.5078125,
+        21673.73046875,
+        22061.328125,
+        22189.0625,
+        22959.765625,
+        22140.13671875,
+        21677.63671875
+      ],
+      "Bytes": [
+        37824,
+        37824,
+        37824,
+        37824,
+        37824,
+        37824,
+        37824
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Links-entities",
+      "Engine": "Independent",
+      "Characters": 1632,
+      "OperationsPerSample": 122,
+      "Nanoseconds": [],
+      "Bytes": [
+        15375.475409836066
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retained-after-GC",
+      "Input": "Links-entities",
+      "Engine": "Markdig",
+      "Characters": 1632,
+      "OperationsPerSample": 122,
+      "Nanoseconds": [],
+      "Bytes": [
+        32839.2131147541
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-256",
+      "Engine": "Independent",
+      "Characters": 256,
+      "OperationsPerSample": 262144,
+      "Nanoseconds": [
+        156.2969207763672,
+        153.08685302734375,
+        148.56414794921875,
+        160.4705810546875,
+        161.65542602539062,
+        164.97879028320312,
+        159.98611450195312
+      ],
+      "Bytes": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-256",
+      "Engine": "Markdig",
+      "Characters": 256,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        461.32049560546875,
+        471.94061279296875,
+        457.1563720703125,
+        474.14093017578125,
+        477.49176025390625,
+        480.29327392578125,
+        486.993408203125
+      ],
+      "Bytes": [
+        584,
+        584,
+        584,
+        584,
+        584,
+        584,
+        584
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-256",
+      "Engine": "Independent",
+      "Characters": 1536,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        22612.98828125,
+        22040.91796875,
+        21855.46875,
+        22234.27734375,
+        21389.6484375,
+        22045.99609375,
+        21779.19921875
+      ],
+      "Bytes": [
+        22896,
+        22896,
+        22896,
+        22896,
+        22896,
+        22896,
+        22896
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-256",
+      "Engine": "Markdig",
+      "Characters": 1536,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        84223.046875,
+        84642.578125,
+        82191.796875,
+        82704.296875,
+        82569.140625,
+        83283.59375,
+        85392.578125
+      ],
+      "Bytes": [
+        78096,
+        78096,
+        78096,
+        78096,
+        78096,
+        78096,
+        78096
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-256",
+      "Engine": "Independent",
+      "Characters": 1536,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        33424.8046875,
+        32762.40234375,
+        33046.6796875,
+        32500.48828125,
+        32562.20703125,
+        33129.4921875,
+        32762.890625
+      ],
+      "Bytes": [
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-256",
+      "Engine": "Markdig",
+      "Characters": 1536,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        553065.625,
+        546840.625,
+        548576.5625,
+        543590.625,
+        552217.1875,
+        548637.5,
+        565206.25
+      ],
+      "Bytes": [
+        82600,
+        82600,
+        82600,
+        82600,
+        82600,
+        82600,
+        82600
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-256",
+      "Engine": "Independent",
+      "Characters": 2048,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        33769.921875,
+        33583.7890625,
+        33567.87109375,
+        34403.125,
+        33795.703125,
+        33894.921875,
+        33858.30078125
+      ],
+      "Bytes": [
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-256",
+      "Engine": "Markdig",
+      "Characters": 2048,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        66273.4375,
+        66523.828125,
+        66446.6796875,
+        66201.7578125,
+        66489.0625,
+        66090.625,
+        66817.96875
+      ],
+      "Bytes": [
+        99008,
+        99008,
+        99008,
+        99008,
+        99008,
+        99008,
+        99008
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-256",
+      "Engine": "Independent",
+      "Characters": 2048,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        46033.59375,
+        47081.640625,
+        45338.4765625,
+        45608.3984375,
+        46885.546875,
+        46394.53125,
+        46619.7265625
+      ],
+      "Bytes": [
+        34200,
+        34200,
+        34200,
+        34200,
+        34200,
+        34200,
+        34200
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-256",
+      "Engine": "Markdig",
+      "Characters": 2048,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        477625,
+        465365.625,
+        473345.3125,
+        466664.0625,
+        458610.9375,
+        453795.3125,
+        473312.5
+      ],
+      "Bytes": [
+        139984,
+        139984,
+        139984,
+        139984,
+        139984,
+        139984,
+        139984
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-256",
+      "Engine": "Independent",
+      "Characters": 256,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        8915.5029296875,
+        7723.2666015625,
+        7549.4873046875,
+        7189.013671875,
+        7309.4970703125,
+        7163.8427734375,
+        7225.3662109375
+      ],
+      "Bytes": [
+        11672,
+        11672,
+        11672,
+        11672,
+        11672,
+        11672,
+        11672
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-256",
+      "Engine": "Markdig",
+      "Characters": 256,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        62374.609375,
+        60605.6640625,
+        54587.6953125,
+        51585.7421875,
+        53902.5390625,
+        51768.75,
+        54641.796875
+      ],
+      "Bytes": [
+        31216,
+        31216,
+        31216,
+        31216,
+        31216,
+        31216,
+        31216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-1024",
+      "Engine": "Independent",
+      "Characters": 1024,
+      "OperationsPerSample": 131072,
+      "Nanoseconds": [
+        220.85723876953125,
+        212.43515014648438,
+        209.686279296875,
+        214.86053466796875,
+        208.75244140625,
+        220.44754028320312,
+        207.16018676757812
+      ],
+      "Bytes": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-1024",
+      "Engine": "Markdig",
+      "Characters": 1024,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        613.6993408203125,
+        646.9085693359375,
+        636.24267578125,
+        658.453369140625,
+        622.2320556640625,
+        639.7430419921875,
+        849.273681640625
+      ],
+      "Bytes": [
+        680,
+        680,
+        680,
+        680,
+        680,
+        680,
+        680
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-1024",
+      "Engine": "Independent",
+      "Characters": 6144,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        109961.71875,
+        117576.953125,
+        95073.046875,
+        109251.5625,
+        122507.8125,
+        109454.6875,
+        107730.859375
+      ],
+      "Bytes": [
+        90499.5625,
+        90509.15625,
+        90480,
+        90480,
+        90485.09375,
+        90487.53125,
+        90480
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-1024",
+      "Engine": "Markdig",
+      "Characters": 6144,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        615806.25,
+        372965.625,
+        380362.5,
+        372017.1875,
+        357645.3125,
+        384634.375,
+        366556.25
+      ],
+      "Bytes": [
+        530513.375,
+        530512,
+        530512,
+        530512,
+        530512,
+        530512,
+        530512
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-1024",
+      "Engine": "Independent",
+      "Characters": 6144,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        150401.953125,
+        160308.203125,
+        131578.90625,
+        150381.25,
+        128833.984375,
+        154378.125,
+        131522.265625
+      ],
+      "Bytes": [
+        180655.375,
+        180656.53125,
+        180638.25,
+        180670.53125,
+        180651.53125,
+        180658.84375,
+        180639.1875
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-1024",
+      "Engine": "Markdig",
+      "Characters": 6144,
+      "OperationsPerSample": 4,
+      "Nanoseconds": [
+        10962150,
+        8047075,
+        8976350,
+        8134950,
+        10109850,
+        8077200,
+        9596475
+      ],
+      "Bytes": [
+        330040,
+        328936,
+        329998,
+        328936,
+        329448,
+        328936,
+        330380
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-1024",
+      "Engine": "Independent",
+      "Characters": 8192,
+      "OperationsPerSample": 128,
+      "Nanoseconds": [
+        167450,
+        175546.875,
+        159407.8125,
+        165920.3125,
+        136229.6875,
+        162317.96875,
+        210560.15625
+      ],
+      "Bytes": [
+        180632,
+        180666,
+        180632,
+        180632,
+        180632,
+        180632,
+        180671.5625
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-1024",
+      "Engine": "Markdig",
+      "Characters": 8192,
+      "OperationsPerSample": 128,
+      "Nanoseconds": [
+        357054.6875,
+        283184.375,
+        275444.53125,
+        279330.46875,
+        276624.21875,
+        278400.78125,
+        346272.65625
+      ],
+      "Bytes": [
+        394688.25,
+        394688,
+        394688,
+        394688,
+        394688,
+        394688,
+        394688.1875
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-1024",
+      "Engine": "Independent",
+      "Characters": 8192,
+      "OperationsPerSample": 128,
+      "Nanoseconds": [
+        188788.28125,
+        179867.96875,
+        262348.4375,
+        212936.71875,
+        193340.625,
+        188332.8125,
+        203875
+      ],
+      "Bytes": [
+        135576,
+        135576,
+        135622.5,
+        135596.375,
+        135576,
+        135576,
+        135576
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-1024",
+      "Engine": "Markdig",
+      "Characters": 8192,
+      "OperationsPerSample": 4,
+      "Nanoseconds": [
+        7133075,
+        6954275,
+        11461375,
+        6675075,
+        7236100,
+        6868075,
+        7196850
+      ],
+      "Bytes": [
+        558544,
+        558544,
+        560198,
+        558544,
+        558544,
+        558544,
+        558544
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-1024",
+      "Engine": "Independent",
+      "Characters": 1024,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        27331.25,
+        27390.13671875,
+        28434.375,
+        27564.94140625,
+        27167.96875,
+        27250.390625,
+        27417.08984375
+      ],
+      "Bytes": [
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464,
+        45464
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-1024",
+      "Engine": "Markdig",
+      "Characters": 1024,
+      "OperationsPerSample": 32,
+      "Nanoseconds": [
+        753887.5,
+        741203.125,
+        759721.875,
+        725953.125,
+        758556.25,
+        736725,
+        746362.5
+      ],
+      "Bytes": [
+        123472,
+        123472,
+        123472,
+        123472,
+        123472,
+        123472,
+        123472
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-4096",
+      "Engine": "Independent",
+      "Characters": 4096,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        406.4788818359375,
+        418.3074951171875,
+        410.42327880859375,
+        432.40966796875,
+        426.434326171875,
+        422.54486083984375,
+        412.451171875
+      ],
+      "Bytes": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-4096",
+      "Engine": "Markdig",
+      "Characters": 4096,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        1098.9166259765625,
+        1083.251953125,
+        1114.111328125,
+        1143.7408447265625,
+        1190.6829833984375,
+        1181.964111328125,
+        1166.44287109375
+      ],
+      "Bytes": [
+        1064,
+        1064,
+        1064,
+        1064,
+        1064,
+        1064,
+        1064
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-4096",
+      "Engine": "Independent",
+      "Characters": 24576,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        362296.875,
+        376300,
+        406509.375,
+        369215.625,
+        406231.25,
+        368735.9375,
+        398346.875
+      ],
+      "Bytes": [
+        360816,
+        360816,
+        360922.875,
+        360816,
+        360909,
+        360816,
+        360895.125
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-4096",
+      "Engine": "Markdig",
+      "Characters": 24576,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        2391075,
+        1635087.5,
+        2294400,
+        1735206.25,
+        2313975,
+        1733281.25,
+        2247437.5
+      ],
+      "Bytes": [
+        2487185,
+        2487168,
+        2487170.5,
+        2487168,
+        2487179.5,
+        2487168,
+        2487169.5
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-4096",
+      "Engine": "Independent",
+      "Characters": 24576,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        569771.875,
+        555215.625,
+        561056.25,
+        578442.1875,
+        606368.75,
+        676931.25,
+        550348.4375
+      ],
+      "Bytes": [
+        721426.125,
+        721416.875,
+        721467.25,
+        721348.875,
+        721304,
+        721353.5,
+        721424.75
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-4096",
+      "Engine": "Markdig",
+      "Characters": 24576,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        128588800,
+        124179100,
+        124646100,
+        125698500,
+        126772600,
+        125526400,
+        126175400
+      ],
+      "Bytes": [
+        1316032,
+        1313256,
+        1313256,
+        1313256,
+        1313256,
+        1313256,
+        1313256
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-4096",
+      "Engine": "Independent",
+      "Characters": 32768,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        592484.375,
+        598267.1875,
+        590675,
+        612575,
+        602845.3125,
+        607584.375,
+        652862.5
+      ],
+      "Bytes": [
+        721416.875,
+        721416.875,
+        721475.625,
+        721321.125,
+        721393.25,
+        721358.125,
+        721304
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-4096",
+      "Engine": "Markdig",
+      "Characters": 32768,
+      "OperationsPerSample": 32,
+      "Nanoseconds": [
+        1551590.625,
+        1223406.25,
+        1305318.75,
+        1267237.5,
+        1601043.75,
+        1239884.375,
+        1241659.375
+      ],
+      "Bytes": [
+        1575361.75,
+        1575360,
+        1575360.75,
+        1575360,
+        1575361.5,
+        1575360,
+        1575360
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-4096",
+      "Engine": "Independent",
+      "Characters": 32768,
+      "OperationsPerSample": 32,
+      "Nanoseconds": [
+        837240.625,
+        851915.625,
+        807378.125,
+        805759.375,
+        829121.875,
+        853731.25,
+        813056.25
+      ],
+      "Bytes": [
+        541105,
+        541123.5,
+        541080,
+        541080,
+        541253,
+        541169.75,
+        541080
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-4096",
+      "Engine": "Markdig",
+      "Characters": 32768,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        119758300,
+        117086600,
+        118661600,
+        119205000,
+        130416200,
+        114924000,
+        123090700
+      ],
+      "Bytes": [
+        2230736,
+        2230736,
+        2230736,
+        2230736,
+        2232272,
+        2230736,
+        2230736
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-4096",
+      "Engine": "Independent",
+      "Characters": 4096,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        115659.375,
+        123549.21875,
+        150656.640625,
+        126616.796875,
+        125837.109375,
+        134014.84375,
+        114981.25
+      ],
+      "Bytes": [
+        180644.15625,
+        180633.625,
+        180632,
+        180660.21875,
+        180632,
+        180662.1875,
+        180676.4375
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-4096",
+      "Engine": "Markdig",
+      "Characters": 4096,
+      "OperationsPerSample": 2,
+      "Nanoseconds": [
+        12947950,
+        14032700,
+        12970850,
+        15830000,
+        11866950,
+        11631250,
+        11707550
+      ],
+      "Bytes": [
+        492684,
+        492496,
+        496432,
+        492496,
+        492496,
+        492496,
+        492496
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-16384",
+      "Engine": "Independent",
+      "Characters": 16384,
+      "OperationsPerSample": 32768,
+      "Nanoseconds": [
+        1189.4561767578125,
+        1182.025146484375,
+        1177.1881103515625,
+        1185.443115234375,
+        1175.482177734375,
+        1191.717529296875,
+        1201.7364501953125
+      ],
+      "Bytes": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Prose-16384",
+      "Engine": "Markdig",
+      "Characters": 16384,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        3227.783203125,
+        2927.38037109375,
+        2654.1015625,
+        2526.416015625,
+        2626.20849609375,
+        2767.81005859375,
+        2892.236328125
+      ],
+      "Bytes": [
+        2600,
+        2600,
+        2600,
+        2600,
+        2600,
+        2600,
+        2600
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-16384",
+      "Engine": "Independent",
+      "Characters": 98304,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        1595793.75,
+        1522200,
+        1738325,
+        1683512.5,
+        1736318.75,
+        1472118.75,
+        1668106.25
+      ],
+      "Bytes": [
+        1442160,
+        1442160,
+        1442160,
+        1442543,
+        1442160,
+        1442160,
+        1442524.5
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Blocks-16384",
+      "Engine": "Markdig",
+      "Characters": 98304,
+      "OperationsPerSample": 2,
+      "Nanoseconds": [
+        12935650,
+        17103600,
+        11665250,
+        16663700,
+        10740150,
+        19362500,
+        14538200
+      ],
+      "Bytes": [
+        10351720,
+        10351632,
+        10351596,
+        10351596,
+        10351740,
+        10351632,
+        10351672
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-16384",
+      "Engine": "Independent",
+      "Characters": 98304,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        2402156.25,
+        2598918.75,
+        3253606.25,
+        2714875,
+        2266375,
+        2705318.75,
+        2408675
+      ],
+      "Bytes": [
+        2884282.5,
+        2884412,
+        2883992,
+        2884430.5,
+        2884854,
+        2884924.5,
+        2884338
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-links-16384",
+      "Engine": "Markdig",
+      "Characters": 98304,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        2023591700,
+        2077182700,
+        2039491600,
+        2043083300,
+        2064647000,
+        2065902200,
+        2062733700
+      ],
+      "Bytes": [
+        5245416,
+        5245416,
+        5245416,
+        5245416,
+        5252104,
+        5245416,
+        5247104
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-16384",
+      "Engine": "Independent",
+      "Characters": 131072,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        2608987.5,
+        2715325,
+        2615312.5,
+        2641656.25,
+        2964731.25,
+        2681550,
+        2593137.5
+      ],
+      "Bytes": [
+        2884850.5,
+        2884486,
+        2883992,
+        2883992,
+        2884486,
+        2884486,
+        2883992
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Failed-titles-16384",
+      "Engine": "Markdig",
+      "Characters": 131072,
+      "OperationsPerSample": 4,
+      "Nanoseconds": [
+        6850325,
+        6648975,
+        7101800,
+        7486075,
+        11372650,
+        7199475,
+        7260300
+      ],
+      "Bytes": [
+        6293952,
+        6293952,
+        6293952,
+        6293952,
+        6293954,
+        6293952,
+        6293952
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-16384",
+      "Engine": "Independent",
+      "Characters": 131072,
+      "OperationsPerSample": 8,
+      "Nanoseconds": [
+        3336712.5,
+        3301412.5,
+        3692437.5,
+        3525937.5,
+        3300675,
+        3478425,
+        3149837.5
+      ],
+      "Bytes": [
+        2163096,
+        2163096,
+        2163862,
+        2163096,
+        2163862,
+        2163936,
+        2163096
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Delimiters-16384",
+      "Engine": "Markdig",
+      "Characters": 131072,
+      "OperationsPerSample": 0,
+      "Nanoseconds": [],
+      "Bytes": [],
+      "Error": "Markdown elements in the input are too deeply nested - depth limit exceeded. Input is most likely not sensible or is a very large table."
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-16384",
+      "Engine": "Independent",
+      "Characters": 16384,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        473164.0625,
+        513926.5625,
+        446032.8125,
+        537182.8125,
+        454010.9375,
+        482290.625,
+        471809.375
+      ],
+      "Bytes": [
+        721408.375,
+        721304,
+        721304,
+        721304,
+        721304,
+        721421.5,
+        721406.25
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Unmatched-brackets-16384",
+      "Engine": "Markdig",
+      "Characters": 16384,
+      "OperationsPerSample": 0,
+      "Nanoseconds": [],
+      "Bytes": [],
+      "Error": "Markdown elements in the input are too deeply nested - depth limit exceeded. Input is most likely not sensible or is a very large table."
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-32",
+      "Engine": "Independent",
+      "Characters": 37,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        2332.6416015625,
+        2340.802001953125,
+        2283.72802734375,
+        2354.0771484375,
+        2267.9931640625,
+        2324.462890625,
+        2273.065185546875
+      ],
+      "Bytes": [
+        1864,
+        1864,
+        1864,
+        1864,
+        1864,
+        1864,
+        1864
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-32",
+      "Engine": "Markdig",
+      "Characters": 37,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        4908.740234375,
+        4942.431640625,
+        4830.2978515625,
+        4948.14453125,
+        4851.7822265625,
+        4842.431640625,
+        4705.224609375
+      ],
+      "Bytes": [
+        6936,
+        6936,
+        6936,
+        6936,
+        6936,
+        6936,
+        6936
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-128",
+      "Engine": "Independent",
+      "Characters": 133,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        6907.9345703125,
+        7005.224609375,
+        6853.7109375,
+        6691.1376953125,
+        6836.962890625,
+        6741.943359375,
+        6713.037109375
+      ],
+      "Bytes": [
+        6088,
+        6088,
+        6088,
+        6088,
+        6088,
+        6088,
+        6088
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-128",
+      "Engine": "Markdig",
+      "Characters": 133,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        25427.1484375,
+        24834.765625,
+        24750.390625,
+        24856.73828125,
+        24932.03125,
+        25349.0234375,
+        25267.578125
+      ],
+      "Bytes": [
+        26184,
+        26184,
+        26184,
+        26184,
+        26184,
+        26184,
+        26184
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-512",
+      "Engine": "Independent",
+      "Characters": 517,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        23792.28515625,
+        23968.1640625,
+        23938.57421875,
+        24286.03515625,
+        23750.78125,
+        23572.55859375,
+        24387.5
+      ],
+      "Bytes": [
+        22984,
+        22984,
+        22984,
+        22984,
+        22984,
+        22984,
+        22984
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-512",
+      "Engine": "Markdig",
+      "Characters": 517,
+      "OperationsPerSample": 128,
+      "Nanoseconds": [
+        219500,
+        219057.03125,
+        221550,
+        217257.8125,
+        220598.4375,
+        221856.25,
+        217644.53125
+      ],
+      "Bytes": [
+        103080,
+        103080,
+        103080,
+        103080,
+        103080,
+        103080,
+        103080
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-2048",
+      "Engine": "Independent",
+      "Characters": 2053,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        101620.3125,
+        93975.78125,
+        98655.859375,
+        106974.609375,
+        100862.5,
+        94216.015625,
+        119008.203125
+      ],
+      "Bytes": [
+        90595.0625,
+        90568,
+        90599.125,
+        90568,
+        90577.96875,
+        90568,
+        90570.5625
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Quote-depth-2048",
+      "Engine": "Markdig",
+      "Characters": 2053,
+      "OperationsPerSample": 8,
+      "Nanoseconds": [
+        4351375,
+        2938637.5,
+        3710300,
+        2926562.5,
+        4964637.5,
+        2896862.5,
+        4596525
+      ],
+      "Bytes": [
+        410520,
+        410520,
+        410523,
+        410520,
+        410525,
+        410520,
+        410520
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-32",
+      "Engine": "Independent",
+      "Characters": 592,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        6935.2783203125,
+        6305.5419921875,
+        6476.220703125,
+        6443.5791015625,
+        6351.171875,
+        6369.9951171875,
+        6519.53125
+      ],
+      "Bytes": [
+        4792,
+        4792,
+        4792,
+        4792,
+        4792,
+        4792,
+        4792
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-32",
+      "Engine": "Markdig",
+      "Characters": 592,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        20491.30859375,
+        20139.94140625,
+        20193.5546875,
+        20789.74609375,
+        20067.48046875,
+        20530.6640625,
+        20242.3828125
+      ],
+      "Bytes": [
+        624,
+        624,
+        624,
+        624,
+        624,
+        624,
+        624
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-64",
+      "Engine": "Independent",
+      "Characters": 2208,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        14222.0703125,
+        13974.072265625,
+        14261.669921875,
+        14102.83203125,
+        14079.931640625,
+        13932.666015625,
+        13946.2890625
+      ],
+      "Bytes": [
+        9440,
+        9440,
+        9440,
+        9440,
+        9440,
+        9440,
+        9440
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-64",
+      "Engine": "Markdig",
+      "Characters": 2208,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        96326.953125,
+        97333.984375,
+        97338.28125,
+        96195.703125,
+        95780.46875,
+        97684.375,
+        96858.984375
+      ],
+      "Bytes": [
+        832,
+        832,
+        832,
+        832,
+        832,
+        832,
+        832
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-128",
+      "Engine": "Independent",
+      "Characters": 8512,
+      "OperationsPerSample": 1024,
+      "Nanoseconds": [
+        32370.5078125,
+        31663.57421875,
+        35774.21875,
+        31885.64453125,
+        32008.0078125,
+        31993.75,
+        31934.1796875
+      ],
+      "Bytes": [
+        19064,
+        19064,
+        19064,
+        19064,
+        19064,
+        19064,
+        19064
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-128",
+      "Engine": "Markdig",
+      "Characters": 8512,
+      "OperationsPerSample": 64,
+      "Nanoseconds": [
+        545195.3125,
+        518254.6875,
+        503973.4375,
+        510925,
+        504584.375,
+        578362.5,
+        566700
+      ],
+      "Bytes": [
+        1616,
+        1616,
+        1616,
+        1616,
+        1616,
+        1616,
+        1616
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-256",
+      "Engine": "Independent",
+      "Characters": 33408,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        79195.3125,
+        77995.3125,
+        78509.765625,
+        78645.3125,
+        78185.9375,
+        78449.609375,
+        77417.96875
+      ],
+      "Bytes": [
+        39000,
+        39000,
+        39000,
+        39000,
+        39000,
+        39000,
+        39000
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse",
+      "Input": "Backtick-runs-256",
+      "Engine": "Markdig",
+      "Characters": 33408,
+      "OperationsPerSample": 8,
+      "Nanoseconds": [
+        2729212.5,
+        2749600,
+        3182612.5,
+        2699912.5,
+        3227137.5,
+        2708425,
+        2678737.5
+      ],
+      "Bytes": [
+        2600,
+        2600,
+        2600,
+        2600,
+        2600,
+        2600,
+        2600
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 8192,
+      "Nanoseconds": [
+        3877.47802734375,
+        3980.3466796875,
+        3873.25439453125,
+        3926.708984375,
+        3880.48095703125,
+        4031.1767578125,
+        3910.5224609375
+      ],
+      "Bytes": [
+        2504,
+        2504,
+        2504,
+        2504,
+        2504,
+        2504,
+        2504
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-8",
+      "Engine": "Markdig",
+      "Characters": 266,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        5882.3974609375,
+        6092.28515625,
+        5725.3173828125,
+        5680.56640625,
+        5811.6455078125,
+        5721.0693359375,
+        5863.427734375
+      ],
+      "Bytes": [
+        6472,
+        6472,
+        6472,
+        6472,
+        6472,
+        6472,
+        6472
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        371.6156005859375,
+        390.2313232421875,
+        368.280029296875,
+        407.9925537109375,
+        371.44927978515625,
+        391.22314453125,
+        386.651611328125
+      ],
+      "Bytes": [
+        784,
+        784,
+        784,
+        784,
+        784,
+        784,
+        784
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-8",
+      "Engine": "Markdig",
+      "Characters": 266,
+      "OperationsPerSample": 65536,
+      "Nanoseconds": [
+        419.35272216796875,
+        419.07501220703125,
+        406.22711181640625,
+        396.36688232421875,
+        434.1156005859375,
+        405.9906005859375,
+        399.261474609375
+      ],
+      "Bytes": [
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 4194304,
+      "Nanoseconds": [
+        5.321455001831055,
+        5.430126190185547,
+        5.626416206359863,
+        5.402731895446777,
+        5.538225173950195,
+        5.5507659912109375,
+        5.668973922729492
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-8",
+      "Engine": "Markdig",
+      "Characters": 266,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.6493420600891113,
+        3.3925652503967285,
+        3.4597277641296387,
+        3.225827217102051,
+        3.287780284881592,
+        3.1186342239379883,
+        3.525698184967041
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.151583671569824,
+        3.235912322998047,
+        3.284907341003418,
+        3.161287307739258,
+        3.2722115516662598,
+        3.2129526138305664,
+        3.257763385772705
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-8",
+      "Engine": "Markdig",
+      "Characters": 266,
+      "OperationsPerSample": 16777216,
+      "Nanoseconds": [
+        1.6511321067810059,
+        1.6059815883636475,
+        1.6510844230651855,
+        1.8545567989349365,
+        1.650017499923706,
+        1.8207252025604248,
+        1.6617357730865479
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-1",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        11991900
+      ],
+      "Bytes": [
+        29552
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-4",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        30800
+      ],
+      "Bytes": [
+        2480
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-16",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        289100
+      ],
+      "Bytes": [
+        3448
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        52014.453125,
+        51631.0546875,
+        49502.734375,
+        52905.078125,
+        49640.0390625,
+        51241.796875,
+        49885.546875
+      ],
+      "Bytes": [
+        32264,
+        32264,
+        32264,
+        32264,
+        32264,
+        32264,
+        32264
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-128",
+      "Engine": "Markdig",
+      "Characters": 4132,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        77471.875,
+        79492.578125,
+        81287.5,
+        79020.3125,
+        78410.9375,
+        80471.09375,
+        76448.046875
+      ],
+      "Bytes": [
+        93560,
+        93560,
+        93560,
+        93560,
+        93560,
+        93560,
+        93560
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        5874.658203125,
+        5820.1416015625,
+        5914.892578125,
+        5947.509765625,
+        5737.646484375,
+        6021.19140625,
+        5785.05859375
+      ],
+      "Bytes": [
+        8944,
+        8944,
+        8944,
+        8944,
+        8944,
+        8944,
+        8944
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-128",
+      "Engine": "Markdig",
+      "Characters": 4132,
+      "OperationsPerSample": 4096,
+      "Nanoseconds": [
+        5703.0029296875,
+        5834.6923828125,
+        5602.6123046875,
+        5670.99609375,
+        5637.6708984375,
+        5779.98046875,
+        5680.322265625
+      ],
+      "Bytes": [
+        7920,
+        7920,
+        7920,
+        7920,
+        7920,
+        7920,
+        7920
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 4194304,
+      "Nanoseconds": [
+        5.472660064697266,
+        5.470371246337891,
+        5.592012405395508,
+        5.220437049865723,
+        5.305147171020508,
+        5.44741153717041,
+        5.561685562133789
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-128",
+      "Engine": "Markdig",
+      "Characters": 4132,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.3548355102539062,
+        3.3351540565490723,
+        3.4426450729370117,
+        3.241419792175293,
+        3.4401774406433105,
+        3.1476736068725586,
+        3.3954381942749023
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.1571388244628906,
+        3.168058395385742,
+        3.175973892211914,
+        3.119015693664551,
+        3.2298684120178223,
+        3.167104721069336,
+        3.212594985961914
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-128",
+      "Engine": "Markdig",
+      "Characters": 4132,
+      "OperationsPerSample": 16777216,
+      "Nanoseconds": [
+        1.6834914684295654,
+        1.5668034553527832,
+        1.6306817531585693,
+        1.5862703323364258,
+        1.6286969184875488,
+        1.5844225883483887,
+        1.643151044845581
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-1",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        136600
+      ],
+      "Bytes": [
+        10952
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-4",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        32800
+      ],
+      "Bytes": [
+        12152
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-16",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        18200
+      ],
+      "Bytes": [
+        11824
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 32,
+      "Nanoseconds": [
+        860337.5,
+        788187.5,
+        764687.5,
+        826887.5,
+        876268.75,
+        811918.75,
+        1286168.75
+      ],
+      "Bytes": [
+        508457.25,
+        508424,
+        508424,
+        508424,
+        508615,
+        508424,
+        508424.25
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Parse\u002BExtract",
+      "Input": "Items-2048",
+      "Engine": "Markdig",
+      "Characters": 68540,
+      "OperationsPerSample": 16,
+      "Nanoseconds": [
+        1667756.25,
+        1316343.75,
+        1580793.75,
+        1221037.5,
+        1347318.75,
+        1301225,
+        1391918.75
+      ],
+      "Bytes": [
+        2062080,
+        2062080,
+        2062087.5,
+        2062080,
+        2062080,
+        2062080,
+        2062080
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        100759.375,
+        102719.140625,
+        102041.015625,
+        103029.296875,
+        102926.5625,
+        100754.6875,
+        100831.25
+      ],
+      "Bytes": [
+        147400,
+        147400,
+        147400,
+        147400,
+        147400,
+        147400,
+        147400
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Classify-cached-syntax",
+      "Input": "Items-2048",
+      "Engine": "Markdig",
+      "Characters": 68540,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        99026.171875,
+        97769.53125,
+        96802.34375,
+        96671.484375,
+        97357.421875,
+        99131.640625,
+        96697.265625
+      ],
+      "Bytes": [
+        131016,
+        131016,
+        131016,
+        131016,
+        131016,
+        131016,
+        131016
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 4194304,
+      "Nanoseconds": [
+        5.44130802154541,
+        5.489802360534668,
+        5.502462387084961,
+        5.389595031738281,
+        5.583953857421875,
+        5.338263511657715,
+        5.440545082092285
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Summary-cached-syntax",
+      "Input": "Items-2048",
+      "Engine": "Markdig",
+      "Characters": 68540,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.3553481101989746,
+        3.2731056213378906,
+        3.4925341606140137,
+        3.346896171569824,
+        3.427588939666748,
+        3.3549904823303223,
+        3.574371337890625
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 8388608,
+      "Nanoseconds": [
+        3.2588839530944824,
+        3.2730579376220703,
+        3.370356559753418,
+        3.2112717628479004,
+        3.2527804374694824,
+        3.1816482543945312,
+        3.293740749359131
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Candidates-cached",
+      "Input": "Items-2048",
+      "Engine": "Markdig",
+      "Characters": 68540,
+      "OperationsPerSample": 16777216,
+      "Nanoseconds": [
+        1.6672492027282715,
+        1.5922963619232178,
+        1.686638593673706,
+        1.5985429286956787,
+        1.6550779342651367,
+        1.5912175178527832,
+        1.6490042209625244
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-1",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        268100
+      ],
+      "Bytes": [
+        149192
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-4",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        127700
+      ],
+      "Bytes": [
+        149360
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-extract-16",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        111600
+      ],
+      "Bytes": [
+        150032
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-64",
+      "Engine": "Independent",
+      "Characters": 1727,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        39774.609375,
+        39663.28125,
+        39708.0078125,
+        40588.0859375,
+        39845.5078125,
+        39705.46875,
+        40244.140625
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-64",
+      "Engine": "Markdig",
+      "Characters": 1727,
+      "OperationsPerSample": 512,
+      "Nanoseconds": [
+        39448.4375,
+        39748.2421875,
+        39601.171875,
+        39367.7734375,
+        39222.8515625,
+        39210.15625,
+        39077.734375
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-1024",
+      "Engine": "Independent",
+      "Characters": 27647,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        100272.65625,
+        98677.734375,
+        99365.234375,
+        98067.1875,
+        98636.328125,
+        97918.75,
+        98078.125
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-1024",
+      "Engine": "Markdig",
+      "Characters": 27647,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        98398.828125,
+        99541.40625,
+        98291.40625,
+        98073.4375,
+        97946.484375,
+        98569.921875,
+        98069.140625
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-16384",
+      "Engine": "Independent",
+      "Characters": 442367,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        129189.84375,
+        130544.140625,
+        131019.140625,
+        133957.8125,
+        131214.0625,
+        130098.046875,
+        130225.390625
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Map-1024-ranges",
+      "Input": "Source-lines-16384",
+      "Engine": "Markdig",
+      "Characters": 442367,
+      "OperationsPerSample": 256,
+      "Nanoseconds": [
+        125492.1875,
+        125815.234375,
+        131110.546875,
+        133553.515625,
+        127710.9375,
+        129127.734375,
+        126532.03125
+      ],
+      "Bytes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Precancelled-parse",
+      "Input": "Cancelled",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 16384,
+      "Nanoseconds": [
+        2042.138671875,
+        2036.4013671875,
+        2043.26171875,
+        2004.412841796875,
+        2025.640869140625,
+        2038.494873046875,
+        2010.955810546875
+      ],
+      "Bytes": [
+        472,
+        472,
+        472,
+        472,
+        472,
+        472,
+        472
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Depth-interruption",
+      "Input": "Depth-limit",
+      "Engine": "Independent",
+      "Characters": 1029,
+      "OperationsPerSample": 2048,
+      "Nanoseconds": [
+        13356.73828125,
+        13278.955078125,
+        13221.484375,
+        13444.384765625,
+        13211.1328125,
+        13221.19140625,
+        13257.763671875
+      ],
+      "Bytes": [
+        1168,
+        1168,
+        1168,
+        1168,
+        1168,
+        1168,
+        1168
+      ],
+      "Error": null
+    }
+  ],
+  "Cold": [
+    {
+      "Name": "Summary",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 6748100,
+        "Bytes": 352
+      }
+    },
+    {
+      "Name": "Summary",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 6468400,
+        "Bytes": 352
+      }
+    },
+    {
+      "Name": "Summary",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 7172400,
+        "Bytes": 352
+      }
+    },
+    {
+      "Name": "Summary",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 53076900,
+        "Bytes": 127240
+      }
+    },
+    {
+      "Name": "Summary",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 52467400,
+        "Bytes": 127240
+      }
+    },
+    {
+      "Name": "Summary",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 52738500,
+        "Bytes": 127240
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 56788400,
+        "Bytes": 13328
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 55926300,
+        "Bytes": 13328
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 55261100,
+        "Bytes": 13328
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 76143500,
+        "Bytes": 134720
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 75835700,
+        "Bytes": 134720
+      }
+    },
+    {
+      "Name": "Rich-summary",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 76700000,
+        "Bytes": 134720
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 50933400,
+        "Bytes": 16440
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 50883900,
+        "Bytes": 16440
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 51178600,
+        "Bytes": 16440
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 60616100,
+        "Bytes": 39616
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 71607200,
+        "Bytes": 137968
+      }
+    },
+    {
+      "Name": "Parameters",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 67785000,
+        "Bytes": 39616
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 42617100,
+        "Bytes": 7008
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 47508400,
+        "Bytes": 7008
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 46813900,
+        "Bytes": 7008
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 64852400,
+        "Bytes": 57704
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 63298000,
+        "Bytes": 57704
+      }
+    },
+    {
+      "Name": "Code-example",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 62810500,
+        "Bytes": 156056
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 47507700,
+        "Bytes": 12824
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 47192900,
+        "Bytes": 111176
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 46518600,
+        "Bytes": 111176
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 71172100,
+        "Bytes": 40008
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 70413700,
+        "Bytes": 40008
+      }
+    },
+    {
+      "Name": "Nested",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 70704600,
+        "Bytes": 40008
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Independent",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 55678500,
+        "Bytes": 92272
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Independent",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 55640600,
+        "Bytes": 92272
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Independent",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 55244800,
+        "Bytes": 92272
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Markdig",
+      "Launch": 0,
+      "Result": {
+        "Nanoseconds": 93671900,
+        "Bytes": 270600
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Markdig",
+      "Launch": 1,
+      "Result": {
+        "Nanoseconds": 95074100,
+        "Bytes": 270600
+      }
+    },
+    {
+      "Name": "Links-entities",
+      "Engine": "Markdig",
+      "Launch": 2,
+      "Result": {
+        "Nanoseconds": 95185300,
+        "Bytes": 270600
+      }
+    }
+  ]
+}

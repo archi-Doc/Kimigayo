@@ -23,9 +23,6 @@ public sealed record class FunctionParameterKoto
     /// <summary>Gets the parameter name used in the function body.</summary>
     public string InternalName { get; private set; } = string.Empty;
 
-    /// <summary>Gets a value indicating whether callers may omit the parameter.</summary>
-    public bool IsOptional { get; private set; }
-
     /// <summary>Gets the parameter type.</summary>
     public Koto Type { get; internal set; } = default!;
 
@@ -38,21 +35,18 @@ public sealed record class FunctionParameterKoto
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
-    /// <param name="isOptional">Whether callers may omit the parameter.</param>
     /// <param name="type">The parameter type.</param>
     /// <param name="defaultValue">The default value, if present.</param>
     /// <param name="attributeChain">The parameter attributes, if present.</param>
     public FunctionParameterKoto(
         string externalName,
         string internalName,
-        bool isOptional,
         Koto type,
         Koto? defaultValue,
         AttributeKoto? attributeChain = null)
     {
         this.ExternalName = externalName;
         this.InternalName = internalName;
-        this.IsOptional = isOptional;
         this.Type = type;
         this.DefaultValue = defaultValue;
         this.AttributeChain = attributeChain;
@@ -76,6 +70,109 @@ public sealed class FunctionKoto : DeclarationKoto
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
+    private Dictionary<string, int>? parameterIndices;
+
+    /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
+    public int NameBoundaryIndex { get; internal set; } = -1;
+
+    /// <summary>Gets normalized K after Binding, or -1 for an unverified specialization.</summary>
+    public int PositionalParameterCount
+    {
+        get
+        {
+            if (this.IsSpecialization)
+            {
+                return this.Kotonoha.Compilation.Binding.GetSpecializationOriginal(this)?.PositionalParameterCount ?? -1;
+            }
+
+            var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
+            var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
+            return limit - (receiver >= 0 && receiver < limit ? 1 : 0);
+        }
+    }
+
+    internal bool AllowsPositionalArgument(int index)
+        => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
+
+    internal int MaxPositionalArguments(bool boundReceiver)
+    {
+        var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
+        var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
+        if (receiver == limit)
+        {
+            limit++;
+        }
+
+        return limit - (boundReceiver && receiver >= 0 && receiver < limit ? 1 : 0);
+    }
+
+    internal int FindParameter(string name)
+    {
+        var parameters = this.parameters;
+        if (parameters is null)
+        {
+            return -1;
+        }
+
+        // Small signatures are cheaper to scan. Larger signatures share one ordinal index.
+        if (parameters.Count <= 8)
+        {
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].ExternalName == name)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        if (this.parameterIndices is null)
+        {
+            this.parameterIndices = new(parameters.Count, StringComparer.Ordinal);
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                this.parameterIndices.TryAdd(parameters[i].ExternalName, i);
+            }
+        }
+
+        return this.parameterIndices.GetValueOrDefault(name, -1);
+    }
+
+    internal bool TryMapArgument(string? label, ref int next, ref bool named, Span<bool> used, out int slot)
+    {
+        if (label is not null)
+        {
+            named = true;
+            slot = this.FindParameter(label);
+        }
+        else
+        {
+            slot = -1;
+            if (named)
+            {
+                return false;
+            }
+
+            // Only a receiver can already be supplied during the positional prefix.
+            while (next < this.Parameters.Count && used[next])
+            {
+                next++;
+            }
+
+            slot = next++;
+        }
+
+        if ((uint)slot >= (uint)this.Parameters.Count || used[slot] ||
+            (label is null && !this.AllowsPositionalArgument(slot)))
+        {
+            return false;
+        }
+
+        used[slot] = true;
+        return true;
+    }
 
     /// <summary>Gets the return type, if specified.</summary>
     public Koto? ReturnType { get; private set; }
@@ -114,8 +211,13 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the capture list; null distinguishes an omitted list.</summary>
     public CaptureKoto[]? Captures { get; private set; }
 
+    /// <summary>Gets the checked direct common-function conversion, when present.</summary>
+    public BoundClosure? BoundClosure => this.BindingState == BindingState.Resolved ? this.ClosureStorage : null;
+
     /// <summary>Gets the base constructor initializer.</summary>
     public InvocationKoto? BaseInitializer { get; private set; }
+
+    internal BoundClosure? ClosureStorage { get; set; }
 
     internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
 
@@ -152,6 +254,26 @@ public sealed class FunctionKoto : DeclarationKoto
         return false;
     }
 
+    // SPEC 7.4: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
+    // is parsed before the member is attached, so the container is recorded for the parse.
+    internal bool IsDeclaringTypeParameter(string name)
+    {
+        if (this.DeclaringContainer is not (StructKoto or EnumKoto) || this.DeclaringContainer is not { GenericParameterNodes: { Count: > 0 } parameters })
+        {
+            return false;
+        }
+
+        for (var i = 0; i < parameters.Count; i++)
+        {
+            if (parameters[i].Identifier == name || parameters[i].SemanticsParameter == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Gets the generic parameters.</summary>
     public IReadOnlyList<TypeKoto> GenericArguments
         => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
@@ -162,6 +284,10 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
     public bool IsExcluded { get; }
+
+    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
+
+    internal DeclarationContainerKoto? DeclaringContainer { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -205,6 +331,38 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Body = new CodeBlockKoto(codeContext);
         this.Body.Parent = this;
     }
+
+    internal FunctionKoto(StructKoto owner)
+        : base(owner.CodeContext, owner.Span)
+    {
+        this.Name = "init";
+        this.IsConstructor = true;
+        this.Modifier = ModifierKind.Public;
+        this.Parent = owner;
+        this.Body = new CodeBlockKoto(owner.CodeContext) { Parent = this };
+    }
+
+    // Non-owning execution view: accessor syntax, source boundaries and Origin binders
+    // remain unchanged. Ownership and native lowering share the ordinary function ABI.
+    internal FunctionKoto(BoundAccessor accessor)
+        : base(accessor.Declaration!.CodeContext, accessor.Declaration.Span)
+    {
+        this.Accessor = accessor;
+        this.Name = accessor.Property.Symbol.Name + "." + accessor.Kind;
+        this.Parent = accessor.Declaration.Parent;
+        this.parameters = new();
+        if (accessor.Receiver is not null)
+        {
+            this.parameters.Add(new("self", "self", new IdentifierNameKoto(accessor.Declaration, "self"), null));
+        }
+
+        if (accessor.Input is not null)
+        {
+            this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
+        }
+    }
+
+    internal BoundAccessor? Accessor { get; }
 
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>
@@ -311,13 +469,41 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append('>');
         }
 
-        OriginNameList.WriteTo(this.Origins, ref builder);
+        var multilineParameters = false;
+        if (this.parameters is { } declaredParameters)
+        {
+            for (var i = 0; i < declaredParameters.Count; i++)
+            {
+                if (declaredParameters[i].DefaultValue is { } value && KotoHelper.ContainsBody(value))
+                {
+                    multilineParameters = true;
+                    break;
+                }
+            }
+        }
+
         builder.Append('(');
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+        }
+
         if (this.parameters is { } parameters)
         {
             for (var i = 0; i < parameters.Count; i++)
             {
-                if (i > 0)
+                if (multilineParameters && i > 0)
+                {
+                    // Both separators belong outside any preceding default's indented body.
+                    builder.AppendLine();
+                }
+
+                if (i == this.NameBoundaryIndex)
+                {
+                    builder.Append(i == 0 || multilineParameters ? "! " : " ! ");
+                }
+                else if (i > 0)
                 {
                     builder.AppendCommaAndSpace();
                 }
@@ -329,11 +515,6 @@ public sealed class FunctionKoto : DeclarationKoto
                 }
 
                 builder.Append(parameter.ExternalName);
-                if (parameter.IsOptional)
-                {
-                    builder.Append('?');
-                }
-
                 if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
                 {
                     builder.Append(" => ");
@@ -354,6 +535,12 @@ public sealed class FunctionKoto : DeclarationKoto
             }
         }
 
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.DecrementIndent();
+        }
+
         builder.Append(')');
         if (this.BaseInitializer is not null)
         {
@@ -372,11 +559,12 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
         }
-        else if (this.typeConstraints is { Count: > 0 })
+        else if (this.typeConstraints is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
         {
             builder.AppendLine();
             builder.IncrementIndent();
-            foreach (var constraint in this.typeConstraints)
+            OriginClauses.Write(this, ref builder, false);
+            foreach (var constraint in this.TypeConstraints)
             {
                 constraint.WriteTo(ref builder);
                 builder.AppendLine();
@@ -388,6 +576,19 @@ public sealed class FunctionKoto : DeclarationKoto
         else
         {
             this.Body?.WriteIndentedTo(ref builder);
+        }
+    }
+
+    internal void RefreshAccessor()
+    {
+        var accessor = this.Accessor!;
+        this.Body = accessor.Declaration!.Body as CodeBlockKoto;
+        this.ExpressionBody = this.Body is null ? accessor.Declaration.Body : null;
+        this.ReturnType = accessor.Declaration.ReturnType;
+        for (var i = 0; i < this.Parameters.Count; i++)
+        {
+            this.Parameters[i].Type.BoundType = i == 0 && accessor.Receiver is not null ? accessor.Receiver : accessor.Input;
+            this.Parameters[i].Type.BindingState = BindingState.Resolved;
         }
     }
 

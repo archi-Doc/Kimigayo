@@ -5,8 +5,14 @@ using SimpleCommandLine;
 namespace Kimi.Command;
 
 [SimpleCommand("run")]
-public class RunCommand : ISimpleCommand<KimiOptions>
+public class RunCommand : ISimpleCommand<RunCommand.Options>
 {
+    public class Options : KimiOptions
+    {
+        [SimpleOption("no-build")]
+        public bool NoBuild { get; set; }
+    }
+
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
@@ -20,7 +26,7 @@ public class RunCommand : ISimpleCommand<KimiOptions>
         this.solution = solution;
     }
 
-    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(RunCommand.Options options, string[] args, CancellationToken cancellationToken)
     {
         Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
         {
@@ -31,6 +37,11 @@ public class RunCommand : ISimpleCommand<KimiOptions>
 
             this.solution.LoadForBuild(this.logger, options, args);
             this.solution.PrepareProject(this.logger);
+            if (!options.NoBuild && !await this.solution.Build(cancellationToken))
+            {
+                return 1;
+            }
+
             return await this.solution.Run(cancellationToken);
         });
     }

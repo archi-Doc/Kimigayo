@@ -27,7 +27,7 @@ public class StartupBindingBenchmark
         var source = new StringBuilder(this.ExplicitMain ? "public func main()\n" : string.Empty);
         for (var i = 0; i < this.Calls; i++)
         {
-            source.Append(this.ExplicitMain ? "    " : string.Empty).Append("::Core.writeLine(\"Hello world\")\n");
+            source.Append(this.ExplicitMain ? "    " : string.Empty).Append("::Kimi.Console.writeLine(\"Hello world\")\n");
         }
 
         this.compilation = Compilation.CreateForTest();

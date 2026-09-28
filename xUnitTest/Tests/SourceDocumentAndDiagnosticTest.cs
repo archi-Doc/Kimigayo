@@ -177,10 +177,39 @@ public class SourceDocumentAndDiagnosticTest
         public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
             => this.output.Append(message).Append('\n');
 
-        public Task<InputResult> ReadLine(CancellationToken cancellationToken)
+        public Task<InputResult> ReadLineAsync(CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
         public ConsoleKeyInfo ReadKey(bool intercept)
             => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void MergedContainerRetainsFirstFragmentSourceDocument()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var first = new SourceDocument("first.kimi", "struct Reading<T> {}\n    T is i32\n    T is not i32\n    public let value: i32\n");
+        var second = new SourceDocument("second.kimi", "struct Reading<T> {}\n    public let other: i32\n");
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, first);
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, second);
+
+        // The merged container keeps the first declaring fragment's context; each member keeps its own.
+        var container = Assert.Single(kotonoha.RootKoto.NestedContainers);
+        Assert.Same(first, container.CodeContext.SourceDocument);
+        Assert.Equal(2, container.Members.Count);
+        Assert.Same(first, container.Members[0].CodeContext.SourceDocument);
+        Assert.Same(second, container.Members[1].CodeContext.SourceDocument);
+
+        // Contradictory premises require a container-level diagnostic, independently of member errors.
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Contains(compilation.Binding.Issues, x => ReferenceEquals(x.Node, container) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        compilation.Binding.ReportDiagnostics();
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.NotEmpty(diagnostics);
+        Assert.All(diagnostics, x => Assert.NotNull(x.SourceDocument));
+        Assert.Contains(diagnostics, x => ReferenceEquals(x.SourceDocument, first) && x.Span.Start == 0 && x.Entry.Name == nameof(DiagnosticCode.InvalidConstraint_Kd));
     }
 }

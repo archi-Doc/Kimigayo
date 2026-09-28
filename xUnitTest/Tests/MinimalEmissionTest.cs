@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -15,11 +16,11 @@ public class MinimalEmissionTest
     internal const string FloatExpression = "1.0 + 2.0";
 
     [Theory]
-    [InlineData("::Core.writeLine(\"Hello, world!\")")]
-    [InlineData("writeLine(\"\")")]
-    [InlineData("writeLine(text: \"日本語\\0\")")]
-    [InlineData("writeLine(\"a\")\nwriteLine(\"b\")")]
-    [InlineData("writeLine((\"a\"))\n()")]
+    [InlineData("::Kimi.Console.writeLine(\"Hello, world!\")")]
+    [InlineData("Console.writeLine(\"\")")]
+    [InlineData("Console.writeLine(text: \"日本語\\0\")")]
+    [InlineData("Console.writeLine(\"a\")\nConsole.writeLine(\"b\")")]
+    [InlineData("Console.writeLine((\"a\"))\n()")]
     public void EmitsCheckedLiteralCall(string source)
     {
         var c = Analyze(source);
@@ -29,23 +30,25 @@ public class MinimalEmissionTest
         var ir = writer.ToString();
         Assert.Contains("%kimi.string = type { ptr, i64, i8 }", ir);
         Assert.Contains("define void @__kimi_start() noreturn #0", ir);
-        Assert.Contains("call void @__kimi_write_line(ptr %p", ir);
+        Assert.Contains("call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p", ir);
+        Assert.Contains("call void @__kimi_destroy_string(ptr %p", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
         Assert.DoesNotContain("byval", ir);
         Assert.DoesNotContain("sret", ir);
     }
 
     [Theory]
-    [InlineData("func unused() -> ()\n    " + FloatExpression + "\nwriteLine(\"a\")", true)]
-    [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
-    [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
-    [InlineData("public func main(x: i32) => writeLine(\"a\")")]
+    [InlineData("func unused() -> ()\n    " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
+    [InlineData("func unused<T>() => ()\nConsole.writeLine(\"a\")", true)]
+    [InlineData("struct Empty\n    func unused() => ()\nConsole.writeLine(\"a\")", true)]
+    [InlineData("public func main(x: i32) => Console.writeLine(\"a\")")]
     [InlineData("if false => " + FloatExpression, true)]
-    [InlineData("let x: string\nwriteLine(x)")]
-    [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
+    [InlineData("let x: string\nConsole.writeLine(x)")]
+    [InlineData("let x = \"a\"\nConsole.writeLine(x)\nConsole.writeLine(x)", true)]
+    [InlineData("let x = \"a\"\nlet taken = x@move\nConsole.writeLine(x)")]
     [InlineData("func writeLine(x: string) => " + FloatExpression + "\nwriteLine(\"a\")", true)]
-    [InlineData("let x = " + FloatExpression + "\nwriteLine(\"a\")", true)]
-    [InlineData("writeLine(\"a\")\nlet flag = " + FloatExpression, true)]
+    [InlineData("let x = " + FloatExpression + "\nConsole.writeLine(\"a\")", true)]
+    [InlineData("Console.writeLine(\"a\")\nlet flag = " + FloatExpression, true)]
     [InlineData("")]
     public void SelectedBodyEmissionMatchesImplementedFeatures(string source, bool emitted = false)
     {
@@ -56,7 +59,7 @@ public class MinimalEmissionTest
     [Fact]
     public void RebindingInvalidatesEmissionUntilAnalysisRunsAgain()
     {
-        var c = Analyze("writeLine(\"a\")");
+        var c = Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Emission.Validate(out var error), Describe(c, error));
         c.Bind();
         Assert.False(c.Emission.Validate(out _));
@@ -66,10 +69,126 @@ public class MinimalEmissionTest
         Assert.True(c.Emission.Validate(out error), Describe(c, error));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AppendingSourceInvalidatesFinalAnalysisBeforeEmission(bool directContext, bool valid)
+    {
+        var c = Analyze("Console.writeLine(\"original\")");
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+        var source = new SourceDocument("Added.kimi", valid ? "func added() -> i32 => 7" : "func added() -> i32 => missing");
+        if (directContext)
+        {
+            c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        }
+        else
+        {
+            c.Kotonoha.AddSource(source);
+        }
+
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Startup.IsComplete);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Throws<InvalidOperationException>(() => c.Binding.CheckBound());
+        Assert.Throws<InvalidOperationException>(() => c.Ownership.Analyze());
+        Assert.Equal(valid, c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.Equal(valid, c.Emission.Validate(out error));
+        if (valid)
+        {
+            Assert.Contains(c.Ownership.Bodies, x => x.Function.Name == "added");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReloadingSourceInvalidatesFinalAnalysisEvenForAnEmptySnapshot(bool empty)
+    {
+        var c = Analyze("Console.writeLine(\"original\")");
+        Assert.True(c.Emission.Validate(out _));
+        var snapshot = empty ? Compilation.CreateForTest().Kotonoha : c.Kotonoha;
+        var restored = c.Kotonoha;
+        TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(snapshot), ref restored);
+        Assert.NotNull(restored);
+        Assert.Same(c.Kotonoha, restored);
+        restored.OnDeserialized(c);
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.Equal(!empty, c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void DirectParseErrorsRemainFatalAfterDiagnosticClearing(bool customDestination, bool existingDiagnostic)
+    {
+        var c = Analyze("Console.writeLine(\"original\")");
+        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        if (existingDiagnostic)
+        {
+            // The parser error will have the same offset as an already displayed error.
+            diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+        }
+
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual func unavailable() => ()"));
+        Assert.True(diagnostics.HasErrors);
+        diagnostics.ClearDiagnostic();
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        using var writer = new StringWriter(CultureInfo.InvariantCulture);
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Equal(string.Empty, writer.ToString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectValidParseDoesNotLatchPreexistingDiagnosticsAsSourceErrors(bool customDestination)
+    {
+        var c = Analyze("Console.writeLine(\"original\")");
+        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "func added() => ()"));
+        diagnostics.ClearDiagnostic();
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+    }
+
+    [Fact]
+    public void DirectParseWarningsDoNotPreventEmission()
+    {
+        var c = Analyze("Console.writeLine(\"original\")");
+        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi");
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "struct S\n    public func read(self: ref/Self) -> i32 => self.value\n    public let value: i32"));
+        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(diagnostics.GetArray()).Entry.Severity);
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Ownership.Analyze();
+        Assert.True(c.Emission.Validate(out var error), Describe(c, error));
+    }
+
     [Fact]
     public void RuntimeLocationEscapesUnicodeAndRetainsOriginalLineAndColumn()
     {
-        var c = Analyze("\n::Core.writeLine(\"x\")", "日本\\file.kimi");
+        var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", "日本\\file.kimi");
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
         Assert.True(c.Emission.WriteIr(writer, out var error), error);
         const string Expected = "\\u{65E5}\\u{672C}\\\\file.kimi:2:1";
@@ -81,20 +200,15 @@ public class MinimalEmissionTest
     [Fact]
     public void WarmValidationDoesNotAllocate()
     {
-        var c = Analyze("writeLine(\"a\")");
+        var c = Analyze("Console.writeLine(\"a\")");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Emission.Validate(out var error), Describe(c, error));
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        // The helper retires the thread's allocation context before measuring (see AllocationMeasurement).
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Emission.Validate(out _);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Emission.Validate(out _), 128);
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }
@@ -102,7 +216,7 @@ public class MinimalEmissionTest
     [Fact]
     public void WarmIrWritingDoesNotAllocateIntermediateStrings()
     {
-        var c = Analyze("writeLine(\"a\")");
+        var c = Analyze("Console.writeLine(\"a\")");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
@@ -129,11 +243,11 @@ public class MinimalEmissionTest
             LlvmBin = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin",
             OutputPath = "bin/Hello.ll",
             Optimization = "O0",
-            NativeLibraries = new(StringComparer.Ordinal)
+            NativeLibraries = new()
             {
-                [WindowsProfile.Target] = new(StringComparer.Ordinal)
+                [WindowsProfile.Target] = new()
                 {
-                    ["kernel32"] = new() { Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
+                    ["kernel32"] = new() { Name = "kernel32", Kind = "import", Input = "C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib" },
                 },
             },
         };
@@ -167,9 +281,9 @@ public class MinimalEmissionTest
         Directory.CreateDirectory(directory);
         foreach (var (name, source, path) in new[]
         {
-            ("Hello", "::Core.writeLine(\"Hello, world!\")", "Hello.kimi"),
-            ("Empty", "::Core.writeLine(\"\")", "Empty.kimi"),
-            ("Unicode", "::Core.writeLine(\"日本語\\0x\")", "日本語\\入力.kimi"),
+            ("Hello", "::Kimi.Console.writeLine(\"Hello, world!\")", "Hello.kimi"),
+            ("Empty", "::Kimi.Console.writeLine(\"\")", "Empty.kimi"),
+            ("Unicode", "::Kimi.Console.writeLine(\"日本語\\0x\")", "日本語\\入力.kimi"),
         })
         {
             var c = Analyze(source, path);
@@ -191,5 +305,7 @@ public class MinimalEmissionTest
 
     internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Ownership={c.Ownership.Result}; " +
+            string.Join(", ", c.Binding.Issues) + "; " + string.Join(", ", c.Ownership.Issues) + "; " +
+            (c.Ownership.ControlFlow is { } flow ? string.Join(", ", flow.Issues) + "; " + string.Join(", ", flow.PendingBinding) : string.Empty) + "; " +
             string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
 }

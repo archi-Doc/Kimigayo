@@ -34,7 +34,7 @@ public class CompilationSpecificationTest
     {
         foreach (var condition in new[] { expression, $"false and ({expression})", $"true or ({expression})" })
         {
-            var compilation = Parse($"#if {condition}\nvar excluded = 1");
+            var compilation = CompilationTestHelper.Parse($"#if {condition}\nvar excluded = 1");
             Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
             Assert.Null(compilation.Kotonoha.GeneratedFunction);
         }
@@ -49,7 +49,7 @@ public class CompilationSpecificationTest
     [InlineData("\"Windows\" != \"windows\"")]
     public void AllowedScalarConditionsEvaluateWithoutBinding(string condition)
     {
-        var compilation = Parse($"#if {condition}\nvar selected = 1");
+        var compilation = CompilationTestHelper.Parse($"#if {condition}\nvar selected = 1");
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
         Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
@@ -61,7 +61,7 @@ public class CompilationSpecificationTest
     [InlineData("T is not Comparable")]
     public void TypeDependentConditionsAreRejectedWithoutBinding(string requirement)
     {
-        var compilation = Parse($"#if false and ({requirement})\nvar incomplete =");
+        var compilation = CompilationTestHelper.Parse($"#if false and ({requirement})\nvar incomplete =");
         Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
@@ -69,10 +69,10 @@ public class CompilationSpecificationTest
     [Fact]
     public void ExclusionDoesNotRetractGrammarErrorsFromAlreadyParsedBodies()
     {
-        Assert.Empty(Parse("#if false\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(Parse("#if pendingName\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(Parse("#if false\nvar text = \"unterminated").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(CompilationTestHelper.Parse("#if false\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(CompilationTestHelper.Parse("#if pendingName\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(CompilationTestHelper.Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated").Kotonoha.DiagnosticCollection.GetArray());
     }
 
     [Theory]
@@ -244,6 +244,14 @@ public class CompilationSpecificationTest
     }
 
     [Fact]
+    public void FormerLanguageVersionIsRejectedBeforeParsing()
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.ProjectFile.LangVersion = "0.0.1";
+        Assert.False(compilation.Prepare("x86_64-pc-windows-msvc"));
+    }
+
+    [Fact]
     public async Task LanguageVersionIsInheritedOverridableAndNeverSilentlyIgnored()
     {
         var compilation = Compilation.CreateForTest();
@@ -252,11 +260,11 @@ public class CompilationSpecificationTest
         solution.Projects.Add("test", project);
         project.ProjectFile.OutputKind = OutputKind.Library;
         solution.SolutionFile.Configuration.LangVersion = "future";
-        Assert.False(await solution.Check());
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Empty(project.BuildMetadata);
         project.ProjectFile.LangVersion = Compilation.CurrentLanguageVersion;
         compilation.Kimigayo.GetOrAddDiagnosticCollection(project.Name).ClearDiagnostic();
-        Assert.True(await solution.Check());
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Equal(Compilation.CurrentLanguageVersion, Assert.Single(project.BuildMetadata).LanguageVersion);
     }
 
@@ -374,9 +382,9 @@ public class CompilationSpecificationTest
     [InlineData("#switch\n    #case true\n        ()\n    #case _\n        #if WINDOWS\n            ()")]
     public void UnselectedSwitchConditionsStillRejectMisspelledNames(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.Parse(source);
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
-        Assert.Empty(Parse("#if false\n    #if WINDOWS\n        ()").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(CompilationTestHelper.Parse("#if false\n    #if WINDOWS\n        ()").Kotonoha.DiagnosticCollection.GetArray());
     }
 
     [Fact]
@@ -426,13 +434,5 @@ public class CompilationSpecificationTest
                 }
             }
         }));
-    }
-
-    private static Compilation Parse(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
-        compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
-        return compilation;
     }
 }

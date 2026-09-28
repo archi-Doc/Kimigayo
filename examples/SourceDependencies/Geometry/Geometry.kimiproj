@@ -1,0 +1,6 @@
+OutputKind="Library"
+PackageId="example.geometry"
+PackageVersion="1.0.0"
+Targets={"x86_64-pc-windows-msvc"}
+Dependencies=
+  Math={PackageId="example.math" PackageVersion="1.0.0" Project="../Math/Math.kimiproj"}

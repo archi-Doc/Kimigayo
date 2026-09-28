@@ -18,7 +18,9 @@ public sealed partial class Binding
         {
             for (var i = 0; i < schema.GenericSlots.Count; i++)
             {
-                types[i] = schema.GenericSlots[i].Symbol.WholeType!;
+                var slot = schema.GenericSlots[i];
+                // An invalid nominal length header is diagnosed by BindSchemas; its recovery Type must still be complete.
+                types[i] = slot.Kind == GenericSlotKind.Length ? BoundType.Never : slot.Symbol.WholeType!;
             }
 
             for (var i = 0; i < schema.Origins.Count; i++)
@@ -42,8 +44,25 @@ public sealed partial class Binding
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
-        var written = annotation is not null && (annotation.OriginName is not null || annotation.OriginExpression is not null || annotation.OriginArguments is not null);
-        if (IsBorrow(type.Semantics) || (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && written))
+        var bindingSet = annotation?.BindingSetName is not null;
+        var written = annotation is { HasOrigin: true } && !bindingSet;
+        if (bindingSet)
+        {
+            if (type.Symbol?.Schema is not { Origins.Count: > 0 })
+            {
+                return Fail(use, BindingFailure.InvalidOrigin);
+            }
+
+            annotation!.OriginExpression!.BindingState = BindingState.Resolved;
+            context = context with { SuppressOuter = false };
+        }
+
+        if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
+        {
+            return Fail(use, BindingFailure.InvalidOrigin);
+        }
+
+        if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
@@ -51,7 +70,7 @@ public sealed partial class Binding
             }
 
             var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
-            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin))
+            if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
                 return Fail(use, BindingFailure.InvalidOrigin);
             }
@@ -63,7 +82,20 @@ public sealed partial class Binding
 
             if (origin is null && !written && !context.SuppressOuter)
             {
-                origin = this.OmittedOrigin(use, scope, context, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref);
+                if (type.Kind == BoundTypeKind.SemanticsApplication && !context.Direct && context.Position is not (TypePosition.Local or TypePosition.Result))
+                {
+                    // Definition proof must show this position needs no borrow Origin.
+                    return type;
+                }
+
+                var condition = type.Kind == BoundTypeKind.SemanticsApplication ? type.Symbol : null;
+                var mayBeExclusive = IsExclusive(type.Semantics) || (condition?.WholeType is { } whole &&
+                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe, scope));
+                origin = this.OmittedOrigin(use, scope, type.Kind == BoundTypeKind.Slice ? context with { Direct = false } : context, mayBeExclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, type.Kind == BoundTypeKind.Slice ? 0 : -1, condition);
+                if (type.Kind == BoundTypeKind.SemanticsApplication && origin?.Kind == OriginKind.Input && context.Direct)
+                {
+                    origin.BorrowCondition = type.Symbol;
+                }
             }
 
             if (origin is null && (written || !context.SuppressOuter))
@@ -97,12 +129,16 @@ public sealed partial class Binding
 
             var schema = target.Symbol?.Schema;
             var count = schema?.Origins.Count ?? 0;
-            if (written && count == 0)
+
+            // SPEC 15.3.1: a trailing during binds the only slot of a one-slot schema. It adds no borrow layer and never
+            // rebinds a complete Type; several slots need a binding set and relations.
+            if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
+                (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
             {
                 return Fail(use, BindingFailure.InvalidOrigin);
             }
 
-            if (count != 0 && (written || (!context.SuppressOuter && target.OriginArguments.Count != count)))
+            if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
             {
                 var arguments = this.originScratch.Rent(count);
                 Array.Clear(arguments, 0, count);
@@ -113,60 +149,15 @@ public sealed partial class Binding
                         arguments[i] = target.OriginArguments[i];
                     }
 
-                    if (annotation?.OriginArguments is { } named)
+                    if (written)
                     {
-                        // A supplied mapping is checked against declaration slots, independently of source order.
-                        var seen = this.flagScratch.Rent(count);
-                        Array.Clear(seen, 0, count);
-                        try
-                        {
-                            for (var i = 0; i < named.Length; i++)
-                            {
-                                var slot = -1;
-                                for (var j = 0; j < count; j++)
-                                {
-                                    if (schema!.Origins[j].Name == named[i].Name)
-                                    {
-                                        slot = j;
-                                        break;
-                                    }
-                                }
-
-                                if (slot < 0 || seen[slot])
-                                {
-                                    Fail(use, BindingFailure.InvalidOrigin);
-                                    return null;
-                                }
-
-                                seen[slot] = true;
-                                var bound = this.BindOrigin(named[i].Value, scope);
-                                if (bound is null)
-                                {
-                                    return null;
-                                }
-
-                                arguments[slot] = bound;
-                            }
-                        }
-                        finally
-                        {
-                            this.flagScratch.Return(seen);
-                        }
-                    }
-                    else if (written)
-                    {
-                        if (count != 1)
-                        {
-                            return Fail(use, BindingFailure.InvalidOrigin);
-                        }
-
-                        var bound = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
-                        if (bound is null)
+                        var slot = annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope);
+                        if (slot is null)
                         {
                             return null;
                         }
 
-                        arguments[0] = bound;
+                        arguments[0] = slot;
                     }
 
                     for (var i = 0; i < count; i++)
@@ -176,8 +167,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        // Direct-input quantification applies only to a borrow layer, never aggregate slots.
-                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false, Slot = i }, schema!.Origins[i].LoanRequirement);
+                        var bound = this.OmittedOrigin(use, scope, context with { Direct = false }, schema!.Origins[i].LoanRequirement, i);
                         if (bound is null)
                         {
                             return null;
@@ -219,6 +209,11 @@ public sealed partial class Binding
 
     private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use)
     {
+        if (!inner.CarriesOrigin)
+        {
+            return;
+        }
+
         if (inner.Origin is { } origin && !OriginOutlives(origin, outer))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer));
@@ -241,6 +236,12 @@ public sealed partial class Binding
 
     private void AccumulateRequirements(BoundType type, DeclarationSchema schema, int polarity, ref bool changed)
     {
+        // Only Origins and Type Parameter slots contribute; other subtrees cannot change a summary.
+        if (!type.CarriesOriginOrSlot)
+        {
+            return;
+        }
+
         if (type.Kind == BoundTypeKind.Parameter)
         {
             for (var i = 0; i < schema.GenericSlots.Count; i++)
@@ -266,10 +267,13 @@ public sealed partial class Binding
             this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
         }
 
-        for (var i = 0; i < type.OriginArguments.Count; i++)
+        // A Type may carry fewer or more arguments than its declaration while a pass is
+        // still completing; only the slots the declaration actually owns carry requirements.
+        var declared = type.Symbol?.Schema;
+        for (var i = 0; i < type.OriginArguments.Count && i < (declared?.Origins.Count ?? 0); i++)
         {
-            var source = type.Symbol?.Schema?.Origins[i];
-            if (source is null || source.Variance == OriginVariance.Unused)
+            var source = declared!.Origins[i];
+            if (source.Variance == OriginVariance.Unused)
             {
                 continue;
             }
@@ -280,8 +284,8 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
-            if (type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } target)
+            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;
                 if (variance == OriginVariance.Unused)
@@ -344,7 +348,7 @@ public sealed partial class Binding
 
             if (type.Symbol?.Schema is { } schema)
             {
-                for (var i = 0; i < type.OriginArguments.Count; i++)
+                for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
@@ -355,6 +359,12 @@ public sealed partial class Binding
 
             if (node is PropertyKoto property && IsStoredVariable(property) && this.symbols[property].Scope.Owner is GroupKoto)
             {
+                if (this.symbols[property].Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                {
+                    // Check the stored value under the inherited premises, not the enclosing Type.
+                    this.RequireConstraint(property, this.ProveOwned(type, property), this.capabilityMode);
+                }
+
                 this.borrowVisiting.Clear();
                 if (this.RetainsBorrow(type, this.borrowVisiting))
                 {

@@ -81,6 +81,8 @@ public static partial class TokenHelper
         Set(TokenKind.Let, Constants.LetKeyword);
         Set(TokenKind.Var, Constants.VarKeyword);
         Set(TokenKind.Func, Constants.FuncKeyword);
+        Set(TokenKind.Try, "try");
+        Set(TokenKind.Underscore, "_");
 
         // Expression keyword
         Set(TokenKind.If, Constants.IfKeyword);
@@ -325,6 +327,11 @@ public static partial class TokenHelper
     /// <returns>The keyword token kind, or <see cref="TokenKind.Identifier"/>.</returns>
     public static TokenKind GetKeywordOrIdentifierKind(ReadOnlySpan<char> text)
     {
+        if (text.SequenceEqual("_"))
+        {
+            return TokenKind.Underscore;
+        }
+
         var length = text.Length;
         if (length < MinKeywordLength || length > MaxKeywordLength)
         {
@@ -372,6 +379,7 @@ public static partial class TokenHelper
                 'g' => Match(text, Constants.GetKeyword, TokenKind.Get),
                 's' => Match(text, Constants.SetKeyword, TokenKind.Set),
                 'h' => Match(text, Constants.HasKeyword, TokenKind.Has),
+                't' => Match(text, "try", TokenKind.Try),
                 _ => TokenKind.Identifier,
             },
             4 => c0 switch

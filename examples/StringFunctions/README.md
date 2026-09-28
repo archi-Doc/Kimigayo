@@ -9,4 +9,4 @@ dotnet run --project Kimi -c Release --no-build -- run examples/StringFunctions/
 
 Requires the pinned tools and backend archive in [backend setup](../../backend/windows-x64/README.md). The compiler currently passes string arguments through acquired slots and returns strings through a separate hidden result slot. These are implementation choices, not a public ABI. Cleanup must complete before the caller receives the result; Abort and nontermination do not deliver it.
 
-Borrowed/generic/default signatures, indirect calls, concatenation/interpolation, explicit ownership adaptations and Heap-string construction remain unsupported. See [STATUS C.50](../../STATUS.md#c50-owned-string-function-parameters-and-results-2026-09-13); [StringComparisons](../StringComparisons/README.md) demonstrates nonconsuming comparisons added in C.51.
+Borrowed/generic/default signatures, indirect calls, concatenation/interpolation, explicit ownership adaptations and Heap-string construction remain unsupported. See [STATUS C.50](../../STATUS.md#4-llvm-generation-coverage); [StringComparisons](../StringComparisons/README.md) demonstrates nonconsuming comparisons added in C.51.

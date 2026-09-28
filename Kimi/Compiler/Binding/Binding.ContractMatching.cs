@@ -8,6 +8,21 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
 
+    // SPEC 8.4.2: an inherited requirement's path is registered under the ancestor as the refining Contract names it,
+    // which is a bound reference when the parent takes Type arguments (Indexable<isize> under UniqIndexable<isize>).
+    private static BindingSymbol RequirementAncestor(BoundContract shape, BindingSymbol owner)
+    {
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
+            {
+                return shape.Ancestors[i];
+            }
+        }
+
+        return owner;
+    }
+
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
         if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
@@ -138,12 +153,18 @@ public sealed partial class Binding
         return true;
     }
 
-    private ConstraintProof VerifyConformance(BoundConformancePath conformance)
+    private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
-        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || conformance.Contract.Declaration.BindingState == BindingState.Invalid || conformance.Type.Declaration.BindingState == BindingState.Invalid)
+        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
             return ConstraintProof.Error;
+        }
+
+        if (UnresolvedTypeDeclarationContext(conformance.Type.Declaration) || UnresolvedTypeDeclarationContext(conformance.Contract.Declaration))
+        {
+            conformance.IsVerified = false;
+            return ConstraintProof.Unknown;
         }
 
         if (conformance.IsVerified)
@@ -166,14 +187,28 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
-            if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
+            var declarationProof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)conformance.Type.Declaration);
+            if (conformance.Premises is { } premises)
             {
-                var intrinsicProof = this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy);
+                for (var p = 0; p < premises.Operands.Length; p++)
+                {
+                    if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause && !ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
+                    {
+                        Fail(clause, BindingFailure.Access);
+                        Fail(premises.Parent!, BindingFailure.Access);
+                        return Invalid(BindingFailure.Access);
+                    }
+                }
+            }
+
+            if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed)
+            {
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
 
-            var proof = ConstraintProof.Proven;
+            var proof = declarationProof;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -185,11 +220,49 @@ public sealed partial class Binding
                 {
                     return Invalid(BindingFailure.Access);
                 }
+
+                // Normalized identity/Core shape alone does not prove nested input constraints.
+                var formationScope = this.AssociatedFormationScope(conformance, shape.AssociatedTypes[i], scope);
+                proof = CombineProof(proof, this.CheckTypeConstraints(associated, formationScope), true);
+                var inputs = this.associatedBindings[(conformance.RootPath, shape.AssociatedTypes[i])].Candidates;
+                for (var input = 0; input < inputs.Count; input++)
+                {
+                    // Projection normalization may erase an invalid constructed qualifier.
+                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
+                }
             }
 
-            for (var i = 0; i < shape.Ancestors.Count; i++)
+            if (inheritedProof is { } inheritedResult)
             {
-                proof = CombineProof(proof, this.VerifyConformance(this.conformancePaths[(conformance.Type, shape.Ancestors[i], conformance.Declaration, conformance.RootContract)]), true);
+                proof = CombineProof(proof, inheritedResult, true);
+            }
+            else if (shape.Ancestors.Count != 0)
+            {
+                var ancestorProofs = this.conformanceProofScratch.Rent(shape.Ancestors.Count);
+                try
+                {
+                    for (var i = 0; i < shape.Ancestors.Count; i++)
+                    {
+                        var ancestor = shape.Ancestors[i];
+                        var prerequisites = ConstraintProof.Proven;
+                        // These candidates are Contract identities, so membership in Seen
+                        // denotes an ancestor; member identities cannot match them.
+                        for (var p = 0; p < i; p++)
+                        {
+                            if (ancestor.Contract!.Seen.Contains(shape.Ancestors[p]))
+                            {
+                                prerequisites = CombineProof(prerequisites, ancestorProofs[p], true);
+                            }
+                        }
+
+                        ancestorProofs[i] = this.VerifyConformance(this.conformancePaths[(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract)], prerequisites);
+                        proof = CombineProof(proof, ancestorProofs[i], true);
+                    }
+                }
+                finally
+                {
+                    this.conformanceProofScratch.Return(ancestorProofs, clearArray: false);
+                }
             }
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
@@ -199,7 +272,8 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                var clauseScope = this.AssociatedFormationScope(conformance, shape.ClauseStorage[i].BoundSymbol, scope);
+                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -216,7 +290,8 @@ public sealed partial class Binding
 
                         if (clause.BoundConstraint is { } constraint && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
                         {
-                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                            var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                         }
                     }
                 }
@@ -226,16 +301,22 @@ public sealed partial class Binding
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
                 {
-                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                    if (clause.BindingState == BindingState.Invalid)
+                    {
+                        return Invalid(BindingFailure.InvalidAssociatedType);
+                    }
+
+                    var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                 }
             }
 
             for (var i = 0; i < shape.Requirements.Count; i++)
             {
                 var requirement = shape.Requirements[i];
-                if (!ReferenceEquals(requirement.Scope.Owner.BoundSymbol, conformance.Contract))
+                if (!ReferenceEquals(requirement.Scope.Owner, conformance.Contract.Declaration))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, requirement.Scope.Owner.BoundSymbol!, conformance.Declaration, conformance.RootContract)];
+                    var ancestor = this.conformancePaths[(conformance.Type, RequirementAncestor(shape, requirement.Scope.Owner.BoundSymbol!), conformance.Declaration, conformance.RootContract)];
                     if (ancestor.GetImplementation(requirement) is { } inherited)
                     {
                         var inheritedWitness = ancestor.WitnessMap[requirement];
@@ -400,6 +481,21 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
+        var formation = CombineProof(this.CheckSignatureTypeConstraints(requirement), this.CheckSignatureTypeConstraints(implementation), true);
+        if (formation != ConstraintProof.Proven)
+        {
+            return formation;
+        }
+
+        // SPEC 7.1.1, 8.4.5: result modes are matched; an exclusive Place may satisfy a shared Place requirement, never the
+        // reverse, and a Place result never matches a value result.
+        if (requirement.ReturnType is PlaceResultKoto requiredPlace
+            ? implementation.ReturnType is not PlaceResultKoto providedPlace || (requiredPlace.IsExclusive && !providedPlace.IsExclusive)
+            : implementation.ReturnType is PlaceResultKoto)
+        {
+            return ConstraintProof.Error;
+        }
+
         var key = (conformance, requirement.BoundSymbol!);
         if (!this.witnessScopes.TryGetValue(key, out var premises))
         {
@@ -423,9 +519,9 @@ public sealed partial class Binding
 
         var arguments = this.typeScratch.Rent(requirement.GenericArguments.Count);
         var origins = this.originScratch.Rent(implementation.Origins.Count);
-        var inputs = this.originScratch.Rent(implementation.Parameters.Count);
+        var inputs = this.originScratch.Rent(InputOriginCount(implementation));
         Array.Clear(origins, 0, implementation.Origins.Count);
-        Array.Clear(inputs, 0, implementation.Parameters.Count);
+        Array.Clear(inputs, 0, InputOriginCount(implementation));
         try
         {
             for (var i = 0; i < requirement.GenericArguments.Count; i++)
@@ -456,7 +552,7 @@ public sealed partial class Binding
             witness.BasePath = selection.Path;
             witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;
             witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
-            witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, implementation.Parameters.Count));
+            witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, InputOriginCount(implementation)));
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
             return CombineProof(proof, witness.ObjectCompatibility, true);
         }
@@ -468,36 +564,99 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
-        if (pattern.Origin is { } p && actual.Origin is { } a)
+        if (!pattern.CarriesOrigin || !expected.CarriesOrigin)
+        {
+            return;
+        }
+
+        if (pattern.Origin is { } p && expected.Origin is { } a)
         {
             Match(p, a);
         }
 
+        for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, expected.OriginArguments.Count); i++)
+        {
+            Match(pattern.OriginArguments[i], expected.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < Math.Min(pattern.Components.Count, expected.Components.Count); i++)
+        {
+            this.MatchResultOrigins(pattern.Components[i], expected.Components[i], binder, origins, inputs);
+        }
+
+        void Match(BoundOrigin parameter, BoundOrigin value)
+        {
+            if (ReferenceEquals(parameter.Binder, binder) && parameter.Kind is OriginKind.Parameter or OriginKind.Input)
+            {
+                var target = parameter.Kind == OriginKind.Parameter ? origins : inputs;
+                if ((uint)parameter.Slot < (uint)target.Length && target[parameter.Slot] is null)
+                {
+                    target[parameter.Slot] = value;
+                }
+            }
+        }
+    }
+
+    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    {
+        if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
+        {
+            return;
+        }
+
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication)
+        {
+            // SPEC 8.1.2: the outer slot of s/U binds only when s is a borrow, so s/U is matched only once s is inferred and
+            // the application is formed (FormedApplication); an unformed application binds nothing.
+            return;
+        }
+
+        if (pattern.Origin is { } p && actual.Origin is { } a)
+        {
+            this.MatchInputOrigin(p, a, binder, origins, inputs);
+        }
+
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            Match(pattern.OriginArguments[i], actual.OriginArguments[i]);
+            this.MatchInputOrigin(pattern.OriginArguments[i], actual.OriginArguments[i], binder, origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
             this.MatchInputOrigins(pattern.Components[i], actual.Components[i], binder, origins, inputs);
         }
+    }
 
-        void Match(BoundOrigin pattern, BoundOrigin actual)
+    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    {
+        if (pattern.Kind == OriginKind.Intersection)
         {
-            if (pattern.Kind == OriginKind.Intersection)
+            for (var i = 0; i < pattern.Operands.Count; i++)
             {
-                for (var i = 0; i < pattern.Operands.Count; i++)
-                {
-                    Match(pattern.Operands[i], actual);
-                }
+                this.MatchInputOrigin(pattern.Operands[i], actual, binder, origins, inputs);
             }
-            else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)
+        }
+        else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)
+        {
+            // Anonymous aggregate input slots are recorded while parameter Types bind, so a
+            // pattern can outrun the width the caller reserved. Skip what cannot be carried.
+            var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
+            if ((uint)pattern.Slot < (uint)target.Length)
             {
-                var target = pattern.Kind == OriginKind.Parameter ? origins : inputs;
                 target[pattern.Slot] = target[pattern.Slot] is { } previous ? this.Meet(previous, actual) : actual;
+            }
+        }
+        else if (pattern.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
+        {
+            for (var i = 0; i < schema.Origins.Count && i < origins.Length; i++)
+            {
+                if (ReferenceEquals(schema.Origins[i].Origin, pattern))
+                {
+                    origins[i] = origins[i] is { } previous ? this.Meet(previous, actual) : actual;
+                    break;
+                }
             }
         }
     }

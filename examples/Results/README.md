@@ -7,4 +7,4 @@ dotnet run --project Kimi -- build examples/Results/Results.kimiproj
 dotnet run --project Kimi -- run examples/Results/Results.kimiproj
 ```
 
-The published NativeAOT compiler accepts the same commands. Requires the pinned LLVM tools and verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.41](../../STATUS.md#c41-scalar-selection-and-loop-results-2026-09-13) for implementation scope and validation.
+The published NativeAOT compiler accepts the same commands. Requires the pinned LLVM tools and verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.41](../../STATUS.md#4-llvm-generation-coverage) for implementation scope and validation.

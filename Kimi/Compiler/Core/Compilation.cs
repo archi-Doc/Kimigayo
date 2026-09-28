@@ -19,10 +19,10 @@ namespace Kimi.Compiler;
 /// external Kotonoha dependencies, exposes conditional-compilation variables, and carries
 /// the target information used by later LLVM IR and binary-emission stages.
 /// </remarks>
-public class Compilation
+public partial class Compilation
 {
     /// <summary>The only language version currently implemented by this compiler.</summary>
-    public const string CurrentLanguageVersion = "0.0.1";
+    public const string CurrentLanguageVersion = "0.0.2";
 
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
@@ -31,14 +31,32 @@ public class Compilation
     #region FieldAndProperty
 
     /// <summary>
-    /// Gets the compiler service that owns this compilation.
+    /// Gets this compilation's diagnostic scope of the owning compiler service.
     /// </summary>
+    /// <remarks>The scope shares the service's console and settings, and its diagnostic collections belong to this compilation alone.</remarks>
     public Kimigayo Kimigayo { get; }
 
     /// <summary>
     /// Gets the project being compiled.
     /// </summary>
     public Project Project { get; }
+
+    /// <summary>Gets or sets a value indicating whether subsequent parses collect optional documentation. Disabled by default.</summary>
+    public bool CollectDocumentation { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the primary project's test declarations are checked. Changing mode revokes prior analysis.</summary>
+    public bool IsTestBuild
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                this.InvalidateSourceAnalysis();
+            }
+        }
+    }
 
     /// <summary>
     /// Gets the parsed target triple.
@@ -81,12 +99,13 @@ public class Compilation
     private readonly IdentifierTable identifiers = new();
 
     private bool hasParsedSource;
+    private Binding? binding;
 
     /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
-    public Binding Binding => field ??= new(this);
+    public Binding Binding => this.binding ??= new(this);
 
-    /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
-    public CoreIntrinsics Core => this.Binding.Core;
+    /// <summary>Gets this compilation's compiler-owned Kimi requirement identities.</summary>
+    public KimiLibrary Library => this.Binding.Library;
 
     private OwnershipAnalysis? ownership;
 
@@ -96,6 +115,8 @@ public class Compilation
     /// <summary>Gets the reusable, checked LLVM emitter for the implemented execution subset.</summary>
     public LlvmEmitter Emission => field ??= new(this);
 
+    internal Testing.TestCatalog Tests => field ??= new();
+
     #endregion
 
     /// <summary>
@@ -103,12 +124,12 @@ public class Compilation
     /// </summary>
     /// <param name="useConsoleService">
     /// <see langword="true"/> to use <see cref="ConsoleService"/>;
-    /// otherwise, use <see cref="EmptyConsole"/>.
+    /// otherwise, use <see cref="EmptyConsoleService"/>.
     /// </param>
     /// <returns>A compilation configured for tests.</returns>
     public static Compilation CreateForTest(bool useConsoleService = false)
     {
-        IConsoleService consoleService = useConsoleService ? new ConsoleService() : new EmptyConsole();
+        IConsoleService consoleService = useConsoleService ? new ConsoleService() : new EmptyConsoleService();
         var kimigayo = new Kimigayo(consoleService);
         var project = new Project(kimigayo);
         var compilation = new Compilation(kimigayo, project);
@@ -126,11 +147,12 @@ public class Compilation
         ArgumentNullException.ThrowIfNull(kimigayo);
         ArgumentNullException.ThrowIfNull(project);
 
-        this.Kimigayo = kimigayo;
+        this.Kimigayo = kimigayo.CreateScope();
         this.Project = project;
         this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
-        this.kotonohaIdToKotonoha.Add(this.Kotonoha.Id, this.Kotonoha);
+        this.SourceModules = [this.Kotonoha];
+        this.kotonohaIdToKotonoha.AddOrUpdate(this.Kotonoha.Id, this.Kotonoha);
     }
 
     /// <summary>
@@ -167,6 +189,18 @@ public class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
+        if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
+        {
+            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, dependencyFailure);
+            return false;
+        }
+
+        if (this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
+        {
+            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.UnresolvedDependencyGraph_Kd);
+            return false;
+        }
+
         var languageVersion = this.Project.ProjectFile.LangVersion ?? this.Project.SolutionLanguageVersion ?? CurrentLanguageVersion;
         if (languageVersion != CurrentLanguageVersion)
         {
@@ -185,8 +219,6 @@ public class Compilation
             this.IrTarget = IrTarget.Invalid;
             return false;
         }
-
-        // External Kotonoha dependencies will be loaded here.
 
         // Rebuild target-dependent conditional compilation variables.
         var os = targetTriple.Os switch
@@ -224,7 +256,7 @@ public class Compilation
         this.Variables = new ReadOnlyDictionary<string, BasicValue>(variables);
         this.BuildMetadata = new(target, debug, languageVersion, CompilerVersion, this.Variables);
 
-        return true;
+        return this.PrepareModules();
     }
 
     /// <summary>
@@ -243,7 +275,15 @@ public class Compilation
     /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
     /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
-        => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+    {
+        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+        for (var i = 1; i < this.SourceModules.Length; i++)
+        {
+            flow.Append(this.SourceModules[i].RootKoto);
+        }
+
+        return flow;
+    }
 
     /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
     /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
@@ -261,10 +301,34 @@ public class Compilation
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);
 
-    internal void BeginSourceParsing() => this.hasParsedSource = true;
+    internal void InvalidateSourceAnalysis()
+    {
+        this.binding?.Invalidate();
+        this.InvalidateOwnership();
+    }
+
+    /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and
+    /// certificates published by one declaration are used everywhere; only Binding's own normalization of the syntax it
+    /// is binding, such as a try selection, is not an edit.</summary>
+    internal void NoteSyntaxEdit()
+    {
+        if (this.binding is { IsRunning: true })
+        {
+            return;
+        }
+
+        this.InvalidateSourceAnalysis();
+    }
+
+    internal void BeginSourceParsing()
+    {
+        this.hasParsedSource = true;
+        this.InvalidateSourceAnalysis();
+    }
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
-        return this.Variables.TryGetValue(koto.IdentifierName, out basicValue);
+        var variables = this.moduleVariables?.GetValueOrDefault(koto.CodeContext.Kotonoha) ?? this.Variables;
+        return variables.TryGetValue(koto.IdentifierName, out basicValue);
     }
 }

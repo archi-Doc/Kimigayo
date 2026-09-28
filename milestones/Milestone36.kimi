@@ -1,0 +1,45 @@
+// Milestone 36: lazy static initialization, generic storage keys and reverse shutdown destruction.
+struct Resource
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Static resource 1 destroyed.")
+            3 => Console.writeLine("Static resource 3 destroyed.")
+            _ => $abort("Unexpected resource")
+
+group Registry
+    public var count: i32 = Registry.initialCount()
+    public let primary: Resource = Registry.makeResource(1)
+    public var replaced: Resource = Registry.makeResource(2)
+    public let unused: Resource = Resource.init(9) // Never accessed: neither initialized nor destroyed.
+    public func initialCount() -> i32
+        Console.writeLine("Count initialized.")
+        return 10
+    public func makeResource(id: i32) -> Resource
+        match id
+            1 => Console.writeLine("Resource 1 initialized.")
+            2 => Console.writeLine("Resource 2 initialized.")
+            _ => $abort("Unexpected initializer")
+        return Resource.init(id)
+
+struct Cache<T>
+    public group Statistics
+        public var hits: i32 = 0
+
+public func main()
+    Console.writeLine("Main started.") // No static value is initialized before its first access.
+    Registry.count = Registry.count + 1 // The read initializes the slot once; the write replaces it.
+    require Registry.count == 11 else => $abort("Static replacement failed")
+    Console.writeLine("Count is 11.")
+    require Registry.primary.id == 1 else => $abort("Static let initialization failed")
+    Console.writeLine("Primary is 1.")
+    Registry.replaced = Resource.init(3) // A first write initializes the slot, then Replacement destroys Resource 2.
+    require Registry.replaced.id == 3 else => $abort("Static var replacement failed")
+    Console.writeLine("Replaced the second resource.")
+    Cache<i32>.Statistics.hits = Cache<i32>.Statistics.hits + 1
+    Cache<string>.Statistics.hits = Cache<string>.Statistics.hits + 5
+    require Cache<i32>.Statistics.hits == 1 and Cache<string>.Statistics.hits == 5 else => $abort("Generic keys merged")
+    Console.writeLine("Generic keys are distinct.")
+    Console.writeLine("Main finished.")
+    // Shutdown destroys initialized static values in reverse initialization order: Resource 3, then Resource 1.

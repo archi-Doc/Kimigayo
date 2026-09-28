@@ -4,6 +4,29 @@ This directory supplies the native helpers for SPEC §21.5.7. The reviewed packa
 
 ## Build and test
 
+Use the repository's `verify.ps1` for implementation-unit and end-of-session evidence:
+
+```powershell
+./verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+```
+
+Both modes keep non-incremental builds with warnings as errors. Unit mode runs the selected tests;
+Session mode runs the full Debug and Release suites. Test collections run up to four at a time,
+respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
+processes, up to eight at a time; both defaults are capped by the logical processor count.
+Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every
+stage announces its start and records its duration, along with the total duration and concurrency
+settings, in `bin/verify/<run>/summary.json`. Do not edit sources during verification.
+
+For bounded local verification with separate stdout/stderr logs and a JSON result, run commands through `invoke-verification.ps1` from the repository root:
+
+```powershell
+./backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'xUnitTest/xUnitTest.csproj', '-c', 'Debug', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
+```
+
+Build the selected configuration first. The default command deadline is 900 seconds and output draining is bounded to five seconds. Optional `-InputPath` records SHA-256 hashes of exact input files and verifies that they remain unchanged. Records use unique directories under ignored `TestResults/verification`. On Windows, a waiting worker is assigned to a [job with kill-on-close](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before receiving the target command. Closing the job removes descendants even after the target exits; no target process starts before containment. Other hosts use process-tree termination while the root remains alive.
+
 Set up the checkout's `toolchain/` once from an existing matching LLVM directory. This copies the required tools and adjacent DLLs, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`:
 
 ```powershell
@@ -12,9 +35,9 @@ Set up the checkout's `toolchain/` once from an existing matching LLVM directory
 ./backend/windows-x64/build.ps1
 ```
 
-Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.8.8](../../spec/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for storage, resolution, generation, installation and Application build details.
+Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.8.8](../../impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for storage, resolution, generation, installation and Application build details.
 
-No Windows SDK import library is required. kernel32.def is the shared source for the compiler and scripts. They run llvm-dlltool to generate an x64 import library, validate its DLL and ten API exports, and link that output. The script does not download or install tools. llvm-dlltool is required and its approved executable SHA-256 is pinned in profile.json; it has no version banner. A different binary requires the explicit exploratory override, with a warning and unverified record. The expected LLVM release comes from `profile.json`, also embedded in the compiler. `build.ps1` and `manual-build.ps1` reject version mismatches by default. `-AllowUnpinnedToolchain` permits exploratory work only, warns for every mismatched tool, and records expected/actual versions and `unverifiedToolchain: true`; all other checks still apply. Missing tools and unreadable versions always fail. `test-emission.ps1` requires matching tools and matching candidate verification, with no override.
+No Windows SDK import library is required. kernel32.def is the shared source for the compiler and scripts. They run llvm-dlltool to generate an x64 import library, validate its DLL and twelve API exports, and link that output. The script does not download or install tools. llvm-dlltool is required and its approved executable SHA-256 is pinned in profile.json; it has no version banner. A different binary requires the explicit exploratory override, with a warning and unverified record. The expected LLVM release comes from `profile.json`, also embedded in the compiler. `build.ps1` and `manual-build.ps1` reject version mismatches by default. `-AllowUnpinnedToolchain` permits exploratory work only, warns for every mismatched tool, and records expected/actual versions and `unverifiedToolchain: true`; all other checks still apply. Missing tools and unreadable versions always fail. `test-emission.ps1` requires matching tools and matching candidate verification, with no override.
 
 Run `./backend/windows-x64/test-toolchain.ps1` for version-policy regression tests without an LLVM installation. Run `./backend/windows-x64/test-kernel32.ps1 -LlvmBin C:/App/llvm` for import generation, tool identity, failure, privacy and reproducibility tests.
 
@@ -53,3 +76,7 @@ Rebuilding is repeatable from these sources and recorded tools; adoption must co
 For the one-line Application and compiler commands, see [the Hello example](../../examples/Hello/README.md). `kimi build` directly runs LLVM through C# and needs no PowerShell runtime. `manual-build.ps1` remains a separately invoked alternative. `test-emission.ps1` verifies generated modules and test-only runtime fault adapters; `test-cli.ps1` exercises build, run, emit, toolchain policy and exit-code propagation.
 
 `test-scalars.ps1 -LlvmBin C:/App/llvm` runs the fixtures generated by the C# emission tests through LLVM verification and O0/O2 execution. Use `-FixturePattern 'String*.ll'` for owned-string cases. These include original generated modules and runtime-only lifetime audits; the latter count destruction per Static handle and check expected totals at exit, preserving source-generated functions. Audit-control fixtures intentionally exit 120 when destruction counts disagree. They do not create Heap strings or replace the independent runtime allocation/free tests. Divergent fixtures use the shared timeout/process-tree-kill path.
+
+Use `-FixtureDirectory <archived-directory>` to execute an isolated, freshly generated fixture inventory instead of the shared `bin/scalar-fixtures` directory. Keep each `.ll` with its `.stdout`, `.stderr`, `.exit` and optional `.timeout` oracle, and record the generating compiler/test configuration and hashes. Outputs default to `bin/scalar-native`; concurrent runs must use distinct `-OutputDirectory <directory>` paths, including their generated import libraries. The runner decodes stdout/stderr as strict UTF-8 independently of the parent console code page.
+
+Run `pwsh -File backend/windows-x64/test-testing.ps1` to verify the language test runner at O0/O2, including assertions, cleanup, temporary directories, budgets, timeout and solution aggregation. It uses the managed compiler and pinned native tools; it does not run NativeAOT.

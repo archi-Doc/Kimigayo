@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System;
 using Kimi.Compiler.Helper;
@@ -18,19 +18,6 @@ public class NumberLiteralParseTest
     [InlineData("1__2__3__", "123")]
     [InlineData("18446744073709551615", "18446744073709551615")]
     [InlineData("18446744073709551616", "18446744073709551616")]
-    public void ParseNumberLiteral_DecimalInteger_ReturnsExpectedValue(
-        string literal,
-        string expectedText)
-    {
-        var expected = Int128.Parse(expectedText);
-
-        var result = NumberLiteralHelper.ParseNumberLiteral(literal, out var value);
-
-        Assert.Equal(NumberLiteralParseResult.I128, result);
-        Assert.Equal(expected, value);
-    }
-
-    [Theory]
     [InlineData("0b0", "0")]
     [InlineData("0b_0", "0")]
     [InlineData("0b1", "1")]
@@ -38,19 +25,6 @@ public class NumberLiteralParseTest
     [InlineData("0B1010", "10")]
     [InlineData("0b1_010_101", "85")]
     [InlineData("0b1__0__1__", "5")]
-    public void ParseNumberLiteral_BinaryInteger_ReturnsExpectedValue(
-        string literal,
-        string expectedText)
-    {
-        var expected = Int128.Parse(expectedText);
-
-        var result = NumberLiteralHelper.ParseNumberLiteral(literal, out var value);
-
-        Assert.Equal(NumberLiteralParseResult.I128, result);
-        Assert.Equal(expected, value);
-    }
-
-    [Theory]
     [InlineData("0o0", "0")]
     [InlineData("0O__0", "0")]
     [InlineData("0o7", "7")]
@@ -58,19 +32,6 @@ public class NumberLiteralParseTest
     [InlineData("0o777", "511")]
     [InlineData("0O1_234_567", "342391")]
     [InlineData("0o1__0__0__", "64")]
-    public void ParseNumberLiteral_OctalInteger_ReturnsExpectedValue(
-        string literal,
-        string expectedText)
-    {
-        var expected = Int128.Parse(expectedText);
-
-        var result = NumberLiteralHelper.ParseNumberLiteral(literal, out var value);
-
-        Assert.Equal(NumberLiteralParseResult.I128, result);
-        Assert.Equal(expected, value);
-    }
-
-    [Theory]
     [InlineData("0x0", "0")]
     [InlineData("0X_0_", "0")]
     [InlineData("0xF", "15")]
@@ -80,7 +41,7 @@ public class NumberLiteralParseTest
     [InlineData("0XCAFE", "51966")]
     [InlineData("0xCA_FE", "51966")]
     [InlineData("0x1__0__0__", "256")]
-    public void ParseNumberLiteral_HexInteger_ReturnsExpectedValue(
+    public void ParseNumberLiteral_Integer_ReturnsExpectedValue(
         string literal,
         string expectedText)
     {

@@ -1,0 +1,5 @@
+public contract Equatable
+    func equals(self: ref/Self, other: ref/Self) -> bool
+
+public contract Comparable: Equatable
+    func compare(self: ref/Self, other: ref/Self) -> i32

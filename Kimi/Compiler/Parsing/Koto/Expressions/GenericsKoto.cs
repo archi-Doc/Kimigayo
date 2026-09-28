@@ -10,6 +10,11 @@ namespace Kimi.Compiler.Parsing;
 /// </summary>
 public sealed class GenericsKoto : ApplicationKoto
 {
+    internal GenericsKoto(Koto root, Koto identifier, IReadOnlyList<Koto> arguments)
+        : base(root, identifier, arguments)
+    {
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Generics;
 

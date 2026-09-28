@@ -41,13 +41,94 @@ public sealed partial class OwnershipAnalysis
         return true;
     }
 
+    // Storage without bytes: unit, empty or all-zero-sized structs, Tuples and closures, and fixed arrays of
+    // length zero or of a zero-sized element. Call only after SupportsType accepted the Type (no inline cycles).
+    private static bool IsZeroSized(BoundType type)
+    {
+        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never))
+        {
+            return true;
+        }
+
+        if (StructStorage.IsStruct(type))
+        {
+            if (type.StoredBase is { } parent && !IsZeroSized(parent))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                if (StructStorage.FieldType(type, i) is not { } field || !IsZeroSized(field))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.FixedArray)
+        {
+            return type.Length == 0 || (type.Components.Count == 1 && IsZeroSized(type.Components[0]));
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.Closure)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!IsZeroSized(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     // This is a conservative subset gate, not the language's finite-storage validation.
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
-        if (ReferenceTypes.IsString(type))
+        if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
+        {
+            this.CollectLibraryBody(this.compilation.Library.DictionaryUnlink);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryInitialize);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
+        }
+
+        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))
         {
             return true;
+        }
+
+        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        {
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Array)
+        {
+            // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
+            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form. A zero-sized element
+            // has no stride-based storage plan yet and is refused here rather than at generation.
+            // A generic element is checked again by each instance under its substitution.
+            var element = type.Components[0];
+            return element.Kind == BoundTypeKind.Parameter || (element.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && this.SupportsType(element) && !IsZeroSized(element));
+        }
+
+        if (type.Kind == BoundTypeKind.Dictionary)
+        {
+            return type.Components.Count == 2 && (type.Components[0].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[0])) &&
+                (type.Components[1].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[1])) &&
+                type.Components[0].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Components[1].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary);
         }
 
         if (type.Kind == BoundTypeKind.Primitive)
@@ -60,19 +141,50 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        if (StructStorage.Declaration(type) is { } structure)
         {
-            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
-            for (var i = 0; i < type.Components.Count; i++)
+            if (StructStorage.Destructor(type) is { } destructor)
             {
-                supported &= this.SupportsType(type.Components[i]);
+                this.CollectLibraryBody(destructor);
+            }
+
+            // Reserve the key before following fields to reject recursive inline storage.
+            this.supportedTypes[type] = false;
+            type.StoredBase = this.compilation.Binding.StoredBase(type);
+            supported = (type.StoredBase is null || this.SupportsType(type.StoredBase)) &&
+                type.OriginArguments.Count <= structure.OriginNames.Count;
+            var count = StructStorage.Count(type);
+            if (type.StoredFields?.Length != count)
+            {
+                type.StoredFields = new BoundType[count];
+            }
+
+            for (var i = 0; i < StructStorage.Count(type) && supported; i++)
+            {
+                var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
+                // An Array field is destroyed with the struct (SPEC 16.3.2); a Dictionary field waits for its own drop plan.
+                supported = field is not null && field.Kind is not BoundTypeKind.Dictionary && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                type.StoredFields[i] = field!;
             }
 
             this.supportedTypes[type] = supported;
             return supported;
         }
 
-        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null || type.OriginArguments.Count != 0 ||
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)
+        {
+            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                supported &= type.Components[i].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]));
+            }
+
+            this.supportedTypes[type] = supported;
+            return supported;
+        }
+
+        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null ||
+            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) ||
             type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
             this.compilation.Binding.EnumStorage(type) is not { } storage)
         {
@@ -95,22 +207,27 @@ public sealed partial class OwnershipAnalysis
         supported = true;
         for (var i = 0; i < type.Components.Count && supported; i++)
         {
-            supported = this.SupportsType(type.Components[i]);
+            supported = type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
         }
 
         for (var i = 0; i < storage.Count && supported; i++)
         {
-            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && this.SupportsType(payload);
+            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && payload.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
+        supported = supported && this.compilation.Binding.PrepareEnumCases(type);
         this.supportedTypes[type] = supported;
         return supported;
     }
 
     private void CheckAcquisition(int place, AcquisitionKind? acquisition)
     {
-        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition != expected)
+        // An instance resolves a committed CopyOrMove to its substitution's exact effect, and a transfer (@move)
+        // moves a Copy or Copy-unproven Place (SPEC 13.5.3).
+        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition is var actual && actual != expected &&
+            !(this.instance is not null && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move) &&
+            !(expected == AcquisitionKind.Move && actual is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
         {
             throw new InvalidOperationException("Committed payload acquisition disagrees with its source Place.");
         }
@@ -133,14 +250,18 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < operations.Length; i++)
         {
             var operation = operations[i];
-            var acquisition = construction.Acquisitions[i];
-            if ((acquisition == AcquisitionKind.None) == (operation.Kind == ArgumentOperationKind.Value))
+            var acquisition = this.body.PlaceStorage[start + i].Acquisition; // Committed, or resolved for an instance.
+            if ((acquisition == AcquisitionKind.None) == (operation.Kind is ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead))
             {
                 throw new InvalidOperationException("Committed payload operation has no matching acquisition kind.");
             }
 
-            // The shared argument path records Borrow/Reborrow as unsupported until Loan checking exists.
-            var value = this.Argument(operation.Source!, operation.Kind, acquisition == AcquisitionKind.None ? null : acquisition);
+            // SPEC 10.2, 12.2: payload borrows use the same prepared reference and actual dependency as call inputs.
+            // They enter the enum immediately, without a call activation; an explicitly transferred reference keeps its acquisition.
+            var borrow = operation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead &&
+                !(operation.Kind == ArgumentOperationKind.Reborrow && KotoHelper.UnwrapParentheses(operation.Source!) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer });
+            var value = borrow && source is InvocationKoto invocation ? this.PrepareCallArgument(invocation, operation.Source!, operation, immediate: true)
+                : this.Argument(operation.Source!, operation.Kind, acquisition == AcquisitionKind.None ? null : acquisition);
             var payload = start + i;
             this.Emit(OwnershipOperationKind.PayloadPlacement, operation.Source!, payload, value);
             // Placement completes after evaluation, interleaving with surviving temporaries.
@@ -152,7 +273,7 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(output);
     }
 
-    private int ConstructAggregate(Koto source, List<Koto> elements)
+    private int ConstructAggregate(Koto source, IReadOnlyList<Koto> elements)
     {
         if (source.BoundType is { } sourceType && !AggregateCanComplete(sourceType))
         {
@@ -173,7 +294,7 @@ public sealed partial class OwnershipAnalysis
         var start = this.body.Places.Count;
         for (var i = 0; i < elements.Count; i++)
         {
-            var component = type.Kind == BoundTypeKind.FixedArray ? type.Components[0] : type.Components[i];
+            var component = type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array ? type.Components[0] : type.Components[i];
             var payload = this.Place(elements[i], component, OwnershipPlaceKind.Payload, true);
             this.Emit(OwnershipOperationKind.Declare, source, payload);
         }

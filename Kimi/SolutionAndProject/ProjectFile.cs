@@ -16,8 +16,32 @@ public partial record class ProjectFile
     /// <summary>Gets or sets the LLVM-style target triples built by the project.</summary>
     public string[] Targets { get; set; } = [];
 
-    /// <summary>Gets or sets the external Kotonoha library references.</summary>
+    /// <summary>Gets or sets legacy references, retained only for migration diagnostics.</summary>
     public KotonohaIdentifier[] KotonohaArray { get; set; } = [];
+
+    /// <summary>Gets or sets this module's optional package ID.</summary>
+    public string? PackageId { get; set; }
+
+    /// <summary>Gets or sets this module's exact package version.</summary>
+    public string? PackageVersion { get; set; }
+
+    /// <summary>Gets or sets direct product dependencies keyed by source reference name.</summary>
+    public Dictionary<string, DependencyReference> Dependencies { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets local package candidates and publication stores.</summary>
+    public PackageSource[] PackageSources { get; set; } = [];
+
+    /// <summary>Gets or sets dependencies used only by the root's tests.</summary>
+    public Dictionary<string, DependencyReference> TestDependencies { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets explicit project-relative test-only source paths.</summary>
+    public string[] TestSources { get; set; } = [];
+
+    /// <summary>Gets or sets a stable test identity independent of solution selection and absolute paths.</summary>
+    public string? TestProjectId { get; set; }
+
+    /// <summary>Gets or sets the project's test execution settings.</summary>
+    public Testing.TestSettings Test { get; set; } = new();
 
     /// <summary>Gets or sets the project-wide alias imports.</summary>
     public string[] Alias { get; set; } = [];
@@ -34,8 +58,11 @@ public partial record class ProjectFile
     /// <summary>Gets or sets a legacy project-relative LLVM tool override; null uses the compiler toolchain.</summary>
     public string? LlvmBin { get; set; }
 
-    /// <summary>Gets or sets target-specific library overrides. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
-    public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>Gets or sets per-target definition-side native requirements keyed by this module's logical name.</summary>
+    public Dictionary<string, Dictionary<string, NativeRequirement>> NativeRequirements { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets per-target native supplies. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
+    public NativeLibraryMap NativeLibraries { get; set; } = new();
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
     /// <remarks>Preserves case-sensitive names; the file loader rejects duplicate names before dictionary deserialization.</remarks>
@@ -50,8 +77,14 @@ public partial record class ProjectFile
         {
             TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
             var reader = new TinyhandReader(writer);
-            ValidateSettingNames(reader);
-            return TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+            ValidateMapNames(reader);
+            var file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+            if (file is not null && DependencyConfiguration.Validate(file) is { } failure)
+            {
+                throw new TinyhandException(failure);
+            }
+
+            return file;
         }
         finally
         {
@@ -59,7 +92,7 @@ public partial record class ProjectFile
         }
     }
 
-    private static void ValidateSettingNames(TinyhandReader reader)
+    private static void ValidateMapNames(TinyhandReader reader)
     {
         if (reader.TryReadNil())
         {
@@ -67,13 +100,103 @@ public partial record class ProjectFile
         }
 
         HashSet<string>? names = null;
-        var count = reader.ReadMapHeader2();
+        HashSet<string>? dependencies = null;
+        HashSet<string>? tests = null;
+        HashSet<(string Target, string Name)>? requirements = null;
+        HashSet<(string Target, string Name)>? supplies = null;
+        var testSettingsSeen = false;
+        var requirementsSeen = false;
+        var suppliesSeen = false;
+        var mapsSeen = 0;
+        var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
-            if (!reader.ReadStringSpan().SequenceEqual("CompileTimeSettings"u8))
+            var key = reader.ReadStringSpan();
+            if (key.SequenceEqual("Test"u8))
+            {
+                if (testSettingsSeen)
+                {
+                    throw new TinyhandException("Repeated Test settings record.");
+                }
+
+                testSettingsSeen = true;
+                ValidateTestMap(ref reader);
+                continue;
+            }
+
+            if (key.SequenceEqual("NativeBindings"u8))
+            {
+                throw new TinyhandException(NativeConfiguration.SupersededBindings);
+            }
+
+            if (key.SequenceEqual("NativeRequirements"u8) || key.SequenceEqual("NativeLibraries"u8))
+            {
+                // A repeated key would replace the whole earlier map, even when its targets differ.
+                var isRequirements = key.SequenceEqual("NativeRequirements"u8);
+                ref var keySeen = ref isRequirements ? ref requirementsSeen : ref suppliesSeen;
+                if (keySeen)
+                {
+                    throw new TinyhandException($"Duplicate {(isRequirements ? "NativeRequirements" : "NativeLibraries")} setting.");
+                }
+
+                keySeen = true;
+                ValidateNativeMap(ref reader, ref isRequirements ? ref requirements : ref supplies, !isRequirements);
+                continue;
+            }
+
+            var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
+            if (map == 0)
             {
                 reader.Skip();
                 continue;
+            }
+
+            // As for the native maps, a repeated key would replace the whole earlier map.
+            if ((mapsSeen & (1 << map)) != 0)
+            {
+                throw new TinyhandException($"Duplicate {(map == 1 ? "CompileTimeSettings" : map == 2 ? "Dependencies" : "TestDependencies")} setting.");
+            }
+
+            mapsSeen |= 1 << map;
+
+            if (reader.TryReadNil())
+            {
+                continue;
+            }
+
+            var settingCount = reader.ReadMapHeaderOrEmptyArray();
+            ref var seen = ref (map == 1 ? ref names : ref (map == 2 ? ref dependencies : ref tests));
+            for (var j = 0; j < settingCount; j++)
+            {
+                var name = reader.ReadString();
+                seen ??= new(StringComparer.Ordinal);
+                if (name is null || !seen.Add(name))
+                {
+                    throw new TinyhandException($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
+                }
+
+                reader.Skip();
+            }
+        }
+    }
+
+    // Per-target native maps: a repeated target/name would be silently overwritten by the dictionary formatter.
+    // A NativeLibraries record array is checked by NativeLibrarySupplies itself.
+    private static void ValidateNativeMap(ref TinyhandReader reader, ref HashSet<(string Target, string Name)>? seen, bool records)
+    {
+        if (reader.TryReadNil())
+        {
+            return;
+        }
+
+        var targets = reader.ReadMapHeaderOrEmptyArray();
+        for (var i = 0; i < targets; i++)
+        {
+            var target = reader.ReadString();
+            seen ??= new();
+            if (target is null || !seen.Add((target, "\0")))
+            {
+                throw new TinyhandException($"Duplicate or null native target: {target}");
             }
 
             if (reader.TryReadNil())
@@ -81,14 +204,73 @@ public partial record class ProjectFile
                 continue;
             }
 
-            var settingCount = reader.ReadMapHeader2();
-            for (var j = 0; j < settingCount; j++)
+            if (reader.NextMessagePackType == MessagePackType.Array)
+            {
+                if (records)
+                {
+                    reader.Skip();
+                    continue;
+                }
+
+                // An empty `{}` reads as an empty array; a nonempty one cannot be a requirement map.
+                var probe = reader;
+                if (probe.ReadArrayHeader() != 0)
+                {
+                    throw new TinyhandException($"NativeRequirements target '{target}' must map native names to requirements.");
+                }
+            }
+
+            var entries = reader.ReadMapHeaderOrEmptyArray();
+            for (var j = 0; j < entries; j++)
             {
                 var name = reader.ReadString();
-                names ??= new(StringComparer.Ordinal);
-                if (name is null || !names.Add(name))
+                seen ??= new();
+                if (target is null || name is null || !seen.Add((target, name)))
                 {
-                    throw new TinyhandException($"Duplicate or null compile-time setting name: {name}");
+                    throw new TinyhandException($"Duplicate or null native entry: {target}/{name}");
+                }
+
+                reader.Skip();
+            }
+        }
+    }
+
+    private static void ValidateTestMap(ref TinyhandReader reader)
+    {
+        if (reader.TryReadNil())
+        {
+            throw new TinyhandException("Test must be a settings record.");
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var count = reader.ReadMapHeaderOrEmptyArray();
+        for (var i = 0; i < count; i++)
+        {
+            var name = reader.ReadString();
+            if (name is null || !names.Add(name) || name is not ("Timeout" or "RecoveryGrace" or "DiagnosticCount" or "DiagnosticBytes" or "LogBytes" or "Environment"))
+            {
+                throw new TinyhandException("Unknown or duplicate Test setting: " + name);
+            }
+
+            if (name != "Environment")
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.TryReadNil())
+            {
+                throw new TinyhandException("Test.Environment must be a map.");
+            }
+
+            var environment = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            var entries = reader.ReadMapHeaderOrEmptyArray();
+            for (var j = 0; j < entries; j++)
+            {
+                var variable = reader.ReadString();
+                if (variable is null || !environment.Add(variable))
+                {
+                    throw new TinyhandException("Duplicate test environment name: " + variable);
                 }
 
                 reader.Skip();

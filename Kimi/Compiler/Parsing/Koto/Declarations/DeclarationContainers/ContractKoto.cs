@@ -20,6 +20,9 @@ public sealed class ContractKoto : DeclarationContainerKoto
     /// <inheritdoc/>
     public override bool IsInstantiable => false;
 
+    /// <summary>Gets a value indicating whether Type parameters are declared: a Contract declares them (SPEC §8.4) but no Origin parameters.</summary>
+    public override bool SupportsGenerics => true;
+
     /// <inheritdoc/>
     public override bool SupportsTypeConstraints => true;
 

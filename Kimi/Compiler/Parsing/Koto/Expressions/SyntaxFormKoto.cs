@@ -6,8 +6,10 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Stores small syntax forms using shared child ownership and writing.</summary>
-public sealed class SyntaxFormKoto : ExpressionKoto
+public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
 {
+    List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
+
     private readonly KotoKind kind;
     private readonly string prefix;
     private readonly string separator;
@@ -57,6 +59,7 @@ public sealed class SyntaxFormKoto : ExpressionKoto
         }
 
         builder.Append(this.suffix);
+        OriginClauses.Write(this, ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

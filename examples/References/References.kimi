@@ -8,6 +8,6 @@ public func main() -> ()
     let first = "hello"
     let second = "hello"
     if forwarded(first, second)
-        writeLine("equal")
-    writeLine(first)
-    writeLine(second)
+        Console.writeLine("equal")
+    Console.writeLine(first)
+    Console.writeLine(second)

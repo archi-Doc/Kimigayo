@@ -1,0 +1,81 @@
+// Milestone 37: a bounded order-processing workload over collections, views, iteration and closures.
+struct Order
+    public let id: i32
+    public let category: i32
+    public let amount: i32
+    public init(id: i32, category: i32, amount: i32)
+        self.id = id
+        self.category = category
+        self.amount = amount
+    deinit => Console.writeLine("Order \(self.id) destroyed.")
+
+func countMatching<F>(orders: Slice<Order>, predicate: ref/F) -> i32
+    F is Callable<ref, (ref/Order) -> bool>
+    var count: i32 = 0
+    for order in orders
+        if predicate(order) => count += 1
+    return count
+
+func applyAll<F>(orders: Slice<Order>, action: uniq/F) -> i32
+    F is Callable<uniq, (ref/Order) -> i32>
+    var last: i32 = 0
+    for order in orders
+        last = action(order)
+    return last
+
+func firstLarge(orders: Slice<Order>, minimum: i32) -> Option<ref/Order during orders.source>
+    for order in orders
+        if order.amount >= minimum => return .Some(order)
+    return .None
+
+func totals(orders: Slice<Order>) -> Dictionary<i32, i32>
+    var sums: Dictionary<i32, i32> = [:]
+    for order in orders
+        let previous: i32 = match sums.tryGet(order.category)
+            .Some(let current) => current
+            .None => 0
+        _ = sums.insertOrReplace(order.category, previous + order.amount)
+    return sums@move
+
+public func main()
+    var orders: Array<Order> = []
+    let any = func [] (order: ref/Order) -> bool => true
+    require countMatching(orders[..], any@ref) == 0 else => $abort("Empty input counted")
+    Console.writeLine("No orders to count.")
+    orders.append(Order.init(1, 10, 30))
+    orders.append(Order.init(2, 20, 5))
+    orders.append(Order.init(3, 10, 45))
+    orders.append(Order.init(4, 30, 60))
+    orders.append(Order.init(5, 20, 15))
+    do
+        let threshold: i32 = 20
+        let isLarge = func [threshold] (order: ref/Order) -> bool => order.amount >= threshold
+        let tail = orders[2..] // A borrowed view of orders 3, 4 and 5.
+        require countMatching(orders[..], isLarge@ref) == 3 else => $abort("Overall count failed")
+        require countMatching(tail, isLarge@ref) == 2 else => $abort("Tail count failed")
+        Console.writeLine("Large orders: 3 overall, 2 in the tail.")
+        match firstLarge(orders[..], 40)
+            .Some(let found) => Console.writeLine("First order over 40 is \(found.id).")
+            .None => $abort("Missing large order")
+        var sum: i32 = 0
+        var running = func [var sum] (order: ref/Order) -> i32
+            sum += order.amount
+            return sum
+        require applyAll(orders[..], running@uniq) == 155 and sum == 0 else => $abort("Running total failed")
+        Console.writeLine("Running total is 155.")
+        let sums = totals(orders[..])
+        for (category, total) in sums
+            Console.writeLine("Category \(category) totals \(total).")
+    var seen: i32 = 0
+    for order in orders
+        seen += 1
+        if order.category == 30 => exit
+    require seen == 4 else => $abort("Early stop failed")
+    Console.writeLine("Stopped at order 4.")
+    do
+        let removed = orders.remove(0)
+        require removed.id == 1 and orders.length == 4 else => $abort("Removal failed")
+        Console.writeLine("Removed order 1.")
+        // removed is destroyed here.
+    Console.writeLine("Processing finished.")
+    // orders destroys its elements in reverse index order: 5, 4, 3, 2.

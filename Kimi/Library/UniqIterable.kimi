@@ -1,0 +1,7 @@
+/// Starts an enumeration through an exclusive borrow of the source.
+public contract UniqIterable
+    /// Exclusive source access does not prescribe the iterator's item capability.
+    associate IteratorType(source) is ::Kimi.LendingIterator for uniq/Self during source
+
+    /// Creates an iterator whose lifetime is bounded by the exclusive source borrow.
+    func iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)

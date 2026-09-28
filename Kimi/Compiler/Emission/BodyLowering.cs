@@ -29,13 +29,32 @@ internal sealed partial class BodyLowering
     private int[] deferredOwners = [];
     private int[] deliveries = [];
     private int pointerWidth;
+    private Binding? instanceBinding;
+    private BoundCall? instance;
+    private GenericStoragePlan.CallEntry? instanceEntry;
 
-    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
+    internal BodyLowering()
+    {
+        // Array fields are destroyed through the element-specific drop helper of this lowering (SPEC 16.3.2).
+        this.aggregateLayouts.CollectionDrop = this.ArrayFieldDrop;
+    }
+
+    // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
+    // the entry binds the body's forwarded generic calls to their own instances.
+    internal void SetInstance(Binding? binding, BoundCall? call, GenericStoragePlan.CallEntry? entry)
+    {
+        this.instanceBinding = binding;
+        this.instance = call;
+        this.instanceEntry = entry;
+    }
+
+    internal bool Lower(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
         this.pointerWidth = pointerWidth;
         this.functions = functions;
         this.flow = flow;
         this.arguments.Clear();
+        this.formattingEstimates.Clear();
         var count = body.Operations.Count;
         Grow(ref this.deliveries, count);
         this.deliveries.AsSpan(0, count).Fill(-1);
@@ -50,7 +69,7 @@ internal sealed partial class BodyLowering
             this.deliveries[id] = i;
         }
 
-        if (!ValidateValues(body))
+        if (!ValidateValues(body, this))
         {
             return Fail("Missing or inconsistent value-flow plan.", out failure);
         }
@@ -72,7 +91,7 @@ internal sealed partial class BodyLowering
             return Fail("Cleanup lowering requires every cleanup operation in exactly one matching edge plan.", out failure);
         }
 
-        return this.LowerGraph(core, body, function, constants, projectDirectory, marks, out failure);
+        return this.LowerGraph(library, body, function, constants, projectDirectory, marks, out failure);
     }
 
     private static bool Fail(string message, out string? failure)
@@ -80,6 +99,10 @@ internal sealed partial class BodyLowering
         failure = message;
         return false;
     }
+
+    // Declared signature Types of the lowered body; a monomorphized instance sees its substitution.
+    private static BoundType? SignatureType(BodyLowering? lowering, BoundType? type)
+        => type is null || lowering?.instance is not { } call ? type : lowering.instanceBinding!.InstantiateStorageType(type, call);
 
     private bool MarkDeferredPlans(OwnershipBody body, Span<byte> marks)
     {
@@ -211,15 +234,83 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerOperation(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (body.Values[index].Kind == OwnershipValueKind.Formatting)
+        {
+            var valid = this.LowerFormatting(body, function, constants, projectDirectory, index, out failure);
+            this.AddStringFlags(function, operation, index);
+            return valid;
+        }
+
+        if (operation.Kind is OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort)
+        {
+            return this.LowerVerification(body, function, index, out failure);
+        }
+
+        if (body.Values[index].Kind == OwnershipValueKind.Capture && body.Function.BoundClosure?.EnvironmentType is not null)
+        {
+            var valid = this.LowerCapture(body, function, index, out failure);
+            this.AddStringFlags(function, operation, index);
+            return valid;
+        }
+
+        if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+        {
+            return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.UpdateTarget)
+        {
+            failure = null;
+            return operation.Place >= 0 && body.Places[operation.Place].Mutable &&
+                operation.LoanMode == LoanRequirement.Uniq && body.LoanStates[index] >= 0 &&
+                body.ComparisonLoans[body.LoanStates[index]].Read == index &&
+                (!body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0)
+                ? true : Fail("Whole-value target requires an initialized complete Place and exclusive Loan.", out failure);
+        }
+
+        if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)
+        {
+            failure = null;
+            return ValidateReceiverInitialization(body, operation) || Fail("Invalid special receiver initialization.", out failure);
+        }
+
         if (this.arguments.Count != 0 && operation.Kind is not (OwnershipOperationKind.CallEntry or OwnershipOperationKind.Call))
         {
             return Fail("Call entries must be consecutive and immediately precede their call.", out failure);
         }
 
-        if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
+        if (body.Values[index].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.PointerStore)
+        {
+            return this.LowerPointer(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (body.Values[index].Kind == OwnershipValueKind.Sequence)
+        {
+            return this.LowerSequence(library, body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (body.Values[index].Kind == OwnershipValueKind.RuntimeTypeTest)
+        {
+            return this.LowerRuntimeTypeTest(body, function, index, out failure);
+        }
+
+        if (body.Values[index].Kind is OwnershipValueKind.Address or OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite)
+        {
+            if (operation.Kind == OwnershipOperationKind.Borrow && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate &&
+                (uint)operation.Place < (uint)body.Places.Count && body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Subject } subject &&
+                (ScalarTypes.Supports(subject.Type) || ReferenceEquals(subject.Type, BoundType.Unit)) &&
+                !this.ValidateCandidateRead(body, index, out failure))
+            {
+                return false;
+            }
+
+            return this.LowerStructBorrow(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind is OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows)
         {
             failure = null;
             return true;
@@ -233,7 +324,29 @@ internal sealed partial class BodyLowering
         if (operation.Kind == OwnershipOperationKind.LocateReceiver)
         {
             failure = null;
-            return this.IsElementReceiverRead(body, index) || Fail("Receiver location requires an access protection plan.", out failure);
+            return (this.IsElementReceiverRead(body, index) && this.ValidateElementOwner(body, index)) || Fail("Receiver location requires initialized owner storage and an access protection plan.", out failure);
+        }
+
+        if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow)
+        {
+            failure = null;
+            return this.ValidateElementBorrow(body, index, index) || Fail("Element borrowing requires an initialized, protected source address.", out failure);
+        }
+
+        if (body.Values[index].Kind == OwnershipValueKind.PatternProjection && operation.Kind != OwnershipOperationKind.AcquirePattern)
+        {
+            return this.LowerPatternProjection(body, function, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.Read && operation.Input < 0 && this.IsGuardProtectionRead(body, index))
+        {
+            failure = null;
+            return !body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0 || Fail("Guard protection requires initialized Subject storage.", out failure);
+        }
+
+        if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.DecomposeCase)
+        {
+            return this.LowerMatchOperation(body, function, constants, index, out failure);
         }
 
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
@@ -242,15 +355,10 @@ internal sealed partial class BodyLowering
             return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
         }
 
-        if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) &&
+        if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) && this.referenceRoots[index] >= 0 &&
             operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Consume))
         {
             return this.LowerReference(body, index, out failure);
-        }
-
-        if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern)
-        {
-            return this.LowerMatchOperation(body, function, constants, index, out failure);
         }
 
         if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String))
@@ -274,7 +382,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Entry when index == 0:
                 foreach (var flagged in function.LiveFlags)
                 {
-                    if (IsBorrowedStringTemporary(body, flagged))
+                    if (this.borrowedTemporaries[flagged] != 0)
                     {
                         function.Add(EmissionOpcode.InitializeLiveFlag, 0, flagged, 0);
                     }
@@ -324,12 +432,20 @@ internal sealed partial class BodyLowering
                     return Fail("A call argument is not proven initialized.", out failure);
                 }
 
-                this.arguments.Add(index);
+                if (operation.Source is InvocationKoto)
+                {
+                    this.arguments.Add(index);
+                }
+                else if (operation.Source.ErasedFunctionType is null && operation.Source is not FunctionKoto { BoundClosure.EnvironmentType: not null } && operation.Source.Parent is not InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Owner })
+                {
+                    return Fail("Unrecognized environment acquisition.", out failure);
+                }
+
                 this.AddStringFlags(function, operation, index);
                 break;
 
             case OwnershipOperationKind.Call:
-                return this.LowerCall(core, body, function, constants, projectDirectory, index, out failure);
+                return this.LowerCall(library, body, function, constants, projectDirectory, index, out failure);
 
             case OwnershipOperationKind.Cleanup:
                 var stepIndex = body.OperationSteps[index];

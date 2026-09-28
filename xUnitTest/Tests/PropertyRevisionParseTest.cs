@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 using static XunitTest.ParseTestHelper;
@@ -25,27 +26,45 @@ public class PropertyRevisionParseTest
         ParseSuccess($"let {name}: i32 = 1\nlet result = {name}");
     }
 
+    // SPEC 13.5.1: a bare @move (like a bare built-in Semantics name) completes the target, and a following
+    // selection, call or index continues the postfix chain; an ordinary Type named move keeps its qualified forms.
     [Theory]
-    [InlineData("move")]
-    [InlineData("move<i32>")]
-    [InlineData("move.Member")]
-    [InlineData("move/i32")]
-    [InlineData("Group.move")]
-    public void MoveIsAnOrdinaryAdaptationTarget(string target)
+    [InlineData("move", "move")]
+    [InlineData("move<i32>", "move<i32>")]
+    [InlineData("Group.move", "Group.move")]
+    public void MoveIsTheTransferOperationTarget(string target, string written)
     {
         var tree = ParseSuccess("let value = source@" + target);
         var conversion = Assert.IsType<ConversionKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
-        Assert.Equal(target, conversion.Right.ToString());
+        Assert.Equal(written, conversion.Right.ToString());
         Assert.Equal("source", conversion.Left.ToString());
         RoundTrip(tree);
     }
 
+    [Fact]
+    public void MoveTargetEndsBeforeAPostfixSelection()
+    {
+        var tree = ParseSuccess("let value = source@move.Member");
+        var access = Assert.IsType<MemberAccessKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
+        var conversion = Assert.IsType<ConversionKoto>(access.Left);
+        Assert.Equal("move", conversion.Right.ToString());
+        Assert.Equal("Member", access.Right.ToString());
+        RoundTrip(tree);
+    }
+
+    [Fact]
+    public void MoveIsNotASemanticsPrefix()
+    {
+        var tree = Parse("let value = source@move/i32\nlet after = 1");
+        Assert.Contains(tree.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
+    }
+
     [Theory]
-    [InlineData("x@move")]
-    [InlineData("var x@move")]
     [InlineData("var x@ref")]
     [InlineData("var x@uniq")]
-    public void RejectsRemovedCaptureOperations(string capture)
+    [InlineData("x@copy")]
+    public void RejectsUnavailableCaptureOperations(string capture)
     {
         var tree = Parse($"let f = func[{capture}]() => ()\nlet after = 1");
         Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
@@ -57,6 +76,8 @@ public class PropertyRevisionParseTest
     [InlineData("var x")]
     [InlineData("x@ref")]
     [InlineData("x@uniq")]
+    [InlineData("x@move")]
+    [InlineData("var x@move")]
     public void PreservesCurrentCaptureForms(string capture)
         => RoundTrip(ParseSuccess($"let f = func[{capture}]() => ()"));
 
@@ -70,10 +91,10 @@ public class PropertyRevisionParseTest
     [InlineData("group G\n    var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
     [InlineData("rootgroup G\n    computed item: T\n        get() -> T => make()")]
     [InlineData("struct S\n    computed item: T\n        set(self: uniq/Self, value: U) -> () => accept(value)\n        get(self: Self) -> T => self.source")]
-    [InlineData("struct S origin source\n    var item: ref/T from source\n        get(self: ref/Self) -> ref/T from source => storage\n        set(self: uniq/Self, value: ref/T from source) -> () => storage = value")]
+    [InlineData("struct S {source}\n    var item: ref/T during source\n        get(self: ref/Self) -> ref/T during source => storage\n        set(self: uniq/Self, value: ref/T during source) -> () => storage = value")]
     [InlineData("contract C\n    property item: T has get")]
     [InlineData("contract C\n    property item: T has set, get")]
-    [InlineData("contract C\n    property item: ref/T\n        get(self: ref/Self) -> ref/T from self\n        set(self: uniq/Self, value: T) -> ()")]
+    [InlineData("contract C\n    property item: ref/T\n        get(self: ref/Self) -> ref/T during self\n        set(self: uniq/Self, value: T) -> ()")]
     [InlineData("struct S\n    #if true\n        computed item: T\n            get(self: ref/Self) -> T => make()")]
     [InlineData("contract C\n    #switch\n        #case true\n            property item: T\n                get(self: ref/Self) -> T")]
     public void PreservesDeclarationsAndSignatures(string source)
@@ -96,8 +117,8 @@ public class PropertyRevisionParseTest
             struct S
                 var item: T
                 computed view: ref/T
-                    get(self: ref/Self) -> ref/T from self => self.item@ref
-                    set(self: uniq/Self, value: Container<ref/T from source>) -> ()
+                    get(self: ref/Self) -> ref/T during self => self.item@ref
+                    set(self: uniq/Self, value: Container<ref/T during source>) -> ()
                         use(value)
             """;
         var tree = ParseSuccess(source);
@@ -111,9 +132,9 @@ public class PropertyRevisionParseTest
         Assert.True(getter.HasExplicitSignature);
         Assert.Equal("ref/Self", getter.ReceiverType!.ToString());
         Assert.Null(getter.ValueType);
-        Assert.Equal("ref/T from self", getter.ReturnType!.ToString());
+        Assert.Equal("ref/T during self", getter.ReturnType!.ToString());
         Assert.Equal("uniq/Self", setter.ReceiverType!.ToString());
-        Assert.Equal("Container<ref/T from source>", setter.ValueType!.ToString());
+        Assert.Equal("Container<ref/T during source>", setter.ValueType!.ToString());
         Assert.IsType<CodeBlockKoto>(setter.Body);
         Assert.Equal("ref/Self", source[getter.ReceiverType.Span.Start..getter.ReceiverType.Span.End]);
         Assert.StartsWith("get(self:", source[getter.Span.Start..getter.Span.End]);
@@ -136,7 +157,7 @@ public class PropertyRevisionParseTest
     [InlineData("var p: T\n    get(self: ref/Self) -> T")]
     [InlineData("var p: T\n    get(self: ref/Self, extra: T) -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self = other) -> T => value")]
-    [InlineData("var p: T\n    get(self?: ref/Self) -> T => value")]
+    [InlineData("var p: T\n    get(! self: ref/Self) -> T => value")]
     [InlineData("var p: T\n    get(self:) -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self) ->")]
     [InlineData("var p: T\n    get(self: ref/Self) -> T =>")]

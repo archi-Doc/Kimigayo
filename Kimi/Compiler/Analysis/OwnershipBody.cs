@@ -156,17 +156,17 @@ public sealed partial class OwnershipBody
         return next >= 0 && this.BlockOf[next] == block ? next : -1;
     }
 
-    private int LoadBlock(int block, bool checking = false)
+    private int LoadBlock(int block, bool checking = false, ulong[]? replayStates = null)
     {
         var width = this.words * Lanes;
-        var states = checking ? this.checkingStates : this.BlockStates;
+        var states = replayStates ?? (checking ? this.checkingStates : this.BlockStates);
         states.AsSpan(block * width, width).CopyTo(this.Scratch);
         return checking ? this.checkingLeaders[block] : this.BlockLeaders[block];
     }
 
-    private int RunBlock(int block, bool finalize, bool checking = false)
+    private int RunBlock(int block, bool finalize, bool checking = false, int stop = -1, ulong[]? replayStates = null)
     {
-        var operation = this.LoadBlock(block, checking);
+        var operation = this.LoadBlock(block, checking, replayStates);
         while (true)
         {
             if (finalize)
@@ -184,7 +184,7 @@ public sealed partial class OwnershipBody
 
             this.Transfer(operation);
             var next = this.NextInBlock(operation, block, checking);
-            if (next < 0)
+            if (next < 0 || operation == stop)
             {
                 return operation;
             }
@@ -240,6 +240,14 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.UpdateBorrowed:
+                this.CheckInitialized(operation, (int)this.Values[index].Constant, this.CompleteState((int)this.Values[index].Constant));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                break;
+            case OwnershipOperationKind.WriteBorrowedField:
+                this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                break;
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.InitializeSubject:
                 if (operation.Input >= 0)
@@ -257,7 +265,7 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.Produce when operation.Projection >= 0:
+            case OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow when operation.Projection >= 0:
                 this.CheckInitialized(operation, this.Projections[operation.Projection].Root, this.ElementState(operation.Projection, false));
                 break;
             case OwnershipOperationKind.LocateReceiver:
@@ -266,7 +274,13 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.ProjectElement:
                 this.CheckInitialized(operation, operation.Place, this.ElementState(operation.Projection, true));
                 break;
+            case OwnershipOperationKind.Borrow when this.TryOwnedBorrowState(operation, out var borrowedState):
+                this.CheckInitialized(operation, operation.Place, borrowedState);
+                break;
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
+            case OwnershipOperationKind.CheckReceiverField:
+            case OwnershipOperationKind.UpdateTarget:
+            case OwnershipOperationKind.StorePointer:
                 this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
                 break;
             case OwnershipOperationKind.Write:
@@ -344,9 +358,9 @@ public sealed partial class OwnershipBody
 
                 break;
             case OwnershipOperationKind.Produce:
-                if (operation.Projection >= 0 && operation.Acquisition == AcquisitionKind.Move && this.projectionPaths[operation.Projection] >= 0)
+                if (operation.Projection >= 0 && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && this.projectionPaths[operation.Projection] >= 0)
                 {
-                    this.SetPathState(this.projectionPaths[operation.Projection], false);
+                    this.SetPathState(this.projectionPaths[operation.Projection], false, conditional: operation.Acquisition == AcquisitionKind.CopyOrMove);
                 }
 
                 this.Initialize(place);
@@ -372,9 +386,22 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
+            case OwnershipOperationKind.UpdateBorrowed:
+                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
+                {
+                    this.Move(operation.Input);
+                }
+
+                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
+                {
+                    this.Initialize(place);
+                }
+
+                break;
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.PayloadPlacement:
             case OwnershipOperationKind.InitializeSubject:
+            case OwnershipOperationKind.InitializeReceiverField:
                 if (operation.Input >= 0)
                 {
                     this.Move(operation.Input);
@@ -384,6 +411,7 @@ public sealed partial class OwnershipBody
                 break;
             case OwnershipOperationKind.CallEntry:
             case OwnershipOperationKind.Deliver:
+            case OwnershipOperationKind.StorePointer:
                 this.Move(place);
                 break;
             case OwnershipOperationKind.WriteElement:

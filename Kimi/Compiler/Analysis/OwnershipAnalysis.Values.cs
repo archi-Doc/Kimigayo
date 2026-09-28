@@ -51,7 +51,11 @@ public sealed partial class OwnershipAnalysis
         {
             var sourcePlace = kind == OwnershipOperationKind.InitializeSubject ? input : place;
             var destination = kind == OwnershipOperationKind.InitializeSubject ? place : input;
-            this.SetValue(id, OwnershipValueKind.Alias, [this.Value(sourcePlace)]);
+            if (this.Value(sourcePlace) >= 0)
+            {
+                this.SetValue(id, OwnershipValueKind.Alias, [this.Value(sourcePlace)]);
+            }
+
             this.placeValues[destination] = id;
         }
 
@@ -68,6 +72,15 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(id, OwnershipValueKind.Alias, [parameter]);
         }
 
+        var preparedDefaultPlace = this.defaultFunction is not null && place >= 0 && this.body.Places[place].Kind != OwnershipPlaceKind.Local;
+        if (preparedDefaultPlace && kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume &&
+            place >= 0 && ScalarResult(this.body.Places[place].Type))
+        {
+            // Prepared arguments are immutable acquired SSA values, including literal
+            // temporaries and earlier defaults. They are not loadable caller locals.
+            this.SetValue(id, OwnershipValueKind.Alias, [this.Value(place)]);
+        }
+
         if (kind is OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement && input >= 0)
         {
             this.SetValue(id, OwnershipValueKind.Alias, [this.Value(input)]);
@@ -81,7 +94,7 @@ public sealed partial class OwnershipAnalysis
         if (kind is OwnershipOperationKind.Read or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume)
         {
             var destination = kind == OwnershipOperationKind.Consume ? input : place;
-            if (destination >= 0)
+            if (destination >= 0 && !(preparedDefaultPlace && kind == OwnershipOperationKind.Read))
             {
                 this.placeValues[destination] = id;
             }
@@ -95,7 +108,12 @@ public sealed partial class OwnershipAnalysis
 
         if (kind == OwnershipOperationKind.Produce)
         {
-            if (source is BoolLiteralKoto boolean)
+            if (source is NullLiteralKoto)
+            {
+                // SPEC 5.1: the null address; lowering gives pointer constants their own operand form.
+                this.SetValue(id, OwnershipValueKind.Constant, [], constant: 0);
+            }
+            else if (source is BoolLiteralKoto boolean)
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: boolean.Value ? 1 : 0);
             }
@@ -140,6 +158,12 @@ public sealed partial class OwnershipAnalysis
 
     private int UnaryValue(UnaryKoto unary)
     {
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            this.compilation.Binding.PropertyUpdateStorage(unary.Operand) is { } updateStorage)
+        {
+            return this.UpdateProperty(unary, KotoHelper.UnwrapParentheses(unary.Operand), updateStorage);
+        }
+
         // Binding fits a directly signed literal once, including each signed minimum.
         if (unary is PrefixMinusKoto or PrefixPlusKoto && unary.Operand is NumberLiteralKoto)
         {
@@ -147,12 +171,36 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
-            KotoHelper.UnwrapParentheses(unary.Operand) is BinaryKoto element && ElementAccess.IsSyntax(element))
+            IsPointerPlace(KotoHelper.UnwrapParentheses(unary.Operand)))
+        {
+            return this.UpdatePointer(unary, KotoHelper.UnwrapParentheses(unary.Operand));
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            this.SelectedPlace(KotoHelper.UnwrapParentheses(unary.Operand)) is ConversionKoto followed && this.FollowsReference(followed))
+        {
+            // SPEC 13.7.2: `r@follow++` updates the referent Place like `r@follow += 1`.
+            return this.WriteReferent(unary, followed);
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            KotoHelper.UnwrapParentheses(unary.Operand) is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is not null)
+        {
+            return this.UpdateBorrowedField(unary, field);
+        }
+
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            KotoHelper.UnwrapParentheses(unary.Operand) is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(element))
         {
             return this.UpdateElement(unary, element);
         }
 
         var input = this.Value(this.Expression(unary.Operand, PlaceUseKind.Read));
+        if (input < 0)
+        {
+            return -1;
+        }
+
         if (unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
         {
             var updated = this.ComputeUpdate(unary, unary.BoundType, input, this.IncrementOne(unary), ElementAccess.UpdateOperator(unary.Akind));
@@ -173,7 +221,10 @@ public sealed partial class OwnershipAnalysis
 
     private int ConversionValue(ConversionKoto conversion)
     {
-        var input = this.Expression(conversion.Left, PlaceUseKind.Read);
+        // SPEC 13.5.3: a transfer consumes its Place by Move even when the Type is Copy; a temporary passes its ownership.
+        var transfer = conversion.ConversionBinding == ConversionBinding.Transfer;
+        var identity = conversion.ConversionBinding == ConversionBinding.Identity || transfer;
+        var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read, transfer ? AcquisitionKind.Move : null);
         if (conversion.ConversionBinding == ConversionBinding.None)
         {
             this.Unsupported(conversion);
@@ -187,6 +238,14 @@ public sealed partial class OwnershipAnalysis
 
         if (conversion.ConversionBinding == ConversionBinding.Literal)
         {
+            return input;
+        }
+
+        if (identity)
+        {
+            // The ordinary acquisition above already secured the value. Retain its
+            // semantic designation for validation without a second runtime transfer.
+            (this.body.Identities ??= new()).Add(new(conversion, input));
             return input;
         }
 

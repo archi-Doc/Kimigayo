@@ -43,7 +43,7 @@ function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {
         if ($LASTEXITCODE -ne 0 -or $dll.Trim() -cne 'KERNEL32.dll') { throw 'Unexpected generated kernel32 DLL name' }
         $inspection = & $readobj --file-headers kernel32.lib | Out-String
         if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect generated kernel32 library' }
-        $symbols = @('GetProcessHeap','HeapAlloc','HeapFree','GetStdHandle','WriteFile','GetLastError','ExitProcess','VirtualAlloc','VirtualProtect','VirtualFree')
+        $symbols = @('GetProcessHeap','HeapAlloc','HeapFree','GetStdHandle','WriteFile','GetLastError','ExitProcess','VirtualAlloc','VirtualProtect','VirtualFree','GetEnvironmentVariableA','SetHandleInformation')
         $expected = @($symbols) + @($symbols | ForEach-Object { "__imp_$_" })
         $actual = @([regex]::Matches($inspection, '(?m)^Symbol: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
         $formats = @([regex]::Matches($inspection, '(?m)^Format: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })

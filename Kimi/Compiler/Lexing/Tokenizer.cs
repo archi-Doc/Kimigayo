@@ -100,6 +100,10 @@ internal ref struct Tokenizer
     /// </summary>
     public ReadOnlySpan<Token> Tokens => this.tokens.AsSpan(0, this.tokenCount);
 
+    internal bool CollectDocumentation { get; set; }
+
+    internal Documentation.DocumentationSource? Documentation { get; private set; }
+
     /// <summary>
     /// Gets the character following the current one, or NUL at the end of the source.
     /// </summary>
@@ -993,7 +997,7 @@ EndOfFile:
                     return true;
                 }
             }
-            else if (c is ';' or '=' or '"' or '\'' or '{' or '}')
+            else if (c is ';' or '=' or '"' or '\'')
             {
                 return false;
             }
@@ -1101,6 +1105,21 @@ EndOfFile:
     {
         if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan)
         {
+            // A named alias arrow introduces a Container reference, never a Body.
+            for (var i = this.tokenCount - 2; i >= 0; i--)
+            {
+                var kind = this.tokens[i].Kind;
+                if (kind == TokenKind.Alias)
+                {
+                    return false;
+                }
+
+                if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+                {
+                    break;
+                }
+            }
+
             return true;
         }
 
@@ -1327,6 +1346,12 @@ EndOfFile:
     private void ReadSingleLineComment()
     {// // Comment\n
         var idx = this.span.IndexOfAny('\r', '\n');
+        if (this.CollectDocumentation && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
+        {
+            this.Documentation ??= new(this.sourceDocument);
+            this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+        }
+
         if (idx < 0)
         {
             this.Slice(this.span.Length);

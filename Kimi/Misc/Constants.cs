@@ -77,9 +77,6 @@ public static class Constants
     public const string OpenKeyword = "open";
 
     // Contextual names used by type semantics and constraints
-    public const string SemanticsKeyword = "semantics";
-    public const string OriginKeyword = "origin";
-    public const string FromKeyword = "from";
     public const string OwnerKeyword = "owner";
     public const string RefKeyword = "ref";
     public const string UniqKeyword = "uniq";
@@ -96,6 +93,15 @@ public static class Constants
     public const string ObjectBorrowKeyword = "objectborrow";
     public const string OwningKeyword = "owning";
     public const string ReferenceKeyword = "reference";
+
+    /// <summary>The transfer operation written after <c>@</c> (SPEC §13.5.3); an ordinary Name elsewhere.</summary>
+    public const string MoveOperation = "move";
+
+    /// <summary>The Copy operation written after <c>@</c> (SPEC §13.5.3); an ordinary Name elsewhere.</summary>
+    public const string CopyOperation = "copy";
+
+    /// <summary>The postfix follow operation written after <c>@</c> (SPEC §13.5.5.1); an ordinary Name elsewhere.</summary>
+    public const string FollowOperation = "follow";
 
     public const char LfChar = '\n';
     public const char CrChar = '\r';

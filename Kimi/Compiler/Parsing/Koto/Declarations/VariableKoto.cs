@@ -85,6 +85,8 @@ public abstract class VariableKoto : DeclarationKoto
             builder.Append(" = ");
             this.InitializerKoto.WriteTo(ref builder);
         }
+
+        OriginClauses.Write(this, ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

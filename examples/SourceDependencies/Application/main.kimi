@@ -1,0 +1,5 @@
+alias Geometry.Measure
+
+public func main()
+    require doubled(21) == 42 else => $abort("source-module result")
+    Console.writeLine("source modules")

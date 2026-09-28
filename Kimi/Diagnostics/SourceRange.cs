@@ -8,6 +8,7 @@ public readonly record struct SourceRange : IComparable<SourceRange>
 
     public SourcePosition End { get; }
 
+    [System.Text.Json.Serialization.JsonConstructor]
     public SourceRange(SourcePosition start, SourcePosition end)
     {
         this.Start = start;

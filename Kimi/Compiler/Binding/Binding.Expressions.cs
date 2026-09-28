@@ -6,14 +6,101 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 6.4, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
+    internal static bool IsMutableDeclaration(Koto? declaration)
+        => declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true } ||
+            (declaration is IdentifierNameKoto { Parent: ForKoto loop } slot && loop.IsMutableSlot(slot));
+
+    private int defaultBindingDepth;
+
+    // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
+    // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
+    // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
+    // grants Read only (SPEC 14.8.3).
+    private static BindingFailure? ReferenceBindingAssignment(Koto target)
+        => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+                (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
+            ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
+
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool Writable(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+        if (node.BoundSymbol?.Property is { IsStored: false, Setter.IsPresent: true })
         {
-            return false;
+            return true; // The accessor's Receiver Expression checks its own capability.
+        }
+
+        // SPEC 5.2: binding mutability does not decide pointee write permission.
+        if (node is DereferenceKoto dereference)
+        {
+            return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
+        }
+
+        if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
+        {
+            return true;
+        }
+
+        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || ReachedThroughShared(node))
+        {
+            return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
+        {
+            // SPEC 13.5.5.1: the referent of uniq/T offers Write; a shared layer on the path bounds it.
+            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        {
+            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5.1 pair layers
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
+        {
+            return payload.Left.BoundType?.Semantics switch
+            {
+                SemanticsKind.ObjUniq => !ReachedThroughShared(payload.Left),
+                SemanticsKind.Obj => Writable(payload.Left),
+                _ => false,
+            };
+        }
+
+        if (node is InvocationKoto placeCall && ElementAccess.PlaceCallReference(placeCall) is { } published)
+        {
+            return published.Semantics == SemanticsKind.Uniq; // SPEC 7.1.1: place uniq/T offers Write; place ref/T does not.
+        }
+
+        if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
+        {
+            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.6.9: an update selects indexUniq.
+        }
+
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
+            ElementAccess.BorrowedPathRoot(nested) is { } root)
+        {
+            return ElementAccess.AccessType(root)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+        }
+
+        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(tupleElement.Left)))
+        {
+            return ElementAccess.AccessType(tupleElement.Left)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+        }
+
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
+            node.CodeContext.Compilation.Binding.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
+        {
+            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.1: a shared layer bounds the path to shared access.
+        }
+
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field && StructStorage.IsStruct(field.Left.BoundType) &&
+            !IsSpecialField(field, out _) && !Writable(field.Left))
+        {
+            return false; // A mutable field still requires a mutable owning root.
         }
 
         if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
@@ -25,7 +112,60 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
+        return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
+    }
+
+    // SPEC 7.7 acquisition positions currently supported by function-item Binding: a declaration
+    // initializer, an assignment source, a call argument, a transferred result, an expression body
+    // and an array or tuple literal element. Wider selection shapes remain G10/I18.
+    private static bool IsAcquisitionPosition(Koto node)
+    {
+        if (!TryNameRoot(node, out var target))
+        {
+            return false;
+        }
+
+        return target.Parent switch
+        {
+            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
+            JumpKoto jump => ReferenceEquals(jump.Expression, target),
+            FunctionKoto body => ReferenceEquals(body.ExpressionBody, target),
+            ArrayLiteralKoto or TupleLiteralKoto => true,
+            InvocationKoto invocation => !ReferenceEquals(invocation.Method, target),
+            BinaryKoto binary => !ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals,
+            _ => false,
+        };
+    }
+
+    // SPEC 7.7: an unsafe function supports direct calls only, so every appearance of its name
+    // that is not the callee of a direct call acquires it as a value. This is the complement of
+    // the callee position, not a list of acquisition positions, so no position stays unchecked.
+    private static bool IsValueUse(Koto node)
+        => !TryNameRoot(node, out var target) || target.Parent is not InvocationKoto invocation || !ReferenceEquals(invocation.Method, target);
+
+    // Parentheses, the member-access right side and an explicit type-argument list stay part of the
+    // referenced name. Any other enclosing node consumes the name itself. A name used as a
+    // member-access receiver is already a value use, so it has no enclosing name root.
+    private static bool TryNameRoot(Koto node, out Koto root)
+    {
+        var target = node;
+        while (true)
+        {
+            switch (target.Parent)
+            {
+                case ParenthesizedKoto:
+                case MemberAccessKoto member when ReferenceEquals(member.Right, target):
+                case GenericsKoto generics when ReferenceEquals(generics.Identifier, target):
+                    target = target.Parent!;
+                    continue;
+                case MemberAccessKoto:
+                    root = target;
+                    return false;
+                default:
+                    root = target;
+                    return true;
+            }
+        }
     }
 
     private static bool CanInitializeLocal(Koto node, BindingScope scope)
@@ -55,9 +195,9 @@ public sealed partial class Binding
 
     private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
     {
-        if (!literal.IsInteger)
+        if (type.IsFloatingPoint)
         {
-            return FitsFloat(literal.SourceSpelling, type);
+            return FloatingTypes.TryLiteral(literal, type, negative, out _);
         }
 
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
@@ -74,7 +214,9 @@ public sealed partial class Binding
         var bits = type.Name is "isize" or "usize" ? pointerWidth : int.Parse(type.Name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
         if (bits == 0)
         {
-            return false;
+            // A target-independent literal must fit even the smallest integer
+            // storage width. Larger native-sized literals still require a target.
+            bits = 8;
         }
 
         if (negative && !signed)
@@ -85,9 +227,6 @@ public sealed partial class Binding
         var max = signed ? ((UInt128)1 << (bits - 1)) - (negative ? (UInt128)0 : 1) : bits == 128 ? UInt128.MaxValue : ((UInt128)1 << bits) - 1;
         return magnitude <= max;
     }
-
-    private static bool FitsFloat(ReadOnlySpan<char> source, BoundType type)
-        => FloatingTypes.TryLiteral(source, type, false, out _);
 
     private bool FitsInputLiteral(Koto node, BoundType type)
     {
@@ -119,6 +258,35 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        var actual = this.BindNodeCore(node, scope, expected);
+        if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
+        {
+            return this.BindFunctionReference(node, symbol, expected, scope);
+        }
+
+        if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
+            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
+            CallableSignatureFits(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin)
+        {
+            node.ErasedFunctionType = expected;
+            return expected;
+        }
+
+        // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage.
+        if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
+            (!Compatible(actual, expected) || (actual.Semantics == SemanticsKind.Uniq && expected.Semantics == SemanticsKind.Uniq && IsBarePlace(node))) &&
+            this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
+        {
+            this.adaptations[node] = adaptation;
+            return adaptation.Type;
+        }
+
+        return node.ErasedFunctionType ?? actual;
+    }
+
+    private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
+    {
         if (this.patternNodes.Contains(node))
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
@@ -129,6 +297,13 @@ public sealed partial class Binding
         {
             this.BindNode(implementationBlock, scope);
             return Complete(node, BoundType.Unit);
+        }
+
+        // Attribute-chain entries are independent selected markers. An indexed
+        // error or completed built-in marker must not suppress an earlier entry.
+        if (node is AttributeKoto { AttributeChain: { } precedingAttribute })
+        {
+            this.BindNode(precedingAttribute, scope);
         }
 
         if (node.BindingState == BindingState.Resolved)
@@ -142,7 +317,12 @@ public sealed partial class Binding
             return node.BoundType;
         }
 
-        if (node.AttributeChain is { } attribute)
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(testDefinition))
+        {
+            return testDefinition.BoundType;
+        }
+
+        if (node is not AttributeKoto && node.AttributeChain is { } attribute)
         {
             this.BindNode(attribute, scope);
         }
@@ -154,6 +334,11 @@ public sealed partial class Binding
                 Complete(enumeration.Operands[0], BoundType.Unit);
                 Complete(payload, BoundType.Unit);
                 return Complete(enumeration, BoundType.Unit);
+            case ParenthesizedTypeKoto:
+                // Grouped Types are bound by Type/qualifier entry points, never as runtime values.
+                return Fail(node, BindingFailure.InvalidTypeFormation);
+            case SyntaxFormKoto { Akind: KotoKind.ConstructorReference } constructorReference:
+                return this.BindBaseConstructor(constructorReference, scope);
             case TypeKoto:
                 return this.BindType(node, scope);
             case DeclarationContainerKoto container:
@@ -187,19 +372,27 @@ public sealed partial class Binding
                     this.BindNode(generated, scope);
                 }
 
+                if (container is StructKoto { ImplicitConstructor: { } constructor })
+                {
+                    this.BindNode(constructor, scope);
+                }
+
                 if (container is not (ContractKoto or StructKoto) && container.Bases.Count != 0)
                 {
                     return Fail(node, BindingFailure.Unsupported, true);
                 }
 
-                return Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
+                return HasLengthParameter(container) ? Fail(node, BindingFailure.InvalidTypeFormation) : Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
             case FunctionKoto function:
-                return this.BindFunction(function, scope);
+                return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:
                 return this.BindVariable(variable, scope);
             case AliasKoto alias:
-                this.AliasTarget(alias, scope);
+                this.AliasTarget(alias);
                 return null;
+            case DiscardKoto discard:
+                this.BindNode(discard.Operand, scope);
+                return Complete(node, BoundType.Unit);
             case CodeBlockKoto block:
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
@@ -224,9 +417,11 @@ public sealed partial class Binding
                 return Complete(node, BoundType.Char);
             case StringLiteralKoto:
                 return Complete(node, BoundType.String);
+            case InterpolatedStringKoto interpolation:
+                return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
                 var numberType = DefaultLiteralType(number, expected);
-                if (!LiteralCategoryMatches(number, numberType))
+                if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
                     return Fail(node, BindingFailure.TypeMismatch);
                 }
@@ -243,9 +438,16 @@ public sealed partial class Binding
                 return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
             case IndexKoto index:
                 return this.BindElement(index, scope);
+            case RangeKoto range:
+                return this.BindRangeValue(range, scope); // SPEC 4.6.3: range syntax outside an index position.
             case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
                 return this.BindElement(tupleElement, scope);
             case MemberAccessKoto member:
+                if (this.BindSequenceMember(member, scope, out var sequenceType))
+                {
+                    return sequenceType;
+                }
+
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
@@ -258,7 +460,7 @@ public sealed partial class Binding
             case UnaryKoto unary:
                 return this.BindUnary(unary, scope, expected);
             case ConversionKoto conversion:
-                return this.BindConversion(conversion, scope);
+                return this.BindConversion(conversion, scope, expected);
             case IsKoto { IsRuntimeTest: true } test:
                 return this.BindRuntimeTypeTest(test, scope);
             case BinaryKoto binary:
@@ -284,6 +486,8 @@ public sealed partial class Binding
                 var scopedResult = this.BeginResult(scoped, scope, expected);
                 this.BindNode(scoped.Body, scope, scopedResult.Expected);
                 return this.FinishResult(scoped, scopedResult);
+            case ForKoto iteration:
+                return this.BindIteration(iteration, scope);
             case WhileKoto loop:
                 var whileResult = this.BeginResult(loop, scope, BoundType.Unit);
                 this.RequireType(loop.Condition, scope, BoundType.Boolean);
@@ -311,10 +515,21 @@ public sealed partial class Binding
                 }
 
                 var actual = jump.Expression is { } operand ? this.BindNode(operand, scope, resultType) : BoundType.Unit;
+                if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
+                {
+                    Fail(jump, BindingFailure.TypeMismatch);
+                }
+
+                if (jump is ReturnKoto && target is FunctionKoto { ReturnType: PlaceResultKoto place } && jump.Expression is { } placeOperand &&
+                    (actual is null || !ReferenceEquals(actual, BoundType.Never)))
+                {
+                    this.CheckPlaceResultOperand(placeOperand, place, jump);
+                }
+
                 if (jump is not ContinueKoto)
                 {
                     targetResult?.Sources.Add(actual);
-                    if (actual is not null && resultType is not null && !Compatible(actual, resultType))
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
                     {
                         Fail(jump, BindingFailure.TypeMismatch);
                     }
@@ -328,17 +543,20 @@ public sealed partial class Binding
                 this.RequireType(require.Condition, scope, BoundType.Boolean);
                 this.BindNode(require.ElseBody, scope);
                 return Complete(node, BoundType.Unit);
+            case TestVerificationKoto verification:
+                return this.BindVerification(verification, scope);
             case LabeledKoto labeled:
                 return Complete(node, this.BindNode(labeled.Target, scope, expected));
             case TupleLiteralKoto tuple:
                 return this.BindTuple(tuple, scope, expected);
-            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray }:
-                for (var i = 0; i < array.Elements.Count; i++)
-                {
-                    this.RequireType(array.Elements[i], scope, expected.Components[0]);
-                }
-
-                return array.Elements.Count == expected.Length ? Complete(node, expected) : Fail(node, BindingFailure.TypeMismatch);
+            case DictionaryLiteralKoto dictionary:
+                return this.BindDictionaryLiteral(dictionary, scope, expected);
+            case ArrayLiteralKoto { FillLength: not null } fill:
+                return this.BindArrayFill(fill, scope, expected);
+            case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:
+                return this.BindContextualArrayLiteral(array, scope, expected);
+            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
+                return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
         }
@@ -354,6 +572,13 @@ public sealed partial class Binding
         if (symbol is not null)
         {
             this.BindHeader(symbol);
+        }
+
+        // The indexing pass only had the nominal shell. A constructor/destructor body sees the complete Self,
+        // including its Type parameters and Origins, just as an explicit receiver does.
+        if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)
+        {
+            receiver.Type = this.SelfType(owner);
         }
 
         for (var i = 0; i < function.GenericArguments.Count; i++)
@@ -372,7 +597,15 @@ public sealed partial class Binding
             this.BindType(parameter.Type, scope);
             if (parameter.DefaultValue is { } value)
             {
-                this.RequireType(value, scope.Parent ?? scope, parameter.Type.BoundType);
+                this.defaultBindingDepth++;
+                try
+                {
+                    this.RequireType(value, scope, parameter.Type.BoundType);
+                }
+                finally
+                {
+                    this.defaultBindingDepth--;
+                }
             }
         }
 
@@ -395,19 +628,25 @@ public sealed partial class Binding
         {
             var discards = KotoHelper.DiscardsFunctionBody(function);
             var result = this.BindNode(expression, scope, discards ? null : symbol?.Type);
+            var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
+            if (function.ReturnType is PlaceResultKoto place && !discards && (result is null || !ReferenceEquals(result, BoundType.Never)))
+            {
+                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
+            }
+
             if (symbol is not null)
             {
                 var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
                 structural.Clear();
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
-                    symbol.Type is { } expected && result is not null && !Compatible(result, expected))
+                    symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
                 {
                     Fail(expression, BindingFailure.TypeMismatch);
                 }
             }
         }
 
-        if (function.IsAnonymous || function.IsConstructor || function.IsDestructor || function.IsSpecialization)
+        if (function.IsAnonymous || (function.IsSpecialization && !this.specializations.ContainsKey(function)))
         {
             return Fail(function, BindingFailure.Unsupported, true);
         }
@@ -429,9 +668,48 @@ public sealed partial class Binding
         }
 
         symbol.Resolving = true;
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } annotation && variable.InitializerKoto is { } arrayInitializer)
+        {
+            this.InferArrayAnnotation(annotation, arrayInitializer, scope);
+        }
+
+        var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
+        if (originDeclaration is not null)
+        {
+            foreach (var set in originDeclaration.Sets.Values)
+            {
+                this.BindOriginSetType(set, scope);
+            }
+
+            this.CompleteOriginDeclaration(originDeclaration);
+            declared = variable.TypeKoto?.BoundType ?? declared;
+        }
+
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
+        if (declared is null && inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
+            initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
+        {
+            // SPEC 15.4.4: Origins omitted in the initializer's own Type expressions are resolved into the local's Type.
+            inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
+        }
+
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
+        {
+            // Select the Copy-read shape before inferring omitted Origins. Comparing the
+            // unresolved Origin with the stored reference's Origin would reject ref/ref/T
+            // initializers before the ordinary lifetime constraints can be inferred.
+            if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
+                ScalarReferent(inferred) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+            {
+                this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
+                inferred = referent;
+            }
+
+            declared = this.InferLocalOrigins(declared, inferred, variable, scope);
+        }
+
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
         {
             Fail(variable, BindingFailure.TypeMismatch);
@@ -456,6 +734,20 @@ public sealed partial class Binding
         return Complete(variable, symbol.Type);
     }
 
+    // SPEC 7.1.1: the operand of a Place result designates a Place, never a value, temporary, if, match or do, and an
+    // exclusive Place result is never reached through a shared layer.
+    private void CheckPlaceResultOperand(Koto operand, PlaceResultKoto place, Koto report)
+    {
+        if (!IsBarePlace(operand))
+        {
+            Fail(operand.BindingState == BindingState.Invalid ? report : operand, BindingFailure.PlaceRequired);
+        }
+        else if (place.IsExclusive && PathAuthority(operand) == SemanticsKind.Ref)
+        {
+            Fail(operand, BindingFailure.SharedPathAccess);
+        }
+    }
+
     private BoundType? BindName(IdentifierNameKoto node, BindingScope scope)
     {
         var symbol = this.Lookup(node.IdentifierName, scope, node, false);
@@ -470,6 +762,12 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
+        if (symbol.Name == "self" && symbol.Declaration is FunctionKoto special && (special.IsConstructor || special.IsDestructor) &&
+            ((special.BaseInitializer is { } initializer && IsWithin(node, initializer)) || node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
+        {
+            return Fail(node, BindingFailure.InvalidAssignment);
+        }
+
         if (symbol.ConditionalDeclaration is not null)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
@@ -486,14 +784,27 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate && scope.Function != symbol.Scope.Function)
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function)
         {
-            return Fail(node, BindingFailure.Capture);
+            if (scope.Function is not { IsAnonymous: true, Captures: null } closure ||
+                this.Capture(closure, symbol, this.scopes[closure]) is not { } capture)
+            {
+                return Fail(node, BindingFailure.Capture);
+            }
+
+            symbol = capture;
+            node.BoundSymbol = symbol;
         }
 
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
+            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
+            {
+                // SPEC 7.7: an unsafe function supports direct calls only.
+                return Fail(node, BindingFailure.UnsafeFunctionValue);
+            }
+
             // A function group is resolved for call selection, but not an inferred first-class value.
             node.BindingState = BindingState.Resolved;
             return null;
@@ -502,6 +813,11 @@ public sealed partial class Binding
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
             this.BindVariable(variable, symbol.Scope);
+        }
+
+        if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
+        {
+            this.BindStorageProjection(node, Accessor(storageAccessor));
         }
 
         if (symbol.Property is { } property)
@@ -515,11 +831,22 @@ public sealed partial class Binding
             var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
             var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+            if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
+            {
+                if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
+                    (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
+                {
+                    return Fail(node, BindingFailure.Unsupported);
+                }
+
+                return Complete(node, symbol.Type);
+            }
+
             var operation = write ? property.Setter : property.Getter;
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
             if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
             {
-                return Fail(node, BindingFailure.InvalidAssignment);
+                return Fail(node, AccessFailure(node));
             }
 
             if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
@@ -534,19 +861,28 @@ public sealed partial class Binding
 
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))
             {
-                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) && pathSelection.Path is not null && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
+                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) &&
+                    (pathSelection.Path is not null || IsObjectSemantics(sourceType.Semantics)) && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
                 {
-                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind))
+                    // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
+                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
                         return Fail(node, BindingFailure.TypeMismatch);
                     }
 
-                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, ProjectedReceiverProof(symbol));
+                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol);
+                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 
-                // Callable Property uses need the operation/Origin plans of expression
-                // checking. A declaration-side witness alone must not bypass that boundary.
-                return Fail(node, BindingFailure.Unsupported, true);
+                var input = target.Parent is BinaryKoto parentBinary ? parentBinary.Right : target.Parent;
+                if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
+                    (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
+                    (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
+                {
+                    return null;
+                }
+
+                return Complete(node, write ? property.Setter.Input : property.Getter.Result);
             }
 
             if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
@@ -567,7 +903,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !Compatible(actual, expected))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node))
         {
             Fail(node, BindingFailure.TypeMismatch);
         }
@@ -577,11 +913,23 @@ public sealed partial class Binding
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
+        if (unary is FromEndIndexKoto)
+        {
+            var offset = this.RequireType(unary.Operand, scope, BoundType.ISize);
+            return offset is null ? Complete(unary, null) : Complete(unary, ReferenceEquals(offset, BoundType.Never) ? BoundType.Never : this.InternType(BoundTypeKind.Nominal, this.Library.Index, SemanticsKind.Owner, []));
+        }
+
+        if (unary is MacroKoto)
+        {
+            return unary.Operand is InvocationKoto { Method: IdentifierNameKoto { IdentifierName: "tryWrite" } }
+                ? this.BindTryWrite(unary, scope) : this.BindAbort(unary, scope);
+        }
+
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
             // A directly signed literal is fitted as a signed value (SPEC 12.3.1).
             var type = DefaultLiteralType(number, expected);
-            if (!LiteralCategoryMatches(number, type))
+            if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
             {
                 return Fail(unary, BindingFailure.TypeMismatch);
             }
@@ -595,7 +943,12 @@ public sealed partial class Binding
             return Complete(unary, type);
         }
 
-        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : expected);
+        var operand = this.BindNode(unary.Operand, scope, unary.Akind == KotoKind.Not ? BoundType.Boolean : unary.Akind == KotoKind.Dereference ? null : expected);
+        if (unary.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)
+        {
+            operand = this.ReadReferent(unary.Operand, operand); // SPEC 3.3: a value operand denotes its Copy referent.
+        }
+
         if (operand is null)
         {
             return Complete(unary, null);
@@ -604,21 +957,35 @@ public sealed partial class Binding
         switch (unary.Akind)
         {
             case KotoKind.Not:
-                return ReferenceEquals(operand, BoundType.Boolean) ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+                return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
                 return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
                 // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
                 return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
+                if (!this.ValidPropertyWritePath(unary.Operand, scope))
+                {
+                    return Fail(unary, AccessFailure(unary.Operand));
+                }
+
+                if (ElementAccess.DestinationType(unary.Operand, operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+                    ReferenceBindingAssignment(unary.Operand) is { } referenceBinding)
+                {
+                    return Fail(unary, referenceBinding);
+                }
+
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
-                    return Fail(unary, BindingFailure.InvalidAssignment);
+                    return Fail(unary, AccessFailure(unary.Operand));
                 }
 
                 // Increment and decrement do not apply to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
                 return destination?.IsInteger == true ? Complete(unary, destination) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.Dereference:
+                // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
+                return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : Fail(unary, BindingFailure.TypeMismatch);
             default:
                 return Fail(unary, BindingFailure.Unsupported, true);
         }
@@ -626,6 +993,7 @@ public sealed partial class Binding
 
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
     {
+        binary.ComparisonActive = false;
         var kind = binary.Akind;
         if (kind is KotoKind.Conversion or KotoKind.As or KotoKind.Is)
         {
@@ -641,31 +1009,51 @@ public sealed partial class Binding
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         BoundType? left;
         BoundType? right;
+        // SPEC 3.3 and 13.4: an operand of Type ref/T or uniq/T denotes its Copy referent; an assignment
+        // target keeps its Place, and an assigned value is read only where the target's Type expects it.
         if (shift)
         {
             // The count may have any integer Type; only an untyped count adopts the shifted Type (SPEC 13.3).
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
-            if (assignment)
-            {
-                left = ElementAccess.DestinationType(binary.Left, left);
-            }
-
+            left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
             right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
+
+            // SPEC 3.5.3: the count of a compound shift is Scalar-read like that of a plain shift (below).
+            right = assignment ? this.ReadReferent(binary.Right, right) : right;
         }
         else if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
         {
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null);
+            right = this.ReadReferent(binary.Right, this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null));
             left = this.BindNode(binary.Left, scope, right ?? (comparison ? null : expected));
         }
         else
         {
             left = this.BindNode(binary.Left, scope, logical ? BoundType.Boolean : comparison || assignment ? null : expected);
-            if (assignment)
+            left = assignment ? ElementAccess.DestinationType(binary.Left, left) : this.ReadReferent(binary.Left, left);
+
+            // SPEC 15.1.6: a compound update of a reference binding, or a literal assigned to it, is fitted to the referent
+            // so that the one diagnostic names the binding's mode instead of a literal mismatch.
+            if (assignment && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
             {
-                left = ElementAccess.DestinationType(binary.Left, left);
+                this.BindNode(binary.Right, scope, left.Components[0]);
+                return Fail(binary, referenceBinding);
             }
 
-            right = this.BindNode(binary.Right, scope, left);
+            // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
+            // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
+            var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
+            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand);
+            if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
+            {
+                return Fail(binary, valueBinding);
+            }
+        }
+
+        if (!assignment)
+        {
+            right = this.ReadReferent(binary.Right, right);
         }
 
         if (left is null || right is null)
@@ -673,10 +1061,15 @@ public sealed partial class Binding
             return Complete(binary, null);
         }
 
-        if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
-            !(kind == KotoKind.Equals && CanInitializeLocal(binary.Left, scope)))
+        if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
         {
-            return Fail(binary, BindingFailure.InvalidAssignment);
+            return Fail(binary, AccessFailure(binary.Left));
+        }
+
+        if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
+            !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
+        {
+            return Fail(binary, AccessFailure(binary.Left));
         }
 
         var result = assignment ? BoundType.Unit : left;
@@ -686,15 +1079,74 @@ public sealed partial class Binding
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
-        if (comparison && ((ReferenceTypes.IsString(left) && (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.Never))) ||
-            (ReferenceEquals(left, BoundType.Never) && ReferenceTypes.IsString(right))))
+        if (comparison && (ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
         {
+            // SPEC 13.4: every operand is inspected in place through at most one reference.
+            this.CompareInPlace(binary.Left);
+            this.CompareInPlace(binary.Right);
+            this.StringThroughLayers(binary.Left, left);
+            this.StringThroughLayers(binary.Right, right);
             return Complete(binary, BoundType.Boolean);
+        }
+
+        if (logical)
+        {
+            // Both operands have a bool context, even when the left transfers.
+            // Never fitting does not waive checking of an unreachable right side.
+            return Compatible(left, BoundType.Boolean) && Compatible(right, BoundType.Boolean)
+                ? Complete(binary, BoundType.Boolean)
+                : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
+        if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
+        {
+            // SPEC 5.3: even zero displacement requires a positive element stride.
+            return (ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)) && !this.HasZeroStride(left.Components[0])
+                ? Complete(binary, result)
+                : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
+        if (comparison)
+        {
+            // SPEC 13.4, 3.4.1: qualifying pair layers are among the followed layers.
+            left = this.ComparisonThroughPairs(binary.Left, left);
+            right = this.ComparisonThroughPairs(binary.Right, right);
+        }
+
+        // SPEC 13.4: a comparison reads through every safe reference layer of either operand; a Unit referent is read like a Scalar.
+        if (comparison && (ComparisonReferent(left).Kind != BoundTypeKind.Primitive || ComparisonReferent(right).Kind != BoundTypeKind.Primitive ||
+            !ReferenceEquals(ComparisonReferent(left), left) || !ReferenceEquals(ComparisonReferent(right), right)))
+        {
+            if (!ReferenceEquals(left, BoundType.Unit) && ReferenceEquals(ComparisonReferent(left), BoundType.Unit))
+            {
+                this.adaptations[binary.Left] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+            }
+
+            if (!ReferenceEquals(right, BoundType.Unit) && ReferenceEquals(ComparisonReferent(right), BoundType.Unit))
+            {
+                this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
+            }
+
+            left = ComparisonReferent(left);
+            right = ComparisonReferent(right);
+            if (ReferenceEquals(left, BoundType.Never))
+            {
+                // The other operand still supplies and must prove the user comparison capability.
+                left = right;
+            }
         }
 
         if (!Compatible(right, left))
         {
-            return Fail(binary, BindingFailure.TypeMismatch);
+            if (comparison && this.CommonOriginType(left, right) is { } common)
+            {
+                left = common;
+            }
+            else
+            {
+                return Fail(binary, BindingFailure.TypeMismatch);
+            }
         }
 
         if (kind == KotoKind.Equals)
@@ -702,14 +1154,14 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Unit);
         }
 
-        if (logical)
+        // Built-in comparisons retain priority over the user Contract mapping (SPEC 13.4.1).
+        var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
+        if (comparison && ReferenceTypes.IsPointer(left))
         {
-            return ReferenceEquals(left, BoundType.Boolean) ? Complete(binary, BoundType.Boolean) : Fail(binary, BindingFailure.TypeMismatch);
+            // SPEC 5.1: same-Type pointers, or a pointer and null, compare addresses; ordering is not defined.
+            return operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals ? Complete(binary, BoundType.Boolean) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
-        // Only built-in primitive operations are decided here. User Types need Contract mappings or
-        // pointer rules (SPEC 13.4.1, 5.3), which are not bound yet.
-        var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
         if (comparison)
         {
             // bool and Unit support equality only; numbers, char, and string are also ordered (SPEC 13.4).
@@ -719,7 +1171,7 @@ public sealed partial class Binding
                 return Complete(binary, BoundType.Boolean);
             }
 
-            return primitive ? Fail(binary, BindingFailure.TypeMismatch) : Fail(binary, BindingFailure.Unsupported, true);
+            return primitive ? Fail(binary, BindingFailure.TypeMismatch) : this.BindContractComparison(binary, left, scope);
         }
 
         if (left.IsNumeric)
@@ -782,5 +1234,16 @@ public sealed partial class Binding
         internal BindingScope Scope { get; set; } = null!;
 
         public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+    }
+
+    // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;
+    // a single ref or uniq layer is inspected as it is.
+    private void StringThroughLayers(Koto operand, BoundType type)
+    {
+        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceTypes.IsStringReference(type) &&
+            this.SharedReferenceThroughLayers(type, BoundType.String, out _) is { } shared)
+        {
+            this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
+        }
     }
 }

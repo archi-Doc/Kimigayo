@@ -34,7 +34,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// </summary>
     public Koto? Type { get; private set; }
 
-    // Most types carry no Origin, so its three members share one lazily created object.
+    // Most types carry no Origin, so annotation data shares one lazily created object.
     private Origin? origin;
 
     /// <inheritdoc/>
@@ -58,7 +58,34 @@ public sealed class TypeSemanticsKoto : TypeKoto
             ? this.coreTypeToken.ToText()
             : this.nameOrSemanticsParameter ?? string.Empty;
 
+    /// <summary>Gets a value indicating whether this layer writes any Origin annotation.</summary>
+    /// <remarks>Equivalent to testing <see cref="OriginName"/>, <see cref="OriginExpression"/> and
+    /// <see cref="OriginArguments"/> together, in one field read.</remarks>
+    internal bool HasOrigin => this.origin is not null;
+
+    internal string? BindingSetName => this.origin is { IsBindingSet: true } set ? set.Name : null;
+
+    internal bool IsLegacyBorrowCandidate => this.origin is { IsBindingSet: true, FollowedBySlash: true };
+
+    internal SourceSpan BorrowOriginSpan => this.origin?.SourceSpan ?? default;
+
+    internal void MarkBindingSet(bool followedBySlash = false)
+    {
+        if (this.origin is { } annotation)
+        {
+            annotation.IsBindingSet = true;
+            annotation.FollowedBySlash = followedBySlash;
+        }
+    }
+
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
+
+    /// <summary>Gets a value indicating whether this node is a named Type written directly, simple, qualified or generic, so that a
+    /// trailing <c>during</c> binds the only slot of its schema (SPEC §15.3.1).</summary>
+    internal bool IsNamedType => this.Type is null ? !this.coreTypeToken.IsPrimitiveType() : this.isTransparentWrapper && this.Type is not TypeKoto;
+
+    /// <summary>Gets a value indicating whether a trailing <c>during</c> binds this named Type's only slot.</summary>
+    internal bool IsSlotBinding => this.origin is { IsSlotBinding: true };
 
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a simple named or primitive type with owner semantics.</summary>
     /// <param name="reader">The token reader.</param>
@@ -73,6 +100,18 @@ public sealed class TypeSemanticsKoto : TypeKoto
         {
             this.nameOrSemanticsParameter = reader.GetIdentifier(typeToken);
         }
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a synthesized bare operation target such as <c>move</c>.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The source span of the generating syntax.</param>
+    /// <param name="operation">The operation target name.</param>
+    internal TypeSemanticsKoto(ref TokenReader reader, SourceSpan range, string operation)
+        : base(ref reader, range)
+    {
+        this.coreTypeToken = TokenKind.Identifier;
+        this.semanticsKind = SemanticsKind.Owner;
+        this.nameOrSemanticsParameter = operation;
     }
 
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a compound type with explicit semantics.</summary>
@@ -116,6 +155,9 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
+        => this.WriteTypeTo(ref builder, writeBorrowOrigin: true);
+
+    internal void WriteTypeTo(ref IndentedStringBuilder builder, bool writeBorrowOrigin)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
 
@@ -127,12 +169,8 @@ public sealed class TypeSemanticsKoto : TypeKoto
                 builder.Append(Constants.SlashChar);
             }
 
-            // An inner Origin belongs to its own layer, and a function arrow binds
-            // less tightly than '/'. Keep both boundaries when writing changed trees.
-            var needsParentheses = !this.isTransparentWrapper &&
-                (this.Type is FunctionTypeKoto ||
-                (this.Type is TypeSemanticsKoto inner &&
-                (inner.OriginName is not null || inner.OriginExpression is not null || inner.OriginArguments is not null)));
+            var needsParentheses = !this.isTransparentWrapper && (this.Type is FunctionTypeKoto or OptionalTypeKoto ||
+                this.Type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, HasOrigin: true });
             if (needsParentheses)
             {
                 builder.Append('(');
@@ -149,35 +187,22 @@ public sealed class TypeSemanticsKoto : TypeKoto
             builder.Append(this.Identifier);
         }
 
-        if (this.OriginArguments is { } arguments)
+        if (writeBorrowOrigin || ((this.Type is null || this.isTransparentWrapper) && !this.IsSlotBinding))
         {
-            builder.Append(" from (");
-            for (var i = 0; i < arguments.Length; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
+            this.WriteOriginTo(ref builder);
+        }
+    }
 
-                builder.Append(arguments[i].Name);
-                builder.Append(" => ");
-                arguments[i].Value.WriteTo(ref builder);
-            }
+    internal void SetBorrowOrigin(Koto expression, SourceSpan sourceSpan)
+    {
+        this.SetOrigin(expression, null, sourceSpan.End);
+        this.origin!.SourceSpan = sourceSpan;
+    }
 
-            builder.Append(')');
-        }
-        else if (this.OriginExpression is not null)
-        {
-            builder.Append(" from ");
-            this.OriginExpression.WriteTo(ref builder);
-        }
-        else if (this.origin?.Name is { } originName)
-        {
-            builder.AppendSpace();
-            builder.Append(Constants.FromKeyword);
-            builder.AppendSpace();
-            builder.Append(originName);
-        }
+    internal void SetSlotBinding(Koto expression, SourceSpan sourceSpan)
+    {
+        this.SetBorrowOrigin(expression, sourceSpan);
+        this.origin!.IsSlotBinding = true;
     }
 
     internal void SetOrigin(string originName, int end)
@@ -205,13 +230,57 @@ public sealed class TypeSemanticsKoto : TypeKoto
         this.Adopt(expression);
         if (arguments is not null)
         {
-            foreach (var argument in arguments)
+            for (var i = 0; i < arguments.Length; i++)
             {
-                this.Adopt(argument.Value);
+                this.Adopt(arguments[i].Value);
             }
         }
 
         this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
+    }
+
+    internal void WriteOriginTo(ref IndentedStringBuilder builder)
+    {
+        if (this.origin is null)
+        {
+            return;
+        }
+
+        var bindingSet = !this.origin.IsSlotBinding && (this.origin.IsBindingSet || this.Type is null || this.isTransparentWrapper);
+        var intersection = !bindingSet && this.OriginExpression is AndKoto;
+        builder.Append(bindingSet ? "{" : " during ");
+        if (intersection)
+        {
+            builder.Append('(');
+        }
+
+        if (this.OriginArguments is { } arguments)
+        {
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(arguments[i].Name);
+                builder.Append(" => ");
+                arguments[i].Value.WriteTo(ref builder);
+            }
+        }
+        else if (this.OriginExpression is { } expression)
+        {
+            expression.WriteTo(ref builder);
+        }
+        else
+        {
+            builder.Append(this.origin.Name);
+        }
+
+        if (bindingSet || intersection)
+        {
+            builder.Append(bindingSet ? '}' : ')');
+        }
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
@@ -248,11 +317,11 @@ public sealed class TypeSemanticsKoto : TypeKoto
             yield return this.OriginExpression;
         }
 
-        if (this.OriginArguments is not null)
+        if (this.OriginArguments is { } yielded)
         {
-            foreach (var argument in this.OriginArguments)
+            for (var i = 0; i < yielded.Length; i++)
             {
-                yield return argument.Value;
+                yield return yielded[i].Value;
             }
         }
     }
@@ -266,13 +335,13 @@ public sealed class TypeSemanticsKoto : TypeKoto
             return true;
         }
 
-        if (this.OriginArguments is not null)
+        if (this.OriginArguments is { } arguments)
         {
-            foreach (var argument in this.OriginArguments)
+            for (var i = 0; i < arguments.Length; i++)
             {
-                if (argument.Value == oldKoto)
+                if (arguments[i].Value == oldKoto)
                 {
-                    argument.Value = newKoto;
+                    arguments[i].Value = newKoto;
                     return true;
                 }
             }
@@ -290,6 +359,14 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <summary>Stores the Origin annotation of a type layer.</summary>
     private sealed class Origin
     {
+        public bool IsBindingSet { get; set; }
+
+        public bool FollowedBySlash { get; set; }
+
+        public bool IsSlotBinding { get; set; }
+
+        public SourceSpan SourceSpan { get; set; }
+
         public string? Name { get; set; }
 
         public Koto? Expression { get; set; }
@@ -299,23 +376,14 @@ public sealed class TypeSemanticsKoto : TypeKoto
 }
 
 /// <summary>Represents a named Origin argument.</summary>
-[TinyhandObject]
-public sealed partial class OriginArgument
+/// <remarks>The syntax tree is rebuilt by reparsing, so this carries no serialized state.</remarks>
+/// <param name="name">The Origin parameter name.</param>
+/// <param name="value">The Origin expression.</param>
+public struct OriginArgument(string name, Koto value)
 {
     /// <summary>Gets the declared Origin parameter name.</summary>
-    [Key(0)]
-    public string Name { get; private set; } = string.Empty;
+    public string Name { get; } = name;
 
     /// <summary>Gets the supplied Origin expression.</summary>
-    [IgnoreMember]
-    public Koto Value { get; internal set; } = default!;
-
-    /// <summary>Initializes a new instance of the <see cref="OriginArgument"/> class.</summary>
-    /// <param name="name">The Origin parameter name.</param>
-    /// <param name="value">The Origin expression.</param>
-    public OriginArgument(string name, Koto value)
-    {
-        this.Name = name;
-        this.Value = value;
-    }
+    public Koto Value { get; internal set; } = value;
 }

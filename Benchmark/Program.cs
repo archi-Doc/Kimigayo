@@ -8,11 +8,27 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var b = new ParseBenchmark();
-        b.Test1();
+        if (args.Length > 0 && args[0] == "--lsp")
+        {
+            LspMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--named-arguments")
+        {
+            NamedArgumentMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--documentation-markdown")
+        {
+            DocumentationMarkdownMeasurements.Run(args[1..]);
+            return;
+        }
 
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(DocumentationMarkdownBenchmark),
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),
             typeof(PatternBindingBenchmark),

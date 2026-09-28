@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessInputs = new();
+    private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessOrigins = new();
 
     private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope)
     {
@@ -70,13 +71,21 @@ public sealed partial class Binding
         if (!implementation.IsStandard)
         {
             var key = (conformance, requirement);
-            if (!this.propertyWitnessInputs.TryGetValue(key, out inputOrigins!))
+            var inputCount = InputOriginCount(implementation.Binder);
+            if (!this.propertyWitnessInputs.TryGetValue(key, out inputOrigins!) || inputOrigins.Length != inputCount)
             {
-                this.propertyWitnessInputs.Add(key, inputOrigins = new BoundOrigin[2]);
+                this.propertyWitnessInputs[key] = inputOrigins = new BoundOrigin[inputCount];
             }
 
+            var originCount = implementation.Declaration?.Origins.Count ?? 0;
+            if (!this.propertyWitnessOrigins.TryGetValue(key, out var origins) || origins.Length != originCount)
+            {
+                this.propertyWitnessOrigins[key] = origins = new BoundOrigin[originCount];
+            }
+
+            Array.Clear(origins);
             Array.Clear(inputOrigins);
-            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], [], inputOrigins, selection.Path);
+            proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
         else
         {
@@ -101,7 +110,7 @@ public sealed partial class Binding
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = FitsType(field, result) ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, field, contract: this.Core.Copy)), scope) : ConstraintProof.Refuted;
+                proof = FitsType(field, result) ? this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, field, contract: this.Library.Copy)), scope) : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {

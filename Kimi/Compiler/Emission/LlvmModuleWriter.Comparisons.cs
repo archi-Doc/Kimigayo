@@ -86,8 +86,16 @@ internal static partial class LlvmModuleWriter
 
         output.Write(")\n");
         Name(output, "  %v", id);
-        output.Write(" = icmp ");
-        output.Write(instruction.ScalarOperator);
+        if (instruction.ScalarOperator == "order")
+        {
+            output.Write(" = add");
+        }
+        else
+        {
+            output.Write(" = icmp ");
+            output.Write(instruction.ScalarOperator);
+        }
+
         Name(output, " i32 %stringOrder", id);
         output.Write(", 0\n");
     }

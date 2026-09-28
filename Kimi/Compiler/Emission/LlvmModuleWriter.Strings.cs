@@ -40,7 +40,8 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             Name(output, "destroy", id);
             output.Write(":\n");
-            WriteCall(output, constants, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)], function: function);
+            // A string, or an Array handle released by its drop helper (the same slot/location ABI).
+            WriteCall(output, constants, instruction.Callee ?? WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)], function: function);
             output.Write("  br label ");
             WriteOperand(output, operands[0]);
             output.Write('\n');

@@ -21,4 +21,4 @@ bits[0] <<= shift
 if values[0] == 42 and values[1] == 0 and index == 1
     if before == 41 and after == 41 and pair.1 == 42
         if matrix[0][0] == 42 and fraction[0] == 42.0 and bits[0] == 42
-            writeLine("element updates complete")
+            Console.writeLine("element updates complete")

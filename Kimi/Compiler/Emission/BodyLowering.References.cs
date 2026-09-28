@@ -9,14 +9,6 @@ internal sealed partial class BodyLowering
     private int[] referenceRoots = [];
     private int[] callLoanPlans = [];
 
-    private static bool ReferenceParameterFits(BoundCall call, FunctionKoto target, int parameter, BoundArgumentOperation acquisition)
-    {
-        var formal = target.Parameters[parameter].Type.BoundType;
-        return ReferenceTypes.IsString(formal) && ReferenceTypes.IsString(acquisition.ParameterType) &&
-            formal!.Origin is { Kind: OriginKind.Input } origin && ReferenceEquals(origin.Binder, target) && origin.Slot == parameter &&
-            (uint)parameter < (uint)call.InputOrigins.Length && ReferenceEquals(acquisition.ParameterType!.Origin, call.InputOrigins[parameter]);
-    }
-
     private bool PrepareReferences(OwnershipBody body, out string? failure)
     {
         failure = null;
@@ -29,16 +21,22 @@ internal sealed partial class BodyLowering
             var plan = body.CallLoans[i];
             if ((uint)plan.Call >= (uint)body.Operations.Count || this.callLoanPlans[plan.Call] >= 0 ||
                 body.Operations[plan.Call] is not { Kind: OwnershipOperationKind.Call, Source: InvocationKoto { BoundCall: { } call } } ||
-                plan.ResultRequirement != LoanRequirement.None || !ReferenceTypes.IndependentResult(call.ReturnType))
+                plan.ResultRequirement != (plan.Result < 0 || ReferenceTypes.IndependentResult(call.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref))
             {
                 return Fail("Invalid call result Loan contract.", out failure);
             }
 
-            if (ReferenceEquals(call.ReturnType, BoundType.Never))
+            var noReturn = ReferenceEquals(call.ReturnType, BoundType.Never);
+            if (!body.IsReachable(plan.Call))
+            {
+                noReturn |= this.CannotCompleteCall((InvocationKoto)body.Operations[plan.Call].Source);
+            }
+
+            if (noReturn)
             {
                 if (plan.Result != -1 || plan.End != -1)
                 {
-                    return Fail("A Never call cannot deliver a borrowed result or release Loans on normal return.", out failure);
+                    return Fail("A noncompleting call cannot deliver a borrowed result or release Loans on normal return.", out failure);
                 }
             }
             else if ((uint)plan.Result >= (uint)body.Operations.Count || body.Operations[plan.Result].Kind != OwnershipOperationKind.Produce ||
@@ -47,7 +45,7 @@ internal sealed partial class BodyLowering
                 (plan.End >= 0 && ((uint)plan.End >= (uint)body.Operations.Count || body.Operations[plan.End].Kind != OwnershipOperationKind.EndComparisonLoans ||
                     !ReferenceEquals(body.Operations[plan.End].Source, body.Operations[plan.Call].Source))))
             {
-                return Fail("Call Loans must end after securing an independent normal result.", out failure);
+                return Fail("Call Loans must end after securing the normal result and its Origin dependencies.", out failure);
             }
 
             this.callLoanPlans[plan.Call] = i;
@@ -93,6 +91,17 @@ internal sealed partial class BodyLowering
             }
 
             var place = body.Places[ValuePlace(operation)];
+            // Only implicit call/guard inspections need this additional short-lived Loan plan.
+            // Stored references, returned references and explicit storage borrows use ordinary
+            // pointer values, validated by the common scalar and Origin/Loan paths.
+            var alias = value.Kind == OwnershipValueKind.Alias && value.Count == 1 ? Input(body, id, 0) : -1;
+            if (value.Kind != OwnershipValueKind.Borrow && value.Kind != OwnershipValueKind.Parameter &&
+                !(operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry &&
+                    alias >= 0 && alias < id && this.referenceRoots[alias] >= 0))
+            {
+                continue;
+            }
+
             if (place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary) || place.Acquisition != AcquisitionKind.Copy)
             {
                 return Fail("Reference storage and results are not implemented.", out failure);
@@ -108,7 +117,7 @@ internal sealed partial class BodyLowering
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
                     if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.Function.Parameters.Count || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
-                        !ReferenceEquals(type, body.Function.Parameters[(int)value.Constant].Type.BoundType))
+                        !ReferenceEquals(type, SignatureType(this, body.Function.Parameters[(int)value.Constant].Type.BoundType)))
                     {
                         return Fail("Invalid reference parameter definition.", out failure);
                     }
@@ -117,12 +126,12 @@ internal sealed partial class BodyLowering
                     break;
                 case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Borrow:
                     var loan = id < body.LoanStates.Count ? body.LoanStates[id] : -1;
+                    var originSource = Binding.PlaceOriginSource(operation.Source);
                     if ((uint)operation.Place >= (uint)body.Places.Count || place.Kind != OwnershipPlaceKind.Temporary || operation.LoanMode != LoanRequirement.Ref ||
                         operation.Acquisition != AcquisitionKind.None || loan < 0 || body.ComparisonLoans[loan].Read != id || body.ComparisonLoans[loan].Call is null ||
-                        !ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) ||
-                        !this.ValidateBorrowSource(body, operation) ||
+                        (operation.Projection < 0 && (!ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) || !this.ValidateBorrowSource(body, operation))) ||
                         type!.Origin is not { Kind: OriginKind.Projection } origin ||
-                        !ReferenceEquals(origin.Binder, operation.Source.BoundSymbol?.Declaration ?? operation.Source) || origin.Slot != (operation.Source.BoundSymbol?.Slot ?? 0))
+                        !ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) || origin.Slot != Binding.PlaceOriginSlot(originSource))
                     {
                         return Fail("Reference formation lacks its source and argument Loan.", out failure);
                     }
@@ -159,39 +168,54 @@ internal sealed partial class BodyLowering
                 body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
         }
 
-        var expression = operation.Source;
-        while (expression is LabeledKoto labeled)
-        {
-            expression = KotoHelper.UnwrapParentheses(labeled.Target);
-        }
-
-        // Storage authorization is checked after the string plans are prepared.
-        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, expression);
+        // A transferred or Identity-acquired operand (text@move, text@owner/string) is borrowed through the
+        // operand's own temporary. Storage authorization is checked after the string plans are prepared.
+        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, ElementAccess.ValueSource(operation.Source));
     }
 
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)
     {
         var root = this.referenceRoots[value];
-        return body.Values[root].Kind == OwnershipValueKind.Parameter
-            ? new(EmissionOperandKind.Argument, body.Values[root].Constant)
-            : new(EmissionOperandKind.SlotAddress, body.Operations[root].Place);
+        if (root < 0)
+        {
+            return this.PhysicalOperand(body, value);
+        }
+
+        // A guard candidate may be read under another argument's element Loan.
+        // Only a reference formed from a projection uses that projection's address.
+        return body.Values[root].Kind switch
+        {
+            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[root].Constant),
+            _ => StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1),
+        };
     }
 
     private bool ValidateReferenceUse(OwnershipBody body, int value, int at)
     {
-        if ((uint)value >= (uint)body.Operations.Count || this.referenceRoots[value] < 0 ||
+        if ((uint)value >= (uint)body.Operations.Count || !ReferenceTypes.IsStringReference(ValueType(body, value)) ||
             (body.IsReachable(at) && !this.Dominates(value, at)))
         {
             return false;
         }
 
         var root = this.referenceRoots[value];
+        if (root < 0)
+        {
+            return true; // The common value lowering and retained Origin dependencies validate storage.
+        }
+
+        // A parameter needs no Loan of this body: its source outlives it.
         if (body.Values[root].Kind == OwnershipValueKind.Parameter || !body.IsReachable(at))
         {
             return true;
         }
 
         var loan = body.LoanStates[root];
+        if (body.Operations[root].Projection >= 0)
+        {
+            return this.ValidateElementBorrow(body, root, at);
+        }
+
         if (body.Operations[root].Kind == OwnershipOperationKind.Read)
         {
             while (loan >= 0 && body.ComparisonLoans[loan].Guard != body.OperationSteps[root])

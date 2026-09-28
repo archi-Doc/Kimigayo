@@ -1,1 +1,1 @@
-::Core.writeLine("Hello, world!")
+::Kimi.Console.writeLine("Hello, world!")

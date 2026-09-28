@@ -8,6 +8,7 @@ public readonly record struct SourcePosition : IComparable<SourcePosition>
 
     public int Character { get; }
 
+    [System.Text.Json.Serialization.JsonConstructor]
     public SourcePosition(int line, int character)
     {
         this.Line = line;

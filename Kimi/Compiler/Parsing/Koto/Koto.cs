@@ -72,8 +72,14 @@ public enum KotoKind : byte
     /// <summary>A type with ownership semantics.</summary>
     TypeSemantics,
 
-    /// <summary>A semantics mask.</summary>
-    SemanticsMask,
+    /// <summary>An optional Type suffix.</summary>
+    OptionalType,
+
+    /// <summary>One-layer failure propagation.</summary>
+    Try,
+
+    /// <summary>An explicit discard statement.</summary>
+    Discard,
 
     // Unary
 
@@ -302,6 +308,9 @@ public enum KotoKind : byte
     /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
     ParenthesizedType,
 
+    /// <summary>A Place result <c>place ref/T</c> or <c>place uniq/T</c> in result position.</summary>
+    PlaceResult,
+
     /// <summary>A fixed-array type.</summary>
     FixedArrayType,
 
@@ -345,6 +354,15 @@ public enum KotoKind : byte
     /// <summary>A do expression.</summary>
     Do,
 
+    /// <summary>A standalone expect/require verification.</summary>
+    TestVerification,
+
+    /// <summary>A declaration-attached Origin relation.</summary>
+    OriginRelation,
+
+    /// <summary>An associated-Type Origin application.</summary>
+    OriginApplication,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -386,6 +404,11 @@ public abstract class Koto
             if (this.AttributeChain is not null)
             {
                 yield return this.AttributeChain;
+            }
+
+            foreach (var clause in OriginClauses.Get(this))
+            {
+                yield return clause;
             }
 
             foreach (var child in this.GetChildNodes())
@@ -473,6 +496,12 @@ public abstract class Koto
     /// <summary>Gets the selected symbol, or null before selection.</summary>
     public BindingSymbol? BoundSymbol { get; internal set; }
 
+    internal BoundType? ErasedFunctionType { get; set; }
+
+    internal BoundFormatting? FormattingStorage { get; set; }
+
+    internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
+
     internal BindingFailure BindingFailure { get; set; }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
@@ -494,6 +523,12 @@ public abstract class Koto
             visitor.Visit(attribute);
         }
 
+        var originClauses = OriginClauses.Get(this);
+        for (var i = 0; i < originClauses.Count; i++)
+        {
+            visitor.Visit(originClauses[i]);
+        }
+
         this.VisitChildrenCore(visitor);
     }
 
@@ -501,8 +536,9 @@ public abstract class Koto
     /// <param name="code">The diagnostic code.</param>
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
-    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
+    /// <param name="hint">An optional context-specific explanation appended to the message.</param>
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
@@ -570,13 +606,14 @@ public abstract class Koto
 
             this.AttributeChain = attribute;
         }
-        else if (!this.ReplaceChildCore(oldKoto, newKoto))
+        else if (!ReplaceInList(OriginClauses.Get(this), oldKoto, newKoto) && !this.ReplaceChildCore(oldKoto, newKoto))
         {
             return false;
         }
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
+        this.CodeContext.Compilation.NoteSyntaxEdit();
         return true;
     }
 
@@ -654,6 +691,7 @@ public abstract class Koto
         this.BoundMeaning = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
+        this.CodeContext.Compilation.NoteSyntaxEdit();
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>

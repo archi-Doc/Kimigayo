@@ -41,6 +41,7 @@ public enum BindingSymbolKind : byte
     PropertyAccessor,
     EnumCase,
     PatternCandidate,
+    Capture,
 }
 
 /// <summary>Classifies normalized semantic types.</summary>
@@ -57,6 +58,11 @@ public enum BoundTypeKind : byte
     TargetProjection,
     SemanticsApplication,
     AssociatedProjection,
+    Slice,
+    Range,
+    Closure,
+    Array,
+    Dictionary,
 }
 
 internal enum BindingFailure : byte
@@ -79,14 +85,53 @@ internal enum BindingFailure : byte
     MissingOrigin,
     InvalidTypeFormation,
     InvalidConstraint,
+    InvalidSelfClause,
+    NotObjectPayload,
     UnprovenConstraint,
     UnsatisfiedConstraint,
-    InvalidCore,
+    InvalidKimi,
     MissingImplementation,
     IncompatibleImplementation,
     InvalidAssociatedType,
     InvalidPattern,
     NonExhaustiveMatch,
+    InvalidTestDefinition,
+    InvalidLayoutAttribute,
+    ConflictingLayout,
+    InvalidLibraryImport,
+    MissingNativeRequirement,
+    UnsupportedImportSignature,
+    ConflictingImportSignature,
+    ConflictingRuntimeSymbol,
+    ConflictingImportSupply,
+    UnsafeFunctionValue,
+    UnavailableReservedImport,
+    SplitCLayoutStorage,
+    InvalidCLayout,
+    InvalidInlineLayout,
+
+    // SPEC 15.1.5 lending rule: a bare Non-Copy Place needs @move, and a directly owned Place needs @uniq.
+    TransferRequired,
+    ExclusiveBorrowRequired,
+
+    // SPEC 15.1.6: a value assigned to a pattern or for binding that is a reference into a Shared or Exclusive Subject.
+    SharedBindingAssignment,
+    ExclusiveBindingAssignment,
+
+    // SPEC 3.4, 15.1.5: the layer of a Place's path that denies the requested capability.
+    SharedPathAccess,
+    ExclusivePathTake,
+    PlaceRequired,
+
+    // SPEC 7.3: one receiver shape per function group fixed by member lookup.
+    ReceiverShapeMismatch,
+
+    // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
+    BareOwningShorthand,
+    NonCopyOperand,
+    MissingSpecializationTarget,
+    SpecializationInputMismatch,
+    DuplicateDictionaryKey,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -126,6 +171,10 @@ public sealed class BindingSymbol
     /// <summary>Gets the instance receiver's parameter slot, or -1 for ordinary/type functions.</summary>
     public int ReceiverIndex { get; internal set; } = -1;
 
+    internal KimiDeclarationId? LibraryDeclaration { get; init; }
+
+    internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
+
     internal BoundType? WholeType { get; set; }
 
     internal BindingSymbol? Pair { get; set; }
@@ -141,6 +190,17 @@ public sealed class BindingSymbol
     internal bool HeaderBound { get; set; }
 
     internal int Slot { get; set; }
+
+    internal bool MutableCapture { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a Pattern or iteration binding is a reference because its path is shared or exclusive (SPEC 15.1.6).</summary>
+    internal bool BindsReference { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
+    internal bool TransferCapture { get; set; }
+
+    /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.4.7.2), or null when the Type may be an object payload.</summary>
+    internal BindingSymbol? ObjectPayloadOptOut { get; set; }
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
@@ -148,6 +208,10 @@ public sealed class BindingSymbol
 public sealed record BoundType : ControlFlowType
 {
     private readonly NumericCategory numeric;
+
+    // Whole-subtree summaries, computed once at construction (see the constructor).
+    private readonly bool carriesOrigin;
+    private readonly bool carriesOriginOrSlot;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
@@ -161,6 +225,18 @@ public sealed record BoundType : ControlFlowType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+
+        // Components are complete before interning, so these summaries are exact and never revisited.
+        var found = origin is not null || originArguments is { Length: > 0 };
+        var slot = found || kind == BoundTypeKind.Parameter;
+        for (var i = 0; components is not null && i < components.Length && !(found && slot); i++)
+        {
+            found |= components[i].carriesOrigin;
+            slot |= components[i].carriesOriginOrSlot;
+        }
+
+        this.carriesOrigin = found;
+        this.carriesOriginOrSlot = slot;
     }
 
     private enum NumericCategory : byte
@@ -206,10 +282,30 @@ public sealed record BoundType : ControlFlowType
     internal static readonly BoundType F64 = Primitives["f64"];
 
     internal static readonly BoundType ISize = Primitives["isize"];
+    internal static readonly BoundType USize = Primitives["usize"];
+
+    internal static readonly BoundType Range = new("Range", BoundTypeKind.Range);
 
     internal static readonly BoundType Char = Primitives["char"];
 
     internal static readonly BoundType String = Primitives["string"];
+
+    // Refilled by ownership preparation after each final bind; excluded from Type identity.
+    internal BoundType[]? StoredFields { get; set; }
+
+    internal BoundType? StoredBase { get; set; }
+
+    internal BoundType[]? StoredCases { get; set; }
+
+    internal ulong StorageVersion { get; set; }
+
+    /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin.</summary>
+    /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
+    internal bool CarriesOrigin => this.carriesOrigin;
+
+    /// <summary>Gets a value indicating whether this subtree carries an Origin or a Type Parameter.</summary>
+    /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>
+    internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
 
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 
@@ -260,6 +356,8 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
 
+    internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
+
     internal ConstraintEnvironment? Constraints { get; set; }
 
     internal BoundConformancePath? ConformancePath { get; set; }
@@ -269,6 +367,7 @@ internal sealed class BindingScope(Koto owner)
         this.Types.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
+        this.OriginSets?.Clear();
         this.Constraints?.Reset();
     }
 }
@@ -281,3 +380,7 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
 {
     public bool IsComplete => this.Mode == BindingMode.Final && this.UnresolvedCount == 0 && this.InvalidCount == 0;
 }
+
+/// <summary>A validated <c>#LibraryImport</c> declaration: its external symbol and the supply kind that
+/// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.8.2.1, 22.3).</summary>
+internal readonly record struct LibraryImport(FunctionKoto Function, string Library, string Symbol, string Kind);

@@ -1,0 +1,4 @@
+OutputKind="Application"
+Targets={"x86_64-pc-windows-msvc"}
+Dependencies=
+  Geometry={PackageId="example.geometry" PackageVersion="1.0.0" Project="../Geometry/Geometry.kimiproj"}

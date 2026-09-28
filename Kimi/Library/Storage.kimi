@@ -1,0 +1,57 @@
+// SPEC 22.1.2.5: the standard storage boundary. These Types and operations split standard collection Storage into
+// non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
+// The compiler supplies construction and the unsafe capability primitives; ordinary Field operations grant no capability.
+internal group Storage
+    /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
+    internal struct RefRemainder<E> {source}
+        internal let storage: unsafe/E
+        internal var position: isize
+        internal var count: isize
+
+    /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
+    internal struct UniqRemainder<E> {source}
+        internal let storage: unsafe/E
+        internal var position: isize
+        internal var count: isize
+
+    /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
+    internal struct OwnedRemainder<E>
+        internal let storage: unsafe/E
+        internal var position: isize
+        internal var count: isize
+        internal var capacity: isize
+
+        deinit
+            let storage: unsafe/E = self.storage
+            while self.count > 0
+                self.count -= 1
+                unsafe => _ = storage[self.position + self.count]
+            unsafe => release(storage)
+
+    /// Transfers the first unreturned element to its new owner and advances the owning remainder.
+    internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
+        require state.count > 0 else => return .None
+        let position = state.position
+        state.position += 1
+        state.count -= 1
+        unsafe => return .Some(state.storage[position])
+
+    /// Lends the first untaken element and advances the shared remainder without allocating or invoking user code.
+    internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
+        require state.count > 0 else => return .None
+        let position = state.position
+        state.position += 1
+        state.count -= 1
+        unsafe
+            let element = state.storage + position
+            return .Some(lend(state, element))
+
+    /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
+    internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
+        require state.count > 0 else => return .None
+        let position = state.position
+        state.position += 1
+        state.count -= 1
+        unsafe
+            let element = state.storage + position
+            return .Some(split(state, element))

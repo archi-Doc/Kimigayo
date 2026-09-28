@@ -15,11 +15,25 @@ public sealed partial class Binding
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
+    /// <summary>Gets the terminal Scalar of a chain of safe value-reference layers (SPEC 3.5.3).</summary>
+    /// <param name="type">The source Type.</param>
+    /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
+    internal static BoundType? ScalarReferent(BoundType? type)
+    {
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            return null;
+        }
+
+        var terminal = ComparisonReferent(type);
+        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
+    }
+
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
     /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
-    internal static BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
+    internal BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
     {
         conflict = false;
         for (var i = 0; i < types.Count; i++)
@@ -37,14 +51,94 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 3.5.3, 14.9.1: sources that differ only in safe reference layers over one Scalar Type unify to that Scalar,
+        // and each reference source is Scalar-read. Sources with the same layers keep the borrow rule below.
+        if (ScalarUnification(types) is { } scalar)
+        {
+            return scalar;
+        }
+
+        // Borrow results with the same referent retain every incoming dependency.
+        // This does not search common bases or change referent variance.
+        var borrowed = types.Count > 0 ? types[0] : null;
+        for (var i = 1; i < types.Count && borrowed is not null; i++)
+        {
+            borrowed = this.CommonBorrowResult(borrowed, types[i]);
+        }
+
+        if (borrowed is not null)
+        {
+            return borrowed;
+        }
+
         // No common base is searched; unrelated sources require an annotation.
         conflict = types.Count > 0;
         return null;
     }
 
+    internal BoundType? CommonBorrowResult(BoundType left, BoundType right)
+    {
+        if (ReferenceEquals(left, BoundType.Never))
+        {
+            return right;
+        }
+
+        if (ReferenceEquals(right, BoundType.Never) || ReferenceEquals(left, right))
+        {
+            return left;
+        }
+
+        if (left.Kind != BoundTypeKind.Semantics || right.Kind != BoundTypeKind.Semantics ||
+            !IsBorrow(left.Semantics) || left.Semantics != right.Semantics ||
+            left.Origin is not { } a || right.Origin is not { } b ||
+            left.Components.Count != 1 || right.Components.Count != 1 ||
+            !ReferenceEquals(left.Components[0], right.Components[0]) ||
+            left.OriginArguments.Count != 0 || right.OriginArguments.Count != 0)
+        {
+            return null;
+        }
+
+        return this.WithOrigins(left, this.Meet(a, b), []);
+    }
+
+    // SPEC 14.9.1: result sources whose reference layers over one Scalar differ in number or kind unify to that Scalar;
+    // sources with the same layers keep the ordinary common-borrow rule.
+    private static BoundType? ScalarUnification(List<BoundType> types)
+    {
+        BoundType? scalar = null;
+        var differ = false;
+        for (var i = 0; i < types.Count; i++)
+        {
+            var terminal = types[i];
+            var first = types[0];
+            while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                differ |= first is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || first.Semantics != terminal.Semantics;
+                terminal = terminal.Components[0];
+                first = first is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? first.Components[0] : first;
+            }
+
+            differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+            if (terminal.Kind != BoundTypeKind.Primitive || !ScalarTypes.Supports(terminal) || (scalar is not null && !ReferenceEquals(scalar, terminal)))
+            {
+                return null;
+            }
+
+            scalar = terminal;
+        }
+
+        return differ ? scalar : null;
+    }
+
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
-        if (!KotoHelper.IsValueContext(target) || target is WhileKoto or ForKoto)
+        if (expected?.Origin?.Kind == OriginKind.Inference)
+        {
+            // Infer the result's actual dependency before completing a local annotation.
+            expected = null;
+        }
+
+        if ((target is not TryKoto && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
         {
             expected = BoundType.Unit;
         }
@@ -57,6 +151,7 @@ public sealed partial class Binding
         }
 
         var context = this.resultPool[this.resultCursor++];
+        context.HasLiteral = false;
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
@@ -73,7 +168,14 @@ public sealed partial class Binding
     private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
     {
         this.FindResultEvidence(target, scope, context);
-        context.Expected = SelectCommonType(context.Evidence, out var conflict);
+        context.Expected = this.SelectCommonType(context.Evidence, out var conflict);
+        if (context.HasLiteral && context.Expected is { } common && ScalarReferent(common) is { } terminal)
+        {
+            // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal Scalar of the reference sources,
+            // which then supply that Scalar by a Scalar read.
+            context.Expected = terminal;
+        }
+
         context.Invalid |= conflict;
         context.Evidence.Clear();
     }
@@ -88,9 +190,12 @@ public sealed partial class Binding
 
         switch (source)
         {
+            case TryKoto propagation:
+                var operand = this.ResultEvidence(propagation.Expression, scope);
+                return operand?.Kind == BoundTypeKind.Constructed && (operand.Symbol == this.Library.Option || operand.Symbol == this.Library.Result) ? operand.Components[0] : null;
             case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
                 return BoundType.Boolean;
-            case StringLiteralKoto:
+            case StringLiteralKoto or InterpolatedStringKoto:
                 return BoundType.String;
             case CharLiteralKoto:
                 return BoundType.Char;
@@ -110,6 +215,11 @@ public sealed partial class Binding
                 if (!this.ConversionCanComplete(conversion.Left, scope))
                 {
                     return BoundType.Never;
+                }
+
+                if (IsCopyOperation(conversion))
+                {
+                    return this.ResultEvidence(conversion.Left, this.NodeScope(source, scope));
                 }
 
                 return this.BindType(conversion.Right, this.NodeScope(source, scope));
@@ -179,7 +289,7 @@ public sealed partial class Binding
             expression = label.Target;
         }
 
-        if (expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
+        if (expression is not TryKoto && expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
         {
             this.FindResultEvidence(expression, scope, context);
             return;
@@ -189,6 +299,10 @@ public sealed partial class Binding
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
         {
             context.Evidence.Add(evidence);
+        }
+        else if (evidence is null && IsUnfittedLiteral(expression))
+        {
+            context.HasLiteral = true;
         }
     }
 
@@ -226,7 +340,8 @@ public sealed partial class Binding
         var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
-            context.Sources.Add(item.BoundType);
+            // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
+            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
@@ -289,7 +404,7 @@ public sealed partial class Binding
         var common = context.Expected;
         if (common is null)
         {
-            common = SelectCommonType(types, out var conflict);
+            common = this.SelectCommonType(types, out var conflict);
             context.Invalid |= conflict;
         }
         else
@@ -330,5 +445,7 @@ public sealed partial class Binding
         internal bool Pending { get; set; }
 
         internal bool Invalid { get; set; }
+
+        internal bool HasLiteral { get; set; }
     }
 }

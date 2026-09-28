@@ -9,7 +9,7 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, BindingSymbol Contract, BindingScope Scope)> conformanceQueries = new();
     private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
-    private static bool DisjointConformanceFacts(BindingScope a, BindingScope b)
+    private bool DisjointConformanceFacts(BindingScope a, BindingScope b)
     {
         for (var left = a; left is not null; left = left.Parent)
         {
@@ -29,7 +29,7 @@ public sealed partial class Binding
                 {
                     foreach (var q in y.Facts)
                     {
-                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject))
+                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p) || !this.AvailableConstraintFact(y, q))
                         {
                             continue;
                         }
@@ -79,7 +79,7 @@ public sealed partial class Binding
                 var self = this.SelfType(a.Type);
                 var ab = this.ProveConformanceConditions(a, self, b.Scope);
                 var ba = this.ProveConformanceConditions(b, self, a.Scope);
-                var disjoint = DisjointConformanceFacts(a.Scope, b.Scope);
+                var disjoint = this.DisjointConformanceFacts(a.Scope, b.Scope);
                 if (ab == ConstraintProof.Error || ba == ConstraintProof.Error)
                 {
                     // Substitution can expose a directly inconsistent intersection of two
@@ -106,9 +106,15 @@ public sealed partial class Binding
                 var environment = scope.Constraints ??= new();
                 if (b.Scope.Parent?.Constraints is { } other)
                 {
-                    foreach (var fact in other.Facts)
+                    foreach (var fact in other.DirectFacts)
                     {
                         this.AddConstraintFact(environment, fact);
+                    }
+
+                    for (var f = 0; f < other.DerivedFacts.Count; f++)
+                    {
+                        var derived = other.DerivedFacts[f];
+                        this.AddConstraintFact(environment, derived.Fact, derived.Source);
                     }
                 }
 
@@ -181,7 +187,7 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.GenericParameterNodes.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
                 {
                     Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
@@ -190,14 +196,15 @@ public sealed partial class Binding
                 if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
-                    if (IsRefinement(contract, this.Core.Copy))
+                    if (IsRefinement(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }
                 }
                 else
                 {
-                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    // SPEC 8.4.7.2: ObjectPayload is never granted, conditionally or otherwise.
+                    Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
                 continue;
@@ -227,7 +234,8 @@ public sealed partial class Binding
                         subject = subject.Components[0];
                     }
 
-                    valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) && ReferenceEquals(subject?.Symbol?.Scope, outer);
+                    valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) &&
+                        subject?.Symbol is { } parameter && ContainerSlot(container, parameter) >= 0;
                 }
 
                 this.ExpandScopeContractPremises(scope);
@@ -257,7 +265,32 @@ public sealed partial class Binding
             }
         }
 
-        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || type.Symbol is not { } symbol)
+        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+                : ComparisonTypes.IsBuiltin(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        }
+
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
+        }
+
+        // SPEC 8.7: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
+        // conformances above; no declaration can add another (SPEC 8.4.8.4), so its fixed environment refutes the rest.
+        if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&
+            contract.Intrinsic == IntrinsicKind.None)
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;
+        }
+
+        // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
+        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary) || type.Symbol is not { } symbol)
         {
             return ConstraintProof.Unknown;
         }
@@ -267,7 +300,32 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (!this.conformances.TryGetValue((symbol, contract), out var identity) || identity.PathStorage.Count == 0)
+        this.conformances.TryGetValue((symbol, contract), out var identity);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.conformancesByType.TryGetValue(symbol, out var bindings))
+        {
+            foreach (var candidate in bindings)
+            {
+                if (ReferenceEquals(candidate.Contract.Declaration, contract.Declaration) && candidate.Contract.Type is { } formal &&
+                    ReferenceEquals(this.StoredType(formal, type), contractReference))
+                {
+                    identity = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (identity is null && !IsBoundContractReference(contract))
+        {
+            // SPEC 8.4.9: a Contract named without Type arguments (a requirement's owner) is satisfied by the one conformance
+            // to a bound reference of its declaration; several such conformances stay undecided here.
+            identity = this.ConformanceByDeclaration(symbol, contract, out var ambiguous);
+            if (ambiguous)
+            {
+                return ConstraintProof.Unknown;
+            }
+        }
+
+        if (identity is null || identity.PathStorage.Count == 0)
         {
             return !DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
@@ -299,9 +357,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto container && container.GenericParameterNodes.Count != 0)
+            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto && symbol.Schema is { GenericSlots.Count: > 0 })
             {
-                result = CombineProof(result, type.Components.Count == container.GenericParameterNodes.Count ? this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope) : ConstraintProof.Unknown, true);
+                result = CombineProof(result, type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown, true);
             }
 
             if (result != ConstraintProof.Proven)

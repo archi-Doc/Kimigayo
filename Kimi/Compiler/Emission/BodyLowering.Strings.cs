@@ -6,8 +6,10 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private const int BorrowedTemporaryFlag = 4;
     private int[] liveFlags = [];
     private int[] flagValidation = [];
+    private int[] borrowedTemporaries = [];
 
     internal static bool ValidateStringFlags(OwnershipBody body, EmissionFunction function, Span<int> scratch, ReadOnlySpan<byte> execution = default)
     {
@@ -19,21 +21,22 @@ internal sealed partial class BodyLowering
         scratch.Clear();
         var flags = scratch[..body.Places.Count];
         var seen = scratch[body.Places.Count..];
+        MarkBorrowedTemporaries(body, flags);
         foreach (var place in function.LiveFlags)
         {
-            if ((uint)place >= (uint)flags.Length || flags[place] != 0 || (body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && !IsBorrowedStringTemporary(body, place)) ||
+            if ((uint)place >= (uint)flags.Length || (flags[place] & 3) != 0 || (body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && (flags[place] & BorrowedTemporaryFlag) == 0) ||
                 !HasOwnedStorage(body.Places[place].Type))
             {
                 return false;
             }
 
-            flags[place] = 1;
+            flags[place] |= 1;
         }
 
         for (var i = 0; i < body.CleanupSteps.Count; i++)
         {
             var step = body.CleanupSteps[i];
-            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && body.MoveRoot(step.Place) < 0 && HasOwnedStorage(body.Places[step.Place].Type) && flags[step.Place] == 0)
+            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && body.MoveRoot(step.Place) < 0 && HasOwnedStorage(body.Places[step.Place].Type) && (flags[step.Place] & 3) == 0)
             {
                 return false;
             }
@@ -43,12 +46,12 @@ internal sealed partial class BodyLowering
         {
             if (instruction.Opcode == EmissionOpcode.InitializeLiveFlag)
             {
-                if (instruction.Operation != 0 || instruction.Constant != 0 || (uint)instruction.Place >= (uint)flags.Length || flags[instruction.Place] != 1 || !IsBorrowedStringTemporary(body, instruction.Place))
+                if (instruction.Operation != 0 || instruction.Constant != 0 || (uint)instruction.Place >= (uint)flags.Length || flags[instruction.Place] != (1 | BorrowedTemporaryFlag))
                 {
                     return false;
                 }
 
-                flags[instruction.Place] = 3;
+                flags[instruction.Place] |= 2;
                 continue;
             }
 
@@ -57,7 +60,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if ((uint)instruction.Operation >= (uint)body.Operations.Count || (uint)instruction.Place >= (uint)flags.Length || flags[instruction.Place] == 0)
+            if ((uint)instruction.Operation >= (uint)body.Operations.Count || (uint)instruction.Place >= (uint)flags.Length || (flags[instruction.Place] & 3) == 0)
             {
                 return false;
             }
@@ -85,13 +88,13 @@ internal sealed partial class BodyLowering
             }
 
             var operation = body.Operations[id];
-            if (StartsStringLifetime(body, operation) && flags[operation.Place] != 0)
+            if (StartsStringLifetime(body, operation) && (flags[operation.Place] & 3) != 0)
             {
                 flags[operation.Place] |= 2;
             }
 
             StringFlagTransition(operation, out var clear, out var initialize);
-            var expected = (clear >= 0 && flags[clear] != 0 ? 1 : 0) | (initialize >= 0 && flags[initialize] != 0 ? 2 : 0);
+            var expected = (clear >= 0 && (flags[clear] & 3) != 0 ? 1 : 0) | (initialize >= 0 && (flags[initialize] & 3) != 0 ? 2 : 0);
             if (body.IsReachable(id) && seen[id] != expected)
             {
                 return false;
@@ -100,7 +103,7 @@ internal sealed partial class BodyLowering
 
         foreach (var place in function.LiveFlags)
         {
-            if (flags[place] != 3)
+            if ((flags[place] & 3) != 3)
             {
                 return false;
             }
@@ -119,12 +122,45 @@ internal sealed partial class BodyLowering
 
     private static bool HasOwnedStorage(BoundType type)
     {
-        if (ReferenceEquals(type, BoundType.String))
+        if (type.Kind == BoundTypeKind.Function)
         {
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray && (type.Kind != BoundTypeKind.FixedArray || type.Length != 0))
+        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        {
+            foreach (var payload in cases)
+            {
+                if (HasOwnedStorage(payload))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (StructStorage.IsStruct(type))
+        {
+            if (StructStorage.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                if (HasOwnedStorage(StructStorage.FieldType(type, i)!))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy.
+        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
+        {
+            return true;
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure && (type.Kind != BoundTypeKind.FixedArray || type.Length != 0))
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
@@ -138,30 +174,40 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    private static bool IsBorrowedStringTemporary(OwnershipBody body, int place)
+    private static void MarkBorrowedTemporaries(OwnershipBody body, Span<int> marks)
     {
-        if (body.Places[place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))
-        {
-            return false;
-        }
-
         foreach (var comparison in body.StringComparisons)
         {
-            if (comparison.Left == place || comparison.Right == place)
-            {
-                return true;
-            }
+            MarkBorrowedTemporary(body, comparison.Left, marks);
+            MarkBorrowedTemporary(body, comparison.Right, marks);
         }
 
         foreach (var loan in body.ComparisonLoans)
         {
-            if (loan.Call is not null && loan.Place == place)
+            if (loan.Call is not null)
             {
-                return true;
+                MarkBorrowedTemporary(body, loan.Place, marks);
             }
         }
 
-        return false;
+        // A temporary borrowed as a whole or located as a receiver (for example an Array literal passed to a ref/
+        // parameter, or make()[0]) lives until its full-expression cleanup, which may be conditional under a
+        // short-circuit operand.
+        for (var id = 0; id < body.Operations.Count; id++)
+        {
+            if (body.Operations[id].Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.LocateReceiver)
+            {
+                MarkBorrowedTemporary(body, body.Operations[id].Place, marks);
+            }
+        }
+    }
+
+    private static void MarkBorrowedTemporary(OwnershipBody body, int place, Span<int> marks)
+    {
+        if ((uint)place < (uint)body.Places.Count && body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+        {
+            marks[place] |= BorrowedTemporaryFlag;
+        }
     }
 
     // The two sides mirror whole-Place responsibility changes in OwnershipBody.Transfer.
@@ -175,9 +221,11 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Cleanup:
             case OwnershipOperationKind.CallEntry:
             case OwnershipOperationKind.Deliver:
+            case OwnershipOperationKind.StorePointer:
                 clear = operation.Place;
                 break;
             case OwnershipOperationKind.Produce:
+            case OwnershipOperationKind.CompleteConstruction:
                 initialize = operation.Place;
                 break;
             case OwnershipOperationKind.Consume:
@@ -193,6 +241,18 @@ internal sealed partial class BodyLowering
                 break;
             case OwnershipOperationKind.WriteElement:
                 clear = operation.Input;
+                break;
+            case OwnershipOperationKind.UpdateBorrowed:
+                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
+                {
+                    clear = operation.Input;
+                }
+
+                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
+                {
+                    initialize = operation.Place;
+                }
+
                 break;
         }
     }
@@ -211,10 +271,11 @@ internal sealed partial class BodyLowering
         }
     }
 
-    private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
+    private bool IsStringStorage(OwnershipPlace place) => this.arrayIterationPlaces[place.Id] != 0 || this.payloadOwners[place.Id] >= 0 || this.decompositionOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
-        OwnershipPlaceKind.Local => place.Source is FieldKoto,
-        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
+        OwnershipPlaceKind.Local => place.Source is FieldKoto or PropertyKoto or FunctionKoto { BoundClosure.EnvironmentType: not null },
+        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or InterpolatedStringKoto { Formatting: not null } or IdentifierNameKoto or DereferenceKoto or FunctionKoto { BoundClosure.EnvironmentType: not null } or
+            InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,
     };
@@ -224,6 +285,9 @@ internal sealed partial class BodyLowering
     private bool PrepareStrings(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
+        Grow(ref this.borrowedTemporaries, body.Places.Count);
+        this.borrowedTemporaries.AsSpan(0, body.Places.Count).Clear();
+        MarkBorrowedTemporaries(body, this.borrowedTemporaries);
         var count = body.Operations.Count;
         Grow(ref this.liveFlags, body.Places.Count);
         this.liveFlags.AsSpan(0, body.Places.Count).Clear();
@@ -248,7 +312,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if ((this.aggregatePlaces[step.Place] is null && !this.IsStringStorage(body.Places[step.Place])) || (body.Places[step.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && !IsBorrowedStringTemporary(body, step.Place)) ||
+            if ((this.aggregatePlaces[step.Place] is null && !this.IsStringStorage(body.Places[step.Place])) || (body.Places[step.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && this.borrowedTemporaries[step.Place] == 0) ||
                 body.Operations[step.Operation].Kind is not (OwnershipOperationKind.Cleanup or OwnershipOperationKind.Write) ||
                 this.continuations[step.Operation] >= 0)
             {
@@ -270,7 +334,7 @@ internal sealed partial class BodyLowering
 
         for (var p = 0; p < body.Places.Count; p++)
         {
-            if (this.liveFlags[p] == 1 && IsBorrowedStringTemporary(body, p))
+            if (this.liveFlags[p] == 1 && this.borrowedTemporaries[p] != 0)
             {
                 this.liveFlags[p] = 2; // Entry zeroing covers paths that skip this temporary entirely.
             }
@@ -317,7 +381,8 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Declare:
-                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.slotResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
+                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.decompositionOwners[place.Id] < 0 &&
+                    this.slotResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
                 {
                     return Fail("String Declare requires a local.", out failure);
                 }
@@ -415,12 +480,24 @@ internal sealed partial class BodyLowering
             return Fail("String destruction disagrees with the verified placement state.", out failure);
         }
 
+        if (this.IsStackFormattingBuffer(body.Places[operation.Place]))
+        {
+            return true; // Private stack storage has no release, including on an escaping transfer.
+        }
+
         if (this.DestructionPath(body, operation) >= 0)
         {
             return this.LowerPartDestruction(body, function, constants, directory, id, out failure);
         }
 
-        if (expected == CleanupAction.Skip || aggregate is { NeedsDestruction: false })
+        if (expected == CleanupAction.Skip)
+        {
+            return true;
+        }
+
+        // SPEC 4.7.6: replacing a whole Array destroys the old elements and releases its buffer first.
+        var array = body.Places[operation.Place].Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary;
+        if (!array && aggregate is { NeedsDestruction: false })
         {
             return true;
         }
@@ -428,6 +505,11 @@ internal sealed partial class BodyLowering
         if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
         {
             return Fail("String destruction has no source location.", out failure);
+        }
+
+        if (array)
+        {
+            return this.LowerArrayRelease(body, function, id, location, expected == CleanupAction.Conditional, out failure);
         }
 
         if (expected != CleanupAction.Conditional)

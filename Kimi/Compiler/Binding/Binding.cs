@@ -13,6 +13,7 @@ public sealed partial class Binding
     private readonly Dictionary<object, BindingSymbol> symbols = new(ReferenceEqualityComparer.Instance);
     private readonly List<AliasKoto> aliases = new();
     private readonly List<BindingIssue> issues = new();
+    private readonly List<LibraryImport> libraryImports = new();
     private readonly IndexVisitor indexer;
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
@@ -22,32 +23,37 @@ public sealed partial class Binding
     private readonly HashSet<BindingObligation> obligationSet = new();
     private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private BindingScope rootScope = null!;
+    private Dictionary<Kotonoha, BindingSymbol>? moduleSymbols;
+    private TestSyntaxVisitor? testSyntaxVisitor;
     private bool running;
-    private bool coreValid;
+    private bool kimiValid;
 
     internal Binding(Compilation compilation)
     {
         this.compilation = compilation;
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes(this);
-        this.Core = new(compilation);
-        this.symbols.Add(this.Core.WriteLine.Declaration, this.Core.WriteLine);
-        this.symbols.Add(this.Core.Option.Declaration, this.Core.Option);
-        this.symbols.Add(this.Core.Result.Declaration, this.Core.Result);
+        this.Library = new(compilation);
+        foreach (var symbol in this.Library.RegisteredSymbols)
+        {
+            this.symbols.Add(symbol.Declaration, symbol);
+        }
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
     public BindingResult Result { get; private set; }
 
     /// <summary>Gets the compiler-designated requirement identities for this compilation.</summary>
-    public CoreIntrinsics Core { get; }
+    public KimiLibrary Library { get; }
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
     public IReadOnlyList<BindingIssue> Issues => this.issues;
 
     /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
     public IReadOnlyList<BindingObligation> Obligations => this.obligations;
+
+    /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.3), in source order.</summary>
+    internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
@@ -78,13 +84,24 @@ public sealed partial class Binding
         this.running = true;
         try
         {
+            this.storageVersion++;
             this.issues.Clear();
+            this.libraryImports.Clear();
+            this.constraintDiagnosticCauses?.Clear();
+            this.diagnosticDependencies?.Clear();
+            this.objectPayloadCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
             this.resultCursor = 0;
             this.ResetStartup();
+            this.specializations.Clear();
+            this.specializationsByOriginal.Clear();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
+            this.adaptations.Clear();
+            this.ResetSyntheticCalls();
+            this.pairFollows.Clear();
+            this.implicitPairFollows.Clear();
             foreach (var construction in this.enumConstructions.Values)
             {
                 construction.IsValid = false;
@@ -92,8 +109,10 @@ public sealed partial class Binding
 
             this.nodes.Clear();
             this.aliases.Clear();
+            this.ResetAliases();
             this.obligations.Clear();
             this.obligationSet.Clear();
+            this.inheritedOriginTypes.Clear();
             this.ResetCapabilities(mode);
             this.ResetContracts();
             foreach (var scope in this.scopes.Values)
@@ -118,31 +137,75 @@ public sealed partial class Binding
                 symbol.Resolving = false;
                 symbol.HeaderBound = false;
                 symbol.ReceiverIndex = -1;
+                symbol.ObjectPayloadOptOut = null;
             }
 
             // The indexer resets every semantic field before any header or expression is evaluated.
-            this.rootScope = this.GetScope(this.compilation.Kotonoha.RootKoto, null);
-            this.indexer.Scope = this.rootScope;
-            this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
-            this.PrunePatternScopes();
-            this.Core.Restore();
-            this.coreValid = this.Core.IsValid;
-            if (!this.coreValid)
+            foreach (var module in this.compilation.SourceModules)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidCore);
+                this.indexer.Scope = this.GetScope(module.RootKoto, null);
+                this.indexer.Visit(module.RootKoto);
             }
 
-            this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
-            this.indexer.Scope = this.Core.Scope;
-            // These declarations use ordinary indexing, schemas, storage and constraints.
-            this.Core.Scope.Types.Remove("Option");
-            this.Core.Scope.Types.Remove("Result");
-            this.indexer.Visit(this.Core.Option.Declaration);
-            this.indexer.Visit(this.Core.Result.Declaration);
-            this.indexer.Visit(this.Core.WriteLine.Declaration);
+            this.IndexModuleReferences();
+            this.Library.Restore();
+            this.kimiValid = this.Library.ValidateDeclarations();
+            if (!this.kimiValid)
+            {
+                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                // A malformed compiler library must not enter indexing/overload chains.
+                return this.Result = this.Check(mode);
+            }
+
+            this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
+            this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
+            this.scopes[this.Library.Console] = this.Library.ConsoleScope;
+            this.scopes[this.Library.Test] = this.Library.TestScope;
+            this.scopes[this.Library.Text] = this.Library.TextScope;
+            this.indexer.Scope = this.Library.Scope;
+            var libraryRoot = this.Library.Kotonoha.RootKoto;
+            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+            {
+                var declaration = libraryRoot.NestedContainers[i];
+                if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
+                {
+                    continue;
+                }
+
+                if (this.Library.SignatureScope(declaration) is { } signatureScope)
+                {
+                    this.indexer.Scope = signatureScope;
+                    for (var m = 0; m < declaration.Members.Count; m++)
+                    {
+                        this.indexer.Visit(declaration.Members[m]);
+                    }
+
+                    this.indexer.Scope = this.Library.Scope;
+                }
+                else
+                {
+                    this.indexer.Visit(declaration);
+                }
+            }
+
+            for (var i = 0; i < libraryRoot.Members.Count; i++)
+            {
+                this.indexer.Visit(libraryRoot.Members[i]);
+            }
+
+            // Source guards are all indexed now; a removed guard may have become an arm body.
+            // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
+            this.PruneCandidateScopes();
+            this.cLayoutInstances.Clear();
+            this.storagePrepared = false;
+            this.ValidateDefaultAliases();
+            this.PrepareOriginDeclarations();
             this.BindSchemas();
+            this.PrepareAssociatedOrigins();
+            this.PrepareAliases();
             this.PrepareContracts();
             this.BindConstraints();
+            this.BindTypeOriginContracts();
             for (var i = 0; i < this.nodes.Count; i++)
             {
                 if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
@@ -151,28 +214,87 @@ public sealed partial class Binding
                 }
             }
 
+            this.ValidateLayoutFragments();
+            this.ValidateLibraryImports();
             this.ValidateBaseDeclarations();
             this.PrepareStorage();
+            this.ValidateInlineLayouts();
+            this.ValidateCLayoutFields();
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
             this.ValidateContractDeclarations();
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
-            this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
-            this.BindNode(this.Core.WriteLine.Declaration, this.scopes[this.Core.WriteLine.Declaration]);
-            this.BindNode(this.Core.Option.Declaration, this.Core.Scope);
-            this.BindNode(this.Core.Result.Declaration, this.Core.Scope);
+            this.PrepareSpecializations();
+            foreach (var module in this.compilation.SourceModules)
+            {
+                this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
+            }
+
+            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+            {
+                var declaration = libraryRoot.NestedContainers[i];
+                if (this.Library.SignatureScope(declaration) is { } signatureScope)
+                {
+                    for (var m = 0; m < declaration.Members.Count; m++)
+                    {
+                        this.BindNode(declaration.Members[m], signatureScope);
+                    }
+                }
+                else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+                {
+                    this.BindNode(declaration, this.Library.Scope);
+                }
+            }
+
+            for (var i = 0; i < libraryRoot.Members.Count; i++)
+            {
+                this.BindNode(libraryRoot.Members[i], this.Library.Scope);
+            }
+
+            this.PrunePatternScopes();
+            this.PruneMatchPlans();
             this.ClearCapabilityResults();
+            this.ValidateOriginRelations();
+            this.ValidateAssociatedApplications();
             this.ValidateCopyDeclarations(mode);
-            this.ValidateProperties(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
+            this.ValidateApiAccess(mode);
+            // Base constraints need capability evidence; propagate failures before certificates.
+            this.ValidateBaseDeclarations(mode);
+            // Property certificates must include final Origin and declaration API validity.
+            this.ValidateProperties(mode);
             this.ValidateConformances(mode, true);
             this.ValidateConstraintUses(mode);
+            // Late witness failures can invalidate declarations that normalized their projections.
+            // Revisit dependent certificates only while declaration states change monotonically.
+            while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
+            {
+                this.ClearCapabilityResults();
+                this.ValidateBaseDeclarations(mode);
+                this.ValidateProperties(mode);
+                this.ValidateConformances(mode, true);
+            }
+
             this.ClearCapabilityResults();
+            this.ValidateEffectBounds();
+            this.ValidateIterationWitnesses();
+            this.ValidateExpressionProjectionInputs(mode);
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
+            if (mode == BindingMode.Final)
+            {
+                this.CompleteAliasWarnings();
+            }
+
+            this.kimiValid = this.Library.ValidateBoundDeclarations();
+            if (!this.kimiValid)
+            {
+                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+            }
+
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -188,18 +310,38 @@ public sealed partial class Binding
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
+                this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
+                cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
+            {
+                continue;
+            }
+
             if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
             {
                 issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
             }
+            else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
+            {
+                issue.Node.AddDiagnostic(issue.Code, this.DescribeTryFailure(issue.Node));
+            }
+            else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
+            {
+                issue.Node.AddDiagnostic(issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
+            }
             else
             {
-                issue.Node.AddDiagnostic(issue.Code);
+                issue.Node.AddDiagnostic(issue.Code, hint: this.BorrowOriginHint(issue.Node));
             }
         }
 
         if (this.Result.Mode == BindingMode.Final)
         {
+            for (; this.reportedAliasWarnings < this.aliasWarnings.Count; this.reportedAliasWarnings++)
+            {
+                this.aliasWarnings[this.reportedAliasWarnings].AddDiagnostic(DiagnosticCode.HiddenNamedAlias_Kd);
+            }
+
             for (; this.reportedPatternWarnings < this.patternWarnings.Count; this.reportedPatternWarnings++)
             {
                 var warning = this.patternWarnings[this.reportedPatternWarnings];
@@ -208,7 +350,70 @@ public sealed partial class Binding
         }
     }
 
-    internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => this.symbols[function.Parameters[index]];
+    internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
+        ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
+        : this.symbols[function.Parameters[index]];
+
+    internal bool IsRunning => this.running;
+
+    internal void Invalidate()
+    {
+        // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.
+        if (this.Result == default || this.running)
+        {
+            return;
+        }
+
+        this.Result = default;
+        this.issues.Clear();
+        this.libraryImports.Clear();
+        this.constraintDiagnosticCauses?.Clear();
+        this.diagnosticDependencies?.Clear();
+        this.obligations.Clear();
+        this.obligationSet.Clear();
+        this.associatedOrigins.Clear();
+        this.ResetStartup();
+        this.ResetCapabilities(BindingMode.Provisional);
+        this.ResetContracts();
+        foreach (var symbol in this.symbols.Values)
+        {
+            if (symbol.Property is { } property)
+            {
+                property.IsVerified = false;
+            }
+        }
+    }
+
+    private static bool InvalidDeclarationContext(Koto declaration)
+    {
+        for (Koto? node = declaration; node is not null; node = node.Parent)
+        {
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool UnresolvedTypeDeclarationContext(Koto declaration)
+    {
+        for (Koto? node = declaration; node is not null; node = node.Parent)
+        {
+            if ((node is StructKoto or EnumKoto or ContractKoto && node.BindingState == BindingState.Unresolved) || node is ContractKoto { BoundSymbol.Contract.HasUnresolvedParents: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
+    private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
+        => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
+            function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
 
     private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
@@ -293,9 +498,26 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
+            // API and constraint validation can invalidate a target or Type after call selection.
+            if (node is InvocationKoto { BoundCall: { } call })
+            {
+                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+            }
+            else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
+            {
+                var proof = this.CheckRuntimeTestTypeConstraints(runtimeTest, this.ConstraintScope(test));
+                this.RequireConstraint(test, proof, mode);
+                if (proof != ConstraintProof.Proven)
+                {
+                    test.BoundRuntimeTest = null;
+                }
+            }
+
             if (node.BindingState == BindingState.Unvisited)
             {
-                Fail(node, BindingFailure.Unsupported, true);
+                // Skipped dependent syntax has no Type evidence, not a proof of an unsupported feature.
+                // Actual subset gates diagnose themselves; the final fallback still rejects unresolved work.
+                node.BindingState = BindingState.Unresolved;
             }
 
             switch (node.BindingState)
@@ -311,13 +533,28 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && !this.IsDependentDiagnostic(node))
             {
                 var code = node.BindingFailure switch
                 {
+                    BindingFailure.InvalidTestDefinition => DiagnosticCode.InvalidTestDefinition_Kd,
+                    BindingFailure.InvalidLayoutAttribute => DiagnosticCode.InvalidLayoutAttribute_Kd,
+                    BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
+                    BindingFailure.InvalidLibraryImport => DiagnosticCode.InvalidLibraryImport_Kd,
+                    BindingFailure.MissingNativeRequirement => DiagnosticCode.MissingNativeRequirement_Kd,
+                    BindingFailure.UnsupportedImportSignature => DiagnosticCode.UnsupportedImportSignature_Kd,
+                    BindingFailure.ConflictingImportSignature => DiagnosticCode.ConflictingImportSignature_Kd,
+                    BindingFailure.ConflictingRuntimeSymbol => DiagnosticCode.ConflictingRuntimeSymbol_Kd,
+                    BindingFailure.ConflictingImportSupply => DiagnosticCode.ConflictingImportSupply_Kd,
+                    BindingFailure.UnsafeFunctionValue => DiagnosticCode.UnsafeFunctionValue_Kd,
+                    BindingFailure.UnavailableReservedImport => DiagnosticCode.UnavailableReservedImport_Kd,
+                    BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
+                    BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
+                    BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
+                    BindingFailure.DuplicateDictionaryKey => DiagnosticCode.DuplicateDictionaryKey_Kd,
                     BindingFailure.TypeMismatch => DiagnosticCode.TypeMismatch_Kd,
                     BindingFailure.NotCallable => DiagnosticCode.NotCallable_Kd,
                     BindingFailure.NoApplicableCandidate => DiagnosticCode.NoApplicableOverload_Kd,
@@ -330,17 +567,36 @@ public sealed partial class Binding
                     BindingFailure.MissingOrigin => DiagnosticCode.MissingOriginBinding_Kd,
                     BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
+                    BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
+                    BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
-                    BindingFailure.InvalidCore => DiagnosticCode.InvalidCoreIntrinsics_Kd,
+                    BindingFailure.InvalidKimi => DiagnosticCode.InvalidKimiLibrary_Kd,
                     BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
                     BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
                     BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
+                    BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+                    BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
+                    BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
+                    BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
+                    BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
+                    BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
+                    BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
+                    BindingFailure.PlaceRequired => DiagnosticCode.PlaceRequired_Kd,
+                    BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
+                    BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
+                    BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
-                this.issues.Add(new(node, code));
+                if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
+                {
+                    code = DiagnosticCode.InvalidTry_Kd;
+                }
+
+                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code));
             }
         }
 
@@ -391,11 +647,18 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
+        if (name == "_" && node.Parent is ForKoto)
+        {
+            node.BoundSymbol = symbol;
+            return symbol;
+        }
+
         var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
-            if (kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function)
+            if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
+                !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
             {
                 Fail(node, BindingFailure.Duplicate);
                 Fail(previous.Declaration, BindingFailure.Duplicate);
@@ -418,6 +681,7 @@ public sealed partial class Binding
         if (symbol.Declaration is FunctionKoto function)
         {
             var scope = this.scopes[function];
+            var originDeclaration = this.BeginOriginDeclaration(function, scope);
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
@@ -426,12 +690,16 @@ public sealed partial class Binding
 
             // Named signatures never infer a result from their body or callers (SPEC 10.5).
             symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
+            this.CompleteOriginDeclaration(originDeclaration);
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+            }
+
             if (symbol.ReceiverIndex >= 0)
             {
                 var receiver = function.Parameters[symbol.ReceiverIndex];
-                var type = receiver.Type.BoundType;
-                var valid = type is not null && SameType(EffectiveCore(type), this.SelfType(symbol.Scope.Owner.BoundSymbol!)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
-                if (!valid || receiver.ExternalName != "self" || receiver.IsOptional || receiver.DefaultValue is not null)
+                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
                 {
                     Fail(function, BindingFailure.InvalidTypeFormation);
                 }
@@ -458,14 +726,27 @@ public sealed partial class Binding
             {
                 for (var a = first; a is not null; a = a.Next)
                 {
-                    if (a.Declaration is not FunctionKoto fa)
+                    if (a.Declaration is not FunctionKoto fa || fa.IsSpecialization)
                     {
                         continue;
                     }
 
+                    // SPEC 7.3: every function with a receiver in one member group shares one receiver shape.
+                    if (ReceiverShape(a) is { } shape)
+                    {
+                        for (var b = a.Next; b is not null; b = b.Next)
+                        {
+                            if (ReceiverShape(b) is { } other && other != shape)
+                            {
+                                Fail(fa, BindingFailure.ReceiverShapeMismatch);
+                                Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
+                            }
+                        }
+                    }
+
                     for (var b = a.Next; b is not null; b = b.Next)
                     {
-                        if (b.Declaration is not FunctionKoto fb || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
+                        if (b.Declaration is not FunctionKoto fb || fb.IsSpecialization || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
                         {
                             continue;
                         }
@@ -491,20 +772,264 @@ public sealed partial class Binding
                 }
             }
         }
+
+        // SPEC 8.4.1: a Contract's same-name requirements, including those inherited by refinement, share one receiver shape.
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is not ContractKoto { BoundSymbol.Contract: { } shape } contract)
+            {
+                continue;
+            }
+
+            foreach (var members in shape.MembersByName.Values)
+            {
+                SemanticsKind? expected = null;
+                for (var i = 0; i < members.Count; i++)
+                {
+                    if (ReceiverShape(members[i]) is not { } current)
+                    {
+                        continue;
+                    }
+
+                    if (expected is null)
+                    {
+                        expected = current;
+                    }
+                    else if (expected != current)
+                    {
+                        Fail(contract, BindingFailure.ReceiverShapeMismatch);
+                        if (ReferenceEquals(members[i].Declaration.Parent, contract))
+                        {
+                            Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private sealed class TestSyntaxVisitor(Binding binding) : KotoVisitor
+    {
+        public override void Visit(Koto node)
+        {
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            {
+                binding.IndexLayoutAttribute(layout);
+                if (layout.AttributeChain is { } precedingAttribute)
+                {
+                    this.Visit(precedingAttribute);
+                }
+
+                return;
+            }
+
+            var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
+                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+            {
+                marker = attribute;
+            }
+
+            if (marker is not null)
+            {
+                marker.BindingFailure = BindingFailure.None;
+                Fail(marker, BindingFailure.InvalidTestDefinition);
+                binding.nodes.Add(marker);
+            }
+
+            node.VisitChildren(this);
+        }
     }
 
     private sealed class IndexVisitor(Binding binding) : KotoVisitor
     {
+        private void IndexCandidates(Koto syntax, bool guarded)
+        {
+            syntax = KotoHelper.UnwrapParentheses(syntax);
+            if (syntax is not SyntaxFormKoto form)
+            {
+                return;
+            }
+
+            if (form.Akind == KotoKind.BindingPattern && form.Operands[0] is IdentifierNameKoto name)
+            {
+                if (!guarded)
+                {
+                    binding.symbols.Remove(name);
+                    return;
+                }
+
+                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
+                {
+                    binding.symbols.Remove(name);
+                }
+
+                var bodySymbol = form.BoundSymbol;
+                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, form, this.Scope);
+                form.BoundSymbol = bodySymbol;
+                return;
+            }
+
+            foreach (var operand in form.Operands)
+            {
+                this.IndexCandidates(operand, guarded);
+            }
+        }
+
         private int patternDepth;
 
         internal BindingScope Scope { get; set; } = null!;
 
+        public void IndexMatchArms(MatchKoto match, BindingScope scope)
+        {
+            var previous = this.Scope;
+            this.Scope = scope;
+            var outer = this.Scope;
+            for (var i = 0; i < match.Arms.Count; i++)
+            {
+                var arm = match.Arms[i];
+                var armScope = binding.GetScope(arm.Pattern, outer);
+                this.Scope = armScope;
+                this.patternDepth++;
+                this.Visit(arm.Pattern);
+                this.patternDepth--;
+                if (arm.Guard is { } guard)
+                {
+                    this.Scope = binding.GetScope(guard, outer);
+                    binding.candidateScopes.Add(guard);
+                    this.IndexCandidates(arm.Pattern, true);
+
+                    this.Visit(guard);
+                }
+                else
+                {
+                    this.IndexCandidates(arm.Pattern, false);
+                }
+
+                this.Scope = armScope;
+                this.Visit(arm.Body);
+                this.Scope = outer;
+            }
+
+            this.Scope = previous;
+        }
+
         public override void Visit(Koto node)
         {
             node.BindingState = BindingState.Unvisited;
+            if (node is BinaryKoto binary)
+            {
+                binary.ComparisonActive = false;
+            }
+
+            if (node.FormattingStorage is { } formatting)
+            {
+                formatting.Active = false;
+            }
+
             node.BindingFailure = BindingFailure.None;
             node.BoundMeaning = null;
+            node.ErasedFunctionType = null;
             node.BoundSymbol = null;
+            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(test))
+            {
+                // Product lookup and analysis never visit the test's signature names or body.
+                test.BoundType = BoundType.Unit;
+                test.BindingState = BindingState.Resolved;
+                if (!TestDefinition.IsValidSyntax(test))
+                {
+                    marker.BindingFailure = BindingFailure.None;
+                    Fail(marker, BindingFailure.InvalidTestDefinition);
+                    binding.nodes.Add(marker);
+                    Fail(test, BindingFailure.InvalidTestDefinition);
+                }
+                else
+                {
+                    for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+                    {
+                        if (!ReferenceEquals(attribute, marker))
+                        {
+                            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" })
+                            {
+                                // The syntax visitor reports Layout's wrong target below.
+                                continue;
+                            }
+
+                            // No Mod marker registry exists yet; selection does not recognize an unknown marker.
+                            attribute.BindingFailure = BindingFailure.None;
+                            Fail(attribute, BindingFailure.Unsupported, true);
+                            binding.nodes.Add(attribute);
+                        }
+                    }
+                }
+
+                test.VisitChildren(binding.testSyntaxVisitor ??= new(binding));
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } invalidTest)
+            {
+                if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(testOwner) && TestDefinition.IsValidSyntax(testOwner))
+                {
+                    invalidTest.BoundType = BoundType.Unit;
+                    invalidTest.BindingState = BindingState.Resolved;
+                    if (invalidTest.AttributeChain is { } earlier)
+                    {
+                        this.Visit(earlier);
+                    }
+
+                    return;
+                }
+
+                Fail(node, BindingFailure.InvalidTestDefinition);
+                binding.nodes.Add(node);
+                if (AttributeTarget(invalidTest) is { } invalidTarget)
+                {
+                    Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
+                }
+
+                if (invalidTest.AttributeChain is { } precedingMarker)
+                {
+                    this.Visit(precedingMarker);
+                }
+
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            {
+                binding.IndexLayoutAttribute(layout);
+                if (layout.AttributeChain is { } precedingAttribute)
+                {
+                    this.Visit(precedingAttribute);
+                }
+
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } import && AttributeTarget(import) is FunctionKoto)
+            {
+                // SPEC 22.3.1: the operand names a library and symbol; it is validated, never evaluated.
+                import.BindingFailure = BindingFailure.None;
+                import.BindingState = BindingState.Unvisited;
+                import.BoundType = null;
+                binding.nodes.Add(import);
+                if (import.AttributeChain is { } precedingImport)
+                {
+                    this.Visit(precedingImport);
+                }
+
+                return;
+            }
+
+            if (node is AttributeKoto selectedAttribute && AttributeTarget(selectedAttribute) is { } target &&
+                (selectedAttribute.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" } || target is not FunctionKoto))
+            {
+                // Layout/Test are handled above. Unrecognized markers and non-function
+                // LibraryImport targets cannot certify; retain syntax and diagnostics.
+                Fail(target, BindingFailure.InvalidTypeFormation);
+            }
+
             if (node is ConversionKoto conversion)
             {
                 conversion.ConversionBinding = ConversionBinding.None;
@@ -537,49 +1062,36 @@ public sealed partial class Binding
             var previous = this.Scope;
             if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
             {
-                this.Scope = binding.GetScope(source, binding.rootScope, node.Parent);
+                this.Scope = binding.GetScope(source, binding.ModuleScope(node), node.Parent);
             }
 
             switch (node)
             {
+                case IsKoto or SyntaxFormKoto when AssociatedHead(node) is OriginApplicationKoto:
+                    this.Scope = binding.GetScope(node, this.Scope);
+                    break;
+                case ForKoto iteration:
+                    this.Visit(iteration.Iterable);
+                    this.Scope = binding.GetScope(iteration.Body, this.Scope);
+                    for (var i = 0; i < iteration.Bindings.Count; i++)
+                    {
+                        var name = iteration.Bindings[i];
+                        binding.Declare(name, name.IdentifierName, BindingSymbolKind.Local, name, this.Scope);
+                    }
+
+                    this.Visit(iteration.Body);
+                    this.Scope = previous;
+                    return;
                 case MatchKoto match:
                     binding.IndexMatch(match);
                     this.Visit(match.Expression);
-                    var outer = this.Scope;
-                    for (var i = 0; i < match.Arms.Count; i++)
+                    if (match is TryKoto propagation)
                     {
-                        var arm = match.Arms[i];
-                        var armScope = binding.GetScope(arm.Pattern, outer);
-                        this.Scope = armScope;
-                        this.patternDepth++;
-                        this.Visit(arm.Pattern);
-                        this.patternDepth--;
-                        if (arm.Guard is { } guard)
-                        {
-                            this.Scope = binding.GetScope(guard, outer);
-                            binding.candidateScopes.Add(guard);
-                            if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
-                            {
-                                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
-                                {
-                                    binding.symbols.Remove(name);
-                                }
-
-                                var bodySymbol = pattern.BoundSymbol;
-                                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, pattern, this.Scope);
-                                pattern.BoundSymbol = bodySymbol;
-                            }
-
-                            this.Visit(guard);
-                        }
-                        else if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } unguarded)
-                        {
-                            binding.symbols.Remove(unguarded.Operands[0]);
-                        }
-
-                        this.Scope = armScope;
-                        this.Visit(arm.Body);
-                        this.Scope = outer;
+                        propagation.SemanticsIndexed = false;
+                    }
+                    else
+                    {
+                        this.IndexMatchArms(match, this.Scope);
                     }
 
                     this.Scope = previous;
@@ -594,6 +1106,11 @@ public sealed partial class Binding
                     this.Scope.ConformancePath = null;
                     break;
                 case DeclarationContainerKoto container:
+                    if (container is StructKoto structure)
+                    {
+                        structure.PrepareImplicitConstructor();
+                    }
+
                     if (!container.IsRoot)
                     {
                         var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
@@ -604,16 +1121,27 @@ public sealed partial class Binding
                         }
                     }
 
-                    this.Scope = container.IsRoot ? binding.rootScope : binding.GetScope(node, this.Scope);
+                    this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);
                     break;
                 case FunctionKoto function:
+                    if (function.IsAnonymous)
+                    {
+                        if (!binding.symbols.TryGetValue(function, out var closureSymbol))
+                        {
+                            closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, this.Scope);
+                            binding.symbols.Add(function, closureSymbol);
+                        }
+
+                        closureSymbol.Scope = this.Scope;
+                    }
+
                     if (!function.IsGenerated && !function.IsAnonymous)
                     {
                         var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
                         var conditional = this.Scope.Owner as SyntaxFormKoto;
                         if (IsRootMain(function))
                         {
-                            memberScope = binding.rootScope;
+                            memberScope = binding.ModuleScope(node);
                         }
 
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
@@ -644,13 +1172,14 @@ public sealed partial class Binding
                     }
 
                     node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
+                    binding.IndexSpecialReceiver(function, this.Scope);
                     break;
                 case PropertyAccessorKoto accessor:
                     this.Scope = binding.GetScope(node, this.Scope);
                     binding.IndexAccessor(accessor, this.Scope);
                     break;
                 case CodeBlockKoto:
-                    if (node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
+                    if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
                         (node.Parent is MatchKoto && binding.patternNodes.Contains(this.Scope.Owner)))
                     {
                         binding.scopes[node] = this.Scope;
@@ -673,8 +1202,13 @@ public sealed partial class Binding
                     {
                         var bound = variableSymbol.Property ??= new(variableSymbol);
                         bound.IsVerified = false;
-                        Reset(bound.Getter, property.GetAccessor(PropertyAccessorKind.Get), true);
+                        var getter = property.GetAccessor(PropertyAccessorKind.Get);
+                        Reset(bound.Getter, getter, bound.IsStored || getter is not null);
                         Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
+                        if (!bound.IsStored && getter is null)
+                        {
+                            Fail(property, BindingFailure.InvalidTypeFormation);
+                        }
                     }
 
                     break;

@@ -18,6 +18,9 @@ public sealed partial class Binding
 
     private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
+        // SPEC 10.4: the receiver acquisition is common to the group (one receiver shape per Name, SPEC 7.3),
+        // so Best Candidate compares the explicit arguments only; the receiver occupies the last slot.
+        var compared = stride - 1;
         for (var a = 0; a < candidates.Length; a++)
         {
             if (candidates[a].State != CandidateApplicability.Applicable)
@@ -37,7 +40,7 @@ public sealed partial class Binding
                 var fb = (FunctionKoto)candidates[b].Symbol.Declaration;
                 var better = false;
                 var worse = false;
-                for (var i = 0; i < stride; i++)
+                for (var i = 0; i < compared; i++)
                 {
                     var x = operations[(a * stride) + i];
                     var y = operations[(b * stride) + i];
@@ -56,7 +59,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                for (var i = 0; i < stride; i++)
+                for (var i = 0; i < compared; i++)
                 {
                     var x = operations[(a * stride) + i].ParameterType;
                     var y = operations[(b * stride) + i].ParameterType;

@@ -9,9 +9,11 @@ public sealed partial class Binding
     private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> conformances = new();
     private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> conformancePaths = new();
     private readonly List<BoundConformancePath> activeConformancePaths = new();
+    private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
     private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
+    private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private BoundConstraint[] contractFactScratch = [];
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -40,20 +42,121 @@ public sealed partial class Binding
         => this.ResolveConformance(type, contract, this.ConstraintScope(context), out path);
 
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
-        => ReferenceEquals(child, parent) || (child.Contract is { } shape && shape.AncestorStorage.Contains(parent));
+    {
+        if (ReferenceEquals(child, parent) || SatisfiesDeclaration(child, parent))
+        {
+            return true;
+        }
 
-    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract)
+        if (child.Contract is not { } shape)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.AncestorStorage.Count; i++)
+        {
+            if (ReferenceEquals(shape.AncestorStorage[i], parent) || SatisfiesDeclaration(shape.AncestorStorage[i], parent))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.4.2, 8.4.9: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
+    // bound reference of its declaration.
+    private static bool SatisfiesDeclaration(BindingSymbol candidate, BindingSymbol parent)
+        => IsBoundContractReference(candidate) && !IsBoundContractReference(parent) && ReferenceEquals(candidate.Declaration, parent.Declaration);
+
+    private static bool IsBoundContractReference(BindingSymbol contract)
+        => contract.Type is { } reference && !ReferenceEquals(reference.Symbol, contract);
+
+    private static bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
         {
-            return ConstraintAccessCovers(constraint.Left!, contract) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract));
+            return ConstraintAccessCovers(constraint.Left!, contract, intersection) && (constraint.Right is null || ConstraintAccessCovers(constraint.Right, contract, intersection));
         }
 
-        return (constraint.Contract is null || AccessCovers(constraint.Contract, contract, contract)) && (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, contract));
+        return (constraint.Contract is null ||
+            (AccessCovers(constraint.Contract, contract, intersection ?? contract) &&
+             (constraint.Contract.Type is not { } reference || TypeAccessCovers(reference, contract, intersection ?? contract)))) &&
+            (constraint.RequiredType is null || TypeAccessCovers(constraint.RequiredType, contract, intersection ?? contract));
+    }
+
+    private static bool IsRefinementName(Koto syntax)
+        => syntax switch
+        {
+            TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null } => IsRefinementName(inner),
+            IdentifierNameKoto or TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } => true,
+            MemberAccessKoto member => IsRefinementName(member.Left) && IsRefinementName(member.Right),
+            SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root => IsRefinementName(root.Operands[0]),
+            GenericsKoto { Identifier: { } identifier } => IsRefinementName(identifier), // SPEC 8.4.2: a parent with Type arguments.
+            _ => false,
+        };
+
+    // SPEC 8.4.2: the Type-argument application of a refinement parent, below transparent wrappers and a root-name form.
+    private static GenericsKoto? GenericParentApplication(Koto name)
+    {
+        if (name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] })
+        {
+            name = rooted;
+            while (name is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null })
+            {
+                name = inner;
+            }
+        }
+
+        return name as GenericsKoto;
+    }
+
+    /// <summary>
+    /// SPEC 8.4.4, 8.4.9: the registered conformance of a Type declaration to a Contract, whether registered under the
+    /// Contract declaration itself or under one bound reference of it. Several bound references of one declaration are
+    /// distinct conformances, so a query by declaration alone is ambiguous there.
+    /// </summary>
+    private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
+    {
+        ambiguous = false;
+        if (this.conformances.TryGetValue((type, contract), out var direct))
+        {
+            return direct;
+        }
+
+        if (!this.conformancesByType.TryGetValue(type, out var identities))
+        {
+            return null;
+        }
+
+        BoundConformance? found = null;
+        for (var i = 0; i < identities.Count; i++)
+        {
+            var identity = identities[i];
+            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || identity.Paths.Count == 0)
+            {
+                continue;
+            }
+
+            if (found is not null)
+            {
+                ambiguous = true;
+                return null;
+            }
+
+            found = identity;
+        }
+
+        return found;
     }
 
     private void ResetContracts()
     {
+        foreach (var bound in this.boundContracts.Values)
+        {
+            bound.Contract!.State = 0;
+        }
+
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -63,6 +166,8 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Clear();
+        this.userIterations.Clear();
+        this.associatedApplications.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
@@ -74,6 +179,7 @@ public sealed partial class Binding
             binding.Candidates.Clear();
             binding.Result = null;
             binding.State = 0;
+            binding.FormationScope?.Reset();
         }
 
         foreach (var conformance in this.conformances.Values)
@@ -101,8 +207,10 @@ public sealed partial class Binding
 
     private void PrepareContracts()
     {
-        this.Core.Copy.Contract ??= new(this.Core.Copy) { State = 2 };
-        this.Core.Owned.Contract ??= new(this.Core.Owned) { State = 2 };
+        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
+        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
+        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
+        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -112,6 +220,7 @@ public sealed partial class Binding
 
             var shape = contract.BoundSymbol!.Contract ??= new(contract.BoundSymbol);
             shape.State = 0;
+            shape.HasUnresolvedParents = false;
             shape.AncestorStorage.Clear();
             shape.RequirementStorage.Clear();
             shape.AssociatedStorage.Clear();
@@ -124,18 +233,18 @@ public sealed partial class Binding
 
             for (var i = 0; i < contract.Members.Count; i++)
             {
-                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1 } declaration && declaration.Operands[0] is IdentifierNameKoto name)
+                if (contract.Members[i] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: > 0 } declaration)
                 {
-                    this.DeclareAssociatedType(declaration, name, contract);
+                    this.DeclareAssociatedType(declaration, contract);
                 }
             }
 
             for (var i = 0; i < contract.ConstraintNodes.Count; i++)
             {
                 var clause = contract.ConstraintNodes[i];
-                if (clause.IsAssociatedConstraint && clause.Left is IdentifierNameKoto name)
+                if (clause.IsAssociatedConstraint)
                 {
-                    this.DeclareAssociatedType(clause, name, contract);
+                    this.DeclareAssociatedType(clause, contract);
                 }
             }
         }
@@ -149,12 +258,24 @@ public sealed partial class Binding
         }
     }
 
-    private void DeclareAssociatedType(Koto declaration, IdentifierNameKoto name, ContractKoto contract)
+    private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
-        var symbol = this.Declare(declaration, name.IdentifierName, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
-        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [contract.BoundSymbol!.Type!]);
+        var head = AssociatedHead(declaration);
+        var name = head is OriginApplicationKoto application ? UnwrapAssociatedHead(application.Type) : head;
+        if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
+        {
+            return; // A qualified specification refines an existing requirement.
+        }
+
+        var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
+        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [contract.BoundSymbol!.Type!], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
         Complete(name, symbol.Type);
+        if (head is OriginApplicationKoto)
+        {
+            head.BoundSymbol = symbol;
+            Complete(head, symbol.Type);
+        }
     }
 
     private bool BuildContract(BoundContract shape)
@@ -176,8 +297,35 @@ public sealed partial class Binding
         for (var i = 0; i < contract.Bases.Count; i++)
         {
             var syntax = contract.Bases[i];
-            var parent = this.TypeName(syntax, this.scopes[contract], false);
-            if (parent?.Declaration is not ContractKoto || syntax is GenericsKoto || parent.Contract is not { } inherited)
+            if (!IsRefinementName(syntax))
+            {
+                Fail(syntax, BindingFailure.InvalidConstraint);
+                valid = false;
+                continue;
+            }
+
+            var name = syntax;
+            while (name is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null })
+            {
+                name = inner;
+            }
+
+            // SPEC 8.4.2: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
+            // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
+            var generic = GenericParentApplication(name);
+            var parent = this.TypeName(name, this.scopes[contract], false);
+            if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
+            {
+                this.BindType(syntax, this.scopes[contract]);
+                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
+                {
+                    shape.HasUnresolvedParents = true;
+                    continue;
+                }
+            }
+
+            if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
+                (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
                 Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
@@ -186,11 +334,42 @@ public sealed partial class Binding
 
             syntax.BoundSymbol = parent;
             Complete(syntax, BoundType.Unit);
+            name.BoundSymbol = parent;
+            Complete(name, BoundType.Unit);
             if (!this.BuildContract(inherited))
             {
                 valid = false;
                 continue;
             }
+
+            // The parent with Type arguments is refined as its bound reference, whose requirements carry the child's own
+            // parameters (contract UniqIndexable<Key>: Indexable<Key>).
+            if (generic is not null)
+            {
+                // The wrappers between a root-name form and its application resolve with the parent.
+                for (var wrapper = name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : name; !ReferenceEquals(wrapper, generic); wrapper = ((TypeSemanticsKoto)wrapper).Type!)
+                {
+                    wrapper.BoundSymbol = parent;
+                    Complete(wrapper, BoundType.Unit);
+                }
+
+                generic.BoundSymbol = parent;
+                Complete(generic, BoundType.Unit);
+                generic.Identifier!.BoundSymbol = parent;
+                Complete(generic.Identifier, BoundType.Unit);
+                var arguments = this.BindTypeList(generic, generic.TypeArguments, this.scopes[contract], this.TypeContext(generic, this.scopes[contract]).Nested, BoundTypeKind.Constructed, parent);
+                if (arguments is null)
+                {
+                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    valid = false;
+                    continue;
+                }
+
+                parent = this.BoundContractReference(this.InternType(BoundTypeKind.Constructed, parent, SemanticsKind.Owner, (BoundType[])arguments.Components));
+                inherited = parent.Contract!;
+            }
+
+            shape.HasUnresolvedParents |= inherited.HasUnresolvedParents;
 
             Add(parent, shape.AncestorStorage);
             for (var j = 0; j < inherited.Ancestors.Count; j++)
@@ -238,6 +417,9 @@ public sealed partial class Binding
             }
         }
 
+        // Every ancestor has fewer ancestors than any of its descendants. This gives
+        // conformance verification one order in which inherited proofs are available.
+        shape.AncestorStorage.Sort(static (left, right) => left.Contract!.Ancestors.Count.CompareTo(right.Contract!.Ancestors.Count));
         shape.State = valid ? (byte)2 : (byte)3;
         for (var i = 0; i < shape.Requirements.Count; i++)
         {
@@ -278,29 +460,101 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && clause.BoundConstraint is { } constraint)
+                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint)
                 {
-                    Register(constraint, container.BoundSymbol!, clause);
+                    Register(constraint, container.BoundSymbol!, clause, true);
                 }
             }
         }
 
-        void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use)
+        // SPEC 8.4.7.2: derived structs inherit the opt-out. Bases are resolved by name here,
+        // before headers bind, so that every later object formation sees the effective state.
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is StructKoto { Bases.Count: > 0 } structure && structure.BoundSymbol is { ObjectPayloadOptOut: null } symbol)
+            {
+                symbol.ObjectPayloadOptOut = this.InheritedObjectPayloadOptOut(structure);
+            }
+        }
+
+        void Register(BoundConstraint constraint, BindingSymbol type, IsKoto use, bool standalone)
         {
             if (constraint.Kind == ConstraintKind.And)
             {
-                Register(constraint.Left!, type, use);
-                Register(constraint.Right!, type, use);
+                Register(constraint.Left!, type, use, false);
+                Register(constraint.Right!, type, use, false);
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
                 this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
             }
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.Sealed)
+            {
+                Fail(use, BindingFailure.InvalidConstraint);
+            }
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
+            {
+                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2: users cannot grant ObjectPayload.
+            }
+            else if (constraint.Kind == ConstraintKind.Not)
+            {
+                // SPEC 8.2, 8.4.7.2: the only negated Self clause is the standalone, unrepeated ObjectPayload opt-out.
+                if (standalone && constraint.Left is { Kind: ConstraintKind.Contract, Contract.Intrinsic: IntrinsicKind.ObjectPayload } && !ReferenceEquals(type.ObjectPayloadOptOut, type))
+                {
+                    type.ObjectPayloadOptOut = type;
+                }
+                else
+                {
+                    Fail(use, BindingFailure.InvalidSelfClause);
+                }
+            }
         }
+    }
+
+    private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
+    {
+        // The current language has one inline base. The bound limits invalid cycles too.
+        for (var depth = 0; structure.Bases.Count > 0 && depth <= this.nodes.Count; depth++)
+        {
+            var syntax = structure.Bases[0];
+            var type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
+            if (type is null)
+            {
+                return null;
+            }
+
+            if (type.ObjectPayloadOptOut is not null)
+            {
+                return type.ObjectPayloadOptOut;
+            }
+
+            if (type.Declaration is not StructKoto next)
+            {
+                return null;
+            }
+
+            structure = next;
+        }
+
+        return null;
     }
 
     private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
+        if (this.conformancesByType.TryGetValue(type, out var previousBindings))
+        {
+            foreach (var identity in previousBindings)
+            {
+                if (!ReferenceEquals(identity.Contract, contract) && identity.DirectClause is { } clause &&
+                    this.ContractBindingsMayCollide(identity.Contract, contract, scope))
+                {
+                    identity.Invalid = true;
+                    Fail(clause, BindingFailure.Duplicate);
+                    Fail(use, BindingFailure.Duplicate);
+                }
+            }
+        }
+
         var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
         if (direct.Identity.DirectClause is { } previous)
         {
@@ -358,7 +612,7 @@ public sealed partial class Binding
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
         // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = type.Symbol?.Declaration is ContractKoto own && IsRefinement(own.BoundSymbol!, contract);
+        var premise = type.Symbol?.Declaration is ContractKoto own && this.AvailableContractPremise(own.BoundSymbol!) && IsRefinement(own.BoundSymbol!, contract);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -368,7 +622,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && IsRefinement(fact.Contract!, contract))
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
                 {
                     premise = true;
                     break;
@@ -381,19 +635,28 @@ public sealed partial class Binding
         return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 
-    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType self, bool normalize = true)
+    private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize));
+            return this.NegateConstraint(this.ContractConstraint(constraint.Left!, scope, self, normalize, reference));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize), right: this.ContractConstraint(constraint.Right!, scope, self, normalize)));
+            return this.InternConstraint(new(constraint.Kind, left: this.ContractConstraint(constraint.Left!, scope, self, normalize, reference), right: this.ContractConstraint(constraint.Right!, scope, self, normalize, reference)));
         }
 
-        return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, this.ContractType(constraint.Subject, scope, self, normalize), constraint.RequiredType is { } required ? this.ContractType(required, scope, self, normalize) : null, constraint.Contract, constraint.Mask));
+        var contract = constraint.Contract;
+        if (reference is not null && contract?.Type is { } contractType && !ReferenceEquals(contractType.Symbol, contract))
+        {
+            contract = this.BoundContractReference(this.SubstituteContractReference(contractType, reference));
+        }
+
+        return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
+
+        BoundType Instantiate(BoundType type)
+            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
     }
 
     private void ExpandContractPremises()
@@ -453,7 +716,7 @@ public sealed partial class Binding
         AddClauses(shape);
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
-            this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[i])));
+            this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[i])), shape.Symbol);
             AddClauses(shape.Ancestors[i].Contract!);
         }
 
@@ -461,9 +724,9 @@ public sealed partial class Binding
         {
             for (var i = 0; i < declaration.ClauseStorage.Count; i++)
             {
-                if (declaration.ClauseStorage[i].BoundConstraint is { } constraint)
+                if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
                 {
-                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false));
+                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false, declaration.Symbol), shape.Symbol);
                 }
             }
         }
@@ -619,7 +882,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
             {
-                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, shape.Symbol))
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, shape.Symbol) || (shape.ClauseStorage[i].Left.BoundType is { } subject && !TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
                 {
                     Fail(shape.ClauseStorage[i], BindingFailure.Access);
                     Fail(contract, BindingFailure.Access);

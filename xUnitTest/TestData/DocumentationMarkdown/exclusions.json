@@ -1,0 +1,1122 @@
+[
+  {
+    "example": 1,
+    "reason": "indented-code"
+  },
+  {
+    "example": 2,
+    "reason": "indented-code"
+  },
+  {
+    "example": 3,
+    "reason": "indented-code"
+  },
+  {
+    "example": 5,
+    "reason": "indented-code"
+  },
+  {
+    "example": 6,
+    "reason": "indented-code"
+  },
+  {
+    "example": 7,
+    "reason": "indented-code"
+  },
+  {
+    "example": 8,
+    "reason": "indented-code"
+  },
+  {
+    "example": 11,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 18,
+    "reason": "indented-code"
+  },
+  {
+    "example": 21,
+    "reason": "html"
+  },
+  {
+    "example": 23,
+    "reason": "reference-link"
+  },
+  {
+    "example": 25,
+    "reason": "named-reference"
+  },
+  {
+    "example": 31,
+    "reason": "html"
+  },
+  {
+    "example": 32,
+    "reason": "named-reference"
+  },
+  {
+    "example": 33,
+    "reason": "reference-link"
+  },
+  {
+    "example": 34,
+    "reason": "named-reference"
+  },
+  {
+    "example": 36,
+    "reason": "indented-code"
+  },
+  {
+    "example": 43,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 44,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 45,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 46,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 47,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 48,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 49,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 50,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 51,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 52,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 53,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 54,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 55,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 56,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 57,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 58,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 59,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 60,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 61,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 69,
+    "reason": "indented-code"
+  },
+  {
+    "example": 77,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 80,
+    "reason": "setext"
+  },
+  {
+    "example": 81,
+    "reason": "setext"
+  },
+  {
+    "example": 82,
+    "reason": "setext"
+  },
+  {
+    "example": 83,
+    "reason": "setext"
+  },
+  {
+    "example": 84,
+    "reason": "setext"
+  },
+  {
+    "example": 85,
+    "reason": "setext"
+  },
+  {
+    "example": 86,
+    "reason": "setext"
+  },
+  {
+    "example": 87,
+    "reason": "setext"
+  },
+  {
+    "example": 88,
+    "reason": "setext"
+  },
+  {
+    "example": 89,
+    "reason": "setext"
+  },
+  {
+    "example": 90,
+    "reason": "setext"
+  },
+  {
+    "example": 91,
+    "reason": "setext"
+  },
+  {
+    "example": 92,
+    "reason": "setext"
+  },
+  {
+    "example": 93,
+    "reason": "setext"
+  },
+  {
+    "example": 94,
+    "reason": "setext"
+  },
+  {
+    "example": 95,
+    "reason": "setext"
+  },
+  {
+    "example": 96,
+    "reason": "setext"
+  },
+  {
+    "example": 97,
+    "reason": "setext"
+  },
+  {
+    "example": 98,
+    "reason": "setext"
+  },
+  {
+    "example": 99,
+    "reason": "setext"
+  },
+  {
+    "example": 100,
+    "reason": "setext"
+  },
+  {
+    "example": 101,
+    "reason": "setext"
+  },
+  {
+    "example": 102,
+    "reason": "setext"
+  },
+  {
+    "example": 103,
+    "reason": "setext"
+  },
+  {
+    "example": 104,
+    "reason": "setext"
+  },
+  {
+    "example": 105,
+    "reason": "setext"
+  },
+  {
+    "example": 106,
+    "reason": "setext"
+  },
+  {
+    "example": 107,
+    "reason": "indented-code"
+  },
+  {
+    "example": 108,
+    "reason": "indented-code"
+  },
+  {
+    "example": 109,
+    "reason": "indented-code"
+  },
+  {
+    "example": 110,
+    "reason": "indented-code"
+  },
+  {
+    "example": 111,
+    "reason": "indented-code"
+  },
+  {
+    "example": 112,
+    "reason": "indented-code"
+  },
+  {
+    "example": 113,
+    "reason": "indented-code"
+  },
+  {
+    "example": 114,
+    "reason": "indented-code"
+  },
+  {
+    "example": 115,
+    "reason": "indented-code"
+  },
+  {
+    "example": 116,
+    "reason": "indented-code"
+  },
+  {
+    "example": 117,
+    "reason": "indented-code"
+  },
+  {
+    "example": 118,
+    "reason": "indented-code"
+  },
+  {
+    "example": 134,
+    "reason": "indented-code"
+  },
+  {
+    "example": 141,
+    "reason": "setext"
+  },
+  {
+    "example": 148,
+    "reason": "html"
+  },
+  {
+    "example": 149,
+    "reason": "html"
+  },
+  {
+    "example": 150,
+    "reason": "html"
+  },
+  {
+    "example": 151,
+    "reason": "html"
+  },
+  {
+    "example": 152,
+    "reason": "html"
+  },
+  {
+    "example": 153,
+    "reason": "html"
+  },
+  {
+    "example": 154,
+    "reason": "html"
+  },
+  {
+    "example": 155,
+    "reason": "html"
+  },
+  {
+    "example": 156,
+    "reason": "html"
+  },
+  {
+    "example": 157,
+    "reason": "html"
+  },
+  {
+    "example": 158,
+    "reason": "html"
+  },
+  {
+    "example": 159,
+    "reason": "html"
+  },
+  {
+    "example": 160,
+    "reason": "html"
+  },
+  {
+    "example": 161,
+    "reason": "html"
+  },
+  {
+    "example": 162,
+    "reason": "html"
+  },
+  {
+    "example": 163,
+    "reason": "html"
+  },
+  {
+    "example": 164,
+    "reason": "html"
+  },
+  {
+    "example": 165,
+    "reason": "html"
+  },
+  {
+    "example": 166,
+    "reason": "html"
+  },
+  {
+    "example": 167,
+    "reason": "html"
+  },
+  {
+    "example": 168,
+    "reason": "html"
+  },
+  {
+    "example": 169,
+    "reason": "html"
+  },
+  {
+    "example": 170,
+    "reason": "html"
+  },
+  {
+    "example": 171,
+    "reason": "html"
+  },
+  {
+    "example": 172,
+    "reason": "html"
+  },
+  {
+    "example": 173,
+    "reason": "html"
+  },
+  {
+    "example": 174,
+    "reason": "html"
+  },
+  {
+    "example": 175,
+    "reason": "html"
+  },
+  {
+    "example": 176,
+    "reason": "html"
+  },
+  {
+    "example": 177,
+    "reason": "html"
+  },
+  {
+    "example": 178,
+    "reason": "html"
+  },
+  {
+    "example": 179,
+    "reason": "html"
+  },
+  {
+    "example": 180,
+    "reason": "html"
+  },
+  {
+    "example": 181,
+    "reason": "html"
+  },
+  {
+    "example": 182,
+    "reason": "html"
+  },
+  {
+    "example": 183,
+    "reason": "html"
+  },
+  {
+    "example": 184,
+    "reason": "html"
+  },
+  {
+    "example": 185,
+    "reason": "html"
+  },
+  {
+    "example": 186,
+    "reason": "html"
+  },
+  {
+    "example": 187,
+    "reason": "html"
+  },
+  {
+    "example": 188,
+    "reason": "html"
+  },
+  {
+    "example": 189,
+    "reason": "html"
+  },
+  {
+    "example": 190,
+    "reason": "html"
+  },
+  {
+    "example": 191,
+    "reason": "html"
+  },
+  {
+    "example": 192,
+    "reason": "reference-link"
+  },
+  {
+    "example": 193,
+    "reason": "reference-link"
+  },
+  {
+    "example": 194,
+    "reason": "reference-link"
+  },
+  {
+    "example": 195,
+    "reason": "reference-link"
+  },
+  {
+    "example": 196,
+    "reason": "reference-link"
+  },
+  {
+    "example": 197,
+    "reason": "reference-link"
+  },
+  {
+    "example": 198,
+    "reason": "reference-link"
+  },
+  {
+    "example": 199,
+    "reason": "reference-link"
+  },
+  {
+    "example": 200,
+    "reason": "reference-link"
+  },
+  {
+    "example": 201,
+    "reason": "reference-link"
+  },
+  {
+    "example": 202,
+    "reason": "reference-link"
+  },
+  {
+    "example": 203,
+    "reason": "reference-link"
+  },
+  {
+    "example": 204,
+    "reason": "reference-link"
+  },
+  {
+    "example": 205,
+    "reason": "reference-link"
+  },
+  {
+    "example": 206,
+    "reason": "reference-link"
+  },
+  {
+    "example": 207,
+    "reason": "reference-link"
+  },
+  {
+    "example": 208,
+    "reason": "reference-link"
+  },
+  {
+    "example": 209,
+    "reason": "reference-link"
+  },
+  {
+    "example": 210,
+    "reason": "reference-link"
+  },
+  {
+    "example": 211,
+    "reason": "reference-link"
+  },
+  {
+    "example": 212,
+    "reason": "reference-link"
+  },
+  {
+    "example": 213,
+    "reason": "reference-link"
+  },
+  {
+    "example": 214,
+    "reason": "reference-link"
+  },
+  {
+    "example": 215,
+    "reason": "reference-link"
+  },
+  {
+    "example": 216,
+    "reason": "reference-link"
+  },
+  {
+    "example": 217,
+    "reason": "reference-link"
+  },
+  {
+    "example": 218,
+    "reason": "reference-link"
+  },
+  {
+    "example": 225,
+    "reason": "indented-code"
+  },
+  {
+    "example": 231,
+    "reason": "indented-code"
+  },
+  {
+    "example": 232,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 233,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 234,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 236,
+    "reason": "indented-code"
+  },
+  {
+    "example": 238,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 246,
+    "reason": "thematic-break"
+  },
+  {
+    "example": 247,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 250,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 251,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 252,
+    "reason": "indented-code"
+  },
+  {
+    "example": 253,
+    "reason": "indented-code"
+  },
+  {
+    "example": 254,
+    "reason": "indented-code"
+  },
+  {
+    "example": 257,
+    "reason": "indented-code"
+  },
+  {
+    "example": 264,
+    "reason": "indented-code"
+  },
+  {
+    "example": 270,
+    "reason": "indented-code"
+  },
+  {
+    "example": 271,
+    "reason": "indented-code"
+  },
+  {
+    "example": 272,
+    "reason": "indented-code"
+  },
+  {
+    "example": 273,
+    "reason": "indented-code"
+  },
+  {
+    "example": 274,
+    "reason": "indented-code"
+  },
+  {
+    "example": 278,
+    "reason": "indented-code"
+  },
+  {
+    "example": 286,
+    "reason": "indented-code"
+  },
+  {
+    "example": 287,
+    "reason": "indented-code"
+  },
+  {
+    "example": 288,
+    "reason": "indented-code"
+  },
+  {
+    "example": 289,
+    "reason": "indented-code"
+  },
+  {
+    "example": 290,
+    "reason": "indented-code"
+  },
+  {
+    "example": 291,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 292,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 293,
+    "reason": "explicit-continuation"
+  },
+  {
+    "example": 300,
+    "reason": "setext"
+  },
+  {
+    "example": 308,
+    "reason": "html"
+  },
+  {
+    "example": 309,
+    "reason": "indented-code"
+  },
+  {
+    "example": 312,
+    "reason": "indented-code"
+  },
+  {
+    "example": 313,
+    "reason": "indented-code"
+  },
+  {
+    "example": 317,
+    "reason": "reference-link"
+  },
+  {
+    "example": 344,
+    "reason": "html"
+  },
+  {
+    "example": 475,
+    "reason": "html"
+  },
+  {
+    "example": 476,
+    "reason": "html"
+  },
+  {
+    "example": 477,
+    "reason": "html"
+  },
+  {
+    "example": 491,
+    "reason": "html"
+  },
+  {
+    "example": 494,
+    "reason": "html"
+  },
+  {
+    "example": 503,
+    "reason": "named-reference"
+  },
+  {
+    "example": 517,
+    "reason": "image"
+  },
+  {
+    "example": 520,
+    "reason": "image"
+  },
+  {
+    "example": 524,
+    "reason": "html"
+  },
+  {
+    "example": 527,
+    "reason": "reference-link"
+  },
+  {
+    "example": 528,
+    "reason": "reference-link"
+  },
+  {
+    "example": 529,
+    "reason": "reference-link"
+  },
+  {
+    "example": 530,
+    "reason": "reference-link"
+  },
+  {
+    "example": 531,
+    "reason": "reference-link"
+  },
+  {
+    "example": 532,
+    "reason": "reference-link"
+  },
+  {
+    "example": 533,
+    "reason": "reference-link"
+  },
+  {
+    "example": 534,
+    "reason": "reference-link"
+  },
+  {
+    "example": 535,
+    "reason": "reference-link"
+  },
+  {
+    "example": 536,
+    "reason": "reference-link"
+  },
+  {
+    "example": 537,
+    "reason": "reference-link"
+  },
+  {
+    "example": 538,
+    "reason": "reference-link"
+  },
+  {
+    "example": 539,
+    "reason": "reference-link"
+  },
+  {
+    "example": 540,
+    "reason": "reference-link"
+  },
+  {
+    "example": 541,
+    "reason": "reference-link"
+  },
+  {
+    "example": 542,
+    "reason": "reference-link"
+  },
+  {
+    "example": 543,
+    "reason": "reference-link"
+  },
+  {
+    "example": 544,
+    "reason": "reference-link"
+  },
+  {
+    "example": 545,
+    "reason": "reference-link"
+  },
+  {
+    "example": 549,
+    "reason": "reference-link"
+  },
+  {
+    "example": 550,
+    "reason": "reference-link"
+  },
+  {
+    "example": 553,
+    "reason": "reference-link"
+  },
+  {
+    "example": 554,
+    "reason": "reference-link"
+  },
+  {
+    "example": 555,
+    "reason": "reference-link"
+  },
+  {
+    "example": 556,
+    "reason": "reference-link"
+  },
+  {
+    "example": 557,
+    "reason": "reference-link"
+  },
+  {
+    "example": 558,
+    "reason": "reference-link"
+  },
+  {
+    "example": 559,
+    "reason": "reference-link"
+  },
+  {
+    "example": 560,
+    "reason": "reference-link"
+  },
+  {
+    "example": 561,
+    "reason": "reference-link"
+  },
+  {
+    "example": 562,
+    "reason": "reference-link"
+  },
+  {
+    "example": 563,
+    "reason": "reference-link"
+  },
+  {
+    "example": 564,
+    "reason": "reference-link"
+  },
+  {
+    "example": 565,
+    "reason": "reference-link"
+  },
+  {
+    "example": 566,
+    "reason": "reference-link"
+  },
+  {
+    "example": 567,
+    "reason": "reference-link"
+  },
+  {
+    "example": 568,
+    "reason": "reference-link"
+  },
+  {
+    "example": 569,
+    "reason": "reference-link"
+  },
+  {
+    "example": 570,
+    "reason": "reference-link"
+  },
+  {
+    "example": 571,
+    "reason": "reference-link"
+  },
+  {
+    "example": 572,
+    "reason": "image"
+  },
+  {
+    "example": 573,
+    "reason": "image"
+  },
+  {
+    "example": 574,
+    "reason": "image"
+  },
+  {
+    "example": 575,
+    "reason": "image"
+  },
+  {
+    "example": 576,
+    "reason": "image"
+  },
+  {
+    "example": 577,
+    "reason": "image"
+  },
+  {
+    "example": 578,
+    "reason": "image"
+  },
+  {
+    "example": 579,
+    "reason": "image"
+  },
+  {
+    "example": 580,
+    "reason": "image"
+  },
+  {
+    "example": 581,
+    "reason": "image"
+  },
+  {
+    "example": 582,
+    "reason": "image"
+  },
+  {
+    "example": 583,
+    "reason": "image"
+  },
+  {
+    "example": 584,
+    "reason": "image"
+  },
+  {
+    "example": 585,
+    "reason": "image"
+  },
+  {
+    "example": 586,
+    "reason": "image"
+  },
+  {
+    "example": 587,
+    "reason": "image"
+  },
+  {
+    "example": 588,
+    "reason": "image"
+  },
+  {
+    "example": 589,
+    "reason": "image"
+  },
+  {
+    "example": 590,
+    "reason": "image"
+  },
+  {
+    "example": 591,
+    "reason": "image"
+  },
+  {
+    "example": 592,
+    "reason": "image"
+  },
+  {
+    "example": 593,
+    "reason": "image"
+  },
+  {
+    "example": 613,
+    "reason": "html"
+  },
+  {
+    "example": 614,
+    "reason": "html"
+  },
+  {
+    "example": 615,
+    "reason": "html"
+  },
+  {
+    "example": 616,
+    "reason": "html"
+  },
+  {
+    "example": 617,
+    "reason": "html"
+  },
+  {
+    "example": 618,
+    "reason": "html"
+  },
+  {
+    "example": 619,
+    "reason": "html"
+  },
+  {
+    "example": 620,
+    "reason": "html"
+  },
+  {
+    "example": 621,
+    "reason": "html"
+  },
+  {
+    "example": 622,
+    "reason": "html"
+  },
+  {
+    "example": 623,
+    "reason": "html"
+  },
+  {
+    "example": 624,
+    "reason": "html"
+  },
+  {
+    "example": 625,
+    "reason": "html"
+  },
+  {
+    "example": 626,
+    "reason": "html"
+  },
+  {
+    "example": 627,
+    "reason": "html"
+  },
+  {
+    "example": 628,
+    "reason": "html"
+  },
+  {
+    "example": 629,
+    "reason": "html"
+  },
+  {
+    "example": 630,
+    "reason": "html"
+  },
+  {
+    "example": 631,
+    "reason": "html"
+  },
+  {
+    "example": 632,
+    "reason": "html"
+  },
+  {
+    "example": 642,
+    "reason": "html"
+  },
+  {
+    "example": 643,
+    "reason": "html"
+  }
+]

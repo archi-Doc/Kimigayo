@@ -22,6 +22,7 @@ public enum OriginKind : byte
     Inference,
     Intersection,
     Projection,
+    Unbound,
 }
 
 public enum OriginVariance : byte
@@ -79,9 +80,6 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
 
     public SourceSpan Span { get; } = span;
 
-    /// <summary>Gets the declared outlived Origin (SPEC 15.3), resolved by the latest Bind.</summary>
-    public BoundOrigin? Bound { get; internal set; }
-
     public OriginVariance Variance { get; internal set; }
 
     public LoanRequirement LoanRequirement { get; internal set; }
@@ -105,6 +103,7 @@ public sealed class BoundOrigin
         this.Slot = slot;
         this.Name = name ?? kind.ToString();
         this.Operands = operands ?? [];
+        this.InputIndex = slot;
     }
 
     public static BoundOrigin Static { get; } = new(OriginKind.Static, name: "static");
@@ -118,10 +117,19 @@ public sealed class BoundOrigin
     public string Name { get; }
 
     public IReadOnlyList<BoundOrigin> Operands { get; }
+
+    /// <summary>Gets the value input carrying this Origin; distinct from its inference slot.</summary>
+    public int InputIndex { get; internal init; }
+
+    internal Koto? Occurrence { get; init; }
+
+    internal int TargetSlot { get; init; }
+
+    internal BindingSymbol? BorrowCondition { get; set; }
 }
 
 /// <summary>A retained semantic requirement, independent of successful name resolution.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null);
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null);
 
 internal enum TypePosition : byte
 {

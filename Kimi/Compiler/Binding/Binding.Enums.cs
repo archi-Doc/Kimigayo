@@ -68,7 +68,7 @@ public sealed partial class Binding
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
     public bool TryGetEnumConstruction(Koto use, out BoundEnumConstruction? construction)
     {
-        if (this.coreValid && use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
+        if (this.kimiValid && use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
         {
             construction = plan;
             return true;
@@ -180,7 +180,11 @@ public sealed partial class Binding
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
         BoundType? type;
-        if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
+        if (qualifier is ParenthesizedTypeKoto or TypeSemanticsKoto { Type: not null })
+        {
+            type = this.BindType(qualifier, scope, this.TypeContext(qualifier, scope) with { SuppressOuter = true });
+        }
+        else if (qualifier is GenericsKoto || (qualifier is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto))
         {
             // Only nested complete Type arguments carry annotations here. Enum Origin slots
             // are determined by the construction's expected Type and payloads.
@@ -192,7 +196,9 @@ public sealed partial class Binding
         }
         else
         {
-            type = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
+            type = symbol.Declaration is StructKoto || (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
+                ? this.BindContainerReference(qualifier, symbol, scope, this.TypeContext(qualifier, scope), [])
+                : expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : symbol.Type;
         }
 
         qualifier.BoundSymbol = symbol;
@@ -232,8 +238,8 @@ public sealed partial class Binding
         }
 
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
-        var slots = declaration.GenericParameterNodes.Count;
-        var originCount = declaration.OriginNames.Count;
+        var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
+        var originCount = declaration.BoundSymbol.Schema.Origins.Count;
         var arguments = this.typeScratch.Rent(slots);
         var origins = this.originScratch.Rent(originCount);
         var operations = this.argumentOperationScratch.Rent(count);
@@ -305,14 +311,17 @@ public sealed partial class Binding
                         return Complete(use, null);
                     }
 
+                    actual = this.ArgumentType(source, actual);
+                    this.transferRequired = this.lendingRequired = false;
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
-                        return Fail(use, BindingFailure.TypeMismatch);
+                        // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
+                        return Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    if (!this.Infer(inferred, adapted, declaration, arguments, true))
+                    if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
                         return Fail(use, BindingFailure.TypeMismatch);
                     }
@@ -347,7 +356,7 @@ public sealed partial class Binding
             {
                 var type = this.StoredType(payload[i].BoundType!, result)!;
                 var operation = operations[i];
-                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !FitsType(adapted, type))
+                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !this.FitsTypeAt(adapted, type, operation.Source!))
                 {
                     return Fail(use, BindingFailure.TypeMismatch);
                 }
@@ -394,10 +403,24 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved)
+            if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
                 Fail(entry.Key, BindingFailure.InvalidTypeFormation);
+                continue;
+            }
+
+            var scope = this.ConstraintScope(entry.Key);
+            var formation = this.CheckTypeConstraints(plan.Type, scope);
+            for (var i = 0; i < plan.PayloadOperations.Length; i++)
+            {
+                formation = CombineProof(formation, this.CheckTypeConstraints(plan.PayloadOperations[i].ParameterType!, scope), true);
+            }
+
+            if (formation != ConstraintProof.Proven)
+            {
+                plan.IsValid = false;
+                Fail(entry.Key, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
                 continue;
             }
 
@@ -410,8 +433,14 @@ public sealed partial class Binding
                     plan.IsValid = false;
                     Fail(entry.Key, BindingFailure.InvalidConstraint);
                 }
+                else if (proof != ConstraintProof.Proven && operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource))
+                {
+                    // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
+                    plan.IsValid = false;
+                    Fail(payloadSource, BindingFailure.TransferRequired);
+                }
 
-                plan.SetAcquisition(i, operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
+                plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
             }
         }
     }

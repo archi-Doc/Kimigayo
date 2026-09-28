@@ -7,4 +7,4 @@ dotnet run --project Kimi -- build examples/Counter/Counter.kimiproj
 dotnet run --project Kimi -- run examples/Counter/Counter.kimiproj
 ```
 
-Requires the pinned LLVM tools and the verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.40](../../STATUS.md#c40-scalar-control-flow-emission-and-nativeaot-2026-09-13) for supported operations and limits.
+Requires the pinned LLVM tools and the verified Windows backend archive described in [backend setup](../../backend/windows-x64/README.md). See [STATUS.md C.40](../../STATUS.md#4-llvm-generation-coverage) for supported operations and limits.

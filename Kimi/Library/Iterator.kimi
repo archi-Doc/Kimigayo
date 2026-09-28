@@ -1,0 +1,5 @@
+/// An iterator whose item Type is independent of an individual next call.
+public contract Iterator: LendingIterator
+    /// The complete Type delivered by every successful next call.
+    associate Item
+    associate LendingIterator.LentItem(step) is Item

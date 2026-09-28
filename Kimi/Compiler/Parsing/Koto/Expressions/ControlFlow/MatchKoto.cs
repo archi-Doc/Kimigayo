@@ -28,7 +28,7 @@ public sealed class MatchArmKoto
 }
 
 /// <summary>Represents a <c>match</c> expression.</summary>
-public sealed class MatchKoto : ExpressionKoto
+public class MatchKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Match;

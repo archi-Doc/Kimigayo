@@ -15,18 +15,66 @@ public sealed partial class OwnershipAnalysis
             var point = this.current;
             if (point < 0 && this.checkingRegion > 0)
             {
-                point = this.body.CheckingRegions[this.checkingRegion].Seed;
+                var region = this.body.CheckingRegions[this.checkingRegion];
+                var replay = region.Replay;
+                point = region.Seed;
+                if (region.SeedCount > 0)
+                {
+                    var seed = this.body.CheckingSeeds[region.SeedStart];
+                    point = seed.Operation;
+                    replay = seed.Replay;
+                }
+
+                if (replay >= 0)
+                {
+                    point = this.body.CheckingReplays[replay].End;
+                }
             }
 
             return (uint)point < (uint)this.body.LoanStates.Count ? this.body.LoanStates[point] : -1;
         }
     }
 
-    private int InspectString(Koto source, out int loan)
+    /// <summary>Gets the Place syntax a string argument borrows.</summary>
+    /// <param name="argument">The written argument.</param>
+    /// <returns>The borrowed Place syntax; an explicit <c>text@ref</c> is the same preparation as the bare argument.</returns>
+    internal static Koto BorrowedArgumentSource(Koto argument)
     {
-        var place = this.Expression(source, PlaceUseKind.Read);
+        var source = KotoHelper.UnwrapParentheses(argument);
+        return source is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } written ? KotoHelper.UnwrapParentheses(written.Left) : source;
+    }
+
+    private int InspectString(Koto source, out int loan, out int reference)
+    {
         loan = -1;
-        if (place < 0 || ReferenceTypes.IsString(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
+        reference = -1;
+        if (IsPointerPlace(KotoHelper.UnwrapParentheses(source)))
+        {
+            // SPEC 5.2: read a raw string Place in place through its handle address.
+            // No owner, Move or Loan is created; the comparison has no Place.
+            reference = this.PointerAddress(KotoHelper.UnwrapParentheses(source));
+            return -1;
+        }
+
+        if (this.compilation.Binding.TryGetAdaptation(source, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.SharedBorrow or ExpectedAdaptationKind.ReferenceRead)
+        {
+            // SPEC 13.4: an operand without an owned static path is inspected through its one shared borrow, and one
+            // behind several reference layers through the one shared reference they yield (SPEC 10.2).
+            var shared = adaptation.Kind == ExpectedAdaptationKind.SharedBorrow ? this.BorrowStruct(source, adaptation.Type) : this.ReadReference(source, adaptation.Type);
+            reference = this.Value(shared);
+            return shared;
+        }
+
+        if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
+        {
+            var borrowed = this.BorrowStringElement(element, null, null, out loan);
+            reference = ReferenceTypes.IsStringReference(source.BoundType) ? this.Value(borrowed) : -1;
+            return borrowed;
+        }
+
+        var place = this.Expression(source, PlaceUseKind.Read);
+        reference = ReferenceTypes.IsStringReference(source.BoundType) ? this.Value(place) : -1;
+        if (place < 0 || ReferenceTypes.IsStringReference(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
         {
             return place;
         }
@@ -52,7 +100,19 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
-        var source = KotoHelper.UnwrapParentheses(argument.Source!);
+        var source = BorrowedArgumentSource(argument.Source!);
+        if (source is MemberAccessKoto field && ReferenceEquals(field.BoundType, BoundType.String) && ElementAccess.BorrowedPathRoot(field) is not null)
+        {
+            // A string field reached through a reference, such as a shared iteration binding, is
+            // reborrowed from that referent (SPEC 15.6.3); its owner stays protected by the reference's Loan.
+            return this.BorrowStruct(source, argument.ParameterType!);
+        }
+
+        if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
+        {
+            return this.BorrowStringElement(element, call, argument.ParameterType, out _);
+        }
+
         if (!ReferenceEquals(source.BoundType, BoundType.String))
         {
             this.Expression(source, PlaceUseKind.Read);
@@ -62,7 +122,7 @@ public sealed partial class OwnershipAnalysis
 
         // An owned expression already materializes its result and registers its
         // enclosing-expression cleanup. Borrow that storage without another Move.
-        var place = source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+        var place = source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture
             ? this.Local(source) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
@@ -78,12 +138,10 @@ public sealed partial class OwnershipAnalysis
     private int StringComparison(BinaryKoto comparison)
     {
         var depth = this.comparisonDepth++;
-        var left = this.InspectString(comparison.Left, out var leftLoan);
-        var leftValue = ReferenceTypes.IsString(comparison.Left.BoundType) ? this.Value(left) : -1;
-        var right = this.InspectString(comparison.Right, out var rightLoan);
-        var rightValue = ReferenceTypes.IsString(comparison.Right.BoundType) ? this.Value(right) : -1;
+        var left = this.InspectString(comparison.Left, out var leftLoan, out var leftValue);
+        var right = this.InspectString(comparison.Right, out var rightLoan, out var rightValue);
         var result = -1;
-        if (left >= 0 && right >= 0 && this.flow!.Nodes[comparison].CanCompleteNormally)
+        if ((left >= 0 || leftValue >= 0) && (right >= 0 || rightValue >= 0) && this.flow!.Nodes[comparison].CanCompleteNormally)
         {
             result = this.Temporary(comparison);
             var operation = this.Value(result);
@@ -127,6 +185,11 @@ public sealed partial class OwnershipAnalysis
         this.body.LoanStates.Add(head);
         for (var loan = head; loan >= 0; loan = this.body.ComparisonLoans[loan].Parent)
         {
+            if (this.body.ComparisonLoans[loan].Reservation >= 0 || this.body.Operations[^1].Reservation >= 0)
+            {
+                continue; // Reservation phases and static subpaths are checked on the completed plan.
+            }
+
             if (this.body.ConflictsWithLoan(this.body.Operations.Count - 1, loan))
             {
                 // The diagnostic is deliberately Place-independent, matching ReportIssue's key.

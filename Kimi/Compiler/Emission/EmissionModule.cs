@@ -15,10 +15,19 @@ internal enum EmissionOpcode : byte
     LoadScalar,
     LoadElement,
     ElementAddress,
+    BorrowAddress,
+    ObjectPayload,
+    ObjectTypeTest,
+    ObjectBorrow,
+    Sequence,
     StoreScalar,
     StoreElement,
+    SwapScalars,
     Scalar,
     Convert,
+    PointerOffset,
+    LoadPointer,
+    StorePointer,
     Phi,
 
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
@@ -31,10 +40,18 @@ internal enum EmissionOpcode : byte
     InitializeLiveFlag,
     StringEquals,
     StringCompare,
+    BuiltinComparison,
+    TupleRelation,
     StringPattern,
+    CompositePattern,
+    PatternRead,
+    CreateClosure,
+    EraseClosure,
+    CallValue,
 
     /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
+    FillArray,
 
     /// <summary>Destroy the exact aggregate Type at Place, or at the sole address operand; only Place supports conditional cleanup.</summary>
     DestroyAggregate,
@@ -44,6 +61,9 @@ internal enum EmissionOpcode : byte
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
+    TestSnapshot,
+    TestPhaseEnter,
+    TestPhaseLeave,
 
     /// <summary>A normal return, emitted only after lowering proves a normal Exit.</summary>
     ReturnVoid,
@@ -78,6 +98,10 @@ internal enum EmissionOperandKind : byte
     /// <summary>Exact IEEE 754 bits in the selected format.</summary>
     Float32,
     Float64,
+    EnvironmentAddress,
+    CaptureAddress,
+    FunctionAddress,
+    FormattingStack,
 }
 
 // Internal managed storage only: 8-byte packing avoids 16-byte tail padding for the tag.
@@ -98,10 +122,16 @@ internal enum ArithmeticCheckKind : byte
     Shift,
     Conversion,
     Bounds,
+    MissingKey,
+    Argument,
+    FloatingConversion,
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1, int PatternStart = 0, int PatternCount = 0);
+
+// Text is -2 for a scalar test, -1 for an empty string, or a UTF-8 constant index.
+internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2, int DereferenceStart = 0, int DereferenceCount = 0);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
@@ -127,6 +157,20 @@ internal sealed class EmissionFunction
 
     internal List<EmissionOperand> Operands { get; } = new();
 
+    internal List<FunctionAbi> FunctionAddresses { get; } = new();
+
+    internal List<int> FormattingStacks { get; } = new();
+
+    internal List<PatternTestStep> PatternSteps { get; } = new();
+
+    internal List<int> PatternDereferences { get; } = new();
+
+    internal ReadOnlySpan<PatternTestStep> GetPattern(in EmissionInstruction instruction)
+        => CollectionsMarshal.AsSpan(this.PatternSteps).Slice(instruction.PatternStart, instruction.PatternCount);
+
+    internal ReadOnlySpan<int> GetPatternDereferences(in PatternTestStep step)
+        => CollectionsMarshal.AsSpan(this.PatternDereferences).Slice(step.DereferenceStart, step.DereferenceCount);
+
     internal ReadOnlySpan<EmissionOperand> GetOperands(in EmissionInstruction instruction)
         => CollectionsMarshal.AsSpan(this.Operands).Slice(instruction.OperandStart, instruction.OperandCount);
 
@@ -142,6 +186,10 @@ internal sealed class EmissionFunction
         this.PathFlags.Clear();
         this.Instructions.Clear();
         this.Operands.Clear();
+        this.FunctionAddresses.Clear();
+        this.FormattingStacks.Clear();
+        this.PatternSteps.Clear();
+        this.PatternDereferences.Clear();
     }
 
     internal void Add(EmissionOpcode opcode, int operation, int place = -1, int constant = -1)
@@ -180,7 +228,49 @@ internal sealed class EmissionModule
 
     internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.7.2).</summary>
+    internal List<ArrayHelper> ArrayHelpers { get; } = new();
+
+    internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
+
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
+    internal bool NeedsArrayRuntime { get; set; }
+
+    internal bool NeedsDictionaryRuntime { get; set; }
+
+    internal FunctionAbi? DictionaryUnlink { get; set; }
+
+    internal FunctionAbi? DictionaryAppendSlot { get; set; }
+
+    internal FunctionAbi? DictionaryInitialize { get; set; }
+
+    internal FunctionAbi? DictionaryClearLinks { get; set; }
+
+    internal FunctionAbi? DictionaryFind { get; set; }
+
+    internal FunctionAbi? DictionaryClear { get; set; }
+
+    internal FunctionAbi? DictionaryShrink { get; set; }
+
+    internal bool NeedsFormattingRuntime { get; set; }
+
+    internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
+
+    internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
+
+    /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
+    internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
+
+    internal List<ObjectCreation> Objects { get; } = new();
+
+    internal bool NeedsObjectRuntime { get; set; }
+
+    /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
+    internal List<ExternalFunction> Externals { get; } = new();
+
     internal bool IsComplete { get; private set; }
+
+    internal string? TestRuntime { get; set; }
 
     internal bool NeedsStringComparison { get; set; }
 
@@ -192,10 +282,29 @@ internal sealed class EmissionModule
     internal void Clear()
     {
         this.IsComplete = false;
+        this.TestRuntime = null;
         this.NeedsStringComparison = false;
         this.functionCount = 0;
         this.Constants.Clear();
         this.Aggregates.Clear();
+        this.ArrayHelpers.Clear();
+        this.DictionaryHelpers.Clear();
+        this.NeedsArrayRuntime = false;
+        this.NeedsDictionaryRuntime = false;
+        this.DictionaryUnlink = null;
+        this.DictionaryAppendSlot = null;
+        this.DictionaryInitialize = null;
+        this.DictionaryClearLinks = null;
+        this.DictionaryFind = null;
+        this.DictionaryClear = null;
+        this.DictionaryShrink = null;
+        this.NeedsFormattingRuntime = false;
+        this.FormattingWrites.Clear();
+        this.FormattingConversions.Clear();
+        this.PendingEntries.Clear();
+        this.Objects.Clear();
+        this.NeedsObjectRuntime = false;
+        this.Externals.Clear();
     }
 
     internal EmissionFunction AddFunction(FunctionAbi abi, bool exported)
@@ -215,6 +324,10 @@ internal sealed class EmissionModule
         return function;
     }
 
+    // Withdraws the most recently added function after its lowering was refused.
+    internal void RemoveLastFunction()
+        => this.functionCount--;
+
     internal void Complete()
         => this.IsComplete = true;
 
@@ -228,3 +341,43 @@ internal sealed class EmissionModule
         LlvmModuleWriter.Write(this, output);
     }
 }
+
+/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.8.2.1).</summary>
+internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
+
+internal enum ArrayHelperKind : byte
+{
+    Append,
+    Insert,
+    InsertIndex,
+    Pop,
+    Remove,
+    RemoveIndex,
+    Place,
+    Clear,
+    Drop,
+    Take,
+    IteratorDrop,
+    Swap,
+
+    // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
+    BorrowStorage,
+    OwnStorage,
+}
+
+/// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null);
+
+internal enum DictionaryHelperKind : byte
+{
+    Find,
+    TryInsert,
+    InsertOrReplace,
+    Remove,
+    TryGet,
+    Clear,
+    Drop,
+}
+
+/// <summary>Physical Dictionary entry helper; bound Types and Origins never escape lowering.</summary>
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, AggregateLayout? Result, FunctionAbi? Related);

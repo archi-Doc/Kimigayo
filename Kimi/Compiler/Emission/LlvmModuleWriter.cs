@@ -17,6 +17,9 @@ internal static partial class LlvmModuleWriter
         "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
 
     // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
+    // The runtime Array capacity routines and the aggregate helpers copy bytes through these intrinsics.
+    private const string MemoryDeclarations = "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\ndeclare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)\n";
+
     private const string OverflowDeclarations = """
         declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)
         declare { i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)
@@ -50,6 +53,11 @@ internal static partial class LlvmModuleWriter
         WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
 
     private static readonly string Runtime = ReadRuntime();
+    private static readonly string FormattingRuntime = ReadFormattingRuntime();
+
+    private static readonly string TestRuntimeBase = Runtime
+        .Replace(WindowsLowering.Abort.GetDefinition(false) + "entry:\n", WindowsLowering.Abort.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal)
+        .Replace(WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n", WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal);
 
     internal static void Write(EmissionModule module, TextWriter output)
     {
@@ -60,16 +68,39 @@ internal static partial class LlvmModuleWriter
             output.Write(constants[i].Definition);
         }
 
-        output.Write(Runtime);
+        output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
+        output.Write(module.TestRuntime);
+        WriteExternals(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)
         {
-            output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
+            output.Write(MemoryDeclarations);
+            WriteArrayFillHelper(module, output);
             foreach (var aggregate in module.Aggregates)
             {
                 WriteAggregateDestructor(output, aggregate);
             }
+        }
+
+        if (module.NeedsArrayRuntime)
+        {
+            output.Write(ArrayRuntime);
+            WriteArrayHelpers(module, output);
+        }
+
+        if (module.NeedsFormattingRuntime)
+        {
+            output.Write(FormattingRuntime);
+            WriteFormattingWrappers(module, output);
+        }
+
+        if (module.NeedsDictionaryRuntime)
+        {
+            output.Write(DictionaryRuntime);
+            WriteDictionaryShrink(module, output);
+            WriteDictionaryStorage(module, output);
+            WriteDictionaryHelpers(module, output);
         }
 
         if (module.NeedsStringComparison)
@@ -82,23 +113,211 @@ internal static partial class LlvmModuleWriter
             WriteFunction(output, constants, module.GetFunction(i));
         }
 
+        WriteObjects(module, output);
+
         output.Write(Footer);
+    }
+
+    // The LLVM spelling after @ of an external symbol: the plain identifier, or a quoted
+    // name whose UTF-8 bytes other than printable ASCII, " and \ are written as \XX.
+    internal static string ExternalName(string symbol)
+    {
+        var plain = symbol.Length != 0 && !char.IsAsciiDigit(symbol[0]);
+        foreach (var c in symbol)
+        {
+            plain &= char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '$' or '-';
+        }
+
+        if (plain)
+        {
+            return symbol;
+        }
+
+        var text = new StringBuilder(symbol.Length + 8).Append('"');
+        foreach (var b in Encoding.UTF8.GetBytes(symbol))
+        {
+            if (b is >= 0x20 and < 0x7F and not (byte)'"' and not (byte)'\\')
+            {
+                text.Append((char)b);
+            }
+            else
+            {
+                text.Append('\\').Append(b.ToString("X2", CultureInfo.InvariantCulture));
+            }
+        }
+
+        return text.Append('"').ToString();
+    }
+
+    // Recovers the external symbol from its ExternalName spelling.
+    internal static string SymbolFromName(ReadOnlySpan<char> name)
+    {
+        if (name.Length < 2 || name[0] != '"' || name[^1] != '"')
+        {
+            return name.ToString();
+        }
+
+        name = name[1..^1];
+        var bytes = new byte[name.Length];
+        var count = 0;
+        for (var i = 0; i < name.Length; i++)
+        {
+            if (name[i] == '\\' && i + 2 < name.Length && byte.TryParse(name.Slice(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var escaped))
+            {
+                bytes[count++] = escaped;
+                i += 2;
+            }
+            else
+            {
+                bytes[count++] = (byte)name[i];
+            }
+        }
+
+        return Encoding.UTF8.GetString(bytes, 0, count);
+    }
+
+    private static string ReadFormattingRuntime()
+    {
+        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8BufferRuntime.ll.in")!;
+        using var reader = new StreamReader(stream);
+        var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        using var formatting = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8FormatRuntime.ll.in")!;
+        using var formatReader = new StreamReader(formatting);
+        text += "\n" + formatReader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        foreach (var name in new[] { "Utf8FloatRuntime.ll.in", "Utf8FloatRyu.ll.in" })
+        {
+            using var resource = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name)!;
+            using var source = new StreamReader(resource);
+            text += "\n" + source.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        }
+
+        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.BuiltinFormat; kind++)
+        {
+            if (WindowsLowering.GetFormattingFunction(kind) is { } function)
+            {
+                text = text.Replace("{{" + function.Name + "}}\n", function.GetDefinition(false), StringComparison.Ordinal);
+            }
+        }
+
+        return text.Replace("{{reason_argument_range}}", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
+            .Replace("{{reason_format}}", Reason(WindowsLowering.FormatReason), StringComparison.Ordinal)
+            .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
+    }
+
+    // SPEC 22.3: one declaration per foreign symbol. A kernel32 import that the written runtime already
+    // declares shares that declaration; Binding proved their physical Types equal (SPEC 21.5.2).
+    private static void WriteExternals(EmissionModule module, TextWriter output)
+    {
+        foreach (var external in module.Externals)
+        {
+            var abi = external.Abi;
+            if (Declares(module.TestRuntime is null ? Runtime : TestRuntimeBase, abi.Name) || (module.TestRuntime is { } test && Declares(test, abi.Name)))
+            {
+                continue;
+            }
+
+            output.Write(external.DllImport ? "declare dllimport " : "declare ");
+            output.Write(abi.Result);
+            output.Write(" @");
+            output.Write(abi.Name);
+            output.Write('(');
+            for (var i = 0; i < abi.Parameters.Length; i++)
+            {
+                if (i != 0)
+                {
+                    output.Write(", ");
+                }
+
+                output.Write(abi.Parameters[i].Type);
+            }
+
+            output.Write(")\n");
+        }
+
+        static bool Declares(string runtime, string name)
+        {
+            for (var index = runtime.IndexOf(name, StringComparison.Ordinal); index >= 0; index = runtime.IndexOf(name, index + 1, StringComparison.Ordinal))
+            {
+                var end = index + name.Length;
+                if (index != 0 && runtime[index - 1] == '@' && end < runtime.Length && runtime[end] == '(' &&
+                    runtime.LastIndexOf('\n', index) is var line && runtime.AsSpan(line + 1).StartsWith("declare ", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
     {
+        foreach (var instruction in function.Instructions)
+        {
+            if (instruction.Opcode == EmissionOpcode.EraseClosure)
+            {
+                WriteErasureAdapter(output, function, instruction);
+            }
+
+            if (instruction.Opcode == EmissionOpcode.CreateClosure && instruction.Aggregate is null)
+            {
+                output.Write('@');
+                WriteClosureTableName(output, function, instruction.Operation);
+                output.Write(" = private constant { ptr, ptr, ptr } { ptr @");
+                output.Write(instruction.Callee!.Name);
+                output.Write(", ptr null, ptr null }, align 8\n");
+            }
+
+            if (instruction.Opcode == EmissionOpcode.CompositePattern)
+            {
+                WriteCompositePatternHelper(output, constants, function, instruction);
+            }
+        }
+
         output.Write(function.Abi.GetDefinition(function.Exported));
         output.Write("entry:\n");
+        foreach (var parameter in function.Abi.Parameters)
+        {
+            if (parameter.Kind == AbiParameterKind.Environment)
+            {
+                if (parameter.Type == "i64")
+                {
+                    output.Write("  %environmentSlot = alloca i64, align 8\n  store i64 %environment, ptr %environmentSlot, align 8\n");
+                }
+                else
+                {
+                    for (var p = 0; p < function.SlotAddresses.Count; p++)
+                    {
+                        if (function.SlotAddresses[p] is { Kind: EmissionOperandKind.CaptureAddress } capture)
+                        {
+                            Name(output, "  %p", p);
+                            output.Write(" = getelementptr i8, ptr %environment, i64 ");
+                            WriteNumber(output, capture.Value);
+                            output.Write('\n');
+                        }
+                    }
+                }
+            }
+        }
+
         // Fixed-size allocas precede calls in the entry block (SPEC 21.5.5).
         foreach (var slot in function.Slots)
         {
             output.Write("  %p");
             WriteNumber(output, slot.Place);
             output.Write(" = alloca ");
-            output.Write(slot.Value.Layout.StorageType);
+            output.Write(slot.Value.Layout.Size == 0 ? "i8" : slot.Value.Layout.StorageType);
             output.Write(", align ");
             WriteNumber(output, slot.Value.Layout.Alignment);
             output.Write('\n');
+        }
+
+        for (var i = 0; i < function.FormattingStacks.Count; i++)
+        {
+            Name(output, "  %formatBytes", i);
+            output.Write(" = alloca [");
+            WriteNumber(output, function.FormattingStacks[i]);
+            output.Write(" x i8], align 1\n");
         }
 
         foreach (var path in function.PathFlags)
@@ -119,7 +338,15 @@ internal static partial class LlvmModuleWriter
         {
             Name(output, "  %p", slot.Place);
             output.Write(" = getelementptr i8, ptr ");
-            WriteSlot(output, function, slot.Parent);
+            if (slot.Parent < 0)
+            {
+                output.Write("%ret"); // Dedicated construction/destruction receiver address.
+            }
+            else
+            {
+                WriteSlot(output, function, slot.Parent);
+            }
+
             output.Write(", i64 ");
             WriteNumber(output, slot.Offset);
             output.Write('\n');
@@ -135,24 +362,97 @@ internal static partial class LlvmModuleWriter
                     WritePartDestruction(output, constants, function, instruction);
                     break;
                 case EmissionOpcode.TransferAggregate:
+                case EmissionOpcode.FillArray:
                 case EmissionOpcode.DestroyAggregate:
                     WriteAggregate(output, constants, function, instruction);
                     break;
                 case EmissionOpcode.StringPattern:
                     WriteStringPattern(output, constants, function, instruction);
                     continue;
+                case EmissionOpcode.CompositePattern:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = call i1 @");
+                    WritePatternName(output, function, instruction.Operation);
+                    output.Write("(ptr ");
+                    WriteSlot(output, function, instruction.Place);
+                    output.Write(")\n");
+                    break;
+                case EmissionOpcode.PatternRead:
+                    WritePatternRead(output, function, instruction);
+                    break;
                 case EmissionOpcode.MoveString:
                 case EmissionOpcode.DestroyStringIfLive:
                 case EmissionOpcode.StoreLiveFlag:
                 case EmissionOpcode.InitializeLiveFlag:
                     WriteString(output, constants, function, instruction, function.GetOperands(instruction));
                     break;
+                case EmissionOpcode.Sequence:
+                    WriteSequence(output, constants, function, instruction);
+                    break;
                 case EmissionOpcode.ElementAddress:
                     WriteElementAddress(output, constants, function, instruction);
+                    break;
+                case EmissionOpcode.BorrowAddress:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = getelementptr i8, ptr ");
+                    var address = function.GetOperands(instruction)[0];
+                    if (address.Kind == EmissionOperandKind.SlotAddress)
+                    {
+                        WriteSlot(output, function, (int)address.Value);
+                    }
+                    else
+                    {
+                        WriteOperand(output, address);
+                    }
+
+                    output.Write(", i64 ");
+                    var borrowOperands = function.GetOperands(instruction);
+                    output.Write(borrowOperands.Length == 2 ? (long)borrowOperands[1].Value : 0);
+                    output.Write('\n');
+                    break;
+                case EmissionOpcode.ObjectBorrow:
+                    Name(output, "  %v", instruction.Operation);
+                    output.Write(" = load ptr, ptr ");
+                    WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+                    output.Write(", align 8\n");
+                    break;
+                case EmissionOpcode.ObjectPayload:
+                    Name(output, "  %objectHeader", instruction.Operation);
+                    output.Write(" = load ptr, ptr ");
+                    WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+                    output.Write(", align 8\n");
+                    Name(output, "  %v", instruction.Operation);
+                    Name(output, " = getelementptr i8, ptr %objectHeader", instruction.Operation);
+                    output.Write(", i64 16\n");
+                    break;
+                case EmissionOpcode.ObjectTypeTest:
+                    var testOperands = function.GetOperands(instruction);
+                    Name(output, instruction.ScalarOperator == "not" ? "  %tested" : "  %v", instruction.Operation);
+                    output.Write(" = call i1 @__kimi_object_supports(ptr ");
+                    WriteOperand(output, testOperands[0]);
+                    output.Write(", i64 ");
+                    WriteOperand(output, testOperands[1]);
+                    output.Write(")\n");
+                    if (instruction.ScalarOperator == "not")
+                    {
+                        Name(output, "  %v", instruction.Operation);
+                        Name(output, " = xor i1 %tested", instruction.Operation);
+                        output.Write(", true\n");
+                    }
+
+                    break;
+                case EmissionOpcode.SwapScalars:
+                    WriteScalarSwap(output, function, instruction);
                     break;
                 case EmissionOpcode.StringEquals:
                 case EmissionOpcode.StringCompare:
                     WriteStringComparison(output, function, instruction);
+                    break;
+                case EmissionOpcode.BuiltinComparison:
+                    WriteBuiltinComparison(output, function, instruction);
+                    break;
+                case EmissionOpcode.TupleRelation:
+                    WriteTupleRelation(output, function, instruction);
                     break;
                 case EmissionOpcode.StoreStaticString:
                     output.Write("  store %kimi.string { ptr ");
@@ -180,6 +480,34 @@ internal static partial class LlvmModuleWriter
 
                 case EmissionOpcode.Call:
                     WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
+                    break;
+
+                case EmissionOpcode.TestSnapshot:
+                    WriteTestSnapshot(output, function, instruction);
+                    break;
+
+                case EmissionOpcode.TestPhaseEnter:
+                    output.Write("  %testphase");
+                    WriteNumber(output, instruction.Operation);
+                    output.Write(" = load i32, ptr @__kimi_test_phase\n  store i32 2, ptr @__kimi_test_phase\n");
+                    break;
+
+                case EmissionOpcode.TestPhaseLeave:
+                    output.Write("  store i32 %testphase");
+                    WriteNumber(output, instruction.Operation);
+                    output.Write(", ptr @__kimi_test_phase\n");
+                    break;
+
+                case EmissionOpcode.CreateClosure:
+                    WriteClosure(output, function, instruction);
+                    break;
+
+                case EmissionOpcode.EraseClosure:
+                    WriteErasure(output, function, instruction);
+                    break;
+
+                case EmissionOpcode.CallValue:
+                    WriteValueCall(output, function, instruction);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -214,6 +542,9 @@ internal static partial class LlvmModuleWriter
             case EmissionOperandKind.ReturnAddress:
                 output.Write("%ret");
                 break;
+            case EmissionOperandKind.CaptureAddress:
+                Name(output, "%p", place);
+                break;
             default:
                 throw new InvalidOperationException("Unprepared slot address.");
         }
@@ -221,7 +552,11 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
     {
-        if (address.Kind == EmissionOperandKind.SlotAddress)
+        if (address.Kind == EmissionOperandKind.EnvironmentAddress)
+        {
+            output.Write("%environmentSlot");
+        }
+        else if (address.Kind == EmissionOperandKind.SlotAddress)
         {
             WriteSlot(output, function, (int)address.Value);
         }
@@ -267,6 +602,7 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.Argument:
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:
+                case EmissionOperandKind.NullAddress:
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:
@@ -275,6 +611,13 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.ConstantAddress:
                     output.Write('@');
                     output.Write(constants[(int)operand.Value].Name);
+                    break;
+                case EmissionOperandKind.FunctionAddress:
+                    output.Write('@');
+                    output.Write((function ?? throw new InvalidOperationException("Function address without a containing function.")).FunctionAddresses[(int)operand.Value].Name);
+                    break;
+                case EmissionOperandKind.FormattingStack:
+                    Name(output, "%formatBytes", (int)operand.Value);
                     break;
                 case EmissionOperandKind.ConstantLength:
                     WriteNumber(output, constants[(int)operand.Value].ByteLength);

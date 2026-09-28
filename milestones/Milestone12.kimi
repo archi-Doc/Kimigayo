@@ -1,0 +1,29 @@
+// Milestone 12: mutable, nested, erased, and consuming closure captures.
+func applyTwice<F>(value: i32, transform: uniq/F) -> i32
+    F is Callable<uniq, (i32) -> i32>
+    let first = transform(value)
+    return transform(first)
+
+public func main()
+    defer => Console.writeLine("Closure run finished.")
+    let count: i32 = 0
+    var next = func [var count] (value: i32) -> i32
+        count = count + 1
+        return value + count
+
+    let result = applyTwice(10, next@uniq)
+    require result == 13 and count == 0 else => $abort("Capture snapshot failed")
+    Console.writeLine("Stateful result is 13.")
+
+    let offset: i32 = 5
+    let factory = func [offset] () => func [offset] (value: i32) => value + offset
+    let concrete = factory()
+    let erased: (i32) -> i32 = concrete
+    require erased(result) == 18 else => $abort("Nested capture failed")
+    require concrete(0) == 5 else => $abort("Copy closure was consumed")
+    Console.writeLine("Nested capture result is 18.")
+
+    let message = "Captured message."
+    let send = func [message@move] () => Console.writeLine(message)
+    send() // A shared call: the transferred string stays in the closure.
+    send() // message may not be used again; send may.

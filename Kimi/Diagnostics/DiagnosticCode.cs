@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -13,6 +13,7 @@ public enum DiagnosticCode
     UnresolvedBinding_Kd,
     AmbiguousBinding_Kd,
     DuplicateBinding_Kd,
+    DuplicateDictionaryKey_Kd,
     NotCallable_Kd,
     NoApplicableOverload_Kd,
     CyclicBinding_Kd,
@@ -24,9 +25,11 @@ public enum DiagnosticCode
     MissingOriginBinding_Kd,
     InvalidTypeFormation_Kd,
     InvalidConstraint_Kd,
+    InvalidSelfClause_Kd,
+    NotObjectPayload_Kd,
     UnprovenConstraint_Kd,
     UnsatisfiedConstraint_Kd,
-    InvalidCoreIntrinsics_Kd,
+    InvalidKimiLibrary_Kd,
     MissingContractImplementation_Kd,
     IncompatibleContractImplementation_Kd,
     InvalidAssociatedType_Kd,
@@ -42,6 +45,7 @@ public enum DiagnosticCode
     CompileTimeCaseFallbackMustBeLast_Kd,
     DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
+    HiddenNamedAlias_Kd,
     // Reserved for required constant evaluation; runtime arithmetic uses Abort reason codes.
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
@@ -62,7 +66,6 @@ public enum DiagnosticCode
     InvalidIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidReferenceSyntax_Kd,
-    InvalidSemanticsConstraint_Kd,
     InvalidUnicodeEscape_Kd,
     InvalidUnicodeScalar_Kd,
     IntegerOverflow_Kd,
@@ -78,6 +81,7 @@ public enum DiagnosticCode
     TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,
+    InvalidTry_Kd,
     UnexpectedIndent_Kd,
     UnexpectedToken_Kd,
     UnexpectedTrailingToken_Kd,
@@ -111,6 +115,19 @@ public enum DiagnosticCode
     MovedPlace_Kd,
     ReassignedLet_Kd,
     UnsupportedOwnership_Kd,
+    DefaultArgumentMove_Kd,
+    TransferRequired_Kd,
+    ExclusiveBorrowRequired_Kd,
+    SharedBindingAssignment_Kd,
+    ExclusiveBindingAssignment_Kd,
+    SharedPathAccess_Kd,
+    ExclusivePathTake_Kd,
+    PlaceRequired_Kd,
+    ReceiverShapeMismatch_Kd,
+    BareOwningShorthand_Kd,
+    NonCopyOperand_Kd,
+    MissingSpecializationTarget_Kd,
+    SpecializationInputMismatch_Kd,
 
     InvalidPattern_Kd,
     NonExhaustiveMatch_Kd,
@@ -119,9 +136,39 @@ public enum DiagnosticCode
     OuterCloserInBody_Kd,
 
     GenerationFailed_Kd,
+    GenerationResourceLimit_Kd,
 
     DeferredExpansionLimit_Kd,
+    InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
+    CallReservationConflict_Kd,
+    CallActivationConflict_Kd,
+
+    InvalidDependencyConfiguration_Kd,
+    UnresolvedDependencyGraph_Kd,
+    InvalidTestDefinition_Kd,
+    InvalidLayoutAttribute_Kd,
+    ConflictingLayout_Kd,
+    InvalidLibraryImport_Kd,
+    MissingNativeRequirement_Kd,
+    UnsupportedImportSignature_Kd,
+    ConflictingImportSignature_Kd,
+    ConflictingRuntimeSymbol_Kd,
+    ConflictingImportSupply_Kd,
+    UnsafeFunctionValue_Kd,
+    UnavailableReservedImport_Kd,
+    SplitCLayoutStorage_Kd,
+    InvalidCLayout_Kd,
+    InvalidInlineLayout_Kd,
+
+    UnavailableFeature_Kd,
+
+    ProjectPreparationFailed_Kd,
+    ProjectLoadFailed_Kd,
+    TargetSelectionRequired_Kd,
+    TestTargetUnavailable_Kd,
+    DocumentDesynchronized_Kd,
+    CheckFaulted_Kd,
 
     Count, // Last sentinel
 }

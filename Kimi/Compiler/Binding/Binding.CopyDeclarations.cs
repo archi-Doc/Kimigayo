@@ -13,7 +13,7 @@ public sealed partial class Binding
         => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract;
 
     private bool DeclaresCopy(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Core.Copy);
+        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Library.Copy);
 
     private void BindCopyDeclarations()
     {
@@ -37,7 +37,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
+                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
                 {
                     this.RegisterCopy(clause, container, this.scopes[container], null);
                 }
@@ -72,8 +72,8 @@ public sealed partial class Binding
             for (var i = 0; i < declarations.Count; i++)
             {
                 var declaration = declarations[i];
-                var proof = this.RequestCapability(this.SelfType(declaration.Container.BoundSymbol!), this.Core.Copy, declaration.Scope, derivation: true);
-                this.RequireConstraint(declaration.Clause, proof, mode);
+                var proof = this.RequestCapability(this.SelfType(declaration.Container.BoundSymbol!), this.Library.Copy, declaration.Scope, derivation: true);
+                this.RequireConstraint(declaration.Clause, proof, mode, proof == ConstraintProof.Error ? this.ConformanceDiagnosticCause(declaration.Container) : null);
             }
         }
     }

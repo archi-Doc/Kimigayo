@@ -1,0 +1,48 @@
+// Milestone 34: rc/arc creation, explicit strong clones, handle Moves and the final strong release.
+struct Payload
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit
+        match self.id
+            1 => Console.writeLine("Payload 1 destroyed.")
+            2 => Console.writeLine("Payload 2 destroyed.")
+            _ => $abort("Unexpected payload")
+
+struct Counter {source}
+    public let value: ref/i32 during source
+    public init(value: ref/i32 during source) => self.value = value
+
+func release(handle: rc/Payload)
+    // The consumed handle releases one strong at scope exit; another handle keeps the payload alive.
+    require handle.id == 1 else => $abort("Consumed handle lost its payload")
+
+func inspect(view: objref/Payload) -> i32 => view.id
+
+public func main()
+    do
+        let first = Kimi.Intrinsics.makeRc(Payload.init(1)) // Strong count 1.
+        require first.id == 1 else => $abort("Shared payload read failed")
+        let payload: ref/Payload = first@follow@ref // Payload is Sealed: the complete payload Place.
+        require payload.id == 1 else => $abort("Payload borrow failed")
+        Console.writeLine("Handle reads payload 1.")
+        let second = Kimi.Intrinsics.clone(first@ref) // Strong count 2; no allocation or payload copy.
+        require second.id == first.id else => $abort("Clone does not share the payload")
+        Console.writeLine("Cloned handle shares payload 1.")
+        let moved = second@move // Transfers the handle; the count is unchanged and second is Moved.
+        release(moved@move) // Strong count 1 after the call.
+        require first.id == 1 else => $abort("Payload destroyed early")
+        Console.writeLine("Released one strong handle.")
+        // Scope exit releases the last strong: the payload is destroyed exactly once.
+    do
+        let shared = Kimi.Intrinsics.makeArc(Payload.init(2))
+        let copy = Kimi.Intrinsics.clone(shared@ref)
+        // Object borrows change no count; rc and arc grant shared payload access only.
+        require inspect(copy@objref) == 2 and inspect(shared@objref) == 2 else => $abort("Arc view failed")
+        Console.writeLine("Arc views read payload 2.")
+        // copy releases one strong, then shared releases the final strong.
+    do
+        let number: i32 = 5
+        let counter = Kimi.Intrinsics.makeRc(Counter.init(number@ref)) // The handle keeps the dependency on number.
+        require counter.value == 5 else => $abort("Payload dependency lost")
+        Console.writeLine("Borrowed counter is 5.")
+    Console.writeLine("Shared ownership finished.")

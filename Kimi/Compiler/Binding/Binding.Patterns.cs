@@ -7,12 +7,18 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<MatchKoto, BoundMatch> matches = new(ReferenceEqualityComparer.Instance);
+
+    // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
+    // own syntax is still selected; only the plans of removed matches return to the pool.
+    private readonly Dictionary<MatchKoto, BoundMatch> matchPlans = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundMatch> matchPool = new();
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
     private readonly HashSet<Koto> candidateScopes = new();
+    private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
+    private PatternMarker? unsupportedMarker;
     private int reportedPatternWarnings;
 
     /// <summary>Gets warnings without changing Binding validity.</summary>
@@ -23,6 +29,39 @@ public sealed partial class Binding
     /// <param name="plan">The current plan, or null if the syntax was replaced.</param>
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
+
+    // SPEC 15.1.6 subject rule: the Subject mode is the access that the Subject Place grants to its first layer that
+    // is not a safe reference. Reference layers that are all uniq/objuniq give Exclusive, and a ref/objref layer, or a
+    // shared layer on the path of a bare Place, bounds the mode to Shared. A bare Place (borrowed in place) is Shared,
+    // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
+    private static SubjectMode SubjectModeOf(Koto expression, BoundType? type)
+    {
+        var bare = IsBarePlace(expression);
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return bare ? SubjectMode.Shared : SubjectMode.ByValue;
+        }
+
+        if (bare && ReachedThroughShared(expression))
+        {
+            return SubjectMode.Shared;
+        }
+
+        for (var layer = type; layer is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; layer = layer.Components[0])
+        {
+            if (layer.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            {
+                return SubjectMode.Shared;
+            }
+
+            if (layer.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq))
+            {
+                break;
+            }
+        }
+
+        return SubjectMode.Exclusive;
+    }
 
     private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
     {
@@ -69,7 +108,7 @@ public sealed partial class Binding
         this.matches.Clear();
         foreach (var guard in this.candidateScopes)
         {
-            this.previousPatternNodes.Add(guard);
+            this.previousCandidateScopes.Add(guard);
         }
 
         this.candidateScopes.Clear();
@@ -81,6 +120,19 @@ public sealed partial class Binding
         this.patternNodes.Clear();
         this.patternWarnings.Clear();
         this.reportedPatternWarnings = 0;
+    }
+
+    private void PruneCandidateScopes()
+    {
+        foreach (var guard in this.previousCandidateScopes)
+        {
+            if (!this.candidateScopes.Contains(guard))
+            {
+                this.scopes.Remove(guard);
+            }
+        }
+
+        this.previousCandidateScopes.Clear();
     }
 
     private void PrunePatternScopes()
@@ -99,25 +151,78 @@ public sealed partial class Binding
 
     private void IndexMatch(MatchKoto match)
     {
-        var index = this.matches.Count;
-        if (index == this.matchPool.Count)
+        if (!this.matchPlans.TryGetValue(match, out var plan))
         {
-            this.matchPool.Add(new());
+            var last = this.matchPool.Count - 1;
+            if (last >= 0)
+            {
+                plan = this.matchPool[last];
+                this.matchPool.RemoveAt(last);
+            }
+            else
+            {
+                plan = new();
+            }
+
+            this.matchPlans.Add(match, plan);
         }
 
-        var plan = this.matchPool[index];
         plan.Reset(match);
         this.matches.Add(match, plan);
     }
 
+    private void PruneMatchPlans()
+    {
+        if (this.matchPlans.Count == this.matches.Count)
+        {
+            return;
+        }
+
+        foreach (var (match, plan) in this.matchPlans)
+        {
+            if (!this.matches.ContainsKey(match))
+            {
+                this.matchPlans.Remove(match);
+                this.matchPool.Add(plan);
+            }
+        }
+    }
+
     private void MarkPatternTree(Koto pattern)
-        => (this.patternMarker ??= new()).Visit(pattern);
+        => (this.patternMarker ??= new(false)).Visit(pattern);
+
+    /// <summary>Marks an unbound guard/body so later analyses see unknown Types instead of a fabricated Unit.</summary>
+    private void MarkUnsupportedTree(Koto node)
+        => (this.unsupportedMarker ??= new(true)).Visit(node);
 
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
         var plan = this.matches[match];
-        var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         var subject = this.BindNode(match.Expression, scope);
+        if (match is TryKoto propagation)
+        {
+            if (subject?.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
+            {
+                return Fail(match, BindingFailure.TypeMismatch);
+            }
+
+            propagation.SelectOption(subject.Symbol == this.Library.Option);
+            if (!propagation.SemanticsIndexed)
+            {
+                this.indexer.IndexMatchArms(propagation, scope);
+                propagation.SemanticsIndexed = true;
+            }
+
+            expected = subject.Components[0];
+        }
+        else
+        {
+            subject = this.AcquireSubject(match.Expression, subject, out var borrow, out var mode);
+            plan.SubjectBorrow = borrow;
+            plan.Mode = mode;
+        }
+
+        var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         if (subject is null)
         {
             plan.Pending = true;
@@ -127,7 +232,7 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, false);
+            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, PatternAccessMode.Owned, null);
             plan.ArmStorage.Add(new(arm, root));
             this.MarkPatternTree(arm.Pattern);
         }
@@ -141,20 +246,6 @@ public sealed partial class Binding
 
         plan.ExpectedType = resultContext.Expected;
         this.CalculateMatchCoverage(plan, subject);
-        if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
-        {
-            for (var later = 1; later < plan.Arms.Count; later++)
-            {
-                for (var earlier = 0; earlier < later; earlier++)
-                {
-                    if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
-                    {
-                        this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, plan.Arms[earlier].Syntax.Pattern, earlier));
-                        break;
-                    }
-                }
-            }
-        }
 
         var pendingBody = false;
         var required = KotoHelper.IsResultRequiringSelection(match);
@@ -165,7 +256,7 @@ public sealed partial class Binding
             {
                 // Implicit shared inspection needs candidate/body Loan semantics before
                 // the ordinary expression binder may use these Pattern bindings.
-                this.MarkPatternTree(arm.Body);
+                this.MarkUnsupportedTree(arm.Body);
                 Fail(arm.Body, BindingFailure.Unsupported, true);
                 pendingBody = true;
                 continue;
@@ -173,10 +264,10 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                if (plan.Pending || !MatchTypes.SupportsGuard(subject))
+                if (plan.Pending || !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
                 {
-                    this.MarkPatternTree(guard);
-                    this.MarkPatternTree(arm.Body);
+                    this.MarkUnsupportedTree(guard);
+                    this.MarkUnsupportedTree(arm.Body);
                     Fail(guard, BindingFailure.Unsupported, true);
                     Fail(arm.Body, BindingFailure.Unsupported, true);
                     pendingBody = true;
@@ -198,7 +289,8 @@ public sealed partial class Binding
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
         {
-            return Fail(match, BindingFailure.NonExhaustiveMatch);
+            // Keep the match unavailable until late Type validation decides the diagnostic.
+            return Complete(match, null);
         }
 
         if (plan.Invalid)
@@ -215,11 +307,55 @@ public sealed partial class Binding
         return plan.ResultType;
     }
 
-    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, bool shared)
+    // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
+    // stored uniq/objuniq reference is Reborrowed exclusively, a stored ref/objref reference is Copied, and any other
+    // stored value is shared-borrowed.
+    private BoundType? AcquireSubject(Koto expression, BoundType? type, out BoundType? borrow, out SubjectMode mode)
+    {
+        borrow = null;
+        mode = SubjectModeOf(expression, type);
+        if (type is null || ReferenceEquals(type, BoundType.Never) || !IsBarePlace(expression))
+        {
+            return type;
+        }
+
+        if (mode == SubjectMode.Exclusive)
+        {
+            borrow = type;
+            return type;
+        }
+
+        if (this.PairSubject(expression, type, this.ConstraintScope(expression)) is { } followed)
+        {
+            // SPEC 15.1.6: a bare pair-layer Place is followed like a borrow value in the weakest admitted mode, as for `for`.
+            mode = followed.Semantics == SemanticsKind.Uniq ? SubjectMode.Exclusive : SubjectMode.Shared;
+            borrow = followed;
+            return followed;
+        }
+
+        if (type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
+        {
+            // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
+            var origin = type.Origin is { } stored ? this.Meet(this.PlaceOrigin(expression), stored) : this.PlaceOrigin(expression);
+            var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
+            borrow = this.InternType(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
+            return borrow;
+        }
+
+        if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+        {
+            borrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
+            return borrow;
+        }
+
+        return type;
+    }
+
+    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, PatternAccessMode access, BoundOrigin? origin)
     {
         if (syntax is ParenthesizedKoto grouping)
         {
-            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, shared);
+            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, access, origin);
             Complete(grouping, matched);
             return grouped;
         }
@@ -228,16 +364,48 @@ public sealed partial class Binding
         plan.PositionStorage.Add(new(syntax, matched, BoundPatternKind.Invalid, parent, element, index + 1));
         var position = plan.PositionStorage[index];
         plan.Invalid |= syntax.BindingState == BindingState.Invalid;
+        if (!this.ValidatePatternType(plan, syntax, matched, outer))
+        {
+            return index;
+        }
+
         var type = matched;
         var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
         var unsupported = false;
-        var implicitDeref = PatternImplicitDeref.None;
-        if (structural && type.Semantics == SemanticsKind.Ref && type.Kind == BoundTypeKind.Semantics)
+        var layers = 0;
+        if (structural)
         {
-            type = type.Components[0];
-            shared = true;
-            unsupported = true;
-            implicitDeref = PatternImplicitDeref.SharedOnce;
+            // SPEC 14.8.1, 3.4.1: a structural Pattern selects the referent of every safe value-reference layer
+            // that lacks its structure; a shared layer anywhere on the path bounds every descendant to shared access.
+            while (true)
+            {
+                if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+                {
+                    access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+
+                    // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
+                    // is Reborrowed, so its Origin is met with the dependency reached so far.
+                    origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin
+                        : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
+                    type = type.Components[0];
+                    layers++;
+                    continue;
+                }
+
+                var admitted = this.FollowablePair(type, outer, out var target);
+                if (admitted == SemanticsMask.None)
+                {
+                    break;
+                }
+
+                // SPEC 14.8.1, 13.5.5.1: a qualifying pair layer is selected like the other safe value-reference layers. The access
+                // past it is the weakest over its admitted cases; an admitted owner keeps the dependency reached so far.
+                access = (admitted & SemanticsMask.Ref) != 0 || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
+                origin = (admitted & SemanticsMask.Owner) != 0 ? origin : (admitted & SemanticsMask.Ref) != 0 || origin is null ? type.Origin ?? origin
+                    : type.Origin is { } stored ? this.Meet(origin, stored) : origin;
+                type = target;
+                layers++;
+            }
         }
 
         if (structural && type.Semantics != SemanticsKind.Owner)
@@ -253,19 +421,26 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Wildcard, WholePosition = true };
                 break;
             case SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding:
-                symbol.Type = shared ? null : matched;
+                // SPEC 15.1.6: a part of the acquired owned Subject is bound as its stored Type; a Place reached
+                // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
+                // of a reference-valued Subject copies that reference and never selects the internal slot.
+                symbol.Type = access == PatternAccessMode.Owned ? matched
+                    : this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
+                symbol.BindsReference = access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
                 if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
                 {
-                    candidate.Type = ReferenceEquals(matched, BoundType.String)
-                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: this.OriginAtom(candidate.Declaration, OriginKind.Projection, candidate.Slot))
-                        : ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit) ? matched : null;
+                    // SPEC 14.8.3: a guard candidate is a shared reference to its Place whatever the mode and Copy capability.
+                    var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
+                    candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                        : this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
 
-                unsupported |= shared;
+                unsupported |= symbol.Type is null;
                 break;
             case UnitLiteralKoto when ReferenceEquals(type, BoundType.Unit):
                 position = position with { Kind = BoundPatternKind.Unit, WholePosition = true };
@@ -274,7 +449,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Tuple, WholePosition = true };
                 for (var i = 0; i < tuple.Operands.Length; i++)
                 {
-                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, shared);
+                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, access, origin);
                     position = position with { WholePosition = position.WholePosition && plan.PositionStorage[child].WholePosition };
                 }
 
@@ -300,7 +475,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        this.BindPattern(children[i], payload, outer, plan, index, i, shared);
+                        this.BindPattern(children[i], payload, outer, plan, index, i, access, origin);
                     }
                 }
 
@@ -317,8 +492,8 @@ public sealed partial class Binding
         position = position with
         {
             End = plan.PositionStorage.Count,
-            AccessMode = shared ? PatternAccessMode.Shared : PatternAccessMode.Owned,
-            ImplicitDeref = implicitDeref,
+            AccessMode = access,
+            ImplicitFollows = layers,
         };
         plan.PositionStorage[index] = position;
         if (position.Kind == BoundPatternKind.Invalid)
@@ -352,7 +527,7 @@ public sealed partial class Binding
         }
 
         var qualifier = member.Left;
-        var definition = qualifier is GenericsKoto generic ? this.TypeName(generic.Identifier!, scope, true) : this.TypeName(qualifier, scope, true);
+        var definition = this.TypeName(qualifier, scope, true);
         if (definition is null || !ReferenceEquals(definition, expected.Symbol))
         {
             return null;
@@ -414,26 +589,73 @@ public sealed partial class Binding
         }
     }
 
+    private bool ValidatePatternType(BoundMatch plan, Koto syntax, BoundType type, BindingScope scope)
+    {
+        var proof = this.CheckTypeConstraints(type, scope);
+        if (proof == ConstraintProof.Proven)
+        {
+            return true;
+        }
+
+        plan.Invalid |= proof != ConstraintProof.Unknown;
+        plan.Pending |= proof == ConstraintProof.Unknown;
+        Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+        return false;
+    }
+
     private void CompletePatternAcquisitions()
     {
         foreach (var plan in this.matches.Values)
         {
+            var scope = this.ConstraintScope(plan.Syntax);
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
                 var position = plan.PositionStorage[i];
-                if (position.Kind != BoundPatternKind.Binding || position.AccessMode == PatternAccessMode.Shared)
+                // Recheck after late declaration/constraint validation, including discards.
+                if (!this.ValidatePatternType(plan, position.Source, position.MatchedType, scope))
+                {
+                    plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
+                    continue;
+                }
+
+                if (position.Kind != BoundPatternKind.Binding)
                 {
                     continue;
                 }
 
-                var proof = this.ProveCopy(position.MatchedType, position.Source);
-                var acquisition = proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.Deferred;
+                // SPEC 15.1.6: a binding reached through a reference layer borrows its Place; an owned part is
+                // copied or transferred by its complete stored Type.
+                var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
+                var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
+                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+                    : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
                 plan.PositionStorage[i] = position with { Acquisition = acquisition };
                 if (proof == ConstraintProof.Error)
                 {
                     plan.Invalid = true;
                     plan.Coverage = new(MatchCoverageState.Invalid);
                     Fail(position.Source, BindingFailure.InvalidConstraint);
+                }
+            }
+
+            if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
+            {
+                Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
+            }
+
+            // Publish coverage warnings only after all Pattern Type checks have completed.
+            if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
+            {
+                for (var later = 1; later < plan.Arms.Count; later++)
+                {
+                    for (var earlier = 0; earlier < later; earlier++)
+                    {
+                        if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
+                        {
+                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, plan.Arms[earlier].Syntax.Pattern, earlier));
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -445,6 +667,23 @@ public sealed partial class Binding
         {
             plan.Coverage = new(plan.Invalid ? MatchCoverageState.Invalid : MatchCoverageState.Pending);
             return;
+        }
+
+        // The structural positions selected every safe reference layer and qualifying pair layer (SPEC 14.8.1).
+        while (true)
+        {
+            if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                subject = subject.Components[0];
+            }
+            else if (TryPairLayer(subject, out _, out var target))
+            {
+                subject = target;
+            }
+            else
+            {
+                break;
+            }
         }
 
         var caseCount = subject.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.CaseCount : 0;
@@ -507,13 +746,21 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class PatternMarker : KotoVisitor
+    private sealed class PatternMarker(bool unsupported) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
             if (node.BindingState == BindingState.Unvisited)
             {
-                Complete(node, BoundType.Unit);
+                if (unsupported)
+                {
+                    // Unknown, not failed: the enclosing guard/body reports the single Unsupported diagnostic.
+                    node.BindingState = BindingState.Unresolved;
+                }
+                else
+                {
+                    Complete(node, BoundType.Unit);
+                }
             }
 
             node.VisitChildren(this);

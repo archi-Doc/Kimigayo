@@ -31,8 +31,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Library\*.kimi" LogicalName="Kimi.Library.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
     <EmbeddedResource Include="Compiler\Emission\WindowsRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Emission\Utf8BufferRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Emission\Utf8FormatRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Emission\Utf8FloatRuntime.ll.in" />
+    <EmbeddedResource Include="Compiler\Emission\Utf8FloatRyu.ll.in" />
+    <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
     <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
@@ -40,17 +46,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="1.46.0" />
-    <PackageReference Include="Arc.Threading" Version="0.53.0" />
-    <PackageReference Include="Arc.Unit" Version="0.47.0" />
-    <PackageReference Include="SimpleCommandLine" Version="0.46.0" />
-    <PackageReference Include="SimplePrompt" Version="0.27.0" />
+    <PackageReference Include="Arc.Collections" Version="2.0.0" />
+    <PackageReference Include="Arc.Threading" Version="0.54.0" />
+    <PackageReference Include="Arc.Unit" Version="0.48.0" />
+    <PackageReference Include="SimpleCommandLine" Version="0.47.0" />
+    <PackageReference Include="SimplePrompt" Version="0.28.0" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Tinyhand" Version="0.146.0" />
-    <PackageReference Include="ValueLink" Version="0.119.0" />
+    <PackageReference Include="Tinyhand" Version="0.147.0" />
+    <PackageReference Include="ValueLink" Version="0.121.0" />
   </ItemGroup>
 
 </Project>

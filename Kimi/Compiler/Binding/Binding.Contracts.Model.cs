@@ -36,6 +36,8 @@ public sealed class BoundContract
     internal Dictionary<string, List<BindingSymbol>> MembersByName { get; } = new(StringComparer.Ordinal);
 
     internal byte State { get; set; }
+
+    internal bool HasUnresolvedParents { get; set; }
 }
 
 /// <summary>A definition-verified implementation of one stable requirement.</summary>

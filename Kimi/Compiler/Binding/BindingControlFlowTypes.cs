@@ -7,6 +7,9 @@ namespace Kimi.Compiler;
 /// <summary>Supplies retained Binding facts; never resolves names during flow analysis.</summary>
 internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowTypeSystem
 {
+    public override bool IsKimiResult(Koto expression) => expression.BindingState == BindingState.Resolved &&
+        expression.BoundType is { Kind: BoundTypeKind.Constructed } type && type.Symbol == binding.Library.Result;
+
     public override bool IsBoundConstruction(Koto expression) => binding.TryGetEnumConstruction(expression, out _);
 
     public override bool IsBoundRuntimeTypeTest(Koto expression)
@@ -16,7 +19,13 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && binding.ProveCopy(type, expression) == ConstraintProof.Proven;
 
     public override ControlFlowType? GetExpressionType(Koto expression)
-        => expression.BindingState == BindingState.Resolved ? FlowType(expression.BoundType) : null;
+        => expression.BindingState != BindingState.Resolved ? null
+            : binding.TryGetAdaptation(expression, out var adaptation) ? FlowType(adaptation.Type) // SPEC 10.2: the Type its one adaptation supplies.
+            : FlowType(expression.ErasedFunctionType ?? expression.BoundType);
+
+    // SPEC 5.1: Binding types null only from an expected raw-pointer Type, such as a call argument's parameter.
+    public override ControlFlowType? GetExpectedType(Koto expression)
+        => expression is NullLiteralKoto { BindingState: BindingState.Resolved } && ReferenceTypes.IsPointer(expression.BoundType) ? FlowType(expression.BoundType) : null;
 
     public override ControlFlowType? GetDeclaredType(Koto? syntax)
         => syntax?.BindingState == BindingState.Resolved ? FlowType(syntax.BoundType) : null;
@@ -37,8 +46,8 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         }
 
         var bound = call.BoundCall;
-        receiver = bound?.Receiver;
-        return bound is not null;
+        receiver = bound?.Receiver ?? call.BoundValueCall?.Receiver;
+        return bound is not null || call.BoundValueCall is not null;
     }
 
     public override ControlFlowType? GetDefaultGetterResultType(PropertyKoto property)
@@ -51,7 +60,10 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             return null;
         }
 
-        return expression is DereferenceKoto || (expression is ExpressionKoto &&
+        return expression is DereferenceKoto ||
+            (expression is BinaryKoto binary && ReferenceTypes.IsPointer(binary.Left.BoundType) &&
+                binary.Akind is KotoKind.Index or KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals) ||
+            (expression is ExpressionKoto &&
             expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto f } && (f.Modifier & ModifierKind.Unsafe) != 0);
     }
 
@@ -99,7 +111,22 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             }
         }
 
-        return null;
+        BoundType? common = null;
+        for (var i = 0; i < sources.Count; i++)
+        {
+            if (SemanticType(sources[i].Type) is not { } next)
+            {
+                return null;
+            }
+
+            common = common is null ? next : binding.CommonBorrowResult(common, next);
+            if (common is null)
+            {
+                return null;
+            }
+        }
+
+        return FlowType(common);
     }
 
     public override bool? IsExhaustive(MatchKoto match) => this.GetMatchCoverage(match, null).IsExhaustive;

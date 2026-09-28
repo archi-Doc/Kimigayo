@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "status": "resolved",
+    "reasonCode": null,
+    "nodes": [
+      {
+        "nodeId": "example.math@1.0.0",
+        "packageId": "example.math",
+        "packageVersion": "1.0.0",
+        "inputKind": "project",
+        "sourceId": null,
+        "dependencies": {}
+      },
+      {
+        "nodeId": "root",
+        "packageId": "example.geometry",
+        "packageVersion": "1.0.0",
+        "inputKind": "project",
+        "sourceId": null,
+        "dependencies": {
+          "Math": "example.math@1.0.0"
+        }
+      }
+    ]
+  },
+  "test": {
+    "status": "resolved",
+    "reasonCode": null,
+    "nodes": [
+      {
+        "nodeId": "example.math@1.0.0",
+        "packageId": "example.math",
+        "packageVersion": "1.0.0",
+        "inputKind": "project",
+        "sourceId": null,
+        "dependencies": {}
+      },
+      {
+        "nodeId": "root",
+        "packageId": "example.geometry",
+        "packageVersion": "1.0.0",
+        "inputKind": "project",
+        "sourceId": null,
+        "dependencies": {
+          "Math": "example.math@1.0.0"
+        }
+      }
+    ]
+  }
+}

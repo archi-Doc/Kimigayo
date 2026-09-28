@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Xunit;
@@ -62,8 +63,10 @@ public class SourceEncodingTest
         {
             File.WriteAllBytes(path, [0x2F, 0x2F, 0x20, 0xED, 0xA0, 0x80]);
             compilation.Project.AddKimiFile(path);
-            Assert.False(await compilation.Project.Check());
-            var diagnostic = Assert.Single(compilation.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
+            // Each compilation owns its diagnostics; read the check's own compilation.
+            var context = new CheckContext(CheckInputSource.Disk);
+            Assert.False(await compilation.Project.Check(context, TestContext.Current.CancellationToken));
+            var diagnostic = Assert.Single(context.Compilation!.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
             Assert.Equal(nameof(DiagnosticCode.InvalidSourceEncoding_Kd), diagnostic.Entry.Name);
         }
         finally
@@ -80,7 +83,7 @@ public class SourceEncodingTest
     {
         var compilation = Compilation.CreateForTest();
         compilation.Project.AddSource("test.kimi", source);
-        Assert.Equal(expected, await compilation.Project.Check());
+        Assert.Equal(expected, await compilation.Project.Check(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -92,10 +95,11 @@ public class SourceEncodingTest
         {
             File.WriteAllText(path, "let value = 'ab'");
             compilation.Project.AddKimiFile(path);
-            Assert.False(await compilation.Project.Check());
+            Assert.False(await compilation.Project.Check(TestContext.Current.CancellationToken));
             File.WriteAllText(path, "let value = '😀'");
-            Assert.True(await compilation.Project.Check());
-            Assert.Empty(compilation.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
+            var context = new CheckContext(CheckInputSource.Disk);
+            Assert.True(await compilation.Project.Check(context, TestContext.Current.CancellationToken));
+            Assert.Empty(context.Compilation!.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
         }
         finally
         {

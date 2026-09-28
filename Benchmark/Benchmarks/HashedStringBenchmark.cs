@@ -44,27 +44,27 @@ public class HashedStringBenchmark
         var farm = default(FarmHash);
         farm.Append(this.baseName);
         farm.Append(".Message");
-        var hash = farm.Finalize();
+        var hash = farm.FinalizeHash();
 
-        farm.Initialize();
+        farm.Reset();
         farm.Append(this.baseName);
         farm.Append(".Severity");
-        hash ^= farm.Finalize();
+        hash ^= farm.FinalizeHash();
 
-        farm.Initialize();
+        farm.Reset();
         farm.Append(this.baseName);
         farm.Append(".Label");
-        hash ^= farm.Finalize();
+        hash ^= farm.FinalizeHash();
 
-        farm.Initialize();
+        farm.Reset();
         farm.Append(this.baseName);
         farm.Append(".Fix");
-        hash ^= farm.Finalize();
+        hash ^= farm.FinalizeHash();
 
-        farm.Initialize();
+        farm.Reset();
         farm.Append(this.baseName);
         farm.Append(".Note");
-        hash ^= farm.Finalize();
+        hash ^= farm.FinalizeHash();
 
         return hash;
     }

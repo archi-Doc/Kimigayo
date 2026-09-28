@@ -17,19 +17,26 @@ internal sealed partial class BodyLowering
     private ArithmeticCheckKind[] checks = [];
     private int[] continuations = [];
 
-    private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
+    private static bool IsScalar(BoundType? type) => ReferenceTypes.IsValue(type);
 
-    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => FloatingTypes.Supports(type) ? ArithmeticCheckKind.None : value.Kind switch
+    // Every operation whose lowering emits a checked split is classified here, so its block continuation is known before
+    // the physical blocks are computed.
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
+        ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
+        : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
+        : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
-        OwnershipValueKind.Convert when conversion.Checked => ArithmeticCheckKind.Conversion,
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
         OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
+
+        // An element of a fixed array borrowed through a reference takes a bounds-checked address (SPEC 4.6.9).
+        OwnershipValueKind.Address when value.Count == 2 => ArithmeticCheckKind.Bounds,
         _ => ArithmeticCheckKind.None,
     };
 
-    private static void Grow(ref int[] array, int count)
+    private static void Grow<T>(ref T[] array, int count)
     {
         if (array.Length < count)
         {
@@ -55,13 +62,14 @@ internal sealed partial class BodyLowering
         id = Definition(body, id);
         return body.Values[id].Kind switch
         {
-            OwnershipValueKind.Constant => new(ReferenceEquals(ValueType(body, id), BoundType.F32) ? EmissionOperandKind.Float32 : ReferenceEquals(ValueType(body, id), BoundType.F64) ? EmissionOperandKind.Float64 : EmissionOperandKind.Integer, body.Values[id].Constant),
+            OwnershipValueKind.Constant => new(ReferenceEquals(ValueType(body, id), BoundType.F32) ? EmissionOperandKind.Float32 : ReferenceEquals(ValueType(body, id), BoundType.F64) ? EmissionOperandKind.Float64 : ReferenceTypes.IsPointer(ValueType(body, id)) ? EmissionOperandKind.NullAddress : EmissionOperandKind.Integer, body.Values[id].Constant),
             OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[id].Constant),
+            OwnershipValueKind.PointerProject => new(EmissionOperandKind.ElementAddress, id),
             _ => new(EmissionOperandKind.Value, id),
         };
     }
 
-    private bool LowerGraph(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
+    private bool LowerGraph(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
     {
         failure = null;
         var count = body.Operations.Count;
@@ -72,13 +80,10 @@ internal sealed partial class BodyLowering
         Grow(ref this.blockEnds, count);
         Grow(ref this.queue, count);
         Grow(ref this.instructionStarts, count + 1);
-        if (this.checks.Length < count)
-        {
-            Array.Resize(ref this.checks, Math.Max(count, Math.Max(16, this.checks.Length * 2)));
-        }
+        Grow(ref this.checks, count);
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
+        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure) || !this.PrepareArrayIterators(body, out failure))
         {
             return false;
         }
@@ -88,7 +93,19 @@ internal sealed partial class BodyLowering
             return false;
         }
 
+        foreach (var sequence in body.Sequences)
+        {
+            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.Slice or SequenceOperation.FromEnd && (uint)sequence.Operation < (uint)count)
+            {
+                this.continuations[sequence.Operation] = count + sequence.Operation;
+            }
+        }
+
         this.PreparePartDestruction(body, function);
+        if (!this.PrepareReceiverFields(body, function, out failure))
+        {
+            return false;
+        }
 
         // Semantic dominance remains on the verification graph, including covered arms.
         if (this.hasMatches)
@@ -135,7 +152,7 @@ internal sealed partial class BodyLowering
 
                 if (edge.Kind == OwnershipEdgeKind.Abort)
                 {
-                    if (body.Operations[op].Kind != OwnershipOperationKind.Call || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
+                    if (body.Operations[op].Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort) || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
                     {
                         return Fail("Invalid terminal call Abort edge.", out failure);
                     }
@@ -170,8 +187,8 @@ internal sealed partial class BodyLowering
             }
 
             var exit = body.Operations[op].Kind == OwnershipOperationKind.Exit;
-            var call = body.Operations[op].Kind == OwnershipOperationKind.Call;
-            var neverCall = call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType, BoundType.Never);
+            var call = body.Operations[op].Kind is OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort;
+            var neverCall = body.Operations[op].Kind == OwnershipOperationKind.TestAbort || (call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType ?? invocation.BoundValueCall?.ReturnType, BoundType.Never));
             if (aborts != (call ? 1 : 0) || (exit || neverCall ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0)))
             {
                 return Fail("Missing or inconsistent CFG terminator.", out failure);
@@ -247,13 +264,25 @@ internal sealed partial class BodyLowering
 
             if ((this.aggregatePlaces[p]?.Value ?? WindowsLowering.GetValue(place.Type)) is not { } value ||
                 (this.aggregatePlaces[p] is null && !IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String) && !ReferenceTypes.IsString(place.Type)) ||
-                (ReferenceTypes.IsString(place.Type) && place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary)) ||
                 (ReferenceEquals(place.Type, BoundType.String) && !this.IsStringStorage(place)))
             {
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (!ReferenceTypes.IsString(place.Type) && value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            // Zero-sized arrays/tuples can still own destructible logical values.
+            // Their cleanup needs a valid slot just as a zero-sized struct does;
+            // the writer reserves an address anchor without changing TypeLayout.
+            var addressRequired = this.aggregatePlaces[p] is { NeedsDestruction: true };
+            if (value.Layout.Size == 0)
+            {
+                for (var i = 0; i < body.Operations.Count && !addressRequired; i++)
+                {
+                    var operation = body.Operations[i];
+                    addressRequired = operation.Kind == OwnershipOperationKind.Borrow && operation.Place == p;
+                }
+            }
+
+            if ((value.Layout.Size != 0 || StructStorage.IsStruct(place.Type) || addressRequired) && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Subject || this.IsMaterializedScalar(p) || this.IsArrayPayload(body, p)))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -261,18 +290,30 @@ internal sealed partial class BodyLowering
 
         // Validate even unexecuted operations. The retained scratch function is never serialized.
         this.validation.Reset(function.Abi, false);
+        this.validation.SlotAddresses.AddRange(function.SlotAddresses);
         this.validation.LiveFlags.AddRange(function.LiveFlags);
         this.validation.PathFlags.AddRange(function.PathFlags);
         this.arguments.Clear();
         for (var i = 0; i < count; i++)
         {
             this.instructionStarts[i] = this.validation.Instructions.Count;
-            if (!this.LowerOperation(core, body, this.validation, constants, directory, i, marks, out failure))
+            var cleanupPhase = body.Function.CodeContext.Compilation.IsTestBuild && body.Values[i].Kind != OwnershipValueKind.Phi &&
+                (body.Operations[i].Kind == OwnershipOperationKind.Cleanup || (body.DeferredPlans.Count != 0 && this.deferredOwners[i] >= 0));
+            if (cleanupPhase)
+            {
+                this.validation.Add(EmissionOpcode.TestPhaseEnter, i);
+            }
+
+            if (!this.LowerOperation(library, body, this.validation, constants, directory, i, marks, out failure))
             {
                 return false;
             }
 
             this.AddPathFlags(body, this.validation, i);
+            if (cleanupPhase && (this.validation.Instructions.Count == 0 || this.validation.Instructions[^1].Opcode is not (EmissionOpcode.Unreachable or EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar)))
+            {
+                this.validation.Add(EmissionOpcode.TestPhaseLeave, i);
+            }
         }
 
         this.instructionStarts[count] = this.validation.Instructions.Count;
@@ -286,6 +327,14 @@ internal sealed partial class BodyLowering
         if (this.arguments.Count != 0)
         {
             return Fail("Incomplete call argument plan.", out failure);
+        }
+
+        // Validated implicit acquisitions may materialize pointer-valued parameters.
+        // Their physical slots follow the logical Places and participate in ordinary pruning.
+        function.Slots.AddRange(this.validation.Slots);
+        for (var p = function.SlotAddresses.Count; p < this.validation.SlotAddresses.Count; p++)
+        {
+            function.SlotAddresses.Add(this.validation.SlotAddresses[p]);
         }
 
         if (this.hasMatches)
@@ -323,6 +372,16 @@ internal sealed partial class BodyLowering
             }
         }
 
+        function.FunctionAddresses.AddRange(this.validation.FunctionAddresses);
+        function.FormattingStacks.AddRange(this.validation.FormattingStacks);
+        var patternStart = function.PatternSteps.Count;
+        var dereferenceStart = function.PatternDereferences.Count;
+        function.PatternDereferences.AddRange(this.validation.PatternDereferences);
+        foreach (var step in this.validation.PatternSteps)
+        {
+            function.PatternSteps.Add(step with { DereferenceStart = step.DereferenceStart + dereferenceStart });
+        }
+
         function.AddScalar(EmissionOpcode.Branch, -1, [new(EmissionOperandKind.Block, 0)]);
         for (var i = 0; i < count; i++)
         {
@@ -346,13 +405,20 @@ internal sealed partial class BodyLowering
 
                     var start = function.Operands.Count;
                     function.Operands.AddRange(this.validation.GetOperands(instruction));
-                    function.Instructions.Add(instruction with { OperandStart = start });
+                    function.Instructions.Add(instruction with { OperandStart = start, PatternStart = instruction.PatternStart + patternStart });
                     function.NeedsStringComparison |= instruction.Opcode is EmissionOpcode.StringEquals or EmissionOpcode.StringCompare ||
                         (instruction.Opcode == EmissionOpcode.StringPattern && instruction.Constant >= 0);
+                    if (instruction.Opcode == EmissionOpcode.CompositePattern)
+                    {
+                        foreach (var test in this.validation.GetPattern(instruction))
+                        {
+                            function.NeedsStringComparison |= test.Text >= 0;
+                        }
+                    }
                 }
 
-                if (body.Operations[cursor].Kind == OwnershipOperationKind.Deliver ||
-                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(body.Operations[cursor].Source.BoundType, BoundType.Never)))
+                if (body.Operations[cursor].Kind is OwnershipOperationKind.Deliver or OwnershipOperationKind.TestAbort ||
+                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(SignatureType(this, body.Operations[cursor].Source.BoundType), BoundType.Never)))
                 {
                     break;
                 }
@@ -409,7 +475,7 @@ internal sealed partial class BodyLowering
             return Fail("Scalar expression attributes need explicit lowering support.", out failure);
         }
 
-        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : operation.Source.BoundType;
+        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : SignatureType(this, operation.Source.BoundType);
         if (operation.Kind == OwnershipOperationKind.Branch && value.Kind == OwnershipValueKind.None)
         {
             return true;
@@ -457,6 +523,13 @@ internal sealed partial class BodyLowering
                     return value.Kind == OwnershipValueKind.Alias || Fail("Parameter read has no incoming SSA value.", out failure);
                 }
 
+                if (body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+                {
+                    return value.Kind == OwnershipValueKind.Alias && value.Count == 1 &&
+                        ValuePlace(body.Operations[Input(body, id, 0)]) == operation.Place
+                        ? true : Fail("An acquired scalar read requires its own prepared SSA value.", out failure);
+                }
+
                 if (body.Places[operation.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
                 {
                     return Fail("Scalar load requires local storage.", out failure);
@@ -485,9 +558,21 @@ internal sealed partial class BodyLowering
                 return true;
         }
 
+        if (value.Kind == OwnershipValueKind.Parameter && operation.Kind == OwnershipOperationKind.Produce && this.IsMaterializedScalar(operation.Place))
+        {
+            // A borrowed by-value Scalar parameter is stored once at entry; reads keep using the argument value.
+            function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, id)], llvm, place: operation.Place, representation: representation);
+            return true;
+        }
+
         if (value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Parameter)
         {
             return true;
+        }
+
+        if (value.Kind == OwnershipValueKind.Capture)
+        {
+            return this.LowerCapture(body, function, id, out failure);
         }
 
         if (value.Kind == OwnershipValueKind.Phi)
@@ -500,6 +585,16 @@ internal sealed partial class BodyLowering
             return this.LowerConversion(body, function, constants, directory, id, out failure);
         }
 
+        if (value.Kind == OwnershipValueKind.PointerProject)
+        {
+            return this.LowerPointerProjection(body, function, constants, directory, id, out failure);
+        }
+
+        if (value.Kind == OwnershipValueKind.ContractComparison)
+        {
+            return this.LowerContractComparison(body, function, id, out failure);
+        }
+
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))
         {
             return Fail("Missing scalar computation.", out failure);
@@ -507,6 +602,23 @@ internal sealed partial class BodyLowering
 
         var first = Input(body, id, 0);
         var operandType = ValueType(body, first)!;
+        if (ReferenceTypes.IsPointer(operandType) && value.Operator is KotoKind.Plus or KotoKind.Minus)
+        {
+            // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count.
+            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? 0;
+            if (value.Kind != OwnershipValueKind.Binary || stride <= 0 ||
+                !ReferenceEquals(type, operandType) || !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.ISize))
+            {
+                return Fail("Unsupported pointer operation.", out failure);
+            }
+
+            var start = function.Operands.Count;
+            function.Operands.Add(this.PhysicalOperand(body, first));
+            function.Operands.Add(this.PhysicalOperand(body, Input(body, id, 1)));
+            function.Instructions.Add(new(EmissionOpcode.PointerOffset, id, Constant: value.Operator == KotoKind.Plus ? stride : -stride, OperandStart: start, OperandCount: 2, ScalarType: "ptr"));
+            return true;
+        }
+
         if (FloatingTypes.Supports(operandType))
         {
             return this.LowerFloating(body, function, id, type!, operandType, out failure);

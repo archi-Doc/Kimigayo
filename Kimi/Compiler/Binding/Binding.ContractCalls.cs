@@ -8,8 +8,17 @@ public sealed partial class Binding
 {
     private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
 
+    // SPEC 8.4.2: the bound Contract reference whose requirement is the candidate under evaluation or the selected
+    // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
+    private BindingSymbol? activeRequirementContract;
+
     private static bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
     {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
         if (type.Origin is { } origin && HasOrigin(origin))
         {
             return true;
@@ -54,7 +63,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -65,10 +74,28 @@ public sealed partial class Binding
         }
 
         group.Members.Clear();
+        group.Contracts.Clear();
         group.Seen.Clear();
         group.Self = type;
         group.Active = true;
         group.TypeAccess = typeAccess;
+        if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
+        {
+            Add(formatting);
+        }
+
+        if (this.Library.GetSymbol(KimiDeclarationId.Equatable) is { Contract: { } equality } equatable &&
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Equatable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, equatable, scope, false) == ConstraintProof.Proven)))
+        {
+            Add(equality);
+        }
+
+        if (this.Library.GetSymbol(KimiDeclarationId.Comparable) is { Contract: { } ordering } comparable &&
+            (ComparisonTypes.IsBuiltin(type, KimiDeclarationId.Comparable) || (ComparisonTypes.IsComposite(type) && this.ComparisonProof(type, comparable, scope, false) == ConstraintProof.Proven)))
+        {
+            Add(ordering);
+        }
+
         if (type.Symbol?.Contract is { } own)
         {
             Add(own);
@@ -83,14 +110,47 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && fact.Contract?.Contract is { } shape)
+                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
                 {
-                    Add(shape);
+                    Add(this.AppliedAssociatedContract(fact, type).Contract!);
                 }
             }
         }
 
-        return group.Members.Count == 0 ? null : group.Members[0];
+        // Expand the proved contracts of this referenced receiver only, as for an explicit associated
+        // projection. Inherited signatures can depend on their refining contract's associated identities.
+        for (var i = 0; i < group.Contracts.Count; i++)
+        {
+            var contract = group.Contracts[i];
+            if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
+            {
+                this.AddContractPremises(contract.Contract!, type, scope);
+            }
+        }
+
+        // SPEC 9.5: requirements gathered from constraints must share one receiver shape; a mismatch is an error at the use.
+        SemanticsKind? expected = null;
+        for (var i = 0; i < group.Members.Count; i++)
+        {
+            if (ReceiverShape(group.Members[i]) is not { } current)
+            {
+                continue;
+            }
+
+            if (expected is null)
+            {
+                expected = current;
+            }
+            else if (expected != current)
+            {
+                Fail(member, BindingFailure.ReceiverShapeMismatch);
+                group.Active = false;
+                return null;
+            }
+        }
+
+        group.Active = group.Members.Count != 0;
+        return group.Active ? group.Members[0] : null;
 
         void Add(BoundContract shape)
         {
@@ -105,12 +165,13 @@ public sealed partial class Binding
                 if (requirement.Declaration is FunctionKoto && group.Seen.Add(requirement))
                 {
                     group.Members.Add(requirement);
+                    group.Contracts.Add(shape.Symbol);
                 }
             }
         }
     }
 
-    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null)
+    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
     {
         if (this.MemberType(type, declaringType) is not { } memberType)
         {
@@ -123,11 +184,21 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.Substitute(type, function, arguments);
+        var result = this.SubstituteType(type, function, arguments, lengths);
         if (result is not null)
         {
+            for (var i = 0; i < function.Parameters.Count && i < inputs.Length; i++)
+            {
+                if (function.Parameters[i].Type.BoundType?.Origin is { BorrowCondition: { } selector } &&
+                    ContainerSlot(function, selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                    arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
+                {
+                    inputs[i] = BoundOrigin.Static;
+                }
+            }
+
             result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
         }
 
         return result;
@@ -136,6 +207,9 @@ public sealed partial class Binding
     private sealed class RequirementGroup
     {
         internal List<BindingSymbol> Members { get; } = new();
+
+        /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
+        internal List<BindingSymbol> Contracts { get; } = new();
 
         internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -146,11 +220,11 @@ public sealed partial class Binding
         internal bool TypeAccess { get; set; }
     }
 
-    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements)
+    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
     {
-        public Enumerator GetEnumerator() => new(first, requirements);
+        public Enumerator GetEnumerator() => new(first, requirements, imports);
 
-        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements)
+        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
         {
             private BindingSymbol? next = first;
             private int index;
@@ -159,14 +233,15 @@ public sealed partial class Binding
 
             public bool MoveNext()
             {
-                if (requirements is not null)
+                var members = requirements?.Members ?? (imports is { Count: > 0 } ? imports : null);
+                if (members is not null)
                 {
-                    if (this.index == requirements.Members.Count)
+                    if (this.index == members.Count)
                     {
                         return false;
                     }
 
-                    this.Current = requirements.Members[this.index++];
+                    this.Current = members[this.index++];
                     return true;
                 }
 

@@ -95,6 +95,12 @@ public static partial class KotoHelper
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
         {
+            if (newKoto is NumberLiteralKoto number &&
+                (newKoto.Span != oldKoto.Span || !ReferenceEquals(newKoto.CodeContext, oldKoto.CodeContext)))
+            {
+                number.PreserveSourceSpelling();
+            }
+
             // Preserve the source metadata associated with the replaced expression.
             newKoto.Span = oldKoto.Span;
             newKoto.CodeContext = oldKoto.CodeContext;

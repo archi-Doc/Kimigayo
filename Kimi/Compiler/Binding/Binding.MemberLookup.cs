@@ -11,9 +11,30 @@ public sealed partial class Binding
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
 
-    private void ValidateBaseDeclarations()
+    private void ValidateBaseDeclarations(BindingMode? mode = null)
     {
         this.inheritanceStates.Clear();
+        // Bind all bases before checking retained projections, then propagate
+        // invalid bases through the ordinary inheritance walk.
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is StructKoto structure)
+            {
+                for (var b = 0; b < structure.Bases.Count; b++)
+                {
+                    var syntax = structure.Bases[b];
+                    var scope = this.scopes[structure];
+                    var type = this.BindType(syntax, scope);
+                    if (mode is { } bindingMode && type is not null)
+                    {
+                        this.RequireConstraint(syntax, this.CheckTypeConstraints(type, scope), bindingMode);
+                    }
+                }
+            }
+        }
+
+        this.ValidateBaseProjections(mode);
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is StructKoto structure)
@@ -32,15 +53,19 @@ public sealed partial class Binding
         }
 
         this.inheritanceStates.Add(symbol, 1);
-        var valid = structure.Bases.Count <= 1;
+        var valid = structure.BindingState != BindingState.Invalid && structure.Bases.Count <= 1;
         var scope = this.scopes[structure];
         for (var i = 0; i < structure.Bases.Count; i++)
         {
             var syntax = structure.Bases[i];
             var type = this.BindType(syntax, scope);
-            if (type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
+            if (syntax.BindingState == BindingState.Invalid || type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
             {
                 Fail(syntax, BindingFailure.InvalidTypeFormation);
+                valid = false;
+            }
+            else if (valid && !this.ValidateInheritedNames(structure, type, scope))
+            {
                 valid = false;
             }
         }
@@ -54,6 +79,43 @@ public sealed partial class Binding
         return valid;
     }
 
+    private bool ValidateInheritedNames(StructKoto structure, BoundType baseType, BindingScope scope)
+    {
+        foreach (var nested in structure.NestedContainers)
+        {
+            if (this.LookupTypeMember(baseType, nested.Name, scope, typeRole: true).Member is not null)
+            {
+                Fail(nested, BindingFailure.Duplicate);
+                Fail(structure, BindingFailure.Duplicate);
+                return false;
+            }
+        }
+
+        foreach (var entry in scope.Values)
+        {
+            var member = entry.Value;
+            while (member is not null && member.Declaration is FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } or FunctionKoto { IsSpecialization: true })
+            {
+                member = member.Next;
+            }
+
+            if (member?.Kind is not (BindingSymbolKind.Function or BindingSymbolKind.Property))
+            {
+                continue;
+            }
+
+            // Names reserve the declaration layer regardless of signatures or conditions.
+            // The original derived receiver supplies protected access, including Properties.
+            if (this.LookupTypeMember(baseType, entry.Key, scope, this.SelfType(structure.BoundSymbol!)).Member is not null)
+            {
+                Fail(structure, BindingFailure.Duplicate);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.
     private MemberSelection LookupTypeMember(BoundType type, string name, BindingScope use, BoundType? receiver = null, BoundMemberPath? path = null, bool typeRole = false)
     {
@@ -62,6 +124,7 @@ public sealed partial class Binding
             return default;
         }
 
+        BindingSymbol? hidden = null;
         if ((typeRole ? scope.Types : scope.Values).TryGetValue(name, out var member))
         {
             for (var candidate = member; candidate is not null; candidate = candidate.Next)
@@ -70,12 +133,15 @@ public sealed partial class Binding
                 {
                     return new(candidate, type, path);
                 }
+
+                // An existing but inaccessible Property is an access fault, not an unresolved Name (SPEC 20.4).
+                hidden ??= candidate.Kind == BindingSymbolKind.Property ? candidate : null;
             }
         }
 
         if (symbol.Declaration is not StructKoto structure)
         {
-            return default;
+            return new(null, type, path, Hidden: hidden);
         }
 
         if (!this.memberLookupVisiting.Add(symbol))
@@ -109,6 +175,7 @@ public sealed partial class Binding
 
                 if (candidate.Member is null)
                 {
+                    hidden ??= candidate.Hidden;
                     continue;
                 }
 
@@ -120,7 +187,7 @@ public sealed partial class Binding
                 result = candidate;
             }
 
-            return result;
+            return result.Member is null ? result with { Hidden = result.Hidden ?? hidden } : result;
         }
         finally
         {
@@ -128,5 +195,5 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false);
+    private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
 }

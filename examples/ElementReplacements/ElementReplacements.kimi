@@ -5,7 +5,7 @@ rows[0] = makeRow()
 
 let replacement = ("replacement", 2)
 var index: isize = 1
-rows[index] = replacement
+rows[index] = replacement@move
 rows[0].0 = "renamed"
 
 var state = (40, "old")
@@ -14,4 +14,4 @@ state.0 += work: do
     exit to work: 2
 
 if rows[0].1 == 42 and rows[1].1 == 2 and state.0 == 42
-    writeLine("element replacements complete")
+    Console.writeLine("element replacements complete")

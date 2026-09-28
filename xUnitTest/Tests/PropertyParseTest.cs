@@ -17,7 +17,7 @@ public class PropertyParseTest
     [InlineData("#Type i32", "Type")]
     public void DiagnosesAndRecoversAttributesInsidePropertySyntax(string type, string? typeAttribute)
     {
-        var source = "public open struct TestStruct<s/C, D> origin a, b\n"
+        var source = "public open struct TestStruct<s/C, D> {a, b}\n"
             + $"    public static #Test1 var #Test2 x: {type} = #One 1\n"
             + "    var next: i32 = 2";
         var (_, structure, diagnostics) = ParseStruct(source);

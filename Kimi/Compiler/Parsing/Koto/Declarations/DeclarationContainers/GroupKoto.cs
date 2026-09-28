@@ -105,14 +105,31 @@ public sealed class GroupKoto : DeclarationContainerKoto
             if (tokenKind == TokenKind.Alias)
             {
                 reader.Advance();
-                var qualifiedName = KotoHelper.ParseQualifiedNameSegments(ref reader);
+                string? aliasName = null;
+                if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+                {
+                    aliasName = reader.GetIdentifier(reader.Read());
+                    reader.Advance();
+                }
+
+                reader.TryConsume(TokenKind.ColonColon);
+                var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
+                var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
                 if (hasNonAliasDeclaration)
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
                 }
                 else
                 {
-                    this.AddLast(new AliasKoto(ref reader, qualifiedName));
+                    var context = reader.TakeContext();
+                    if (context.ModifierKind != default || context.AttributeKoto is not null)
+                    {
+                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                    }
+
+                    var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
+                    Parser.ParseAttachedOriginBlock(ref reader, alias);
+                    this.AddLast(alias);
                 }
 
                 continue;
@@ -124,7 +141,9 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 reader.Advance();
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span);
+                var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span, codeContext: reader.CodeContext);
+                reader.Document(groupKoto, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
+                groupKoto.AddHeader(TokenKind.Group, state.ModifierKind, null, null, state.AttributeKoto);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     groupKoto.Parse(ref reader);

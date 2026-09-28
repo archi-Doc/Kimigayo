@@ -23,6 +23,29 @@ public sealed partial class Binding
         return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
     }
 
+    private static Koto? PropertySignatureOwner(Koto use)
+    {
+        for (var node = use; node.Parent is { } parent; node = parent)
+        {
+            if (parent is PropertyAccessorKoto accessor)
+            {
+                return ReferenceEquals(node, accessor.ReceiverType) || ReferenceEquals(node, accessor.ValueType) || ReferenceEquals(node, accessor.ReturnType) ? accessor : null;
+            }
+
+            if (parent is PropertyKoto property)
+            {
+                return ReferenceEquals(node, property.TypeKoto) ? property : null;
+            }
+
+            if (parent is FunctionKoto)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
         var accessor = Accessor(syntax);
@@ -100,6 +123,7 @@ public sealed partial class Binding
         }
 
         var scope = this.scopes[syntax!];
+        this.BeginOriginDeclaration(syntax!, scope);
         if (syntax!.ReceiverType is { } receiver)
         {
             accessor.Receiver = this.BindType(receiver, scope);
@@ -133,6 +157,15 @@ public sealed partial class Binding
         }
 
         var scope = this.scopes[syntax!];
+        if (property.IsStored && property.Type is { } storageType)
+        {
+            var inheritedSyntax = accessor.Kind == PropertyAccessorKind.Set ? syntax!.ValueType : syntax!.ReturnType;
+            if (inheritedSyntax is not null)
+            {
+                this.InheritOriginContract(inheritedSyntax, storageType);
+            }
+        }
+
         if (accessor.Kind == PropertyAccessorKind.Set)
         {
             accessor.Input = syntax!.ValueType is { } input ? this.BindType(input, scope) : this.BindImplicitSetterInput(property, accessor, scope);
@@ -144,6 +177,21 @@ public sealed partial class Binding
 
         accessor.Result = syntax!.ReturnType is { } result ? this.BindType(result, scope) : accessor.Kind == PropertyAccessorKind.Get ? property.Type : BoundType.Unit;
         accessor.SignatureSymbol!.Type = accessor.Result;
+        this.CompleteOriginDeclaration(this.originDeclarations.GetValueOrDefault(syntax));
+        accessor.Receiver = syntax.ReceiverType?.BoundType ?? accessor.Receiver;
+        accessor.Input = syntax.ValueType?.BoundType ?? accessor.Input;
+        accessor.Result = syntax.ReturnType?.BoundType ?? accessor.Result;
+        accessor.SignatureSymbol.Type = accessor.Result;
+        if (accessor.SelfSymbol is { } self)
+        {
+            self.Type = accessor.Receiver;
+        }
+
+        if (accessor.ValueSymbol is { } value)
+        {
+            value.Type = accessor.Input;
+        }
+
         if (accessor.StorageSymbol is { } storage)
         {
             storage.Type = property.Type;
@@ -157,7 +205,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (property.Type is { } completed && !HasDeclaredOrigins(completed))
+        if (property.Type is { } completed && !completed.CarriesOrigin)
         {
             return completed;
         }
@@ -189,6 +237,27 @@ public sealed partial class Binding
 
     private void ValidateProperties(BindingMode mode)
     {
+        // Projection normalization must not erase signature access or input constraints.
+        // Check before publishing Property verification or building conformance witnesses.
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            var declaration = PropertySignatureOwner(use.Use);
+            var syntax = declaration as PropertyKoto ?? declaration?.Parent as PropertyKoto;
+            if (syntax?.BoundSymbol?.Property is not { } property)
+            {
+                continue;
+            }
+
+            var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
+            if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            {
+                Fail(declaration!, BindingFailure.Access);
+            }
+
+            this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
+        }
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not PropertyKoto syntax || syntax.BoundSymbol?.Property is not { } property)
@@ -196,12 +265,20 @@ public sealed partial class Binding
                 continue;
             }
 
+            // The header/storage Type belongs to the Property domain even when
+            // every accessor has narrower access. Requirements inherit the Contract domain.
+            var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
+            if (property.Type is { } type && !TypeAccessCovers(type, domain, domain))
+            {
+                Fail(syntax, BindingFailure.Access);
+            }
+
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingState != BindingState.Invalid;
+            property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireConstraint(syntax, proof, mode);
+                this.RequireConstraint(syntax, proof, mode, this.ConformanceDiagnosticCause(property.Symbol.Scope.Owner));
             }
         }
     }
@@ -215,14 +292,33 @@ public sealed partial class Binding
 
         var property = accessor.Property;
         var syntax = accessor.Declaration;
-        if (syntax?.BindingState == BindingState.Invalid || property.Declaration.BindingState == BindingState.Invalid)
+        if (syntax?.BindingState == BindingState.Invalid || InvalidDeclarationContext(property.Declaration))
         {
             return ConstraintProof.Error;
         }
 
-        if (property.Type is null || accessor.Result is null)
+        if (property.Type is null || accessor.Result is null || UnresolvedTypeDeclarationContext(property.Declaration))
         {
             return ConstraintProof.Unknown;
+        }
+
+        // A resolved signature can still contain a constructed Type whose input
+        // constraints fail. Validate before publishing a Property certificate.
+        var scope = syntax is null ? this.DeclarationScope(property.Symbol) : this.scopes[syntax];
+        var formation = CombineProof(this.CheckTypeConstraints(property.Type, scope), this.CheckTypeConstraints(accessor.Result, scope), true);
+        if (accessor.Input is { } inputType)
+        {
+            formation = CombineProof(formation, this.CheckTypeConstraints(inputType, scope), true);
+        }
+
+        if (accessor.Receiver is { } receiverSignature)
+        {
+            formation = CombineProof(formation, this.CheckTypeConstraints(receiverSignature, scope), true);
+        }
+
+        if (formation != ConstraintProof.Proven)
+        {
+            return formation;
         }
 
         if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
@@ -233,21 +329,22 @@ public sealed partial class Binding
 
         if (accessor.IsStandard)
         {
-            var standardDomain = accessor.SignatureSymbol ?? property.Symbol;
-            if (!TypeAccessCovers(property.Type, standardDomain, standardDomain))
-            {
-                Fail(accessor.Binder, BindingFailure.Access);
-                return ConstraintProof.Error;
-            }
-
             return ConstraintProof.Proven;
         }
 
-        var scope = this.DeclarationScope(property.Symbol);
-        if (property.IsStored && scope.Owner is StructKoto)
+        var owner = property.Symbol.Scope.Owner;
+        if (owner is StructKoto or ContractKoto
+            ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
+            : accessor.Receiver is not null)
+        {
+            Fail(syntax!, BindingFailure.InvalidTypeFormation);
+            return ConstraintProof.Error;
+        }
+
+        if (property.IsStored && owner is StructKoto)
         {
             var semantics = accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq;
-            if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(scope.Owner.BoundSymbol!)))
+            if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(owner.BoundSymbol!)))
             {
                 Fail(syntax!, BindingFailure.TypeMismatch);
                 return ConstraintProof.Error;
@@ -267,7 +364,9 @@ public sealed partial class Binding
         }
 
         var domain = property.Declaration.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : accessor.SignatureSymbol!;
-        if (!TypeAccessCovers(accessor.Result, domain, domain) || (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)))
+        if (!TypeAccessCovers(accessor.Result, domain, domain) ||
+            (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)) ||
+            (accessor.Receiver is { } receiverType && !TypeAccessCovers(receiverType, domain, domain)))
         {
             Fail(syntax!, BindingFailure.Access);
             return ConstraintProof.Error;
@@ -287,7 +386,7 @@ public sealed partial class Binding
             var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
             structural.Clear();
             if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                actual is not null && accessor.Result is { } result && !FitsType(actual, result))
+                actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
             {
                 Fail(body, BindingFailure.TypeMismatch);
             }

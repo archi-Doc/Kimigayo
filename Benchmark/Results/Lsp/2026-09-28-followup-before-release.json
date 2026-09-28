@@ -1,0 +1,75 @@
+{
+  "runtime": "10.0.12",
+  "results": [
+    {
+      "name": "equalLengthEdit105KB",
+      "cost": {
+        "nanoseconds": 24.735,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "noOpEdit105KB",
+      "cost": {
+        "nanoseconds": 7.145,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "insertOrDeleteNearStart105KB",
+      "cost": {
+        "nanoseconds": 20940.125,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "deduplicate200Diagnostics",
+      "cost": {
+        "nanoseconds": 896.19,
+        "bytes": 824
+      }
+    },
+    {
+      "name": "deduplicate200DiagnosticsBefore",
+      "cost": {
+        "nanoseconds": 996.845,
+        "bytes": 1680
+      }
+    },
+    {
+      "name": "listing1000WithExistingOverlay",
+      "cost": {
+        "nanoseconds": 98.18,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "listing1000WithNewOverlay",
+      "cost": {
+        "nanoseconds": 10779.7,
+        "bytes": 8192
+      }
+    },
+    {
+      "name": "didChangeKeystroke",
+      "cost": {
+        "nanoseconds": 45784.625,
+        "bytes": 2820
+      }
+    },
+    {
+      "name": "didOpenRepeated105KB",
+      "cost": {
+        "nanoseconds": 891280,
+        "bytes": 336951
+      }
+    },
+    {
+      "name": "publishFrame3Diagnostics",
+      "cost": {
+        "nanoseconds": 2466.605,
+        "bytes": 176.0624
+      }
+    }
+  ]
+}

@@ -13,4 +13,4 @@ In a guard, `n` is a read-only candidate for the Subject. The body's `n` is a se
 
 C.53 supports guards over bool, the ten integer Types through 64 bits and Unit. String Subjects remain supported only without guards. References, decomposition and general candidate borrows remain pending. Guarded arms never establish exhaustiveness, including `if true`, so retain an unguarded covering arm. Covered arms still receive static checks.
 
-See [STATUS C.53](../../STATUS.md#c53-copy-subject-match-guards-2026-09-13) and [backend setup](../../backend/windows-x64/README.md).
+See [STATUS C.53](../../STATUS.md#4-llvm-generation-coverage) and [backend setup](../../backend/windows-x64/README.md).

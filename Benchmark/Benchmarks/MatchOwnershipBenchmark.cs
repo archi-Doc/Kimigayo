@@ -23,7 +23,7 @@ public class MatchOwnershipBenchmark
         var source = new StringBuilder("func f()\n");
         for (var i = 0; i < this.Matches; i++)
         {
-            source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s)) =>\n            writeLine(s)\n        .Some(_) =>\n            ()\n        .None =>\n            ()\n");
+            source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s)) =>\n            Console.writeLine(s)\n        .Some(_) =>\n            ()\n        .None =>\n            ()\n");
         }
 
         this.compilation = Compilation.CreateForTest();

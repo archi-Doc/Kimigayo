@@ -1,0 +1,528 @@
+{
+  "Timestamp": "2026-09-19T16:16:17.0817696+00:00",
+  "Runtime": ".NET 10.0.12",
+  "ProcessorCount": 20,
+  "ProductSha256": "FD724DA93A11A4E2E06759F34E318CCE72C787F74AFE3C172AF78D4661DB1003",
+  "Measurements": [
+    {
+      "Phase": "Concurrent-first-1",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        31400,
+        28100,
+        26800,
+        18700,
+        20300,
+        20700,
+        17500
+      ],
+      "Bytes": [
+        728,
+        728,
+        728,
+        728,
+        728,
+        728,
+        728
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-1",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        6900,
+        16200,
+        8300,
+        30900,
+        16500,
+        157900,
+        30500
+      ],
+      "Bytes": [
+        104,
+        128,
+        104,
+        128,
+        128,
+        128,
+        128
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-4",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        64600,
+        55000,
+        61000,
+        26900,
+        34500,
+        29500,
+        25800
+      ],
+      "Bytes": [
+        752,
+        2504,
+        752,
+        752,
+        752,
+        752,
+        752
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-4",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        13700,
+        10900,
+        5900,
+        6400,
+        5000,
+        5300,
+        5700
+      ],
+      "Bytes": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-16",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        109800,
+        102100,
+        103800,
+        167600,
+        114000,
+        79400,
+        87300
+      ],
+      "Bytes": [
+        848,
+        848,
+        848,
+        848,
+        848,
+        2600,
+        1448
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-16",
+      "Input": "Items-8",
+      "Engine": "Independent",
+      "Characters": 266,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        104900,
+        106900,
+        101600,
+        106700,
+        122800,
+        123000,
+        111800
+      ],
+      "Bytes": [
+        248,
+        248,
+        248,
+        248,
+        248,
+        248,
+        248
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-1",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        19700,
+        21100,
+        21400,
+        21500,
+        23800,
+        23100,
+        20400
+      ],
+      "Bytes": [
+        9368,
+        9368,
+        9368,
+        9368,
+        9368,
+        9368,
+        9368
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-1",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        5000,
+        6500,
+        5100,
+        6700,
+        5500,
+        4800,
+        6600
+      ],
+      "Bytes": [
+        104,
+        104,
+        104,
+        104,
+        104,
+        104,
+        104
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-4",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        36300,
+        31700,
+        33600,
+        57100,
+        38800,
+        62900,
+        43900
+      ],
+      "Bytes": [
+        37112,
+        37112,
+        37112,
+        9392,
+        18632,
+        9392,
+        46144
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-4",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        12400,
+        11700,
+        16400,
+        11800,
+        12300,
+        11700,
+        11800
+      ],
+      "Bytes": [
+        128,
+        128,
+        128,
+        128,
+        128,
+        128,
+        128
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-16",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        118000,
+        125100,
+        140800,
+        107500,
+        127000,
+        106900,
+        114800
+      ],
+      "Bytes": [
+        9488,
+        9488,
+        9488,
+        9488,
+        9488,
+        9488,
+        9488
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-16",
+      "Input": "Items-128",
+      "Engine": "Independent",
+      "Characters": 4132,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        136800,
+        112500,
+        118200,
+        124900,
+        143800,
+        108900,
+        103000
+      ],
+      "Bytes": [
+        248,
+        248,
+        248,
+        248,
+        248,
+        248,
+        248
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-1",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        107700,
+        132500,
+        113500,
+        103900,
+        111500,
+        108700,
+        104400
+      ],
+      "Bytes": [
+        147608,
+        147608,
+        147608,
+        147608,
+        147608,
+        147608,
+        147608
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-1",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        32200,
+        27700,
+        22800,
+        3600,
+        34200,
+        24200,
+        29000
+      ],
+      "Bytes": [
+        128,
+        128,
+        128,
+        104,
+        128,
+        128,
+        128
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-4",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        566000,
+        212100,
+        187300,
+        365700,
+        338400,
+        338900,
+        344200
+      ],
+      "Bytes": [
+        601072,
+        590072,
+        442592,
+        590072,
+        590072,
+        442592,
+        590072
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-4",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        67900,
+        64400,
+        51200,
+        81900,
+        32600,
+        82600,
+        58700
+      ],
+      "Bytes": [
+        152,
+        152,
+        152,
+        152,
+        152,
+        152,
+        152
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-first-16",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        284700,
+        236700,
+        876900,
+        229000,
+        255700,
+        329500,
+        430900
+      ],
+      "Bytes": [
+        1203448,
+        1038824,
+        1493248,
+        1210584,
+        1032608,
+        1032608,
+        1032608
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Concurrent-cached-16",
+      "Input": "Items-2048",
+      "Engine": "Independent",
+      "Characters": 68540,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        170100,
+        146700,
+        158100,
+        739600,
+        174400,
+        174600,
+        262900
+      ],
+      "Bytes": [
+        248,
+        248,
+        248,
+        13208,
+        248,
+        248,
+        248
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Active-cancellation-1ms-request",
+      "Input": "Retry-large-input",
+      "Engine": "Independent",
+      "Characters": 2900000,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        10560000,
+        8344400,
+        6258800,
+        336000,
+        7142800,
+        9389100,
+        16992200
+      ],
+      "Bytes": [
+        18824216,
+        6623728,
+        1104,
+        808,
+        1104,
+        11076808,
+        38536368
+      ],
+      "Error": null
+    },
+    {
+      "Phase": "Retry-after-cancellation",
+      "Input": "Retry-large-input",
+      "Engine": "Independent",
+      "Characters": 2900000,
+      "OperationsPerSample": 1,
+      "Nanoseconds": [
+        42859000,
+        44659000,
+        42004000,
+        42185300,
+        42356200,
+        42971700,
+        41769800
+      ],
+      "Bytes": [
+        30800368,
+        30800368,
+        30800368,
+        30800368,
+        30800368,
+        30800368,
+        30800368
+      ],
+      "Error": null
+    }
+  ]
+}

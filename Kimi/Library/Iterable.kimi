@@ -1,0 +1,7 @@
+/// Starts an enumeration through a shared borrow of the source.
+public contract Iterable
+    /// The iterator retains the source borrow and yields its own declared item Type.
+    associate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source
+
+    /// Creates an iterator whose lifetime is bounded by the shared source borrow.
+    func iterate(self: ref/Self during source) -> Self.IteratorType(source)

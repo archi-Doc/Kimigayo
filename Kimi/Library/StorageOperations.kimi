@@ -1,0 +1,9 @@
+// Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.1.2.5).
+// Borrowed results depend on the remainder's source, never on the state borrow or slot. Each shared overload precedes
+// its exclusive overload.
+internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
+internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
+internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source
+internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source
+internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
+internal unsafe func release<E>(storage: unsafe/E)

@@ -6,38 +6,22 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private int[] elementNextCalls = [];
+
     private int[] elementOperations = [];
     private int[] elementOutputs = [];
     private bool hasElements;
+
+    private static EmissionOperand StringPlaceOperand(OwnershipBody body, int place, int loan)
+        => loan >= 0 && body.ComparisonLoans[loan].Projection is >= 0 and var projection
+            ? new(EmissionOperandKind.ElementAddress, body.Projections[projection].Operation)
+            : new(EmissionOperandKind.SlotAddress, place);
 
     private static bool ConsecutiveElementEdge(OwnershipBody body, int from, int to)
     {
         var edge = body.EdgeHeads[from];
         return edge >= 0 && body.Edges[edge] is { Kind: OwnershipEdgeKind.Normal, Next: -1 } next && next.To == to &&
             body.IncomingEdges[to] == edge && body.IncomingCounts[to] == 1;
-    }
-
-    private static bool IsCopyElement(BoundType type, int depth = 0)
-    {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit))
-        {
-            return true;
-        }
-
-        if (depth == 64 || type.Semantics != SemanticsKind.Owner || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!IsCopyElement(type.Components[i], depth + 1))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private bool IsElementReceiverRead(OwnershipBody body, int id)
@@ -57,17 +41,156 @@ internal sealed partial class BodyLowering
         }
 
         var place = body.Places[operation.Place];
-        return ReferenceEquals(operation.Source.BoundType, place.Type) &&
-            (operation.Source is IdentifierNameKoto identifier
-                ? identifier.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id
-                : ReferenceEquals(operation.Source, place.Source)) &&
+        return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
+            (operation.Source is IdentifierNameKoto { BoundSymbol.Kind: not BindingSymbolKind.PatternCandidate } identifier
+                ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
+                : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
+            this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
+    }
+
+    private bool IsPreparedArgument(OwnershipBody body, int read, BindingSymbol symbol, int place)
+    {
+        if (symbol.Kind != BindingSymbolKind.Parameter || (uint)read >= (uint)this.elementNextCalls.Length)
+        {
+            return false;
+        }
+
+        var next = this.elementNextCalls[read];
+        if (next < 0 ||
+            body.Operations[next].Source is not InvocationKoto { BoundCall: { } plan } call ||
+            plan.Target.Declaration is not FunctionKoto target || !ReferenceEquals(symbol.Scope.Owner, target))
+        {
+            return false;
+        }
+
+        var omitted = false;
+        foreach (var argument in plan.DefaultArguments)
+        {
+            if (symbol.Slot >= argument.Parameter.Slot)
+            {
+                continue;
+            }
+
+            for (var source = body.Operations[read].Source; source is not null && source != target; source = source.Parent)
+            {
+                if (ReferenceEquals(source, argument.Expression))
+                {
+                    omitted = true;
+                    break;
+                }
+            }
+        }
+
+        if (!omitted)
+        {
+            return false;
+        }
+
+        var position = plan.Receiver is not null && plan.ReceiverOperation.ParameterIndex == symbol.Slot ? 0 : -1;
+        for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
+        {
+            if (plan.ArgumentToParameter[i] == symbol.Slot)
+            {
+                position = i + (plan.Receiver is null ? 0 : 1);
+            }
+        }
+
+        if (position < 0)
+        {
+            return false;
+        }
+
+        var first = next;
+        while (first > read && body.Operations[first - 1].Kind == OwnershipOperationKind.CallEntry)
+        {
+            first--;
+        }
+
+        var entry = first + position;
+        return entry > read && entry < next && ReferenceEquals(body.Operations[entry].Source, call) && body.Operations[entry].Place == place;
+    }
+
+    private bool IsElementOwnerStorage(OwnershipPlace place) => place.Kind switch
+    {
+        OwnershipPlaceKind.Local => true,
+        OwnershipPlaceKind.Parameter => this.slotFunctionPlaces[place.Id] == 1,
+        OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
+        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionInitializations[place.Id] >= 0 || this.aggregateReadInitializations[place.Id] >= 0,
+        _ => false,
+    };
+
+    private bool ValidateElementOwner(OwnershipBody body, int id)
+    {
+        var place = body.Operations[id].Place;
+        var initialized = this.constructionOwners[place] >= 0 ? this.aggregateCompletions[place]
+            : this.aggregateReadInitializations[place] >= 0 ? this.aggregateReadInitializations[place] : this.slotFunctionInitializations[place];
+        // Locals use their dataflow state. Selection results are checked against
+        // their current declaration/Join lifetime in ValidateSlotResults.
+        return body.Places[place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Result ||
+            (initialized >= 0 && (!body.IsReachable(id) || this.Dominates(initialized, id)));
     }
 
     private bool PrepareElements(OwnershipBody body, out string? failure)
     {
         failure = null;
         this.hasElements = body.Projections.Count != 0;
+        var preparedCopies = false;
+        if (!this.hasElements)
+        {
+            for (var i = 0; i < body.Operations.Count; i++)
+            {
+                var operation = body.Operations[i];
+                if (operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter &&
+                    (uint)operation.Place < (uint)body.Places.Count &&
+                    body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result } prepared &&
+                    (prepared.Type.Kind == BoundTypeKind.Tuple || ReferenceTypes.IsStorage(prepared.Type)))
+                {
+                    preparedCopies = true;
+                    break;
+                }
+            }
+        }
+
+        // Defaults in this subset contain no calls. Cache the following call once; receiver and prepared-argument
+        // borrow checks then validate against its explicit acquired argument slots, in every body.
+        Grow(ref this.elementNextCalls, body.Operations.Count);
+        var nextCall = -1;
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
+            this.elementNextCalls[i] = nextCall;
+            if (body.Operations[i].Kind == OwnershipOperationKind.Call)
+            {
+                nextCall = i;
+            }
+        }
+
+        if (!this.hasElements && !preparedCopies)
+        {
+            return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
+        }
+
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
+            // Explicit aggregate arguments can be acquired from locals/parameters,
+            // not just literals or call results. Their Consume is independently
+            // validated by LowerAggregate; retain its identity for dominance checks.
+            // A struct acquired by @move or @copy is a receiver of member selection.
+            var operation = body.Operations[i];
+            if (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is AcquisitionKind.Copy or AcquisitionKind.Move &&
+                (uint)operation.Input < (uint)body.Places.Count &&
+                body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary } acquired &&
+                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(acquired.Type)))
+            {
+                if (this.slotFunctionInitializations[acquired.Id] >= 0 || this.constructionOwners[acquired.Id] >= 0 || this.slotFunctionPlaces[acquired.Id] != 0)
+                {
+                    return Fail("Acquired aggregate storage must have one initialization.", out failure);
+                }
+
+                this.slotFunctionInitializations[acquired.Id] = i;
+            }
+        }
+
         if (!this.hasElements)
         {
             return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);
@@ -85,12 +208,17 @@ internal sealed partial class BodyLowering
                 plan.Exclusive < -1 || (plan.Exclusive >= 0 && ((uint)plan.Exclusive >= (uint)body.ComparisonLoans.Count ||
                     body.ComparisonLoans[plan.Exclusive].Mode != LoanRequirement.Uniq || body.ComparisonLoans[plan.Exclusive].Projection != i)) ||
                 plan.Update < -1 || (plan.Update >= 0 && (plan.Update >= body.ElementUpdates.Count || plan.Output < 0 || plan.Write < 0 || plan.Exclusive < 0)) ||
+                plan.Borrow < -1 || (plan.Borrow >= 0 && ((uint)plan.Borrow >= (uint)body.Operations.Count ||
+                    body.Operations[plan.Borrow].Projection != i || body.LoanStates[plan.Borrow] < 0 ||
+                    (body.Values[plan.Borrow].Kind == OwnershipValueKind.Address ? body.LoanStates[plan.Borrow] != plan.Loan : body.ComparisonLoans[body.LoanStates[plan.Borrow]].Projection != i) ||
+                    plan.Output != -1 || plan.Write != -1 || plan.Exclusive != -1 || plan.Update != -1 ||
+                    !ConsecutiveElementEdge(body, plan.Operation, plan.Borrow))) ||
                 (plan.Output >= 0 && plan.Write >= 0 && plan.Update < 0) ||
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
                 operation.Place != plan.Root || body.Values[plan.Operation].Kind != OwnershipValueKind.None ||
-                !ElementAccess.TryType(source, out var element, out var position) || position != plan.Element ||
-                source.AttributeChain is not null || !ReferenceEquals(source.BoundType, element) || this.aggregateLayouts.Get(source.Left.BoundType!) is null)
+                !(ElementAccess.TryType(source, out var declared, out var position) && SignatureType(this, declared) is { } element) || position != plan.Element ||
+                source.AttributeChain is not null || !ReferenceEquals(SignatureType(this, source.BoundType), element) || this.aggregateLayouts.Get(SignatureType(this, source.Left.BoundType)!) is null)
             {
                 return Fail("Element address has no matching source and aggregate shape.", out failure);
             }
@@ -100,6 +228,7 @@ internal sealed partial class BodyLowering
                 (plan.Parent >= 0
                     ? body.Projections[plan.Parent].Root != plan.Root || body.Projections[plan.Parent].Loan != plan.Loan ||
                         body.Projections[plan.Parent].Output != -1 || body.Projections[plan.Parent].Write != -1 ||
+                        body.Projections[plan.Parent].Borrow != -1 ||
                         !ReferenceEquals(body.Operations[body.Projections[plan.Parent].Operation].Source, KotoHelper.UnwrapParentheses(source.Left))
                     : !ReferenceEquals(body.Operations[loan.Read].Source, KotoHelper.UnwrapParentheses(source.Left))))
             {
@@ -108,11 +237,12 @@ internal sealed partial class BodyLowering
 
             if (source is IndexKoto)
             {
-                if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                    !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(source.Right)) ||
-                    body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch))
+                var keyType = source is IndexKoto { DictionaryKeyReference: { } keyReference } ? SignatureType(this, keyReference) : BoundType.ISize;
+                if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), keyType) ||
+                    !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax((IndexKoto)source))) ||
+                    (keyType == BoundType.ISize ? body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch) : body.Operations[plan.Index].Kind != OwnershipOperationKind.Borrow))
                 {
-                    return Fail("Fixed-array indices require an isize value.", out failure);
+                    return Fail("Element selection requires its evaluated isize index or Dictionary key borrow.", out failure);
                 }
 
                 this.continuations[plan.Operation] = body.Operations.Count + plan.Operation;
@@ -124,14 +254,15 @@ internal sealed partial class BodyLowering
 
             if (plan.Output >= 0)
             {
+                var copy = source.CodeContext.Compilation.Binding.ProveCopy(element!, source) == ConstraintProof.Proven;
                 if ((uint)plan.Output >= (uint)body.Operations.Count || this.elementOutputs[plan.Output] >= 0 ||
                     body.Operations[plan.Output] is not { Kind: OwnershipOperationKind.Produce } output ||
                     (uint)output.Place >= (uint)body.Places.Count || !ReferenceEquals(output.Source, source) ||
                     body.Values[plan.Output].Kind != OwnershipValueKind.Element ||
                     body.Places[output.Place].Kind != OwnershipPlaceKind.Temporary ||
-                    (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !IsCopyElement(element!) :
+                    (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !copy :
                         body.Places[output.Place].Acquisition != AcquisitionKind.Move || output.Acquisition != AcquisitionKind.Move || plan.Path != i ||
-                        body.Places[plan.Root].Kind != OwnershipPlaceKind.Local || IsCopyElement(element!)) ||
+                        !ElementAccess.SupportsMoveRoot(body.Places[plan.Root]) || copy) ||
                     !ReferenceEquals(body.Places[output.Place].Type, element))
                 {
                     return Fail("Element acquisition requires a fresh Copy result or an eligible static owned Move of the selected Type.", out failure);
@@ -163,6 +294,21 @@ internal sealed partial class BodyLowering
         }
 
         return true;
+    }
+
+    private bool ValidateElementBorrow(OwnershipBody body, int borrow, int at)
+    {
+        var operation = body.Operations[borrow];
+        if ((uint)operation.Projection >= (uint)body.Projections.Count)
+        {
+            return false;
+        }
+
+        var plan = body.Projections[operation.Projection];
+        return plan.Borrow == borrow && this.elementOperations[plan.Operation] == operation.Projection &&
+            (borrow == at || body.Values[borrow].Kind == OwnershipValueKind.Address ? body.HasComparisonLoan(at, plan.Loan) : body.HasComparisonLoan(at, body.LoanStates[borrow])) &&
+            (!body.IsReachable(at) || (this.Dominates(plan.Operation, borrow) && (borrow == at || this.Dominates(borrow, at)) &&
+                (body.GetElementState(at, operation.Projection) & PlaceState.MustInit) != 0));
     }
 
     private bool PrepareElementWrite(OwnershipBody body, OwnershipProjection plan, BinaryKoto target, BoundType element, out string? failure)
@@ -203,7 +349,7 @@ internal sealed partial class BodyLowering
             last = value;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
-            !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(source.BoundType, BoundType.Unit) ||
+            !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
             !ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) ||
             (IsScalar(element) && value >= body.ComparisonLoans[plan.Loan].Read))
         {
@@ -233,14 +379,14 @@ internal sealed partial class BodyLowering
         var op = ElementAccess.UpdateOperator(source.Akind);
         var unary = source is UnaryKoto;
         if (op == KotoKind.Invalid || !type.IsNumeric || !IsScalar(type) || (unary && !type.IsInteger) ||
-            !ReferenceEquals(source.BoundType, unary ? type : BoundType.Unit) ||
+            !ReferenceEquals(SignatureType(this, source.BoundType), unary ? type : BoundType.Unit) ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(source is UnaryKoto increment ? increment.Operand : ((BinaryKoto)source).Left), target) ||
             value != update.Computation || value <= plan.Output ||
             body.Operations[value] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } computation ||
             !ReferenceEquals(computation.Source, source) || !ReferenceEquals(body.Places[computation.Place].Source, source) ||
             body.Values[value] is not { Kind: OwnershipValueKind.Binary, Count: 2 } calculation || calculation.Operator != op ||
             Input(body, value, 0) != plan.Output || Input(body, value, 1) != update.Right ||
-            update.Right <= plan.Output || update.Right >= value ||
+            update.Right >= value || (unary ? update.Right <= plan.Output : update.Right >= plan.Operation) ||
             !ConsecutiveElementEdge(body, plan.Operation, plan.Output))
         {
             return Fail("Element update must calculate from its own single Copy read and RHS.", out failure);
@@ -262,7 +408,7 @@ internal sealed partial class BodyLowering
         if ((uint)update.Result >= (uint)body.Operations.Count || update.Result != plan.Write + 2 ||
             body.Operations[update.Result] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } result ||
             (uint)result.Place >= (uint)body.Places.Count || body.Places[result.Place].Kind != OwnershipPlaceKind.Temporary ||
-            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), source.BoundType) ||
+            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), SignatureType(this, source.BoundType)) ||
             !ConsecutiveElementEdge(body, plan.Write + 1, update.Result) ||
             (unary ? body.Values[update.Result] is not { Kind: OwnershipValueKind.Alias, Count: 1 } ||
                 Input(body, update.Result, 0) != (source.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? plan.Output : value)
@@ -298,17 +444,31 @@ internal sealed partial class BodyLowering
         }
 
         var source = (BinaryKoto)body.Operations[plan.Operation].Source;
-        var layout = this.aggregateLayouts.Get(source.Left.BoundType!)!;
-        var field = layout.IsArray ? 0 : plan.Element;
-        var representation = layout.Fields[field];
+        var receiverType = SignatureType(this, source.Left.BoundType)!;
+        var dynamicArray = receiverType.Kind == BoundTypeKind.Array;
+        var dictionary = receiverType.Kind == BoundTypeKind.Dictionary;
+        var dynamicElement = dynamicArray || dictionary;
+        var layout = this.aggregateLayouts.Get(receiverType)!;
+        var field = layout.IsArray || dynamicElement ? 0 : plan.Element;
+        // The Array layout describes its handle; the indexed storage has T's own layout.
+        var stored = dynamicElement ? receiverType.Components[dictionary ? 1 : 0] : null;
+        var representation = dynamicElement ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : layout.Fields[field];
+        var elementLayout = dynamicElement ? this.aggregateLayouts.Get(stored!) : layout.Children[field];
+        if (representation is null)
+        {
+            return Fail("Array element has no supported storage representation.", out failure);
+        }
+
         if (write)
         {
             var input = IsScalar(body.Places[operation.Input].Type) ? Input(body, id, 0) : -1;
             if (plan.Update >= 0)
             {
                 var update = body.ElementUpdates[plan.Update];
-                if (!body.HasComparisonLoan(update.Right, plan.Exclusive) || !body.HasComparisonLoan(input, plan.Exclusive) ||
-                    (body.IsReachable(id) && (!this.Dominates(plan.Output, update.Right) || !this.Dominates(update.Right, input) || !this.Dominates(input, id))))
+                var unary = body.Operations[plan.Write].Source is UnaryKoto;
+                if ((unary && !body.HasComparisonLoan(update.Right, plan.Exclusive)) || !body.HasComparisonLoan(input, plan.Exclusive) ||
+                    (body.IsReachable(id) && (!(unary ? this.Dominates(plan.Output, update.Right) : this.Dominates(update.Right, plan.Operation)) ||
+                        !this.Dominates(update.Right, input) || !this.Dominates(input, id))))
                 {
                     return Fail("Element update requires ordered old/RHS/computed values under its access Loan.", out failure);
                 }
@@ -324,7 +484,7 @@ internal sealed partial class BodyLowering
                 return Fail("Element store input is no longer initialized.", out failure);
             }
 
-            var child = layout.Children[field];
+            var child = elementLayout;
             var isString = ReferenceEquals(representation, WindowsLowering.String);
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
             if (isString || child is { NeedsDestruction: true })
@@ -373,7 +533,7 @@ internal sealed partial class BodyLowering
         if (address)
         {
             var location = -1;
-            if (layout.IsArray && !this.TryGetLocation(source, directory, constants, out location))
+            if ((layout.IsArray || dynamicElement) && !this.TryGetLocation(source, directory, constants, out location))
             {
                 return Fail("Element bounds check requires a source location.", out failure);
             }
@@ -383,6 +543,30 @@ internal sealed partial class BodyLowering
             var receiver = layout.Value.Layout.Size == 0 ? new EmissionOperand(EmissionOperandKind.NullAddress, 0)
                 : plan.Parent < 0 ? new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Root)
                 : new EmissionOperand(EmissionOperandKind.ElementAddress, body.Projections[plan.Parent].Operation);
+            if (dictionary)
+            {
+                if (source.CodeContext.Compilation.Binding.DictionaryComparison(receiverType) is not { } comparison ||
+                    this.ComparisonHelpers?.GetValueOrDefault(comparison) is not { } equality ||
+                    !this.TryGetArrayElement(receiverType.Components[0], out var key, allowEmpty: true) ||
+                    !this.TryGetArrayElement(receiverType.Components[1], out var value, allowEmpty: true))
+                {
+                    return Fail("Dictionary indexing requires a verified equality and concrete entry layout.", out failure);
+                }
+
+                var helper = this.GetDictionaryHelper(DictionaryHelperKind.Find, key, value, equality: equality);
+                function.AddCall(id, helper.Abi, [receiver, this.PhysicalOperand(body, plan.Index)]);
+                function.AddScalar(EmissionOpcode.Sequence, id, [receiver, new(EmissionOperandKind.Value, id), new(EmissionOperandKind.Integer, helper.Stride), new(EmissionOperandKind.Integer, helper.ValueOffset)], place: body.Operations.Count + id, location: location, op: "DictionaryLocate", check: ArithmeticCheckKind.MissingKey, representation: representation);
+                return true;
+            }
+
+            if (dynamicArray)
+            {
+                // A dynamic element retains the root-wide access Loan; resolving it never
+                // creates a movable path. Replacement uses the ordinary destroy/store below.
+                function.AddScalar(EmissionOpcode.Sequence, id, [receiver, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, -1)], place: body.Operations.Count + id, location: location, op: "SliceAddress", check: ArithmeticCheckKind.Bounds, representation: representation);
+                return true;
+            }
+
             function.AddScalar(
                 EmissionOpcode.ElementAddress,
                 id,
@@ -405,7 +589,7 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (layout.Children[field] is { } aggregate)
+            if (elementLayout is { } aggregate)
             {
                 var start = function.Operands.Count;
                 function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));

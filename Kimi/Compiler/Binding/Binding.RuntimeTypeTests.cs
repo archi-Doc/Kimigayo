@@ -14,6 +14,8 @@ public readonly record struct BoundRuntimeTypeTest(BoundType OperandType, BoundT
 {
     /// <summary>Gets a value indicating whether evaluation requires shared access, without acquiring an owned operand value.</summary>
     public bool RequiresSharedAccess => true;
+
+    internal BoundType? SharedType { get; init; }
 }
 
 public sealed partial class Binding
@@ -63,6 +65,12 @@ public sealed partial class Binding
             return Fail(test, BindingFailure.InvalidTypeFormation);
         }
 
+        // SPEC 13.6.1: refinement would give the operand an object form of the target, which an opt-out forbids.
+        if (target.Symbol!.ObjectPayloadOptOut is { } renounced)
+        {
+            return this.FailObjectPayload(test, renounced);
+        }
+
         // SPEC 3.8: Never fits a valid operand position, but supplies no value or Boolean exit.
         // Do not invent an object Type for it or skip the target/transfer checks above.
         if (!ReferenceEquals(operand, BoundType.Never))
@@ -80,7 +88,22 @@ public sealed partial class Binding
             }
         }
 
-        test.BoundRuntimeTest = new(operand, target);
+        var plan = new BoundRuntimeTypeTest(operand, target);
+        var proof = this.CheckRuntimeTestTypeConstraints(plan, scope);
+        if (proof != ConstraintProof.Proven)
+        {
+            this.RequireConstraint(test, proof, this.capabilityMode);
+            return null;
+        }
+
+        test.BoundRuntimeTest = plan with
+        {
+            SharedType = ReferenceEquals(operand, BoundType.Never) ? null :
+                this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.ObjRef, [operand.Components[0]], origin: operand.Origin is { } dependency ? this.Meet(this.PlaceOrigin(test.Left), dependency) : this.PlaceOrigin(test.Left)),
+        };
         return Complete(test, BoundType.Boolean);
     }
+
+    private ConstraintProof CheckRuntimeTestTypeConstraints(BoundRuntimeTypeTest test, BindingScope scope)
+        => CombineProof(this.CheckTypeConstraints(test.OperandType, scope), this.CheckTypeConstraints(test.TargetType, scope), true);
 }

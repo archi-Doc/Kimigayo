@@ -95,6 +95,10 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
             return cached;
         }
 
+        // Selected defaults can form recursive evaluation dependencies. Until a
+        // node completes, conservatively assume completion; semantic flow retains
+        // a pending obligation for recursive defaults.
+        this.cache[node] = new(true, null);
         Completion result;
         switch (node)
         {
@@ -181,11 +185,22 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                 }
 
                 break;
+            case DiscardKoto discard:
+                result = this.Visit(discard.Operand);
+                break;
             case RequireKoto require:
                 result = this.Visit(require.Condition);
                 if (result.Normal)
                 {
                     result = this.Merge(result, this.Visit(require.ElseBody) with { Normal = false });
+                }
+
+                break;
+            case TestVerificationKoto verification:
+                result = this.Visit(verification.Condition);
+                if (result.Normal && verification.Message is { } message)
+                {
+                    result = this.Merge(result, this.Visit(message) with { Normal = false });
                 }
 
                 break;
@@ -207,6 +222,18 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                 var count = this.children.Count - start;
                 result = this.Sequence(this.children, start, count);
                 this.children.RemoveRange(start, count);
+                if (result.Normal && node is InvocationKoto { BoundCall: { } call })
+                {
+                    foreach (var omitted in call.DefaultArguments)
+                    {
+                        result = result with { Normal = this.Visit(omitted.Expression).Normal };
+                        if (!result.Normal)
+                        {
+                            break;
+                        }
+                    }
+                }
+
                 if (isNever(node))
                 {
                     result = result with { Normal = false };

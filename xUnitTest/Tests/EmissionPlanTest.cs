@@ -11,7 +11,7 @@ public class EmissionPlanTest
     [Fact]
     public void LinearBodyContainsOnlyPhysicalOperations()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"Hello, world!\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"Hello, world!\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         Assert.Equal(2, module.FunctionCount);
         var entry = module.GetFunction(0);
@@ -20,10 +20,13 @@ public class EmissionPlanTest
         var slot = Assert.Single(entry.Slots);
         Assert.Equal(new[] { 0, 8, 16 }, slot.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal((24, 8, 24), (slot.Value.Layout.Size, slot.Value.Layout.Alignment, slot.Value.Layout.Stride));
-        Assert.Equal([EmissionOpcode.Branch, EmissionOpcode.Label, EmissionOpcode.StoreStaticString, EmissionOpcode.Call, EmissionOpcode.ReturnVoid], entry.Instructions.Select(x => x.Opcode));
+        // SPEC 22.4: writeLine borrows the literal; the caller destroys the temporary after the call.
+        Assert.Equal([EmissionOpcode.Branch, EmissionOpcode.Label, EmissionOpcode.StoreStaticString, EmissionOpcode.Call, EmissionOpcode.Call, EmissionOpcode.ReturnVoid], entry.Instructions.Select(x => x.Opcode));
         Assert.True(entry.Instructions[2].Operation < entry.Instructions[3].Operation);
         Assert.Same(WindowsLowering.WriteLine, entry.Instructions[3].Callee);
         Assert.Equal(slot.Place, entry.GetOperands(entry.Instructions[3])[0].Value);
+        Assert.Same(WindowsLowering.DestroyString, entry.Instructions[4].Callee);
+        Assert.Equal(slot.Place, entry.GetOperands(entry.Instructions[4])[0].Value);
         var start = module.GetFunction(1);
         Assert.True(start.Exported);
         Assert.Same(WindowsLowering.Start, start.Abi);
@@ -34,7 +37,7 @@ public class EmissionPlanTest
         var ir = output.ToString();
         var begin = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
         var end = ir.IndexOf("attributes #0", begin, StringComparison.Ordinal);
-        Assert.Equal($"define internal void @__kimi_entry_body() #0 {{\nentry:\n  %p{slot.Place} = alloca %kimi.string, align 8\n  br label %b0\nb0:\n  store %kimi.string {{ ptr @__kimi_text, i64 13, i8 0 }}, ptr %p{slot.Place}, align 8\n  call void @__kimi_write_line(ptr %p{slot.Place}, ptr @__kimi_location, i64 14)\n  ret void\n}}\ndefine void @__kimi_start() noreturn #0 {{\nentry:\n  call void @__kimi_entry_body()\n  call void @__kimi_exit(i32 0)\n  unreachable\n}}\n", ir[begin..end]);
+        Assert.Equal($"define internal void @__kimi_entry_body() #0 {{\nentry:\n  %p{slot.Place} = alloca %kimi.string, align 8\n  br label %b0\nb0:\n  store %kimi.string {{ ptr @__kimi_text, i64 13, i8 0 }}, ptr %p{slot.Place}, align 8\n  call void @__kimi_write_line(ptr noundef nonnull align 8 dereferenceable(24) %p{slot.Place}, ptr @__kimi_location, i64 14)\n  call void @__kimi_destroy_string(ptr %p{slot.Place}, ptr @__kimi_location, i64 14)\n  ret void\n}}\ndefine void @__kimi_start() noreturn #0 {{\nentry:\n  call void @__kimi_entry_body()\n  call void @__kimi_exit(i32 0)\n  unreachable\n}}\n", ir[begin..end]);
     }
 
     [Theory]
@@ -47,7 +50,7 @@ public class EmissionPlanTest
     [InlineData("conditional-cleanup")]
     public void UnsupportedOrIncompleteLoweringNeverWritesFallbackIr(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Emission.Validate(out _)); // Exercise reuse after a previously successful plan.
         var body = c.Ownership.Bodies[0];
         var firstEdge = body.EdgeHeads[0];
@@ -92,7 +95,7 @@ public class EmissionPlanTest
     [Fact]
     public void ReanalysisReusesThePlanWithoutDuplicatingSlotsOrInstructions()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"日本語\\0\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"日本語\\0\")");
         Assert.True(c.Emission.TryPrepare(out var first, out _));
         using var before = new StringWriter();
         first.WriteIr(before);
@@ -110,10 +113,8 @@ public class EmissionPlanTest
     [Fact]
     public void RuntimeDefinitionsAndCallsUseThePreparedAbi()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")");
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), error);
-        var ir = output.ToString();
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
+        var ir = CompilationTestHelper.WriteIr(c);
         foreach (var abi in new[] { WindowsLowering.Entry, WindowsLowering.Exit, WindowsLowering.WriteLine, WindowsLowering.DestroyString })
         {
             Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.
@@ -164,12 +165,12 @@ public class EmissionPlanTest
     [Fact]
     public void SequentialLiteralCallsShareConstantsAndTransferEachArgument()
     {
-        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")\nwriteLine(\"a\")\nwriteLine(\"\")");
+        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")\nConsole.writeLine(\"a\")\nConsole.writeLine(\"\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var entry = module.GetFunction(0);
         Assert.Equal(3, entry.Slots.Count);
         Assert.Equal(3, entry.Instructions.Count(x => x.Callee == WindowsLowering.WriteLine));
-        Assert.DoesNotContain(entry.Instructions, x => x.Callee == WindowsLowering.DestroyString);
+        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == WindowsLowering.DestroyString)); // Each borrowed literal is destroyed by the caller.
         using var output = new StringWriter();
         module.WriteIr(output);
         var ir = output.ToString();

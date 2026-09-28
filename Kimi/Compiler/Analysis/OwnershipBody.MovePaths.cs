@@ -79,7 +79,7 @@ public sealed partial class OwnershipBody
         this.projectionPaths.AsSpan(0, this.Projections.Count).Fill(-1);
         foreach (var plan in this.Projections)
         {
-            if (plan.Output >= 0 && this.Operations[plan.Output].Acquisition == AcquisitionKind.Move && this.moveRoots[plan.Root] < 0)
+            if (plan.Output >= 0 && this.Operations[plan.Output].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove && this.moveRoots[plan.Root] < 0)
             {
                 this.moveRoots[plan.Root] = this.movePaths.Count;
                 this.movePaths.Add(new(plan.Root, -1, -1, this.Places[plan.Root].Type));
@@ -136,6 +136,31 @@ public sealed partial class OwnershipBody
     private PlaceState CompleteState(int place)
         => this.moveRoots[place] is >= 0 and var path ? Combine(this.State(place), this.PathState(path)) : this.State(place);
 
+    // Selectors are leaf-first. Untracked children share the parent's remainder;
+    // tracked siblings do not affect the selected child's initialization.
+    private PlaceState InlinePathState(int place, ReadOnlySpan<int> selectors)
+    {
+        var state = this.State(place);
+        var path = this.moveRoots[place];
+        if (path < 0)
+        {
+            return state;
+        }
+
+        for (var i = selectors.Length - 1; i >= 0; i--)
+        {
+            state = Combine(state, this.State(this.PathSlot(path, false)));
+            if (!this.movePathIndex.TryGetValue((path, selectors[i]), out var child))
+            {
+                return this.movePaths[path].HasRemainder ? Combine(state, this.State(this.PathSlot(path))) : PlaceState.None;
+            }
+
+            path = child;
+        }
+
+        return Combine(state, this.PathState(path));
+    }
+
     private PlaceState PathState(int path)
     {
         var node = this.movePaths[path];
@@ -176,7 +201,7 @@ public sealed partial class OwnershipBody
         return state;
     }
 
-    private void SetPathState(int path, bool initialized, bool declare = false, bool cleanup = false)
+    private void SetPathState(int path, bool initialized, bool declare = false, bool cleanup = false, bool conditional = false)
     {
         for (var slot = this.PathSlot(path, false); slot <= this.PathSlot(path); slot++)
         {
@@ -190,6 +215,11 @@ public sealed partial class OwnershipBody
                 {
                     this.Clear(slot, MustLane);
                     this.Clear(slot, MayLane);
+                }
+                else if (conditional)
+                {
+                    this.Clear(slot, MustLane);
+                    this.Set(slot, MovedLane);
                 }
                 else
                 {
@@ -206,14 +236,14 @@ public sealed partial class OwnershipBody
 
         for (var child = this.movePaths[path].Child; child >= 0; child = this.movePaths[child].Next)
         {
-            this.SetPathState(child, initialized, declare, cleanup);
+            this.SetPathState(child, initialized, declare, cleanup, conditional);
         }
     }
 }
 
 internal readonly record struct MovePath(int Root, int Parent, int Selector, BoundType Type, int Child = -1, int Next = -1, int Children = 0)
 {
-    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : 0;
+    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : StructStorage.Count(this.Type);
 
-    internal bool HasRemainder => this.Children < this.Count || this.Count == 0;
+    internal bool HasRemainder => this.Children < this.Count || this.Count == 0 || this.Type.StoredBase is not null;
 }

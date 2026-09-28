@@ -81,7 +81,7 @@ public class ConstraintBindingTest
     [Fact]
     public void ForwardedPairConstraintsRetainTargetProjectionIdentity()
     {
-        var c = Parse("func required<s/T>(value: s/T)\n    T is i32\n    s is owning\n    ()\nfunc caller<r/U>(value: r/U)\n    U is i32\n    r is owning\n    required(value)");
+        var c = Parse("func required<s/T>(value: s/T)\n    T is i32\n    s is owning\n    ()\nfunc caller<r/U>(value: r/U)\n    U is i32\n    r is owning\n    required(value@move)");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -95,7 +95,7 @@ public class ConstraintBindingTest
     [Fact]
     public void PropositionIdentityPreservesOrigins()
     {
-        var c = Parse("func query<T>(value: T)\n    T is ref/i32 from static\n    ()\nfunc context origin a(value: ref/i32 from a) => ()");
+        var c = Parse("func query<T>(value: T)\n    T is ref/i32 during static\n    ()\nfunc context(value: ref/i32 during a) => ()");
         c.Bind();
         var query = Function(c, "query");
         var context = Function(c, "context");
@@ -113,7 +113,7 @@ public class ConstraintBindingTest
         const string b = "func f(x: i32) -> i32 => x\n";
         var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.Empty(((FunctionKoto)call.BoundSymbol!.Declaration).GenericArguments);
     }
 
@@ -170,23 +170,48 @@ public class ConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
 
+    // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
-    public void AFunctionCannotConstrainItsEnclosingTypeParameter()
+    public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()
     {
-        var c = Parse("struct Box<T>\n    func f<U>(x: U)\n        T is i32\n        ()", allowParserErrors: true);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        var c = Parse("struct Box<T>\n    func f<U>(x: U)\n        T is Equatable\n        ()");
+        Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues));
     }
 
     [Fact]
     public void CompletedConcreteConformanceAbsenceCanBeRefuted()
     {
-        var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\n    Self is not C");
+        // SPEC 8.7: absence is Refuted only after the closed conformance judgment completes; the
+        // negative requirement lives at a use, since a Type declaration cannot negate a Self clause (SPEC 8.2).
+        var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(N.init())");
         Assert.True(c.Bind().IsComplete);
         var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        var n = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "N");
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(n.ConstraintNodes[0].BoundConstraint!, n));
+    }
+
+    // SPEC 8.7, 8.4.8.4: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
+    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload.
+    [Theory]
+    [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(1)", true, null)]
+    [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use() => present(1)", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func present<T>(x: T)\n    T is Iterable\n    ()\nfunc use() => present(\"text\")", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func absent<T>(x: T)\n    T is not LendingIterator\n    ()\nfunc use() => absent(true)", true, null)]
+    public void APrimitiveConformsOnlyToItsFixedContracts(string source, bool complete, DiagnosticCode? code)
+    {
+        var c = Parse(source);
+        Assert.Equal(complete, c.Bind().IsComplete);
+        if (code is { } expected)
+        {
+            Assert.Contains(c.Binding.Issues, x => x.Code == expected);
+        }
+    }
+
+    [Fact]
+    public void ANegatedSelfClauseOtherThanTheOptOutIsRejected()
+    {
+        var c = Parse("contract C\nstruct N\n    Self is not C");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidSelfClause_Kd);
     }
 
     [Fact]
@@ -236,19 +261,7 @@ public class ConstraintBindingTest
         return c;
     }
 
-    private static FunctionKoto Function(Compilation c, string name) => Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

@@ -1,0 +1,78 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
+using Xunit;
+
+namespace XunitTest;
+
+public class GenericCallbackEmissionTest
+{
+    [Theory]
+    [InlineData("i8", "7")]
+    [InlineData("i32", "7")]
+    [InlineData("i64", "7")]
+    [InlineData("bool", "true")]
+    public void AdaptsInstantiatedParameter(string type, string value)
+        => ScalarEmissionTest.EmitFixture(
+            "GenericCallback" + type,
+            "func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value@move)\nif not accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")\n    $abort(\"callback\")",
+            string.Empty);
+
+    [Theory]
+    [InlineData("Twice", "func invoke<T>(x: T, f: (T) -> bool) -> bool\n    T is Copy\n    let first = f(x)\n    return f(x)\nlet f: (i32) -> bool = func (x: i32)\n    Console.writeLine(\"called\")\n    return x == 7\nrequire invoke<i32>(7, f@move) else => $abort(\"value\")", "called\ncalled\n")]
+    [InlineData("TwoArguments", "func invoke<T>(x: T, y: T, f: (T, T) -> bool) -> bool => f(x@move, y@move)\nrequire invoke<i32>(3, 7, func (x: i32, y: i32) => x == 3 and y == 7) else => $abort(\"order\")", "")]
+    [InlineData("Isize", "func invoke<T>(x: T, f: (T) -> isize) -> isize => f(x@move)\nrequire invoke<i32>(7, func (x: i32) => 42) == 42 else => $abort(\"result\")", "")]
+    [InlineData("Unit", "func invoke<T>(x: T, f: (T) -> ()) => f(x@move)\ninvoke<i32>(7, func (x: i32) => Console.writeLine(\"called\"))", "called\n")]
+    [InlineData("NoArguments", "func invoke<T>(x: T, f: () -> bool) -> bool => f()\nrequire invoke<i32>(7, func () => true) else => $abort(\"result\")", "")]
+    public void SharedCallsPreserveBehavior(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
+
+    [Theory]
+    [InlineData("i8", "7")]
+    [InlineData("i32", "7")]
+    [InlineData("bool", "true")]
+    public void MonomorphizesCallableValueCalls(string type, string value)
+    {
+        // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
+        var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value@move)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        Assert.Empty(module.PendingEntries);
+        var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
+        var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
+        Assert.Equal([type == "bool" ? "i1" : type], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+    }
+
+    [Theory]
+    [InlineData("loan")]
+    [InlineData("argument")]
+    [InlineData("receiver")]
+    public void RejectsCorruptValueCallAndReanalysisRecovers(string defect)
+    {
+        // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
+        // the corrupt value call is rejected on the ordinary body that owns it.
+        var c = MinimalEmissionTest.Analyze("func invoke(x: i32, f: (i32) -> bool) -> bool => f(x)\nlet result = invoke(7, func (x: i32) => true)");
+        Assert.True(c.Emission.Validate(out var error), error);
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "invoke");
+        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call);
+        if (defect == "loan")
+        {
+            body.ComparisonLoans[0] = body.ComparisonLoans[0] with { Place = 0 };
+        }
+        else if (defect == "receiver")
+        {
+            body.OperationStorage[call] = body.Operations[call] with { Input = 0 };
+        }
+        else
+        {
+            var entry = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.CallEntry);
+            body.OperationStorage[entry] = body.Operations[entry] with { Place = 0 };
+        }
+
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
+        Assert.Empty(output.ToString());
+        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Emission.Validate(out error), error);
+    }
+}

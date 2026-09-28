@@ -17,15 +17,15 @@ public class SpecConformanceParseTest
     [InlineData("List<char>")]
     [InlineData("()")]
     [InlineData("(i32, string) -> bool")]
-    [InlineData("ref/(i32, string) from owner")]
+    [InlineData("ref/(i32, string) during owner")]
     [InlineData("List<(i32, string)>")]
     [InlineData("List<(i32) -> bool>")]
     [InlineData("List<List<i32>>")]
-    [InlineData("ref/T from self.source")]
-    [InlineData("ref/T from x and y.source")]
-    [InlineData("ref/T from static")]
-    [InlineData("Pair<A, B> from (left => a, right => b.source and c)")]
-    [InlineData("View<T> from (source => s)")]
+    [InlineData("ref/T during self.source")]
+    [InlineData("ref/T during (x and y.source)")]
+    [InlineData("ref/T during static")]
+    [InlineData("Pair<A, B>{pair}")]
+    [InlineData("View<T>{view}")]
     [InlineData("has")]
     public void TypeSyntaxWorksInEveryDeclarationPosition(string type)
     {
@@ -45,8 +45,8 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func unwrap<s/T> origin source, owner(value: s/T from source)
-                -> ref/T from value and owner
+            func unwrap<s/T>(value: s/T during source)
+                -> ref/T during (value and owner)
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
 
@@ -55,7 +55,7 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
         Assert.Equal("unwrap", function.Name);
-        Assert.Equal(["source", "owner"], function.Origins);
+        Assert.Empty(function.Origins); // Binding, not parsing, discovers implicit scalar names.
         Assert.Equal(2, function.TypeConstraints.Count);
         Assert.IsType<ReturnKoto>(Assert.Single(function.Body!.Items));
         Assert.All(function.TypeConstraints, constraint => Assert.Same(function, constraint.Parent));
@@ -77,8 +77,8 @@ public class SpecConformanceParseTest
                 property count: i32 has get
                 property item: Element has get, set
 
-            struct Logger origin sink
-                let output: uniq/Writer from sink
+            struct Logger {sink}
+                let output: uniq/Writer during sink
                 deinit
                     self.output.flush()
                     return
@@ -257,8 +257,8 @@ public class SpecConformanceParseTest
     [InlineData("var bad: ref/")]
     [InlineData("var bad: List<i32")]
     [InlineData("var bad: ref/T from")]
-    [InlineData("var bad: ref/T from source.")]
-    [InlineData("var bad: ref/T from source and")]
+    [InlineData("var bad: ref/T during source.")]
+    [InlineData("var bad: ref/T during source and")]
     public void RecoversFromMalformedSyntaxWithoutLosingTheNextDeclaration(string source)
     {
         var parsed = Parse(source + "\nvar after = 1");
@@ -281,7 +281,7 @@ public class SpecConformanceParseTest
         const string Source = "func f()\n    var text = \"one\r\n  two\rthree\"\n    var raw = \"\"\"one\r\n  two\"\"\"";
         var parsed = Parse(Source);
         AssertValid(parsed);
-        var text = Write(parsed);
+        var text = ParseTestHelper.Unparse(parsed);
         Assert.Contains("\"one\r\n  two\rthree\"", text);
         Assert.Contains("\"\"\"one\r\n  two\"\"\"", text);
         RoundTrip(parsed);
@@ -301,24 +301,25 @@ public class SpecConformanceParseTest
         RoundTrip(parsed);
     }
 
-    [Fact]
-    public void PreservesBlockBodiedDestructor()
+    [Theory]
+    [InlineData("struct Resource\n    deinit\n        release()")]
+    [InlineData("struct Resource\n    deinit => release()")]
+    public void PreservesDestructorBody(string source)
     {
-        var parsed = Parse("struct Resource\n    deinit\n        release()");
+        var parsed = Parse(source);
         AssertValid(parsed);
-        Assert.Contains("deinit", Write(parsed));
+        Assert.Contains("deinit", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
     [Theory]
-    [InlineData("struct Resource\n    deinit => release()")]
     [InlineData("struct Resource\n    public deinit\n        release()")]
     [InlineData("struct Resource\n    #Marker\n    deinit\n        release()")]
     [InlineData("struct Resource\n    unsafe init()\n        ()")]
     [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
     public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
     {
-        // deinit accepts only its Block, and init only an access modifier (SPEC 16.3, 6.2.3, F.3).
+        // deinit accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
         Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
     }
 
@@ -332,7 +333,7 @@ public class SpecConformanceParseTest
                 property count: i32 has get
             """);
         AssertValid(parsed);
-        Assert.Contains("associate Element", Write(parsed));
+        Assert.Contains("associate Element", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
@@ -344,32 +345,18 @@ public class SpecConformanceParseTest
     public void DiagnosesCompileTimeIfWithoutATarget(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 
-    private static string Write(Kotonoha parsed)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            parsed.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-    }
-
     private static void RoundTrip(Kotonoha parsed)
     {
-        var text = Write(parsed);
+        var text = ParseTestHelper.Unparse(parsed);
         var reparsed = Parse(text);
         AssertValid(reparsed);
-        Assert.Equal(text, Write(reparsed));
+        Assert.Equal(text, ParseTestHelper.Unparse(reparsed));
         var bytes = TinyhandSerializer.Serialize(parsed);
         var compilation = Compilation.CreateForTest();
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         Assert.NotNull(restored);
         restored.OnDeserialized(compilation);
-        Assert.Equal(text, Write(restored));
+        Assert.Equal(text, ParseTestHelper.Unparse(restored));
     }
 }

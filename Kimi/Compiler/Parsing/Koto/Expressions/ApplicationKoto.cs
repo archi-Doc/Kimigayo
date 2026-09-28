@@ -8,6 +8,16 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>Shares target and argument storage for invocations and generic applications.</summary>
 public abstract class ApplicationKoto : ExpressionKoto
 {
+    // Non-owning syntax view used by compiler-created calls. Source parent links
+    // continue to describe the user's control-transfer and destruction boundaries.
+    internal ApplicationKoto(Koto root, Koto target, IReadOnlyList<Koto> arguments)
+        : base(root.CodeContext, root.Span)
+    {
+        this.Parent = root;
+        this.Target = target;
+        this.ArgumentStorage = arguments;
+    }
+
     /// <summary>Gets the mutable arguments, materializing a list only when requested.</summary>
     public List<Koto> Arguments
     {
@@ -30,7 +40,7 @@ public abstract class ApplicationKoto : ExpressionKoto
     /// <summary>Replaces an argument by its known index without searching or copying the argument collection.</summary>
     /// <param name="index">The argument index.</param>
     /// <param name="replacement">The detached replacement node.</param>
-    public void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
+    public virtual void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
 
     /// <summary>Gets the expression to which the arguments apply.</summary>
     protected Koto Target { get; private set; }

@@ -14,7 +14,7 @@ public class PropertyBindingTest
     [InlineData("var", true)]
     public void RetainsImplicitStandardPermissionsWithoutCreatingAccessors(string kind, bool setter)
     {
-        var c = Parse($"struct S<T>\n    public {kind} item: T");
+        var c = CompilationTestHelper.ParseSuccess($"struct S<T>\n    public {kind} item: T");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "S", "item");
         Assert.True(property.IsVerified);
@@ -33,17 +33,17 @@ public class PropertyBindingTest
     [InlineData("set(self: uniq/Self, value: i64) -> () => ()", false)]
     public void ValidatesStoredSignaturesAndBodyTypes(string accessor, bool valid)
     {
-        var c = Parse($"struct S\n    public var item: i32\n        {accessor}");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    public var item: i32\n        {accessor}");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void ContextualStorageNamesTheSlotAndValueNamesTheInput()
     {
-        var c = Parse("struct S\n    var item: i32\n        set(self: uniq/Self, value: i32) -> () => storage = value");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    var item: i32\n        set(self: uniq/Self, value: i32) -> () => storage = value");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "S", "item");
-        var names = Walk(property.Setter.Declaration!.Body!).OfType<IdentifierNameKoto>().ToArray();
+        var names = KotoTree.Walk(property.Setter.Declaration!.Body!).OfType<IdentifierNameKoto>().ToArray();
         var storage = Assert.Single(names, x => x.IdentifierName == "storage");
         var value = Assert.Single(names, x => x.IdentifierName == "value");
         Assert.Equal(BindingSymbolKind.Storage, storage.BoundSymbol!.Kind);
@@ -57,34 +57,37 @@ public class PropertyBindingTest
     [InlineData("    T is Copy\n", true)]
     public void CustomGetterRequiresDefinitionSideCopyEvidence(string constraint, bool valid)
     {
-        var c = Parse($"struct S<T>\n{constraint}    var item: T\n        get(self: ref/Self) -> T => storage");
+        var c = CompilationTestHelper.ParseSuccess($"struct S<T>\n{constraint}    var item: T\n        get(self: ref/Self) -> T => storage");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void CustomSetterDoesNotRequireCopy()
     {
-        var c = Parse("struct S<T>\n    var item: T\n        set(self: uniq/Self, value: T) -> () => storage = value");
+        var c = CompilationTestHelper.ParseSuccess("struct S<T>\n    var item: T\n        set(self: uniq/Self, value: T) -> () => storage = value");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Theory]
-    [InlineData("from source", "from source", true)]
-    [InlineData("", "from source", false)]
-    [InlineData("from source", "", false)]
+    [InlineData(" during source", " during source", true)]
+    [InlineData("", " during source", true)]
+    [InlineData(" during source", "", true)]
+    [InlineData("", "", true)]
+    [InlineData(" during static", "", false)]
+    [InlineData("", " during static", false)]
     public void StoredAccessorOriginsMustMatchStorage(string getter, string setter, bool valid)
     {
-        var c = Parse($"struct S origin source\n    var item: ref/i32 from source\n        get(self: ref/Self) -> ref/i32 {getter} => storage\n        set(self: uniq/Self, value: ref/i32 {setter}) -> () => storage = value");
+        var c = CompilationTestHelper.ParseSuccess($"struct S {{source}}\n    var item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32{getter} => storage\n        set(self: uniq/Self, value: ref/i32{setter}) -> () => storage = value");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
     [Fact]
     public void ReceiverOriginPathsRetainTheAccessorInputIdentity()
     {
-        var c = Parse("struct S origin source\n    var item: ref/i32 from source\n        get(self: ref/Self) -> ref/i32 from self.source => storage");
+        var c = CompilationTestHelper.ParseSuccess("struct S {source}\n    var item: ref/i32 during source\n        get(self: ref/Self) -> ref/i32 during self.source => storage");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var getter = Property(c, "S", "item").Getter;
-        var self = Walk(getter.Declaration!.ReturnType!).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == "self");
+        var self = KotoTree.Walk(getter.Declaration!.ReturnType!).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == "self");
         Assert.Equal(BindingSymbolKind.Parameter, self.BoundSymbol!.Kind);
         Assert.Same(getter.Declaration, self.BoundSymbol.Declaration);
         Assert.Same(Property(c, "S", "item").Type, getter.Result);
@@ -93,7 +96,7 @@ public class PropertyBindingTest
     [Fact]
     public void StaticAccessorsHaveNoReceiverAndKeepTheirOwnStorageBinding()
     {
-        var c = Parse("group G\n    var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value");
+        var c = CompilationTestHelper.ParseSuccess("group G\n    var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "G", "item");
         Assert.Null(property.Getter.Receiver);
@@ -104,7 +107,7 @@ public class PropertyBindingTest
     [Fact]
     public void ComputedGetterAndSetterHaveIndependentOriginCompletion()
     {
-        var c = Parse("struct S\n    computed item: ref/i32\n        get(self: ref/Self) -> ref/i32 => missing\n        set(self: uniq/Self, value: ref/i32) -> () => ()");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    computed item: ref/i32\n        get(self: ref/Self) -> ref/i32 => missing\n        set(self: uniq/Self, value: ref/i32) -> () => ()");
         c.Bind();
         var property = Property(c, "S", "item");
         Assert.Same(property.Getter.Receiver!.Origin, property.Getter.Result!.Origin);
@@ -117,7 +120,7 @@ public class PropertyBindingTest
     [Fact]
     public void ShorthandRequirementCompletesEachOperationIndependently()
     {
-        var c = Parse("contract C\n    property item: ref/i32 has get, set");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: ref/i32 has get, set");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "C", "item");
         Assert.Same(property.Getter.Receiver!.Origin, property.Type!.Origin);
@@ -129,7 +132,7 @@ public class PropertyBindingTest
     [Fact]
     public void ImplicitSetterInputRestoresTheSharedHeaderSyntax()
     {
-        var c = Parse("contract C\n    property item: ref/i32 has get, set");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: ref/i32 has get, set");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "C", "item");
         var header = property.Declaration.TypeKoto!;
@@ -145,7 +148,7 @@ public class PropertyBindingTest
     [InlineData("protected internal", "internal", true)]
     public void AccessorRestrictionMustBeStrictlyNarrower(string propertyAccess, string accessorAccess, bool valid)
     {
-        var c = Parse($"struct S\n    {propertyAccess} var item: i32\n        {accessorAccess} get");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    {propertyAccess} var item: i32\n        {accessorAccess} get");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
@@ -159,7 +162,7 @@ public class PropertyBindingTest
     [InlineData("get", "public var item: i32\n        private get", false)]
     public void StandardWitnessesCheckOnlyRequiredOperationAccess(string required, string member, bool valid)
     {
-        var c = Parse($"public contract C\n    property item: i32 has {required}\npublic struct S\n    Self is C\n    {member}");
+        var c = CompilationTestHelper.ParseSuccess($"public contract C\n    property item: i32 has {required}\npublic struct S\n    Self is C\n    {member}");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
@@ -171,7 +174,7 @@ public class PropertyBindingTest
     [Fact]
     public void RetainsSeparateGetAndSetWitnesses()
     {
-        var c = Parse("contract C\n    property item: i32 has get, set\nstruct S\n    Self is C\n    public var item: i32");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get, set\nstruct S\n    Self is C\n    public var item: i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var mapping = Conformance(c, "S", "C");
         Assert.Equal(2, mapping.PropertyWitnesses.Count);
@@ -186,7 +189,7 @@ public class PropertyBindingTest
     [InlineData("ref/E", "", true)]
     public void GenericBridgeRequiresOnlyItsSpecifiedEvidence(string result, string constraint, bool valid)
     {
-        var c = Parse($"struct Box<T>\n    Self is Copy when T is Copy\n    var value: T\ncontract C\n    associate E\n    property item: {result} has get\nstruct S<T>\n{constraint}    Self is C\n    associate C.E is Box<T>\n    public var item: Box<T>");
+        var c = CompilationTestHelper.ParseSuccess($"struct Box<T>\n    Self is Copy when T is Copy\n    var value: T\ncontract C\n    associate E\n    property item: {result} has get\nstruct S<T>\n{constraint}    Self is C\n    associate C.E is Box<T>\n    public var item: Box<T>");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
@@ -195,7 +198,7 @@ public class PropertyBindingTest
     [InlineData("ref/Resource", true)]
     public void NonCopyStorageCanImplementOnlyTheBorrowGetter(string result, bool valid)
     {
-        var c = Parse($"struct Resource\ncontract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: Resource");
+        var c = CompilationTestHelper.ParseSuccess($"struct Resource\ncontract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: Resource");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
@@ -210,7 +213,7 @@ public class PropertyBindingTest
     [InlineData("get(self: Self) -> i32 => 1", false)]
     public void ComputedWitnessRetainsTheExplicitReceiver(string getter, bool valid)
     {
-        var c = Parse($"contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public computed item: i32\n        {getter}");
+        var c = CompilationTestHelper.ParseSuccess($"contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public computed item: i32\n        {getter}");
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
@@ -221,7 +224,7 @@ public class PropertyBindingTest
     [Fact]
     public void ExplicitComputedSetterMayTakeADifferentType()
     {
-        var c = Parse("contract C\n    property item: i32\n        get(self: ref/Self) -> i32\n        set(self: uniq/Self, value: bool) -> ()\nstruct S\n    Self is C\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\n        set(self: uniq/Self, value: bool) -> () => ()");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32\n        get(self: ref/Self) -> i32\n        set(self: uniq/Self, value: bool) -> ()\nstruct S\n    Self is C\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\n        set(self: uniq/Self, value: bool) -> () => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("bool", Conformance(c, "S", "C").PropertyWitnesses[1].InputType!.Name);
     }
@@ -232,7 +235,7 @@ public class PropertyBindingTest
     public void SetterSignatureAccessibilityUsesItsOwnDomain(string access, bool valid)
     {
         var modifier = access == "public" ? string.Empty : access + " ";
-        var c = Parse($"struct Hidden\npublic struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\n        {modifier}set(self: uniq/Self, value: Hidden) -> () => ()");
+        var c = CompilationTestHelper.ParseSuccess($"struct Hidden\npublic struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\n        {modifier}set(self: uniq/Self, value: Hidden) -> () => ()");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
@@ -243,30 +246,30 @@ public class PropertyBindingTest
     [InlineData("++value.item")]
     public void StandardWritesAndUpdatesRequireTheSetterPermission(string expression)
     {
-        var c = Parse($"struct S\n    public var item: i32\n        private set\nfunc write(value: uniq/S)\n    {expression}");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    public var item: i32\n        private set\nfunc write(value: uniq/S)\n    {expression}");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void SimpleWriteDoesNotRequireTheGetterPermission()
     {
-        var c = Parse("struct S\n    public var item: i32\n        private get\nfunc write(value: uniq/S)\n    value.item = 1");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public var item: i32\n        private get\nfunc write(value: uniq/S)\n    value.item = 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void SharedStoredGetterCannotWriteItsContextualStorage()
     {
-        var c = Parse("struct S\n    var item: i32\n        get(self: ref/Self) -> i32\n            storage = 1\n            return storage");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    var item: i32\n        get(self: ref/Self) -> i32\n            storage = 1\n            return storage");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Theory]
     [InlineData("ref/i32", PropertyWitnessKind.StorageCopy)]
-    [InlineData("ref/(ref/i32 from static)", PropertyWitnessKind.StorageBorrow)]
+    [InlineData("ref/(ref/i32 during static)", PropertyWitnessKind.StorageBorrow)]
     public void DistinguishesReferenceCopyFromBorrowingTheReferenceSlot(string result, PropertyWitnessKind kind)
     {
-        var c = Parse($"contract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: ref/i32 from static");
+        var c = CompilationTestHelper.ParseSuccess($"contract C\n    property item: {result} has get\nstruct S\n    Self is C\n    public var item: ref/i32 during static");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(kind, Assert.Single(Conformance(c, "S", "C").PropertyWitnesses).Kind);
     }
@@ -274,14 +277,14 @@ public class PropertyBindingTest
     [Fact]
     public void CustomGetterDoesNotExposeHiddenStorageForBorrowWitnesses()
     {
-        var c = Parse("contract C\n    property item: ref/i32 has get\nstruct S\n    Self is C\n    public var item: i32\n        get(self: ref/Self) -> i32 => storage");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: ref/i32 has get\nstruct S\n    Self is C\n    public var item: i32\n        get(self: ref/Self) -> i32 => storage");
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void InheritedStorageWitnessRetainsItsSelectedBasePathAndSubstitution()
     {
-        var c = Parse("contract C\n    property item: i32 has get, set\nopen struct Base<T>\n    public var item: T\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    Self is C");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get, set\nopen struct Base<T>\n    public var item: T\nopen struct Middle<U>: Base<U>\nstruct S: Middle<i32>\n    Self is C");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var witness = Conformance(c, "S", "C").PropertyWitnesses[0];
         Assert.Equal("Base", witness.ImplementationType.Symbol!.Name);
@@ -297,7 +300,7 @@ public class PropertyBindingTest
     [InlineData("public func item() -> i32 => 0")]
     public void FailedSelectedMemberDoesNotRetryTheBaseProperty(string member)
     {
-        var c = Parse($"contract C\n    property item: i32 has get\nopen struct Base\n    public var item: i32\nstruct S: Base\n    Self is C\n    {member}");
+        var c = CompilationTestHelper.ParseSuccess($"contract C\n    property item: i32 has get\nopen struct Base\n    public var item: i32\nstruct S: Base\n    Self is C\n    {member}");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!));
     }
@@ -309,25 +312,25 @@ public class PropertyBindingTest
     [InlineData("struct S: i32")]
     public void RejectsInvalidBasesBeforePublishingInheritedWitnesses(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
     }
 
     [Fact]
     public void OrdinaryLookupSharesInheritedPropertyTypeSubstitution()
     {
-        var c = Parse("open struct Base<T>\n    public var item: T\nstruct S: Base<i32>\nfunc read(value: ref/S) -> i32 => value.item");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    public var item: T\nstruct S: Base<i32>\nfunc read(value: ref/S) -> i32 => value.item");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var member = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "item");
+        var member = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "item");
         Assert.Same(Property(c, "Base", "item").Symbol, member.BoundSymbol);
         Assert.Equal("i32", member.BoundType!.Name);
     }
 
     [Fact]
-    public void CallablePropertyUseRemainsPendingUntilExpressionOperationChecking()
+    public void CopyPropertyUseHasCheckedExpressionOperations()
     {
-        var c = Parse("struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 0\nfunc read(value: ref/S) -> i32 => value.item");
-        Assert.False(c.Bind().IsComplete);
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 0\nfunc read(value: ref/S) -> i32 => value.item");
+        Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.True(Property(c, "S", "item").IsVerified);
     }
 
@@ -336,11 +339,11 @@ public class PropertyBindingTest
     [InlineData("private get", PropertyWitnessKind.StorageCopy, false)]
     public void ReplacingAnAccessorRebindsSymbolsPermissionsAndWitnesses(string replacement, PropertyWitnessKind expected, bool valid)
     {
-        var c = Parse("public contract C\n    property item: i32 has get\npublic struct S\n    Self is C\n    public var item: i32\n        get");
+        var c = CompilationTestHelper.ParseSuccess("public contract C\n    property item: i32 has get\npublic struct S\n    Self is C\n    public var item: i32\n        get");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "S", "item");
         var mapping = Conformance(c, "S", "C");
-        var fragment = Parse($"struct Replacement\n    public var item: i32\n        {replacement}");
+        var fragment = CompilationTestHelper.ParseSuccess($"struct Replacement\n    public var item: i32\n        {replacement}");
         var newProperty = Container(fragment, "Replacement").Members.OfType<PropertyKoto>().Single();
         var newAccessor = newProperty.Accessors.Single();
         Assert.True(KotoHelper.Replace(property.Declaration, property.Getter.Declaration!, newAccessor));
@@ -357,7 +360,7 @@ public class PropertyBindingTest
     [Fact]
     public void WarmBorrowRequirementsAndInheritedWitnessesAllocateNothing()
     {
-        var c = Parse("contract C\n    property item: ref/i32 has get, set\ncontract D\n    property value: i32 has get\nopen struct Base<T>\n    public var value: T\nstruct S: Base<i32>\n    Self is D");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: ref/i32 has get, set\ncontract D\n    property value: i32 has get\nopen struct Base<T>\n    public var value: T\nstruct S: Base<i32>\n    Self is D");
         Assert.True(c.Bind().IsComplete, Describe(c));
         for (var i = 0; i < 8; i++)
         {
@@ -372,7 +375,7 @@ public class PropertyBindingTest
     [Fact]
     public void RefinementsRetainPropertyOperationsByRequirementIdentity()
     {
-        var c = Parse("contract A\n    property item: i32 has get\ncontract B: A\ncontract C: A\ncontract D: B, C\nstruct S\n    Self is D\n    public var item: i32");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    property item: i32 has get\ncontract B: A\ncontract C: A\ncontract D: B, C\nstruct S\n    Self is D\n    public var item: i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Single(Conformance(c, "S", "D").PropertyWitnesses);
     }
@@ -380,7 +383,7 @@ public class PropertyBindingTest
     [Fact]
     public void RebindingInvalidatesAFormerlyVerifiedPropertyMapping()
     {
-        var c = Parse("contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public var item: i32");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public var item: i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var mapping = Conformance(c, "S", "C");
         var required = Property(c, "C", "item").Symbol;
@@ -402,7 +405,7 @@ public class PropertyBindingTest
             source.Append("struct S").Append(i).Append("\n    Self is C\n    public var view: i32\n    public var item: i32\n        get(self: ref/Self) -> i32 => storage\n        set(self: uniq/Self, value: i32) -> () => storage = value\n");
         }
 
-        var c = Parse(source.ToString());
+        var c = CompilationTestHelper.ParseSuccess(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "S0", "item");
         var mapping = Conformance(c, "S0", "C");
@@ -418,32 +421,11 @@ public class PropertyBindingTest
         Assert.Equal(0, allocated);
     }
 
-    private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
-        return c;
-    }
-
-    private static DeclarationContainerKoto Container(Compilation c, string name) => Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
+    private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
 
     private static BoundProperty Property(Compilation c, string type, string name) => Container(c, type).Members.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name).BoundSymbol!.Property!;
 
     private static BoundConformance Conformance(Compilation c, string type, string contract) => c.Binding.GetConformance(Container(c, type).BoundType!, Container(c, contract).BoundSymbol!)!;
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

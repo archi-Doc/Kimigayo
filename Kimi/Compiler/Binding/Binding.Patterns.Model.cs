@@ -21,7 +21,9 @@ public enum PatternAcquisition : byte
 {
     None,
     Copy,
+    Borrow,
     Move,
+    CopyOrMove,
     Deferred,
 }
 
@@ -29,12 +31,15 @@ public enum PatternAccessMode : byte
 {
     Owned,
     Shared,
+    Exclusive,
 }
 
-public enum PatternImplicitDeref : byte
+/// <summary>SPEC 15.1.6: the acquisition of a match or for Subject, fixed by its outermost written operation.</summary>
+public enum SubjectMode : byte
 {
-    None,
-    SharedOnce,
+    Shared,
+    Exclusive,
+    ByValue,
 }
 
 public enum PatternLiteralKind : byte
@@ -48,11 +53,13 @@ public enum PatternLiteralKind : byte
 
 public readonly record struct PatternLiteral(PatternLiteralKind Kind, UInt128 Magnitude = default, bool Negative = false, string? Text = null);
 
-/// <summary>A preorder position; direct children are walked by advancing to each child's End.</summary>
+/// <summary>A preorder position; direct children are walked by advancing to each child's End. A structural position selects
+/// the referent of <see cref="ImplicitFollows"/> safe value-reference layers of its matched Type (SPEC 14.8.1), and
+/// <see cref="AccessMode"/> is the access its path grants to the selected value.</summary>
 public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
-    PatternAccessMode AccessMode = PatternAccessMode.Owned, PatternImplicitDeref ImplicitDeref = PatternImplicitDeref.None,
+    PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitFollows = 0,
     BindingSymbol? CandidateSymbol = null);
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);
@@ -85,12 +92,21 @@ public sealed class BoundMatch
 
     internal bool Pending { get; set; }
 
+    /// <summary>Gets or sets the borrow that acquires the Subject (SPEC 15.1.6 subject rule): the borrow of a bare Place in its mode,
+    /// such as the exclusive Reborrow of a bare exclusive borrow value; null when the written Subject value itself is acquired.</summary>
+    internal BoundType? SubjectBorrow { get; set; }
+
+    /// <summary>Gets or sets the Subject mode: the access that the Subject Place grants (SPEC 15.1.6).</summary>
+    internal SubjectMode Mode { get; set; }
+
     internal void Reset(MatchKoto? syntax)
     {
         this.Syntax = syntax!;
         this.IsCurrent = syntax is not null;
         this.Coverage = default;
         this.Invalid = this.Pending = false;
+        this.SubjectBorrow = null;
+        this.Mode = SubjectMode.Shared;
         this.ExpectedType = null;
         this.ResultType = null;
         this.PositionStorage.Clear();

@@ -20,6 +20,8 @@ internal enum AbiParameterKind : byte
     ResultSlot,
     Location,
     LocationLength,
+    Environment,
+    Context,
 }
 
 internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1)
@@ -46,11 +48,30 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi Abort = new("__kimi_abort", Unit.ComputationType, [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")], noReturn: true);
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.4.2, 22.5.1).
-    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, WriteLine.Parameters);
+    internal static readonly AbiParameter[] OwnedStringParameters = [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
+
+    // SPEC 22.4-22.5.5: writeLine borrows its string handle and releases nothing.
+    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
+
+    // SPEC 4.7.4: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
+    internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
+    internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
+    internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
+    internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
+    internal static readonly FunctionAbi StorageRelease = new("__kimi_free", Unit.ComputationType, [new("ptr", "storage"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+
+    // SPEC 4.7.4, 4.7.7: capacity routines move element bytes by stride and run no user code; the writer emits them only for modules that use Arrays.
+    internal static readonly FunctionAbi ArrayGrow = new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi ArrayReserve = new("__kimi_array_reserve", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "additional"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi DictionaryReserve = new("__kimi_dictionary_reserve", Unit.ComputationType, ArrayReserve.Parameters);
+    internal static readonly FunctionAbi ArrayShrink = new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
+    internal static readonly FunctionAbi DictionaryShrink = new("__kimi_dictionary_shrink", Unit.ComputationType, ArrayShrink.Parameters);
+    internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
+    internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage, ArrayInit, ArrayFree];
 
     private static readonly Dictionary<BoundType, ValueLowering> Values = CreateValues();
 
@@ -58,13 +79,13 @@ internal static partial class WindowsLowering
     /// <param name="type">The complete Type.</param>
     /// <returns>The value lowering.</returns>
     internal static ValueLowering? GetValue(BoundType type)
-        => ReferenceTypes.IsString(type) ? StringReference : Values.GetValueOrDefault(type);
+        => ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ? StringReference : Values.GetValueOrDefault(type);
 
-    /// <summary>Gets the physical implementation of a compiler-provided Core function.</summary>
+    /// <summary>Gets the physical implementation of a compiler-provided Kimi function.</summary>
     /// <param name="kind">The compiler function identity.</param>
     /// <returns>The implementation ABI, or null when no body is generated.</returns>
     internal static FunctionAbi? GetCompilerFunction(CompilerFunctionKind kind)
-        => kind == CompilerFunctionKind.WriteLine ? WriteLine : null;
+        => kind switch { CompilerFunctionKind.WriteLine => WriteLine, CompilerFunctionKind.Abort => AbortMessage, CompilerFunctionKind.TestTempDirectory => TestTempDirectory, _ => GetFormattingFunction(kind) };
 
     private static Dictionary<BoundType, ValueLowering> CreateValues()
     {

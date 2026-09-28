@@ -17,6 +17,20 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public abstract class BinaryKoto : ExpressionKoto
 {
+    internal BinaryKoto(Koto source, Koto left, Koto right)
+        : base(source.CodeContext, source.Span)
+    {
+        this.Parent = source;
+        this.Left = left;
+        this.Right = right;
+    }
+
+    internal InvocationKoto? ComparisonStorage { get; set; }
+
+    internal bool ComparisonActive { get; set; }
+
+    internal InvocationKoto? ComparisonCall => this.ComparisonActive && this.BindingState == BindingState.Resolved ? this.ComparisonStorage : null;
+
     private static readonly string[] InfixTexts = new string[MaxKind];
 
     static BinaryKoto()
@@ -122,6 +136,13 @@ public abstract class BinaryKoto : ExpressionKoto
 /// <summary>Represents a member-access expression.</summary>
 public sealed class MemberAccessKoto : BinaryKoto
 {
+    internal bool IsDirectStorage { get; set; }
+
+    internal MemberAccessKoto(Koto source, Koto left, Koto right)
+        : base(source, left, right)
+    {
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.MemberAccess;
 
@@ -161,6 +182,8 @@ public sealed class IndexKoto : BinaryKoto
 
     /// <summary>Gets a value indicating whether this subscript produces a slice.</summary>
     public bool IsSlice => this.Right is RangeKoto;
+
+    internal BoundType? DictionaryKeyReference { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="IndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -406,13 +429,18 @@ public sealed class AsKoto : BinaryKoto
 }
 
 /// <summary>Represents an <c>is</c> expression.</summary>
-public sealed class IsKoto : BinaryKoto
+public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
 {
+    List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Is;
 
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
     public bool IsAssociatedConstraint { get; internal set; }
+
+    /// <summary>Gets the formation Type of an Origin-parameterized associated requirement.</summary>
+    public Koto? FormationType { get; internal set; }
 
     /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
     public BoundConstraint? BoundConstraint { get; internal set; }
@@ -445,6 +473,43 @@ public sealed class IsKoto : BinaryKoto
         }
 
         base.WriteTo(ref builder);
+        if (this.FormationType is { } formation)
+        {
+            builder.Append(" for ");
+            formation.WriteTo(ref builder);
+        }
+
+        OriginClauses.Write(this, ref builder);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+        if (this.FormationType is { } formation)
+        {
+            visitor.Visit(formation);
+        }
+    }
+
+    protected override IEnumerable<Koto> GetChildNodes()
+    {
+        yield return this.Left;
+        yield return this.Right;
+        if (this.FormationType is { } formation)
+        {
+            yield return formation;
+        }
+    }
+
+    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    {
+        if (ReferenceEquals(oldKoto, this.FormationType))
+        {
+            this.FormationType = newKoto;
+            return true;
+        }
+
+        return base.ReplaceChildCore(oldKoto, newKoto);
     }
 }
 

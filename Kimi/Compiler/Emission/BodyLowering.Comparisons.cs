@@ -39,8 +39,7 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
                 body.Operations[plan.Operation].Source is not BinaryKoto source ||
-                !((ReferenceEquals(source.Left.BoundType, BoundType.String) && ReferenceEquals(source.Right.BoundType, BoundType.String)) ||
-                    (ReferenceTypes.IsString(source.Left.BoundType) && ReferenceTypes.IsString(source.Right.BoundType))) ||
+                !ReferenceTypes.EndsInString(SignatureType(this, source.Left.BoundType)) || !ReferenceTypes.EndsInString(SignatureType(this, source.Right.BoundType)) ||
                 !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {
@@ -67,15 +66,34 @@ internal sealed partial class BodyLowering
 
     private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand, int reference)
     {
-        if (ReferenceTypes.IsString(operand.BoundType))
+        // SPEC 13.4: a string reference, or an operand inspected through its shared borrow.
+        var inspected = SignatureType(this, ElementAccess.AccessType(operand));
+        if (ReferenceTypes.IsStringReference(inspected))
         {
+            // SPEC 4.6.9: receiver[key] on a user Type reads its published Place through the synthesized index call.
             return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
-                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), operand.BoundType);
+                ReferenceEquals(body.Operations[reference].Source, ElementAccess.IndexerCall(operand, false) ?? KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), inspected);
+        }
+
+        if (reference >= 0 && (uint)reference < (uint)body.Operations.Count && ReferenceTypes.IsPointer(ValueType(body, reference)))
+        {
+            // SPEC 5.2: a raw string Place is read in place through its dominating handle address.
+            var address = ValueType(body, reference)!;
+            return place == -1 && loan == -1 && ReferenceEquals(SignatureType(this, operand.BoundType), BoundType.String) &&
+                ReferenceEquals(address.Components[0], BoundType.String) && (!body.IsReachable(id) || this.Dominates(reference, id));
         }
 
         if (reference != -1)
         {
             return false;
+        }
+
+        if ((uint)loan < (uint)body.ComparisonLoans.Count && body.ComparisonLoans[loan].Projection >= 0)
+        {
+            var inspection = body.ComparisonLoans[loan];
+            return inspection.Place == place && inspection.Call is null &&
+                ReferenceEquals(body.Operations[inspection.Read].Source, KotoHelper.UnwrapParentheses(operand)) &&
+                this.ValidateElementBorrow(body, inspection.Read, id);
         }
 
         if ((uint)place >= (uint)body.Places.Count || !ReferenceEquals(body.Places[place].Type, BoundType.String) || !this.IsStringStorage(body.Places[place]) ||
@@ -93,6 +111,10 @@ internal sealed partial class BodyLowering
 
         return loan == -1 && this.IsStringValue(body.Places[place]);
     }
+
+    private EmissionOperand StringOperand(OwnershipBody body, int place, int loan, int reference)
+        => reference < 0 ? StringPlaceOperand(body, place, loan)
+            : ReferenceTypes.IsPointer(ValueType(body, reference)) ? this.PhysicalOperand(body, reference) : this.ReferenceOperand(body, reference);
 
     private bool LowerStringComparison(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
@@ -124,8 +146,8 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported string comparison operator.", out failure);
         }
 
-        var left = plan.LeftValue >= 0 ? this.ReferenceOperand(body, plan.LeftValue) : new(EmissionOperandKind.SlotAddress, plan.Left);
-        var right = plan.RightValue >= 0 ? this.ReferenceOperand(body, plan.RightValue) : new(EmissionOperandKind.SlotAddress, plan.Right);
+        var left = this.StringOperand(body, plan.Left, plan.LeftLoan, plan.LeftValue);
+        var right = this.StringOperand(body, plan.Right, plan.RightLoan, plan.RightValue);
         function.AddScalar(predicate is "eq" or "ne" ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [left, right], op: predicate);
         return true;
     }

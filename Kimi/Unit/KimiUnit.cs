@@ -27,25 +27,25 @@ public class KimiUnit : UnitBase
                 ConfigureBase(context);
 
                 // Logger
-                /*context.ClearLoggerResolver();
+                /*context.ClearLogOutputResolvers();
                 if (Program.SuppressConsoleOutput)
                 {
-                    context.AddLoggerResolver(x =>
+                    context.AddLogOutputResolver(x =>
                     {
-                        x.SetOutput<FileLogger<FileLoggerOptions>>();
+                        x.SetOutput<FileLogOutput<FileLogOutputOptions>>();
                     });
                 }
                 else
                 {
-                    context.AddLoggerResolver(x =>
+                    context.AddLogOutputResolver(x =>
                     {// Log source/level -> Resolver() -> Output/filter
                         if (x.LogLevel <= LogLevel.Debug)
                         {
-                            x.SetOutput<ConsoleLogger>();
+                            x.SetOutput<ConsoleLogOutput>();
                             return;
                         }
 
-                        x.SetOutput<ConsoleAndFileLogger>();
+                        x.SetOutput<ConsoleAndFileLogOutput>();
                     });
                 }*/
             });
@@ -53,10 +53,10 @@ public class KimiUnit : UnitBase
             /*this.PostConfigure(context =>
             {
                 var logfile = "Logs/Log.txt";
-                context.SetOptions(context.GetOptions<FileLoggerOptions>() with
+                context.SetOptions(context.GetOrCreateOptions<FileLogOutputOptions>() with
                 {
-                    Path = Path.Combine(context.DataDirectory, logfile),
-                    MaxLogCapacity = 2,
+                    FilePath = Path.Combine(context.DataDirectory, logfile),
+                    MaxLogCapacityInMegabytes = 2,
                     ClearLogsAtStartup = false,
                 });
             });*/

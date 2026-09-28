@@ -110,6 +110,8 @@ public ref struct TokenReader
 
     internal bool HeaderRegion { get; set; }
 
+    internal bool ConstraintRequirement { get; set; }
+
     internal readonly bool SameLine(int end, int start)
         => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');
 
@@ -118,6 +120,27 @@ public ref struct TokenReader
     internal bool AllowArrayElementInference { get; set; }
 
     internal bool HasInferredArrayElement { get; set; }
+
+    internal int DocumentationExcludedStart { get; set; }
+
+    internal readonly int PreviousSyntaxEnd
+    {
+        get
+        {
+            for (var i = this.Position - 1; i >= 0; i--)
+            {
+                if (this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+                {
+                    return this.tokens[i].Span.End;
+                }
+            }
+
+            return 0;
+        }
+    }
+
+    internal readonly void Document(Koto declaration, SourceSpan header, AttributeKoto? attributes = null)
+        => this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
 
     #endregion
 
@@ -134,6 +157,15 @@ public ref struct TokenReader
         this.tokens = tokenizer.Tokens;
         this.endToken = new Token(TokenKind.Invalid, new SourceSpan(this.sourceText.Length, 0));
         this.currentToken = this.tokens.Length > 0 ? this.tokens[0] : this.endToken;
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="TokenReader"/> struct using immutable cached tokens and compilation-local state.</summary>
+    /// <param name="codeContext">The current source context.</param>
+    /// <param name="sourceText">The complete text whose offsets the tokens reference.</param>
+    /// <param name="tokens">An immutable token sequence which outlives this reader.</param>
+    internal TokenReader(CodeContext codeContext, ReadOnlySpan<char> sourceText, ReadOnlySpan<Token> tokens)
+        : this(codeContext, sourceText, tokens, sourceText.Length)
+    {
     }
 
     private TokenReader(CodeContext codeContext, ReadOnlySpan<char> sourceText, ReadOnlySpan<Token> tokens, int end)
@@ -618,6 +650,12 @@ public ref struct TokenReader
 
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
+
+    internal readonly Token PeekToken(int offset)
+    {
+        var index = this.Position + offset;
+        return (uint)index < (uint)this.tokens.Length ? this.tokens[index] : this.endToken;
+    }
 
     // Split compound operators only in type context; shift/comparison expressions keep
     // their original tokens. The shared token buffer remains immutable.

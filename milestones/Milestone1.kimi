@@ -1,0 +1,2 @@
+// Milestone 1: a top-level statement and console output.
+::Kimi.Console.writeLine("Hello, world!")

@@ -7,6 +7,10 @@
     Fix="A suggested fix for the diagnostic"
     Note="Additional information about the diagnostic"
 
+  + Name="HiddenNamedAlias_Kd"
+    Severity="Warning"
+    Message="A project-root qualifier or direct reference hides this named alias; choose another name"
+
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
@@ -18,6 +22,9 @@
 
   + Name="DuplicateBinding_Kd"
     Message="A declaration with the same Name or normalized Signature already exists in this scope"
+
+  + Name="DuplicateDictionaryKey_Kd"
+    Message="This Dictionary literal key duplicates an earlier literal key"
 
   + Name="NotCallable_Kd"
     Message="The selected value is not callable; lookup does not fall back to an outer function"
@@ -40,6 +47,9 @@
   + Name="UnsupportedBinding_Kd"
     Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
 
+  + Name="UnavailableFeature_Kd"
+    Message="The declaration modifier {0} is unavailable in this language revision"
+
   + Name="InvalidOriginBinding_Kd"
     Message="The Origin name, mapping, or annotation is invalid in this type position"
 
@@ -52,14 +62,20 @@
   + Name="InvalidConstraint_Kd"
     Message="The Constraint contains an invalid subject, requirement, or contradictory evidence"
 
+  + Name="InvalidSelfClause_Kd"
+    Message="A Self clause of a Type declares conformance or the ObjectPayload opt-out only; the opt-out stands alone, unconditional and unrepeated, and ObjectPayload cannot be granted"
+
+  + Name="NotObjectPayload_Kd"
+    Message="The Type {0} opts out of ObjectPayload and cannot be an object target or payload"
+
   + Name="UnprovenConstraint_Kd"
     Message="The required Constraint cannot be proven by its semantic deadline"
 
   + Name="UnsatisfiedConstraint_Kd"
     Message="The supplied Type arguments do not satisfy the declaration's Constraints"
 
-  + Name="InvalidCoreIntrinsics_Kd"
-    Message="The compiler-owned Core requirement declarations are missing, duplicated, or incompatible"
+  + Name="InvalidKimiLibrary_Kd"
+    Message="The compiler-owned Kimi requirement declarations are missing, duplicated, or incompatible"
 
   + Name="MissingContractImplementation_Kd"
     Message="No implementation matches the Contract requirement after Type substitution"
@@ -75,6 +91,12 @@
 
   + Name="InvalidCompileTimeSetting_Kd"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
+
+  + Name="InvalidDependencyConfiguration_Kd"
+    Message="Invalid dependency configuration: {0}"
+
+  + Name="UnresolvedDependencyGraph_Kd"
+    Message="The requested dependency graph has not been resolved and verified for this compilation"
 
   + Name="UnknownCompileTimeName_Kd"
     Message="Unknown compile-time environment Name '{0}'"
@@ -185,9 +207,6 @@
   + Name="InvalidReferenceSyntax_Kd"
     Message="Reference form &{0} is invalid"
 
-  + Name="InvalidSemanticsConstraint_Kd"
-    Message="'{0}' is not a valid semantics constraint"
-
   + Name="InvalidUnicodeEscape_Kd"
     Message="The Unicode escape sequence must have the form '\\u(...)' and contain one to six hexadecimal digits"
 
@@ -232,8 +251,53 @@
   + Name="TypeMismatch_Kd"
     Message="Values must be of the same type"
 
+  + Name="InvalidTry_Kd"
+    Message="{0}"
+
   + Name="ControlFlow_Kd"
     Message="{0}"
+
+  + Name="InvalidTestDefinition_Kd"
+    Message="Test requires one argument-free Attribute on a safe ordinary named function with a body, no parameters, captures or generic/Origin parameters, and an omitted or Unit return Type"
+
+  + Name="InvalidLayoutAttribute_Kd"
+    Message="Layout requires exactly one unnamed, non-interpolated string literal, 'Kimigayo' or 'C', on a struct, with no repetition on one fragment"
+
+  + Name="ConflictingLayout_Kd"
+    Message="Selected struct fragments must agree on their explicit Layout mode"
+
+  + Name="InvalidLibraryImport_Kd"
+    Message="LibraryImport requires exactly two unnamed, nonempty, non-interpolated, NUL-free string literals, a native requirement name and a symbol, on a bodyless func"
+
+  + Name="UnsupportedImportSignature_Kd"
+    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or unsafe/T, and Unit only as the result"
+
+  + Name="ConflictingImportSignature_Kd"
+    Message="LibraryImport declarations of one external symbol must have the same physical signature"
+
+  + Name="ConflictingRuntimeSymbol_Kd"
+    Message="A LibraryImport of a generated runtime declaration must name the reserved kernel32 supply and its exact physical signature"
+
+  + Name="ConflictingImportSupply_Kd"
+    Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
+
+  + Name="UnsafeFunctionValue_Kd"
+    Message="An unsafe function supports direct calls only; it cannot be acquired as a value, assigned or passed as an argument"
+
+  + Name="UnavailableReservedImport_Kd"
+    Message="The reserved kernel32 supply exports only the reviewed project-owned definition; extending it requires a definition and profile update"
+
+  + Name="MissingNativeRequirement_Kd"
+    Message="The LibraryImport name has no NativeRequirements entry or self-targeted NativeLibraries record for the current target in the defining module"
+
+  + Name="SplitCLayoutStorage_Kd"
+    Message="All selected instance Fields of a C-layout struct must occur in one fragment"
+
+  + Name="InvalidCLayout_Kd"
+    Message="C layout is rejected on open, derived and empty structs and on direct zero-sized Fields"
+
+  + Name="InvalidInlineLayout_Kd"
+    Message="A Type that contains itself by value without indirection has no finite inline layout"
 
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"
@@ -298,11 +362,59 @@
   + Name="UnsupportedOwnership_Kd"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
 
+  + Name="DefaultArgumentMove_Kd"
+    Message="A default expression cannot move a preceding prepared argument or its owned contents"
+
+  + Name="TransferRequired_Kd"
+    Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
+
+  + Name="ExclusiveBorrowRequired_Kd"
+    Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
+
+  + Name="SharedBindingAssignment_Kd"
+    Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@copy or E@move, or copy the referent into a local with @follow"
+
+  + Name="ExclusiveBindingAssignment_Kd"
+    Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @follow, or bind a value from a ByValue Subject such as E@copy or E@move"
+
+  + Name="SharedPathAccess_Kd"
+    Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
+
+  + Name="ExclusivePathTake_Kd"
+    Message="This Place is reached through an exclusive reference, which grants Read and Write but not Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
+
+  + Name="PlaceRequired_Kd"
+    Message="A function with a place ref/T or place uniq/T result returns a Place: a Place expression or a call with a compatible Place result, never a value, temporary, if, match or do"
+
+  + Name="ReceiverShapeMismatch_Kd"
+    Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
+
+  + Name="BareOwningShorthand_Kd"
+    Message="A bare owning Semantics shorthand (@owner, @obj, @rc or @arc) names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"
+
+  + Name="NonCopyOperand_Kd"
+    Message="@copy requires a value whose Type is proven Copy; write @move to transfer it, or borrow it with @ref or @uniq"
+
+  + Name="MissingSpecializationTarget_Kd"
+    Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"
+
+  + Name="SpecializationInputMismatch_Kd"
+    Message="No same-Name generic function matches the specialization's receiver and parameter structure after substitution"
+
   + Name="ComparisonLoanConflict_Kd"
     Message="This operation conflicts with an active inspection, argument, or element access loan"
 
+  + Name="CallReservationConflict_Kd"
+    Message="This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation"
+
+  + Name="CallActivationConflict_Kd"
+    Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
+
   + Name="DeferredExpansionLimit_Kd"
     Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
+
+  + Name="InternalInvariant_Kd"
+    Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
 
   + Name="InvalidPattern_Kd"
     Message="The Pattern is not valid for this matched Type, Case, or payload arity"
@@ -324,3 +436,24 @@
 
   + Name="GenerationFailed_Kd"
     Message="LLVM artifact generation failed: {0}"
+
+  + Name="GenerationResourceLimit_Kd"
+    Message="Generic generation exceeds a mandatory resource limit: {0}"
+
+  + Name="ProjectPreparationFailed_Kd"
+    Message="Project preparation failed: {0}"
+
+  + Name="ProjectLoadFailed_Kd"
+    Message="{0}"
+
+  + Name="TargetSelectionRequired_Kd"
+    Message="Select a target in the session settings: this project configures several targets and none is the host target"
+
+  + Name="TestTargetUnavailable_Kd"
+    Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
+
+  + Name="DocumentDesynchronized_Kd"
+    Message="The editor document is out of sync with the language server; close and reopen it"
+
+  + Name="CheckFaulted_Kd"
+    Message="The compiler failed internally while checking: {0}"

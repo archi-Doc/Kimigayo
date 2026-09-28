@@ -42,6 +42,7 @@ public static class EmissionArtifacts
             var manifest = paths.Manifest;
             var outputDirectory = Path.GetDirectoryName(destination)!;
             var backend = ResolveBackend(settings);
+            var foreign = ResolveForeignSupplies(compilation, settings);
             if (backend is not null && HasDirectory(backend.Input))
             {
                 var actual = Hash(Path.GetFullPath(backend.Input, directory));
@@ -71,7 +72,7 @@ public static class EmissionArtifacts
             using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
-                WriteManifest(json, settings, backend, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
+                WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
             }
 
             File.Move(tempIr, destination, true);
@@ -94,47 +95,97 @@ public static class EmissionArtifacts
     // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.8.2).
     private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
     {
+        if (NativeConfiguration.Validate(settings) is { } failure)
+        {
+            throw new InvalidDataException(failure);
+        }
+
         NativeLibraryInput? backend = null;
         if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
         {
-            if (libraries is null)
-            {
-                throw new InvalidDataException("NativeLibraries target entries must be mappings.");
-            }
-
             foreach (var (name, library) in libraries)
             {
-                if (string.IsNullOrWhiteSpace(name) || name.Contains('\0') || library is null || library.Kind is not ("import" or "static"))
+                CheckLibraryPath(library.Input);
+                if (name == WindowsProfile.BackendLibrary)
                 {
-                    throw new InvalidDataException("NativeLibraries requires nonempty logical names and import/static entries.");
-                }
+                    var (kind, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, library);
+                    if (kind != "static")
+                    {
+                        throw new InvalidDataException("kimi_backend must be static.");
+                    }
 
-                CheckPath(library.Input);
-                if (!Path.GetExtension(library.Input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
-                }
+                    if (sha256 is not null && !sha256.Equals(WindowsProfile.BackendSha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException("The kimi_backend Sha256 assertion does not match the adopted SHA-256.");
+                    }
 
-                if (name == Kernel32Imports.LibraryName)
-                {
-                    throw new InvalidDataException("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-                }
-                else if (name == WindowsProfile.BackendLibrary)
-                {
                     backend = library;
                 }
             }
-        }
 
-        if (backend is not null && backend.Kind != "static")
-        {
-            throw new InvalidDataException("kimi_backend must be static.");
+            foreach (var library in libraries.Packaged)
+            {
+                CheckLibraryPath(library.Input);
+            }
         }
 
         return backend;
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    // SPEC 20.8.3: libraries required by external declarations, sorted by Ordinal name. Only the root
+    // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
+    // module's requirement, and combined-module native records are not generated.
+    private static List<(string Name, string Kind, string Input)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
+    {
+        List<(string Name, string Kind, string Input)>? result = null;
+        var imports = compilation.Binding.LibraryImports;
+        for (var i = 0; i < imports.Count; i++)
+        {
+            var import = imports[i];
+            if (import.Library == Kernel32Imports.LibraryName)
+            {
+                continue;
+            }
+
+            if (!ReferenceEquals(import.Function.CodeContext.Kotonoha, compilation.Kotonoha))
+            {
+                throw new InvalidDataException("Native supplies required by dependency modules are not linked yet.");
+            }
+
+            var known = false;
+            for (var j = 0; j < (result?.Count ?? 0) && !known; j++)
+            {
+                known = result![j].Name == import.Library;
+            }
+
+            if (known)
+            {
+                continue;
+            }
+
+            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries) ? libraries.GetValueOrDefault(import.Library) : null;
+            if (supply is null)
+            {
+                throw new InvalidDataException($"Native requirement '{import.Library}' has no NativeLibraries supply for {WindowsProfile.Target}.");
+            }
+
+            (result ??= new()).Add((import.Library, import.Kind, supply.Input));
+        }
+
+        result?.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
+        return result;
+    }
+
+    private static void CheckLibraryPath(string input)
+    {
+        CheckPath(input);
+        if (!Path.GetExtension(input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
+        }
+    }
+
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, List<(string Name, string Kind, string Input)>? foreign, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
     {
         json.WriteStartObject();
         json.WriteNumber("schemaVersion", 3);
@@ -159,10 +210,12 @@ public static class EmissionArtifacts
         json.WriteEndObject();
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
-        json.WriteString("outputKind", "Application");
-        json.WriteString("entry", WindowsProfile.EntrySymbol);
-        json.WriteString("subsystem", WindowsProfile.Subsystem);
+        json.WriteString("outputKind", outputKind == OutputKind.Library ? "Library" : "Application");
+        json.WriteString("entry", outputKind == OutputKind.Library ? null : WindowsProfile.EntrySymbol);
+        json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
         json.WriteStartArray("libraries");
+        var next = 0;
+        WriteForeign(Kernel32Imports.LibraryName);
         json.WriteStartObject();
         json.WriteString("name", Kernel32Imports.LibraryName);
         json.WriteString("kind", "import");
@@ -170,6 +223,7 @@ public static class EmissionArtifacts
         json.WriteString("dll", Kernel32Imports.Dll);
         json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
         json.WriteEndObject();
+        WriteForeign(WindowsProfile.BackendLibrary);
         json.WriteStartObject();
         json.WriteString("name", WindowsProfile.BackendLibrary);
         json.WriteString("kind", "static");
@@ -183,6 +237,7 @@ public static class EmissionArtifacts
         }
 
         json.WriteEndObject();
+        WriteForeign(null);
         json.WriteEndArray();
         WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
         WriteStrings(json, "expectedUndefinedSymbols", []);
@@ -194,6 +249,20 @@ public static class EmissionArtifacts
         }
 
         json.WriteEndObject();
+
+        // Writes the supplies ordered before the reserved name (all remaining ones for null).
+        void WriteForeign(string? before)
+        {
+            for (; next < (foreign?.Count ?? 0) && (before is null || string.CompareOrdinal(foreign![next].Name, before) < 0); next++)
+            {
+                var (name, kind, input) = foreign![next];
+                json.WriteStartObject();
+                json.WriteString("name", name);
+                json.WriteString("kind", kind);
+                json.WriteString("input", HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input);
+                json.WriteEndObject();
+            }
+        }
     }
 
     private static void WriteStrings(Utf8JsonWriter json, string name, ReadOnlySpan<string> values)

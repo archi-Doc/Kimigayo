@@ -263,7 +263,7 @@ public class ParserRegressionTest
             public open struct TestStruct<s/C, D>
 
             public open struct TestStruct<s/C, D>
-                semantics is reference
+                s is reference
             """;
 
         var (root, diagnostics) = Parse(source);
@@ -286,8 +286,8 @@ public class ParserRegressionTest
                 Assert.Equal("D", argument.Identifier);
             });
         var constraint = Assert.Single(type.TypeConstraints);
-        Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
-        Assert.Equal(SemanticsMask.Reference, Assert.IsType<SemanticsMaskKoto>(constraint.Right).Mask);
+        Assert.Equal("s", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal("reference", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
     }
 
     [Fact]
@@ -304,10 +304,10 @@ public class ParserRegressionTest
     }
 
     [Theory]
-    [InlineData("Dog from owner", "owner")]
-    [InlineData("ref/Dog from source", "source")]
-    [InlineData("ref/SomeType<List<T>, U> from collection", "collection")]
-    [InlineData("SomeType<T> from collection", "collection")]
+    [InlineData("Dog{owner}", "owner")]
+    [InlineData("ref/Dog during source", "source")]
+    [InlineData("ref/SomeType<List<T>, U> during collection", "collection")]
+    [InlineData("SomeType<T>{collection}", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {
         var (root, diagnostics) = Parse($"func F(value: {typeText}) => ()");
@@ -325,7 +325,6 @@ public class ParserRegressionTest
         var source = """
             public open struct A<s/T>
                 Self is StructB and InterfaceA
-                semantics is not valueborrow and (owning or objectborrow)
                 s is reference
                 T is Comparable and (Equatable or Serializable)
 
@@ -341,7 +340,7 @@ public class ParserRegressionTest
         Assert.Equal("s", genericArgument.SemanticsParameter);
         Assert.Equal("T", genericArgument.Identifier);
 
-        Assert.Equal(4, type.TypeConstraints.Count);
+        Assert.Equal(3, type.TypeConstraints.Count);
 
         var selfConstraint = type.TypeConstraints[0];
         Assert.Equal("Self", Assert.IsType<IdentifierNameKoto>(selfConstraint.Left).IdentifierName);
@@ -349,21 +348,11 @@ public class ParserRegressionTest
         Assert.Equal("StructB", Assert.IsType<IdentifierNameKoto>(selfTypes.Left).IdentifierName);
         Assert.Equal("InterfaceA", Assert.IsType<IdentifierNameKoto>(selfTypes.Right).IdentifierName);
 
-        var semanticsConstraint = type.TypeConstraints[1];
-        Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(semanticsConstraint.Left).IdentifierName);
-        var negation = Assert.IsType<NotKoto>(semanticsConstraint.Right);
-        var semanticsAnd = Assert.IsType<AndKoto>(negation.Operand);
-        Assert.Equal(SemanticsMask.ValueBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsAnd.Left).Mask);
-        var parentheses = Assert.IsType<ParenthesizedKoto>(semanticsAnd.Right);
-        var semanticsOr = Assert.IsType<OrKoto>(parentheses.Operand);
-        Assert.Equal(SemanticsMask.Owning, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Left).Mask);
-        Assert.Equal(SemanticsMask.ObjectBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Right).Mask);
-
-        var semanticsParameterConstraint = type.TypeConstraints[2];
+        var semanticsParameterConstraint = type.TypeConstraints[1];
         Assert.Equal("s", Assert.IsType<IdentifierNameKoto>(semanticsParameterConstraint.Left).IdentifierName);
         Assert.Equal("reference", Assert.IsType<IdentifierNameKoto>(semanticsParameterConstraint.Right).IdentifierName);
 
-        var typeParameterConstraint = type.TypeConstraints[3];
+        var typeParameterConstraint = type.TypeConstraints[2];
         Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(typeParameterConstraint.Left).IdentifierName);
         var typeAnd = Assert.IsType<AndKoto>(typeParameterConstraint.Right);
         Assert.IsType<IdentifierNameKoto>(typeAnd.Left);
@@ -378,7 +367,7 @@ public class ParserRegressionTest
             var text = builder.ToString();
             Assert.Contains("public open struct A<s/T>", text);
             Assert.Contains("Self is StructB and InterfaceA", text);
-            Assert.Contains("semantics is not valueborrow and (owning or objectborrow)", text);
+            Assert.Contains("s is reference", text);
         }
         finally
         {
@@ -390,7 +379,7 @@ public class ParserRegressionTest
     public void ParsesOriginDeclarationForSemanticsGenericArgument()
     {
         var source = """
-            public open struct TestStruct<s/C> origin a, b
+            public open struct TestStruct<s/C> {a, b}
             """;
 
         var (root, diagnostics) = Parse(source);
@@ -410,7 +399,7 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("public open struct TestStruct<s/C> origin a, b", text);
+            Assert.Contains("public open struct TestStruct<s/C> {a, b}", text);
         }
         finally
         {
@@ -422,11 +411,11 @@ public class ParserRegressionTest
     public void DiagnosesAndIgnoresTypeConstraintsFromLaterStructDefinitions()
     {
         var source = """
-            struct A<s/T> origin first, shared
+            struct A<s/T> {first, shared}
                 T is FirstConstraint
                 var first: i32
 
-            struct A origin ignored, later
+            struct A<s/T> {ignored, later}
                 T is IgnoredConstraint
                 semantics is DefinitelyInvalid
                 var second: i32
@@ -452,7 +441,7 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("struct A<s/T> origin first, shared", text);
+            Assert.Contains("struct A<s/T> {first, shared}", text);
             Assert.Contains("T is FirstConstraint", text);
             Assert.DoesNotContain("ignored", text);
             Assert.DoesNotContain("IgnoredConstraint", text);
@@ -468,7 +457,7 @@ public class ParserRegressionTest
     public void RebuildsKotoSyntaxFromSerializedSources()
     {
         var source = """
-            public open struct TestStruct<s/C> origin a, b
+            public open struct TestStruct<s/C> {a, b}
                 C is Comparable
 
                 #Example
@@ -476,7 +465,7 @@ public class ParserRegressionTest
                 var converted = item@unsafe/C
                 var called = transform(item, "text")
 
-                private func map<s/T>(value?: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T
+                private func map<s/T>(value: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T
                     return
             """;
         var compilation = Compilation.CreateForTest();
@@ -617,41 +606,19 @@ public class ParserRegressionTest
     }
 
     [Theory]
-    [InlineData("owner", SemanticsMask.Owner)]
-    [InlineData("ref", SemanticsMask.Ref)]
-    [InlineData("uniq", SemanticsMask.Uniq)]
-    [InlineData("obj", SemanticsMask.Obj)]
-    [InlineData("rc", SemanticsMask.Rc)]
-    [InlineData("arc", SemanticsMask.Arc)]
-    [InlineData("objref", SemanticsMask.ObjRef)]
-    [InlineData("objuniq", SemanticsMask.ObjUniq)]
-    [InlineData("unsafe", SemanticsMask.Unsafe)]
-    [InlineData("valueborrow", SemanticsMask.ValueBorrow)]
-    [InlineData("object", SemanticsMask.Object)]
-    [InlineData("objectborrow", SemanticsMask.ObjectBorrow)]
-    [InlineData("borrow", SemanticsMask.Borrow)]
-    [InlineData("owning", SemanticsMask.Owning)]
-    [InlineData("value", SemanticsMask.Value)]
-    [InlineData("reference", SemanticsMask.Reference)]
-    public void ParsesNamedSemanticsConstraints(string text, SemanticsMask expected)
+    [InlineData("owner")]
+    [InlineData("object")]
+    [InlineData("reference")]
+    public void ParsesNamedSemanticsRequirementsAsOrdinaryNames(string text)
     {
-        var (root, diagnostics) = Parse($"struct A\n    semantics is {text}");
+        // SPEC 8.2: there is no special constraint subject; `s is <category>` keeps its operands for Binding.
+        var (root, diagnostics) = Parse($"struct A<s/T>\n    s is {text}");
 
         Assert.Empty(diagnostics);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         var constraint = Assert.Single(type.TypeConstraints);
-        Assert.Equal(expected, Assert.IsType<SemanticsMaskKoto>(constraint.Right).Mask);
-    }
-
-    [Fact]
-    public void DiagnosesInvalidSemanticsConstraint()
-    {
-        var (root, diagnostics) = Parse("struct A\n    semantics is Comparable");
-
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.InvalidSemanticsConstraint_Kd));
-        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        var constraint = Assert.Single(type.TypeConstraints);
-        Assert.IsType<ErrorKoto>(constraint.Right);
+        Assert.Equal("s", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal(text, Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
     }
 
     [Fact]
@@ -975,6 +942,35 @@ public class ParserRegressionTest
         Assert.NotNull(change);
         Assert.Null(change.Range);
         Assert.Equal("replacement", change.Text);
+    }
+
+    // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix. A subject the
+    // declaration does not permit is diagnosed, never read as a runtime test; parentheses make the test executable.
+    [Theory]
+    [InlineData("func f(value: i32)\n    value is Dog\n    ()", 1)]
+    [InlineData("func f(value: i32)\n    (value is Dog)\n    ()", 0)]
+    [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
+    [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
+    [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
+    [InlineData("struct Box<T>\n    var item: T\n    deinit\n        T is Copy\n        ()\n", 1)]
+    [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
+    [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
+    public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)
+    {
+        var (_, diagnostics) = Parse(source);
+        Assert.True(unexpected == diagnostics.Length, string.Join("; ", diagnostics.Select(x => x.ToString())));
+        Assert.Equal(unexpected, diagnostics.Count(x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd)));
+    }
+
+    // SPEC 8.4.3: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and
+    // requirement Types.
+    [Theory]
+    [InlineData("struct W<I>\n    I is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n")]
+    [InlineData("func f<T>(x: T)\n    T.(Iterator).Item is Copy\n    ()\n")]
+    public void QualifiedProjectionsParseInConstraints(string source)
+    {
+        var (_, diagnostics) = Parse(source);
+        Assert.Empty(diagnostics);
     }
 
     private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)

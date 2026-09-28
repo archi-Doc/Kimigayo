@@ -2,11 +2,11 @@
 
 [Specification index](../../SPEC.md)
 
-**Non-normative syntax reference.** This appendix collects the specified forms; the linked language sections remain authoritative. It is not a standalone parser-generator grammar. Context-sensitive placement, token boundaries, and the open productions listed in F.9 remain part of the syntax definition; an open production does not accept arbitrary text.
+**Non-normative syntax reference.** This appendix collects the specified forms; the linked language sections remain authoritative. It is not a standalone parser-generator grammar. Context-sensitive placement, token boundaries and the open productions listed in F.9 remain part of the syntax definition, and an open production does not accept arbitrary text.
 
-In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses group, and `?`, `*`, `+` mean optional, zero or more, and one or more. `? description ?` denotes a lexical class or a production whose definition is linked. `List<X>` abbreviates `X ("," X)*`; `TrailingList<X>` adds an optional final comma. These angle brackets are grammar notation, unlike quoted `"<"` and `">"`.
+In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses group, and `?`, `*` and `+` mean optional, zero or more, and one or more. `? description ?` denotes a lexical class or a production defined in the linked section. `List<X>` abbreviates `X ("," X)*`, and `TrailingList<X>` adds an optional final comma. These angle brackets are grammar notation, unlike quoted `"<"` and `">"`.
 
-`NEWLINE`, `INDENT`, `DEDENT`, and `SEP` denote source-layout events under [source structure](../02-source-and-lexical-structure.md#22-lines-indentation-and-continuation), not required internal token kinds. Layout within delimiters and between branch clauses follows the linked constructs. `IndentedList<X>` abbreviates `NEWLINE INDENT ItemList<X> NEWLINE? DEDENT`; executable `Body<X>` additionally permits a single item after `=>` (F.5). `ItemList<X>` is a nonempty sequence separated where the surrounding grammar permits. Declaration Containers may additionally have empty bodies where their own rules permit them.
+`NEWLINE`, `INDENT`, `DEDENT` and `SEP` denote source-layout events under [source structure](../02-source-and-lexical-structure.md#22-lines-indentation-and-continuation), not required internal token kinds. Layout within delimiters and between branch clauses follows the linked constructs. `IndentedList<X>` abbreviates `NEWLINE INDENT ItemList<X> NEWLINE? DEDENT`, where `ItemList<X>` is a nonempty sequence separated where the surrounding grammar permits; executable `Body<X>` also permits a single item after `=>` (F.5). Declaration Containers may also have empty bodies where their own rules permit.
 
 ## F.1. Lexical grammar
 
@@ -28,6 +28,8 @@ NameStart            := "A".."Z" | "a".."z" | "_"
 NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, or Pc ?
 PhysicalNewline      := LF | CR LF | CR
 LineComment          := "//" ? text up to a physical newline or EOF ?
+// Eligible whole-line /// comments carry documentation under §2.3.1–6;
+// they add no executable tokens or declaration grammar productions.
 BlockComment         := "/*" ? text up to the first closing delimiter ? "*/"
 CharacterEscape      := "\0" | "\\" | "\e" | "\t" | "\n" | "\r"
                       | '\"' | "\'" | "\u(" HexDigits1To6 ")"
@@ -72,17 +74,17 @@ hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
 CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 ```
 
-`DirectScalar` is the character class defined in [character content and validation](../02-source-and-lexical-structure.md#281-content-and-validation); keyword exclusions and contextual Name roles follow [Names](../02-source-and-lexical-structure.md#25-names).
+`DirectScalar` is the character class defined in [character content and validation](../02-source-and-lexical-structure.md#281-content-and-validation). Reserved-word and standalone-underscore exclusions and contextual Name roles follow [Names](../02-source-and-lexical-structure.md#25-names).
 
 ## F.2. Type grammar
 
-[Type composition](../03-types-and-values.md#3-types-and-values), [compound Types](../03-types-and-values.md#32-compound-types), [Semantics](../03-types-and-values.md#33-type-semantics), [generic application](../12-expressions.md#1242-invocation-and-generic-application), [Origins](../15-ownership-and-lifetime-analysis.md#153-abstract-origins).
+[Type composition](../03-types-and-values.md#3-types-and-values), [compound Types](../03-types-and-values.md#32-compound-types), [Semantics](../03-types-and-values.md#33-type-semantics), [generic application](../12-expressions.md#1242-invocation-and-generic-application), [Origins](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations).
 
 ```ebnf
-Type                 := FunctionType | TypeHead
-FunctionType         := FunctionParameters "->" Type
+Type                 := FunctionType | AnnotatedType
+AnnotatedType        := SemanticsType ("?")* BorrowOrigin?
+FunctionType         := FunctionParameters "->" (Type | PlaceResult)
 FunctionParameters   := "(" TrailingList<Type>? ")"
-TypeHead             := SemanticsType OriginAnnotation?
 SemanticsType        := Semantics "/" SemanticsType | TypeAtom
 TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
@@ -98,7 +100,15 @@ LengthUnary          := ("+" | "-") LengthUnary | IntegerLiteral
                       | ConstantName | "(" LengthExpression ")"
 UnitType             := "(" ")"
 TupleType            := "(" Type "," TrailingList<Type>? ")"
-NamedType            := "::"? TypeSegment ("." TypeSegment)*
+PlainContainerPath   := "::"? TypeSegment ("." TypeSegment)*
+BoundContainerQualifier := "(" ContainerPath OriginBindingSet ")"
+PathSuffix           := "." TypeSegment | "." "(" ContractReference ")" "." Name
+ContainerPath        := "::"? TypeSegment PathSuffix* | BoundContainerQualifier PathSuffix+
+PlainNamedType       := ContainerPath
+NamedReference       := PlainNamedType OriginBindingSet?
+ContainerReference   := NamedReference
+NamedType            := NamedReference OriginApplication?
+OriginApplication    := "(" List<OriginAtom> ")" // Only after an associated-Type name, §8.4.3.1.
 TypeSegment          := TypeName TypeArguments?
 TypeName             := Name | PrimitiveType | "Self"
 TypeArguments        := "<" TrailingList<GenericArgument> ">"
@@ -108,6 +118,13 @@ PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128
                       | "f32" | "f64" | "bool" | "char" | "string"
 Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
                       | "objref" | "objuniq" | "unsafe" | Name
+OriginHeader         := "{" TrailingList<Name>? "}" // struct/enum only, closed schema.
+OriginBindingSet     := "{" Name ","? "}" // Introduces a fresh set name.
+BorrowOrigin         := "during" OriginAtom
+OriginExpression     := OriginAtom ("and" OriginAtom)*
+OriginAtom           := Name ("." Name)? | "static" | "(" OriginExpression ")"
+OriginRelation       := "origin" OriginExpression ("==" | "outlives") OriginExpression
+OriginClauses        := IndentedList<OriginRelation>
 GenericParameters    := "<" TrailingList<GenericParameter> ">"
 GenericParameter     := NamedParameter | PairParameter | LengthParameter
 NamedParameter       := Name
@@ -115,55 +132,61 @@ PairParameter        := Name "/" Name
 LengthParameter      := "length" Name
 ```
 
-`CoreType` and `NamedCoreType` remain grammar production names. They describe syntactic forms, not the full classification of Cores in §3; Function Types use a separate production, and generated callable Cores have no declaration spelling.
+`CoreType` and `NamedCoreType` are grammar production names. They describe syntactic forms, not the full classification of Cores in §3: Function Types use a separate production, and generated callable Cores, including Closure and Function Item Types, have no declaration spelling.
 
-Object-target syntax uses the View Target lookup role; in the [runtime Contract extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core. Runtime designation and View bindings are not supplied by this grammar. A bare Contract is not a value Type. This shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](../03-types-and-values.md#336-nested-semantics-and-type-grouping). `NamedType` also preserves dotted associated-Type projection syntax; its Contract and Core roles are resolved under F.3. Callable signature syntax appears with requirements below; generated Closure and Function Item Types have no source declaration spelling.
+Object-target syntax uses the View Target lookup role. In the [runtime Contract extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core; this grammar supplies no runtime designation or View bindings. A bare Contract is not a value Type, and the shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](../03-types-and-values.md#336-nested-semantics-and-type-grouping). `NamedType` also keeps the dotted associated-Type projection syntax, whose Contract and Core roles are resolved under F.3. Callable signature syntax appears with the requirements below.
 
-GenericParameters and TypeArguments are nonempty and allow trailing commas. NamedParameter and PairParameter declare Type slots; only LengthParameter declares a function length slot. A pair consumes one complete Type argument and is recognized only by declaration-side `Name / Name`. Preserve syntactically ambiguous Name/grouped GenericArguments until Binding checks their declared slot kind under [length parameters](../04-arrays-indexing-and-slices.md#44-function-length-parameters); do not infer slot kinds from uses. `of` is contextual only after ArrayLength as the element delimiter. `_` as ArrayElementType is allowed only in a local binding annotation with an initializer. LengthParameter is forbidden on Type declarations. Standalone Semantics slots, general Const arguments, partial/default/variadic arguments, and other `_` Type arguments are not introduced; Origin arguments follow their separate rules.
+GenericParameters and TypeArguments are nonempty and allow trailing commas. NamedParameter and PairParameter declare Type slots, and only LengthParameter declares a function length slot. A pair consumes one complete Type argument and is recognized only by the declaration-side `Name / Name`. A syntactically ambiguous Name or grouped GenericArgument is kept until Binding checks the declared slot kind under [length parameters](../04-arrays-indexing-and-slices.md#44-function-length-parameters); slot kinds are never inferred from uses. `of` is contextual only after ArrayLength, as the element delimiter. `_` as ArrayElementType is allowed only in a local binding annotation with an initializer. LengthParameter is forbidden on Type declarations. Standalone Semantics slots, general Const arguments, partial, default and variadic arguments, and other `_` Type arguments are not introduced; Origin binding sets and relations follow §15.3–4.
 
 ## F.3. Declaration grammar
 
-[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameter-names-and-defaults), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
+[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameters-and-defaults), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
 
 ```ebnf
 QualifiedName        := Name ("." Name)*
 Access               := "private" | "internal" | "public" | "protected"
                       | "protected" "internal" | "private" "protected"
-AliasDeclaration     := "alias" QualifiedName
-LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)?
+AliasDeclaration     := "alias" (Name "=>")? ContainerReference OriginClauses?
+LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)? OriginClauses?
 GroupDeclaration     := Access? "group" Name ContainerBody
 RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
 StructureDeclaration := Access? "open"? "struct" Name GenericParameters?
-                        BaseClause? OriginParameters? ContainerBody
-BaseClause           := ":" CoreType
-EnumDeclaration      := Access? "enum" Name GenericParameters? OriginParameters?
+                        OriginHeader? BaseClause? ContainerBody
+BaseClause           := ":" NamedReference
+EnumDeclaration      := Access? "enum" Name GenericParameters? OriginHeader?
                         IndentedList<EnumItem>
-EnumItem             := EnumCase | AttributedFunctionDefinition | SpecializationDeclaration | ConstraintClause
+EnumItem             := EnumCase | AttributedFunctionDefinition | SpecializationDeclaration | ConstraintClause | OriginRelation
                       | AssociatedTypeSpecification | ConditionalConformance
                       | Directive<EnumItem>
-EnumCase             := Name ("(" TrailingList<Type> ")")?
-ContractDeclaration  := Access? "contract" Name ContractParentList? IndentedList<ContractItem>?
+EnumCase             := Name ("(" TrailingList<Type> ")")? OriginClauses?
+ContractDeclaration  := Access? "contract" Name GenericParameters? ContractParentList? IndentedList<ContractItem>?
 ContractParentList   := ":" ContractReference ("," ContractReference)*
-ContractReference    := "::"? QualifiedName
+ContractReference    := ContainerReference
+ContractSelector     := ContainerPath | "(" ContractReference ")"
 ContractItem         := ContractRequirement | AssociatedTypeDeclaration
                       | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
-FunctionRequirement  := "unsafe"? "func" Name GenericParameters? OriginParameters?
-                        "(" TrailingList<RequirementParameter>? ")" ("->" Type)?
+FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
+                        ParameterList<RequirementParameter> ("->" FunctionResult)?
                         RequirementConstraints?
-RequirementParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
-RequirementConstraints := IndentedList<ConstraintClause>
+FunctionResult       := Type | PlaceResult
+PlaceResult          := "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
+RequirementParameter := ParameterName ":" Type | ReceiverShorthand
+RequirementConstraints := IndentedList<ConstraintClause | OriginRelation>
 PropertyRequirement  := "property" Name ":" Type
                         ("has" RequiredAccessor ("," RequiredAccessor)*
                          | IndentedList<RequiredSignature>)
 RequiredAccessor     := "get" | "set"
-RequiredSignature    := GetterSignature | SetterSignature
-AssociatedTypeDeclaration := "associate" Name ("is" IsRequirement)?
-AssociatedTypeSpecification := "associate" AssociatedTypeName "is" IsRequirement
-AssociatedTypeName   := Name | ContractReference "." Name
-AssociatedTypeReference := TypeQualifier "." Name
-                        | TypeQualifier "." ContractReference "." Name
-TypeQualifier        := NamedType
+RequiredSignature    := (GetterSignature | SetterSignature) OriginClauses?
+AssociatedTypeDeclaration := "associate" Name OriginParameters? ("is" IsRequirement)? FormationType?
+                             IndentedList<OriginRelation>?
+OriginParameters     := "(" List<Name> ")"
+FormationType        := "for" Type
+AssociatedTypeSpecification := "associate" AssociatedTypeName OriginParameters? "is" IsRequirement OriginClauses?
+AssociatedTypeName   := Name | ContractSelector "." Name
+AssociatedTypeReference := TypeQualifier "." Name OriginApplication?
+                        | TypeQualifier "." "(" ContractReference ")" "." Name OriginApplication?
+TypeQualifier        := ContainerPath
 ConformanceClause    := "Self" "is" ContractReference
 ConditionalConformance := "Self" "is" ContractReference "when" ConformanceConditions
                           IndentedList<ConditionalImplementationItem>?
@@ -176,26 +199,27 @@ ConditionalImplementationItem := AttributedFunctionDefinition
                                | AttributePrefix? ComputedDeclaration
                                | AssociatedTypeSpecification
                                | Directive<ConditionalImplementationItem>
-ConstructorDeclaration := Access? "init" "(" TrailingList<Parameter>? ")"
+ConstructorDeclaration := Access? "init" ParameterList<Parameter>
                           BaseInitializer? ExecutableBody
 BaseInitializer      := ":" "base" "(" TrailingList<Argument>? ")"
 FunctionHeader       := Access? "unsafe"? "func" Name
-                        GenericParameters? OriginParameters?
-                        "(" TrailingList<Parameter>? ")" ("->" Type)?
+                        GenericParameters?
+                        ParameterList<Parameter> ("->" FunctionResult)?
 FunctionDefinition   := FunctionHeader FunctionBody
 AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
 ForeignFunctionDeclaration := FunctionHeader
 // Only with the LibraryImport prefix and restricted header/placement in §22.3.
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
                             "(" TrailingList<SpecializationParameter>? ")"
-                            ("->" Type)? SpecializationBody
+                            ("->" FunctionResult)? SpecializationBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 SpecializationBody   := ExecutableBody
 FunctionBody         := Body<FunctionItem>
 Parameter            := Attribute* ParameterCore
-ParameterCore        := Name ("=>" Name)? ":" Type ("=" Expression)?
-                      | Name "?" ":" Type "=" Expression
+ParameterCore        := ParameterName ":" Type ("=" Expression)?
                       | ReceiverShorthand
+ParameterName        := Name ("=>" Name)?
+ParameterList<P>      := "(" (List<P> ","? | List<P>? "!" List<P> ","?)? ")"
 ReceiverShorthand    := "self"
 ConstraintClause     := ConstraintSubject "is" IsRequirement
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
@@ -213,8 +237,8 @@ CallableRequirement  := "Callable" "<" (CallableReceiver ",")? FunctionSignature
 CallableReceiver     := "ref" | "uniq" | "owner"
 FunctionSignature    := FunctionParameters "->" Type
 FunctionItem         := Expression | LocalBinding | AttributedFunctionDefinition
-                      | Statement | ConstraintClause | Directive<FunctionItem>
-ContainerItem        := Declaration | ConstraintClause | AssociatedTypeSpecification
+                      | Statement | ConstraintClause | OriginRelation | Directive<FunctionItem>
+ContainerItem        := Declaration | ConstraintClause | OriginRelation | AssociatedTypeSpecification
                       | ConditionalConformance
                       | Directive<ContainerItem>
 ContainerBody        := ? optional indented ContainerItem sequence for group/rootgroup/struct,
@@ -232,25 +256,28 @@ UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
 
 Modifier placement and compound-access combinations are constrained by [accessibility](../09-names-signatures-and-access.md#93-accessibility-and-reachability), even where the shared grammar uses `Access`.
 
-`ReceiverShorthand` is permitted only for an instance function receiver under [§7.3](../07-functions-and-callable-values.md#73-explicit-receivers), including Contract requirements and full specializations. It expands to `self: ref/Self` at its written position. The shared Parameter grammar does not permit it on constructors, local functions, or group/rootgroup functions.
+`ReceiverShorthand` is permitted only for an instance function receiver under [§7.3](../07-functions-and-callable-values.md#73-explicit-receivers), including Contract requirements and full specializations, and expands to `self: ref/Self` at its written position. The shared Parameter grammar does not permit it on constructors, local functions or group/rootgroup functions. That the functions with receivers in one member group share one receiver shape, and that a Receiver Expression is acquired without a spelling, are semantic rules of §7.3, not grammar.
 
-AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures); unavailable declaration modifiers use §2.5.1's diagnostic recognition, not grammar productions.
+AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit or explicit specializations. Attribute-bearing functions in executable and enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions of [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures). Unavailable declaration modifiers use the diagnostic recognition of §2.5.1, not grammar productions.
 
-`SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or optionality markers. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
+`SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access or unsafe modifiers, attributes, defaults or `!` boundaries. Its body uses ordinary executable syntax, and it inherits the original function's contract under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
-Omitting the result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions retain their own inference rules.
+An omitted result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions keep their own inference rules.
 
-Ordinary parameter bindings are immutable under §7. Receiver recognition uses the internal Name self, its position, and declaration context under §7.3; the shared Parameter production alone does not grant receiver defaults, renaming, or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group/rootgroup/struct/contract declarations follow §6.1.1; empty enums remain invalid.
+Ordinary parameter bindings are immutable under §7. A ParameterList permits at most one `!`, with no adjacent comma and at least one ordinary parameter on its right. Its external names are unique across both sections and the receiver. Receiver recognition uses the internal Name `self`, its position and the declaration context under §7.3; the shared Parameter production alone grants no receiver defaults, renaming or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group, rootgroup, struct and contract declarations follow §6.1.1; empty enums remain invalid.
 
-Contract requirements have no access modifiers, default/optional parameters, Property initializers, or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method Generic and Origin parameters remain ordinary function parameters. Property Requirements are instance-only: get is mandatory and set optional, each at most once in either order. No accessor is implied beyond the written list or explicit signatures. Shared/exclusive defaults for has and explicit signature checks follow §11.4.
+Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
 
-`AssociatedTypeDeclaration` introduces a name only inside a Contract. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances; a bare `associate Element` is not a specification. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` instead occupies a member position only in generic struct/enum bodies (§8.4.8), has one target Contract, and introduces no namespace or generic binders. Its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations; all blocks reject storage, Cases, constructors, deinit, nested Types, and nested conformances. Intrinsics retain their own rules.
+`AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters, a formation Type and attached `origin` clauses (§8.4.3.1); a formation Type requires Origin parameters and no fixed Type. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is followed by `ref` or `uniq` and a slash (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, deinit, nested Types and nested conformances. Intrinsics keep their own rules.
 
-Constraint subjects follow their declaration context: a Contract body constrains its own/inherited associated Types; a function constrains its generic parameters and projections rooted in them; a Type body uses its ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
+Constraint subjects follow their declaration context. In a nested Contract, conditions on inherited arguments are reference inputs, conditions on the conforming `Self` are implementation requirements, and closed conditions are declaration obligations (§6.1.3.1). Functions constrain their generic parameters, the generic parameters of their declaring Type (conditional members, §7.4) and projections rooted in them; Types use their ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
 
-`ContractReference` resolves a nongeneric user-defined Contract through normal qualification and aliases; built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser distinguishes declarations, specifications, Type positions, and Constraints-only regions by context, preserving dotted paths. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
+`ContractReference` resolves a user-defined Contract with all inherited bindings. A Contract may declare its own Type parameters (§8.4) but no Origin or length parameters, and built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, a parameter, `Self` or an associated-Type projection, not to a value or a Semantics-applied expression. The Parser keeps bound paths and distinguishes declarations, specifications, Type positions and Constraints-only regions by context. Binding resolves the Contract and associated-Type roles and rejects distinct successful interpretations; neither expected results nor value-member fallback disambiguates them. The same rules apply after ordinary compile-time selection.
 
-`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's Constraints. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructors keep the containing Type's Origins and may introduce implicit per-call scalar Origins in borrow annotations. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+
+Alias targets follow [§18.1](../18-modules-and-dependencies.md#181-external-references-and-aliases): `ContainerReference` is an optionally root-qualified reference, valid under the Container rules with their required arguments, and a named target must be a Kotonoha or group. `=>` in this production introduces a reference, never an executable Body. There is no `alias Name = Type` production.
+
 
 ## F.4. Expression grammar
 
@@ -268,58 +295,69 @@ OrExpression         := AndExpression ("or" AndExpression)*
 AndExpression        := Comparison ("and" Comparison)*
 Comparison           := BitOr (("<" | "<=" | ">" | ">=" | "==" | "!=") BitOr)?
                       | BitOr "is" "not"? NamedCoreType
-NamedCoreType        := NamedType
+OriginFreePath       := ? ContainerPath with no written direct borrow annotations at any layer ?
+NamedCoreType        := OriginFreePath
 BitOr                := BitXor ("|" BitXor)*
 BitXor               := BitAnd ("^" BitAnd)*
 BitAnd               := Shift ("&" Shift)*
 Shift                := Additive (("<<" | ">>") Additive)*
 Additive             := Multiplicative (("+" | "-") Multiplicative)*
-Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
-Adapted              := Prefix ("@" OperationTarget)*
-OperationTarget      := Semantics | AdaptationType
-AdaptationType       := Semantics "/" AdaptationType | AdaptationAtom
-AdaptationAtom       := NamedType | UnitType | "(" OriginFreeType ")"
-                      | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
-                      | "[" ArrayLength "of" OriginFreeType "]"
-OriginFreeType       := ? Type with no written Origins at any layer, §13.5.1 ?
+Multiplicative       := Try (("*" | "/" | "%") Try)*
+Try                  := "try" Try | Adapted
+Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
+OperationTarget      := "move" | "copy" | Semantics | AdaptationType
+// "@" "follow" is a PostfixSuffix (level 1), never an OperationTarget.
+AdaptationType       := AdaptationCore ("?")*
+AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
+AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"
+                      | "(" Type "," TrailingList<Type>? ")"
+                      | "[" ArrayLength "of" Type "]"
 Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
 PostfixSuffix        := "." (Name | DecimalTupleIndex)
+                      | "." "(" ContractReference ")" "." Name
                       | "(" TrailingList<Argument>? ")"
                       | AdjacentTypeArguments | "[" Expression "]" | "++" | "--"
+                      | "@" "follow"
 AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §12.4.2 ?
 DecimalTupleIndex    := ? decimal integer literal used as a Tuple member, §12.4.1 ?
 ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
 // Static fixed-array path recognition only, not a restriction on ordinary indexing (§15.1.3).
 Argument             := (Name ":")? Expression
 Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
+                      | BoundContainerExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
                       | IfExpression | MatchExpression | LabeledSelection | Iteration | DoExpression
                       | Transfer | CompositionRootExpression | ConstructionExpression
                       | InferredCaseExpression
-ConstructionExpression := NamedType "." "init"
+BoundContainerExpression := BoundContainerQualifier
+                           ("." Name | "." "(" ContractReference ")" "." Name)
+ConstructionQualifier := PlainNamedType | BoundContainerQualifier
+ConstructionExpression := ConstructionQualifier "." "init"
                           "(" TrailingList<Argument>? ")"
 InferredCaseExpression := "." Name ("(" TrailingList<Expression> ")")?
 TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
 ArrayExpression      := "[" TrailingList<Expression>? "]"
+                      | "[" ArrayLength "of" Expression "]"
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
 DictionaryEntry      := Expression ":" Expression
 FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>? ")"
-                        ("->" Type)? AnonymousBody
+                        ("->" FunctionResult)? AnonymousBody
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := ExecutableBody
 CaptureList          := "[" TrailingList<Capture>? "]"
-Capture              := Name ("@" CaptureOperation)? | "var" Name
-CaptureOperation     := "ref" | "uniq"
+Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
+CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
+                           | "$" "tryWrite" "(" Expression "," StringLiteral ")"
 ```
 
-Ordinary `is` / `is not` accepts one named struct Core and does not consume outer `and` / `or`. The separate compile-time [requirement expressions](../08-generics-constraints-and-contracts.md#83-requirement-expressions) retain their existing extent in their dedicated contexts. Anonymous parameter/result omission and Capture Lists obey [function-expression rules](../07-functions-and-callable-values.md#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.
+Ordinary `is` / `is not` accepts one named struct Core and does not consume an outer `and` or `or`. The separate compile-time [requirement expressions](../08-generics-constraints-and-contracts.md#83-requirement-expressions) keep their own extent in their dedicated contexts. Omitted anonymous parameter and result Types and Capture Lists follow the [function-expression rules](../07-functions-and-callable-values.md#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity); `@follow` binds as a postfix operation, takes no Type, `?` or `during`, and a following `/` is division; `@move` and `@copy` take no Type, `?` or `during` either. These boundaries are not alternative parses selected by conversion success.
 
-Qualified enum Case expressions have no separate Primary production: ordinary Postfix syntax is classified during Binding under §6.3.2. Only InferredCaseExpression is a dedicated expression production; CaseReference belongs to the Pattern grammar in F.5.
+Qualified enum Case expressions have no separate Primary production: Binding classifies ordinary Postfix syntax under §6.3.2. InferredCaseExpression is the only dedicated Case expression production; CaseReference belongs to the Pattern grammar in F.5.
 
-The `.init(` suffix has construction priority under §6.2.3 and cannot use `Name` in `PostfixSuffix`; its qualifier is checked in the Type role during Binding. Adaptation alternatives obey the syntactic prefix commitment of §13.5.1 before lookup, including Origin-free generic arguments. `$abort` accepts exactly one positional Expression, without a label or trailing comma; it must fit `string`.
+The `.init(` suffix has construction priority under §6.2.3 and cannot be an ordinary member `Name` in `PostfixSuffix` or `BoundContainerExpression`; Binding checks its qualifier in the Type role. Adaptation alternatives obey the syntactic prefix commitment and Origin restrictions of §13.5.1: after Optional expansion, the outer Semantics chain cannot carry written borrow Origins, while complete payload Types keep their annotations. Bound Container qualifiers are unavailable in adaptation targets. `$abort` accepts exactly one positional Expression that fits `string`, without a label or trailing comma.
 
 ## F.5. Statements and Blocks
 
@@ -329,8 +367,9 @@ The `.init(` suffix has construction priority under §6.2.3 and cannot use `Name
 SourceUnit           := ? source-local declarations, aliases, and executable items, §6.1.1 ?
 Body<Item>           := "=>" SingleItem | IndentedList<Item>
 SingleItem           := Expression | Statement
-Statement            := UnsafeStatement | DeferStatement | RequireStatement
+Statement            := UnsafeStatement | DeferStatement | RequireStatement | DiscardStatement
                       | TestVerification
+DiscardStatement     := "_" "=" Expression
 TestVerification     := "$" ("expect" | "require") "(" Expression
                         ("," "message" ":" Expression)? ")"
 ExecutableItem       := Expression | LocalBinding | AttributedFunctionDefinition
@@ -344,7 +383,8 @@ DoExpression         := (Name ":")? "do" ExecutableBody
 LabeledSelection     := Name ":" (IfExpression | MatchExpression)
 Iteration            := (Name ":")? (ForExpression | WhileExpression | LoopExpression)
 ForExpression        := "for" ForBinding "in" Expression ExecutableBody
-ForBinding           := Name | "(" List<Name> ")"
+ForBinding           := ForSlot | "(" List<ForSlot> ")"
+ForSlot              := Name | "var" Name | "_"
 WhileExpression      := "while" Expression ExecutableBody
 LoopExpression       := "loop" ExecutableBody
 IfExpression         := "if" Expression ExecutableBody
@@ -357,7 +397,7 @@ MatchArm             := Pattern ("if" Expression)? ExecutableBody
 Pattern              := "_" | LiteralPattern | BindingPattern | CasePattern
                       | UnitPattern | TuplePattern | GroupedPattern
 BindingPattern       := ("let" | "var") Name
-CaseReference        := NamedType "." Name | "." Name
+CaseReference        := PlainContainerPath "." Name | "." Name
 CasePattern          := CaseReference ("(" TrailingList<Pattern> ")")?
 UnitPattern          := "(" ")"
 TuplePattern         := "(" Pattern "," TrailingList<Pattern>? ")"
@@ -373,9 +413,9 @@ Transfer             := "return" Expression?
 DeinitDeclaration    := "deinit" ExecutableBody
 ```
 
-Conditions and guards must fit bool. Body headers, operand starts, delimiter regions, and required grouping follow §2.2 and §14.5. A label and its construct share a physical line. The keyword do is reserved; to is contextual immediately after exit/continue/yield. SingleItem does not include declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar.
+Conditions and guards must fit `bool`. Body headers, operand starts, delimiter regions and required grouping follow §2.2 and §14.5. A label and its construct share a physical line. The keyword `do` is reserved; `to` is contextual immediately after `exit`, `continue` or `yield`. SingleItem includes no declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar. `for` bindings accept only ForSlot forms, not general Patterns (§14.6.1).
 
-CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types retain complete Type information. Case existence, expected-Type resolution, payload presence/count, access, and Semantics follow §6.3.2. Payload Cases require parentheses; payload-free Cases prohibit them. Binding and acquisition follow §14.8. Match arm lists and enum bodies remain nonempty after selection.
+CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types keep complete Type information. Case existence, expected-Type resolution, payload presence and count, access and Semantics follow §6.3.2. Payload Cases require parentheses, and payload-free Cases prohibit them. Binding and acquisition follow §14.8 and the subject rule of §15.1.6. Match arm lists and enum bodies remain nonempty after selection.
 
 ## F.6. Property grammar
 
@@ -383,39 +423,26 @@ CaseReference qualifiers identify enum Cores without the enum's own Origin annot
 
 ```ebnf
 StoredPropertyDeclaration := Access? ("let" | "var") Name
-                             (":" Type)? ("=" Expression)? IndentedList<StoredAccessor>?
-ComputedDeclaration  := Access? "computed" Name ":" Type IndentedList<CustomAccessor>
+                             (":" Type)? ("=" Expression)? IndentedList<OriginRelation | StoredAccessor>?
+ComputedDeclaration  := Access? "computed" Name ":" Type IndentedList<OriginRelation | CustomAccessor>
 StoredAccessor       := Access? ("get" | "set") | CustomAccessor
 CustomAccessor       := Access? GetterSignature AccessorBody
                       | Access? SetterSignature AccessorBody
 GetterSignature      := "get" "(" AccessorReceiver? ")" "->" Type
 SetterSignature      := "set" "(" (AccessorReceiver ",")? "value" ":" Type ")" "->" UnitType
 AccessorReceiver     := "self" ":" Type
-AccessorBody         := ExecutableBody
+AccessorBody         := Body<FunctionItem>
 ```
 
-Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require parameter lists and explicit input/result Types; stored receiver/Copy/Type restrictions follow §11.2. An omitted instance receiver expands to `self: ref/Self` for get or `self: uniq/Self` for set, including explicit requirement signatures. Static accessors omit self without inserting a receiver. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11; unavailable modifiers follow §2.5.1.
+Each concrete accessor occurs at most once, in either order. `let` forbids `set`, and `var` supplies an omitted standard `get` or `set`. A bodyless standard accessor has no explicit signature. Custom accessors require parameter lists and explicit input and result Types; the receiver, Copy and Type restrictions for stored Properties follow §11.2. An omitted instance receiver expands to `self: ref/Self` for `get` and `self: uniq/Self` for `set`, including in explicit requirement signatures. Static accessors omit `self` without inserting a receiver. `computed` requires a custom `get` and permits an optional custom `set`, with no initializer or inline `has`. Omitting a stored Property's Type requires an initializer, and static storage always requires one. Attributes and containers follow §6.5 and §11; unavailable modifiers follow §2.5.1.
 
 ## F.7. Origin grammar
 
-[Origin expressions](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions), [Origin parameters](../15-ownership-and-lifetime-analysis.md#153-abstract-origins), [named arguments](../15-ownership-and-lifetime-analysis.md#1531-origin-arguments), [outlives notation](../15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection).
+The productions in F.2 distinguish schema and binding-set braces from the postfix borrow annotation `during OriginAtom`. An intersection immediately after `during` needs parentheses, while relation operands keep the full OriginExpression grammar. There are no function or accessor Origin lists and no Origin mappings. A trailing `during` after a named Type without a Semantics prefix binds its single schema slot (§15.3.1). Associated-Type Origin parameters and their applications are the F.3 and F.2 productions `OriginParameters` and `OriginApplication` (§8.4.3.1).
 
-```ebnf
-OriginParameters     := "origin" List<OriginParameter>
-OriginParameter      := Name (":" OriginBound)?
-OriginBound          := Name | "static"
-OriginAnnotation     := "from" (origin-expression | "(" TrailingList<OriginArgument> ")")
-OriginArgument       := Name "=>" origin-expression
-```
+An `OriginRelation` is attached to its owning declaration, one indentation level below it. Type, function and accessor relations share the leading Constraint region and precede executable items or members. Field, enum Case, associated-Type declaration and specification, local and Container-alias relations are attached to that declaration. Relations are declaration metadata, permitted only in these leading or attached positions, and a declaration-only signature may have only such clauses.
 
-```text
-origin-expression := Name
-                   | origin-expression '.' Name
-                   | static
-                   | origin-expression 'and' origin-expression
-```
-
-An OriginParameter bound declares the [outlives relation](../15-ownership-and-lifetime-analysis.md#1522-ordering-and-intersection) under §15.3. OriginBound Names resolve only to abstract Origins. The relation notation elsewhere does not introduce a standalone declaration or statement.
+See [schemas, names and relations](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations) for ownership, scope and implicit binders, and [completion](../15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision) for inference and omission. Labels written within a local initializer's Type arguments, construction qualifier or Adaptation Target belong to that local declaration; no general expression constraint block is added.
 
 ## F.8. Compile-time directive grammar
 
@@ -441,22 +468,27 @@ PlainString         := ? StringLiteral without interpolation, §19.2 ?
 
 ```
 
-The hash forms use `#` followed by the reserved lowercase keywords `if`, `switch`, and `case`. Uppercase-initial `AttributeName` instead selects the Attribute grammar in F.3; other lowercase hash forms are errors. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
+The hash forms are `#` followed by the reserved lowercase keywords `if`, `switch` and `case`. An uppercase-initial `AttributeName` instead selects the Attribute grammar of F.3, and other lowercase hash forms are errors. `Item` keeps the surrounding syntax category, so a directive does not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
 
 ## F.9. Syntax boundaries
 
-These entries record the limits of a complete syntax summary for this revision. They are not wildcard productions or newly defined features.
+These entries record where the syntax summary of this revision ends. They are neither wildcard productions nor newly defined features.
 
 | Form or production | Owning syntax and boundary |
 | --- | --- |
 | Extension declarations | Not introduced; no production or active extension candidate stage exists in this revision. See [Container boundary](../06-declarations-and-containers.md#61-declaration-containers). |
 | Virtual/abstract/override declarations and ordinary base-member invocation | Not introduced; [extension design](../06-declarations-and-containers.md#624-virtual-members-and-overrides). Unavailable modifiers are diagnosed under §2.5.1. Base clauses and base-constructor initializers are defined in F.3. |
-| Runtime-contract designations, View associated-type bindings, exact/contract tests and checked casts | The [runtime extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts) and [object operations](../13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts) preserve the design without final source spellings. Static associated-Type specifications/projections are defined in F.3. Ordinary struct `is` and explicit upcasts are defined. |
-| Callable extensions | Borrowed or Exclusive/Consuming erased Types, public lending results, non-escaping declarations, capture aliases/initializers/parts, generic receiver Semantics, and `from environment` remain unintroduced. |
-| Additional Patterns | The [initial forms](../14-control-flow.md#1481-patterns) are defined; Struct, Type, OR, Range, Rest, and other [extensions](D-deferred-features.md#d1-enum-and-pattern-extensions) remain deferred. |
-| Attributes | Syntax, placement, and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport follows [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and argument-free Test follows [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
-| Composition Root operations | `$abort(...)` is an expression. `$expect(...)` and `$require(...)` are standalone TestVerification items under [§17.5](../17-failure-handling.md#175-test-verification-operations), with the same test-only body restrictions and a message control boundary; they cannot be expression operands. Each evaluates its condition once; on false, expect records failure and continues, while require records failure and Aborts after condition/message temporary cleanup. Entry/Provider syntax remains unsettled under [§13.8](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
-| Additional type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) does not define general constant type arguments. |
-| Object ownership operations | [Core creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), and [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) define their source names, Types and acquisition contracts using ordinary call syntax. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
-| Function parameters | The combined optional/external-name form remains under [parameter design boundaries](../10-overload-resolution-and-inference.md#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
-| Re-export, special FFI layouts, and failure propagation | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports), [layout boundaries](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi), and [error policy](../17-failure-handling.md#171-error-policy). |
+| Runtime-contract designations, View associated-Type bindings, exact and Contract tests, and checked casts | The [runtime extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts) and the [object operations](../13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts) keep the design without final source spellings. Static associated-Type specifications and projections are defined in F.3; ordinary struct `is` and explicit upcasts are defined. |
+| Callable extensions | Borrowed, Exclusive or Consuming erased Types, public lending results, non-escaping declarations, capture aliases, initializers and parts, generic receiver Semantics and `{environment}` are not introduced. |
+| Additional Patterns | The [initial forms](../14-control-flow.md#1481-patterns) are defined; Struct, Type, OR, Range, Rest and other [extensions](D-deferred-features.md#d1-enum-and-pattern-extensions) remain deferred. |
+| Attributes | Syntax, placement and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../../impl/21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and the argument-free Test Attribute [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
+| Composition Root operations | `$abort(...)` and `$tryWrite(...)` are expressions. `$expect(...)` and `$require(...)` are standalone TestVerification items, never expression operands; [§17.5](../17-failure-handling.md#175-test-verification-operations) defines their test-only restrictions, message boundary and evaluation. Entry/Provider syntax remains unsettled under [§13.8](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
+| Additional Type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) defines no general constant Type arguments. |
+| Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and the complete forms such as `@obj/T` and `@rc/T` add no allocation or count increment. |
+| Complete payload and whole-value updates | Sealed and ObjectPayload use ordinary requirement syntax; the opt-out `Self is not ObjectPayload` is an ordinary `ConstraintClause` whose placement §8.4.7.2 restricts. `@follow` selects a proven complete payload (§13.5.5.1), and `@ref`/`@uniq` borrow the written slot. `Kimi.Intrinsics.replace`, `exchange` and `swap` use ordinary generic calls and named arguments (§15.7). |
+| Places and iteration | `place ref/T` and `place uniq/T` results, Contract Type parameters, Origin-parameterized associated Types with formation Types, single-slot `during` bindings, `@copy`, the postfix `@follow` and `for var` slots are defined in F.2–F.5. Pattern-local acquisition selectors and Contract-owned Origin parameters are not introduced ([Appendix D](D-deferred-features.md)). |
+| Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external and internal names and independent defaults; F.3 summarizes their syntax. |
+| Re-export and special FFI layouts | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports) and [layout boundaries](../../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi). |
+| Failure propagation | Prefix `try` is defined in §17.2.4. User-defined propagation and try blocks are not introduced. |
+
+Container placement follows §6.1.1: groups, structs, enums and Contracts may nest in structs, enum and Contract bodies have no children, and `rootgroup` appears only at the source root. Own arity excludes inherited slots; groups declare no own arguments, and Contracts declare only their own Type parameters. BoundContainerQualifier is Type-side only and normalizes with ordinary grouped Type syntax. Contract and associated selectors use the same paths and full Origin bindings, and each final role and intermediate qualifier is checked under §9.6.1. CaseReference remains a PlainContainerPath and excludes own and inherited explicit Origin annotations on its qualifier, while keeping Origins inside Type arguments.

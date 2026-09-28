@@ -1,0 +1,49 @@
+// Milestone 35: Weak downgrade, upgrade, expiration and cyclic construction.
+struct Item
+    public let id: i32
+    public init(id: i32) => self.id = id
+    deinit => Console.writeLine("Item destroyed.")
+
+struct Node
+    public let selfWeak: Weak<rc/Node>
+    public let value: i32
+    public init(selfWeak: Weak<rc/Node>, value: i32)
+        self.selfWeak = selfWeak@move
+        self.value = value
+    deinit => Console.writeLine("Node destroyed.")
+
+func expired() -> Weak<rc/Item>
+    let strong = Kimi.Intrinsics.makeRc(Item.init(7))
+    let weak = Kimi.Intrinsics.downgrade(strong@ref) // Strong count 1, weak count 1.
+    match Kimi.Intrinsics.upgrade(weak)
+        .Some(let live) => require live.id == 7 else => $abort("Upgraded payload differs")
+        .None => $abort("Live target failed to upgrade")
+    Console.writeLine("Upgrade succeeded while alive.")
+    return weak@move // The local strong is destroyed here; the Weak keeps only the table.
+
+public func main()
+    let weak = expired()
+    match Kimi.Intrinsics.upgrade(weak)
+        .Some(_) => $abort("Expired target was resurrected")
+        .None => Console.writeLine("Upgrade failed after the final release.")
+    let other = Kimi.Intrinsics.clone(weak) // Shares the table without allocation.
+    let moved = other@move // Transfers the responsibility with no count change.
+    match Kimi.Intrinsics.upgrade(moved)
+        .Some(_) => $abort("Cloned weak resurrected the target")
+        .None => ()
+    Console.writeLine("Weak clone stays expired.")
+
+    let build = func [] (weak: Weak<rc/Node>) -> Node
+        match Kimi.Intrinsics.upgrade(weak)
+            .Some(_) => $abort("Upgrade succeeded while Building")
+            .None => Console.writeLine("Upgrade fails while Building.")
+        return Node.init(weak@move, 3)
+    let node = Kimi.Intrinsics.makeRcCyclic(build) // Publishes Alive with the first strong.
+    match Kimi.Intrinsics.upgrade(node.selfWeak@ref)
+        .Some(let live)
+            require live.value == 3 else => $abort("Self weak reached another node")
+            Console.writeLine("Self weak upgrades after publication.")
+            // live releases its strong at the end of this arm; node still owns one.
+        .None => $abort("Published node failed to upgrade")
+    Console.writeLine("Weak run finished.")
+    // node releases the final strong: the Node is destroyed and its stored Weak releases the table.

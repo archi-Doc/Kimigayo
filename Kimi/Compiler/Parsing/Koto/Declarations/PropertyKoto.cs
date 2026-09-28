@@ -50,6 +50,8 @@ public sealed class PropertyKoto : VariableKoto
     public IReadOnlyList<PropertyAccessorKoto> Accessors
         => (IReadOnlyList<PropertyAccessorKoto>?)this.accessors ?? [];
 
+    internal int FragmentOrdinal { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="PropertyKoto"/> class.</summary>
     /// <remarks>The modifiers and attribute chain are taken from the reader's current context.</remarks>
     /// <param name="reader">The token reader.</param>

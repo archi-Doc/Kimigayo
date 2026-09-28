@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -8,6 +9,20 @@ namespace XunitTest;
 
 internal static class ParseTestHelper
 {
+    internal static string Unparse(Kotonoha tree)
+    {
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            tree.RootKoto.UnparseAll(ref builder);
+            return builder.ToString();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
     internal static Kotonoha Parse(string source)
     {
         var tree = Compilation.CreateForTest().Kotonoha;

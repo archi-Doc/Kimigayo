@@ -14,16 +14,25 @@ public sealed class LlvmEmitter
     private readonly EmissionModule module = new();
     private readonly BodyLowering lowering = new();
     private readonly FunctionAbiPool signatures = new();
+    private readonly GenericStoragePlan generics = new();
+    private readonly ObjectGenerationPlan objects = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
+    private bool resourceLimit;
 
     internal LlvmEmitter(Compilation compilation)
-        => this.compilation = compilation;
+    {
+        this.compilation = compilation;
+        this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
+    }
 
     /// <summary>Verifies the entire selected input against the implemented execution subset.</summary>
     /// <param name="failure">A concrete reason when generation cannot proceed.</param>
     /// <returns>Whether the latest analysis proves every operation this subset lowers.</returns>
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
+
+    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5: generic contexts or inline layout depth, size or count), not a semantic or representation obligation.</summary>
+    public bool FailureIsResourceLimit => this.resourceLimit;
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
@@ -47,12 +56,34 @@ public sealed class LlvmEmitter
         module.Clear();
         var c = this.compilation;
         failure = null;
+        this.resourceLimit = false;
+        this.generics.Clear();
         try
         {
+            var destructorOrdinal = 0;
+            for (var i = 0; i < c.Ownership.Bodies.Count; i++)
+            {
+                var body = c.Ownership.Bodies[i];
+                if (!this.SkipGenerated(body) && !body.Function.IsGenerated && !GenericStoragePlan.IsGeneric(body.Function))
+                {
+                    if (body.Function.IsDestructor)
+                    {
+                        this.lowering.AggregateLayouts.RegisterDestructor(body.Function, destructorOrdinal);
+                    }
+
+                    destructorOrdinal++;
+                }
+            }
+
             failure = this.CheckInputs();
             if (failure is not null)
             {
                 return false;
+            }
+
+            if (c.IsTestBuild)
+            {
+                c.Tests.Discover(c);
             }
 
             // Register every selected signature first: recursion refers to the same record.
@@ -60,7 +91,7 @@ public sealed class LlvmEmitter
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
                 var body = c.Ownership.Bodies[i];
-                if (this.SkipGenerated(body))
+                if (this.SkipGenerated(body) || GenericStoragePlan.IsGeneric(body.Function))
                 {
                     continue;
                 }
@@ -70,22 +101,82 @@ public sealed class LlvmEmitter
                 this.functions.Add(source, abi);
             }
 
+            if (!RegisterImports(c.Binding.LibraryImports, module, this.functions, out failure))
+            {
+                return false;
+            }
+
+            module.DictionaryUnlink = this.functions.GetValueOrDefault(c.Library.DictionaryUnlink);
+            module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
+            module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
+            module.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
+            module.DictionaryFind = this.functions.GetValueOrDefault(c.Library.DictionaryFind);
+            module.DictionaryClear = this.functions.GetValueOrDefault(c.Library.DictionaryClear);
+            module.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
+
+            if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
+            {
+                this.resourceLimit = this.generics.ResourceLimitExceeded;
+                return false;
+            }
+
+            this.lowering.GenericCalls = this.generics.Calls;
+            this.lowering.FormattingCalls = this.generics.FormattingCalls;
+            this.lowering.ComparisonCalls = this.generics.ComparisonCalls;
+            this.lowering.ComparisonHelpers = this.generics.ComparisonHelpers;
+            if (!this.objects.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
+            {
+                return false;
+            }
+
+            this.lowering.ObjectCalls = this.objects.Calls;
+            this.lowering.ObjectRuntimeTypes = this.objects.RuntimeTypes;
+            if (!this.LowerInstances(c, module, out failure))
+            {
+                return false;
+            }
+
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
                 var body = c.Ownership.Bodies[i];
-                if (this.SkipGenerated(body))
+                if (this.SkipGenerated(body) || GenericStoragePlan.IsGeneric(body.Function))
                 {
                     continue;
                 }
 
                 var function = module.AddFunction(this.functions[body.Function], exported: false);
-                if (!this.lowering.Lower(c.Core, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
+                if (!this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }
 
                 module.NeedsStringComparison |= function.NeedsStringComparison;
                 this.lowering.RegisterAggregates(module);
+            }
+
+            // Destructors can introduce further closed local Types. Drain their ordinary generic entries
+            // to a fixed point, after each body has finished using the reusable layout scratch storage.
+            while (this.generics.HasPendingDestructors)
+            {
+                if (!this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
+                    !this.LowerInstances(c, module, out failure))
+                {
+                    this.resourceLimit = this.generics.ResourceLimitExceeded;
+                    return false;
+                }
+            }
+
+            if (c.IsTestBuild)
+            {
+                module.TestRuntime = Testing.TestRuntime.Create(c.Tests, this.functions);
+                module.Complete();
+                return true;
+            }
+
+            if (c.Binding.Startup.OutputKind == OutputKind.Library)
+            {
+                module.Complete();
+                return true;
             }
 
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))
@@ -104,8 +195,18 @@ public sealed class LlvmEmitter
         finally
         {
             // Never retain a previous parse through the active declaration-to-ABI map.
+            if (!module.IsComplete && this.lowering.AggregateLayouts.ResourceLimitFailure is { } limit)
+            {
+                this.resourceLimit = true;
+                failure = limit;
+            }
+
             this.functions.Clear();
+            this.generics.Clear();
+            c.Ownership.ClearInstances();
+            this.objects.Clear();
             this.lowering.ClearFunctionContext();
+            this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)
             {
                 module.Clear();
@@ -113,7 +214,159 @@ public sealed class LlvmEmitter
         }
     }
 
-    private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind == StartupKind.Explicit;
+    // SPEC 22.3.2: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
+    // arguments need no extension attributes. Binding already made same-named imports agree on one
+    // physical signature and supply kind (SPEC 21.5.2), so they share one declaration.
+    private static bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
+    {
+        failure = null;
+        for (var i = 0; i < imports.Count; i++)
+        {
+            var import = imports[i];
+            var name = LlvmModuleWriter.ExternalName(import.Symbol);
+            FunctionAbi? abi = null;
+            for (var e = 0; e < module.Externals.Count && abi is null; e++)
+            {
+                if (string.Equals(module.Externals[e].Abi.Name, name, StringComparison.Ordinal))
+                {
+                    abi = module.Externals[e].Abi;
+                }
+            }
+
+            if (abi is null)
+            {
+                abi = CreateImportAbi(import, name);
+                if (abi is null)
+                {
+                    failure = "A foreign import needs an unsupported parameter or result representation.";
+                    return false;
+                }
+
+                module.Externals.Add(new(abi, import.Kind == "import"));
+            }
+
+            functions.Add(import.Function, abi);
+        }
+
+        return true;
+
+        static FunctionAbi? CreateImportAbi(LibraryImport import, string name)
+        {
+            var function = import.Function;
+            var result = function.BoundSymbol!.Type!;
+            var resultType = ReferenceEquals(result, BoundType.Unit) ? WindowsLowering.Unit.ComputationType : ImportType(result);
+            var parameters = new AbiParameter[function.Parameters.Count];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (ImportType(function.Parameters[i].Type.BoundType!) is not { } type)
+                {
+                    return null;
+                }
+
+                parameters[i] = new(type, "a" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), AbiParameterKind.Value, i);
+            }
+
+            return resultType is null ? null : new(name, resultType, parameters);
+        }
+
+        // Binding admits only fixed-width integers, f32/f64 and raw pointers (an opaque ptr).
+        static string? ImportType(BoundType type)
+            => ReferenceTypes.IsPointer(type) || type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
+    }
+
+    // Only the selected implicit Application body executes. Other source-module
+    // wrappers are checked by ownership but are not callable implementations.
+    // SPEC 21.3.1 monomorphization: each concrete call context of a universally verified generic body
+    // is analyzed under its closed substitution and lowered as an ordinary concrete body, under the
+    // entry ABI its callers already use. A refused instance fails generation; it never falls back.
+    private bool LowerInstances(Compilation c, EmissionModule module, out string? failure)
+    {
+        failure = null;
+        foreach (var (call, entry) in this.generics.Calls)
+        {
+            // A selected explicit specialization (SPEC 21.3.4) is never pending; a reused entry is lowered once.
+            if (!module.PendingEntries.Contains(entry))
+            {
+                continue;
+            }
+
+            var lowered = false;
+            this.generics.ExpansionParent = entry;
+            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
+            {
+                var function = module.AddFunction(entry.Abi, exported: false);
+                this.lowering.SetInstance(c.Binding, call, entry);
+                try
+                {
+                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
+                }
+                finally
+                {
+                    this.lowering.SetInstance(null, null, null);
+                }
+
+                if (lowered)
+                {
+                    module.NeedsStringComparison |= function.NeedsStringComparison;
+                    this.lowering.RegisterAggregates(module);
+                    module.PendingEntries.Remove(entry);
+                }
+                else
+                {
+                    module.RemoveLastFunction();
+                }
+            }
+
+            this.generics.ExpansionParent = null;
+
+            // No fallback: every generic call context must reach its concrete instance.
+            if (!lowered)
+            {
+                failure = $"Generic instance {Describe(entry)}: {failure ?? "ownership analysis under the substitution failed."}";
+                return false;
+            }
+        }
+
+        return true;
+
+        // The refused instance by its function and closed substitution (type arguments, then length arguments).
+        static string Describe(GenericStoragePlan.CallEntry entry)
+        {
+            var arguments = new string[entry.Arguments.Length + entry.Lengths.Length];
+            for (var i = 0; i < entry.Arguments.Length; i++)
+            {
+                arguments[i] = Text(entry.Arguments[i]);
+            }
+
+            for (var i = 0; i < entry.Lengths.Length; i++)
+            {
+                var length = entry.Lengths[i];
+                arguments[entry.Arguments.Length + i] = length is null ? "?" : length.Parameter?.Name ?? $"{length.Value}";
+            }
+
+            return arguments.Length == 0 ? entry.Template.Body.Function.Name : entry.Template.Body.Function.Name + "<" + string.Join(", ", arguments) + ">";
+        }
+
+        static string Text(BoundType? type)
+        {
+            if (type is null)
+            {
+                return "?";
+            }
+
+            var components = type.Components.Count == 0 ? string.Empty : string.Join(", ", type.Components.Select(Text));
+            return type.Kind switch
+            {
+                BoundTypeKind.Semantics => type.Semantics.ToString().ToLowerInvariant() + "/" + components,
+                BoundTypeKind.FixedArray => $"[{type.Length} of {components}]",
+                BoundTypeKind.Tuple => "(" + components + ")",
+                _ => type.Components.Count == 0 ? type.Name : type.Name + "<" + components + ">",
+            };
+        }
+    }
+
+    private bool SkipGenerated(OwnershipBody body)
+        => body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function);
 
     private string? CheckInputs()
     {
@@ -124,25 +377,43 @@ public sealed class LlvmEmitter
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
 
-        if (!c.Binding.Result.IsComplete || c.Binding.Obligations.Count != 0 || !c.Core.IsValid ||
-            c.Kotonoha.HasSourceErrors || c.Kotonoha.DiagnosticCollection.HasErrors || !startup.IsComplete || !c.Ownership.Result.IsVerified)
+        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !c.Library.ValidateDeclarations() || !c.Library.ValidateBoundDeclarations() ||
+            !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
 
-        if (c.KotonohaArray.Length != 0 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
-            c.Kotonoha.RootKoto.NestedContainers.Count != 0)
+        var supportedStartup = startup.OutputKind switch
         {
-            return "This partial emitter supports Applications without external modules or declaration containers.";
+            OutputKind.Application => startup.Kind is StartupKind.Implicit or StartupKind.Explicit or StartupKind.Test,
+            OutputKind.Library => startup.Kind == StartupKind.None,
+            _ => false,
+        };
+        if (c.KotonohaArray.Length != 0 || !supportedStartup)
+        {
+            return "Emission requires resolved source-module inputs and a supported Application or Library startup plan.";
         }
 
-        // Declaration-only GeneratedFunction is an analysis wrapper, not an unused user function.
-        var members = c.Kotonoha.RootKoto.Members;
-        for (var i = 0; i < members.Count; i++)
+        foreach (var sourceModule in c.SourceModules)
         {
-            if (members[i] is not (FunctionKoto or AliasKoto))
+            if (sourceModule.HasSourceErrors || sourceModule.DiagnosticCollection.HasErrors)
             {
-                return "Additional selected implementation bodies are outside the implemented execution subset.";
+                return "Emission requires every source module to be free of source and module errors.";
+            }
+
+            if (!this.SupportedContainers(sourceModule.RootKoto))
+            {
+                return "A selected declaration container requires unsupported implementation lowering.";
+            }
+
+            // Declaration-only GeneratedFunction is an analysis wrapper, not an unused user function.
+            var members = sourceModule.RootKoto.Members;
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (members[i] is not (FunctionKoto or AliasKoto))
+                {
+                    return "Additional selected implementation bodies are outside the implemented execution subset.";
+                }
             }
         }
 
@@ -155,11 +426,24 @@ public sealed class LlvmEmitter
             }
 
             var function = body.Function;
+            if (GenericStoragePlan.IsGeneric(function))
+            {
+                continue; // Each closed instance is validated by BodyLowering under its substitution (LowerInstances).
+            }
+
+            if (function.BoundSymbol?.Scope.Owner is StructKoto && !function.IsConstructor && !function.IsDestructor &&
+                function.BoundSymbol.ReceiverIndex >= 0 && !ReferenceTypes.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType) &&
+                !ObjectTypes.IsBorrow(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType) &&
+                !StructStorage.IsStruct(function.Parameters[function.BoundSymbol.ReceiverIndex].Type.BoundType))
+            {
+                return "Ordinary structure methods need receiver/call lowering outside this subset.";
+            }
+
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
-                function.IsAnonymous || function.IsSpecialization || function.IsRequirement || function.Captures is { Length: > 0 } ||
-                function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
+                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
+                (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
+                (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)
             {
                 return "A selected function requires unsupported signature, capture or implementation lowering.";
             }
@@ -167,15 +451,30 @@ public sealed class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) || parameter.IsOptional || parameter.DefaultValue is not null ||
-                    (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
-                        !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
+                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                    (parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i)) ||
+                    (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
-                    return "Only required parameters with verified value, owned-slot or shared-string representations are implemented.";
+                    return "Parameters require verified value, owned-slot or shared-string representations and supported scalar defaults.";
                 }
             }
         }
 
         return null;
+    }
+
+    private bool SupportedContainers(DeclarationContainerKoto container)
+    {
+        for (var i = 0; i < container.NestedContainers.Count; i++)
+        {
+            var nested = container.NestedContainers[i];
+            if (nested is not (StructKoto or GroupKoto or EnumKoto or ContractKoto) || !this.SupportedContainers(nested))
+            {
+                return false;
+            }
+        }
+
+        return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto ||
+            (x is PropertyKoto property && StaticScalar.TryGet(property.BoundSymbol?.Property, out _)));
     }
 }

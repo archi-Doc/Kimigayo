@@ -9,17 +9,20 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginRequirementWork> originRequirementNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
-    private readonly HashSet<(OriginRequirementWork Source, OriginRequirementWork Target)> originRequirementEdges = new();
+    private uint originRequirementPass;
+    private uint originRequirementConsumer;
 
     private void ComputeOriginRequirements()
     {
         this.activeOriginRequirements.Clear();
         this.originRequirementQueue.Clear();
-        this.originRequirementEdges.Clear();
+        // Retained work survives between passes so summaries and lists are reused. A pass
+        // stamp keeps declarations that dropped out from accumulating dependents forever.
+        this.originRequirementPass++;
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (node is not (FunctionKoto or DeclarationContainerKoto) || node.BoundSymbol?.Schema is not { } schema)
+            if (node is not (FunctionKoto or DeclarationContainerKoto or PropertyAccessorKoto) || node.BoundSymbol?.Schema is not { } schema)
             {
                 continue;
             }
@@ -29,6 +32,29 @@ public sealed partial class Binding
                 continue;
             }
 
+            if (ReferenceEquals(node, this.Library.Slice.Declaration) && schema.Origins.Count == 1 && schema.GenericSlots.Count == 1)
+            {
+                // The validated intrinsic has compiler-managed shared storage, not a
+                // user Phantom Origin; preserve its published dependency metadata.
+                schema.Origins[0].Variance = OriginVariance.Covariant;
+                schema.Origins[0].LoanRequirement = LoanRequirement.Ref;
+                schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
+            }
+
+            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer && schema.Origins.Count == 1)
+            {
+                schema.Origins[0].Variance = OriginVariance.Covariant;
+                schema.Origins[0].LoanRequirement = LoanRequirement.Uniq;
+            }
+
+            // SPEC 22.1.2.5, 15.3.5: a storage remainder holds the shared or the parent exclusive Loan of its source slot
+            // without a safe stored reference; as a verified boundary Type it keeps that established Loan requirement.
+            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.RefRemainder or KimiDeclarationId.UniqRemainder && schema.Origins.Count == 1)
+            {
+                schema.Origins[0].Variance = OriginVariance.Covariant;
+                schema.Origins[0].LoanRequirement = node.BoundSymbol.LibraryDeclaration == KimiDeclarationId.RefRemainder ? LoanRequirement.Ref : LoanRequirement.Uniq;
+            }
+
             if (!this.originRequirementNodes.TryGetValue(node, out var work))
             {
                 this.originRequirementNodes.Add(node, work = new(node, schema));
@@ -36,6 +62,7 @@ public sealed partial class Binding
 
             work.Schema = schema;
             work.Dependents.Clear();
+            work.Pass = this.originRequirementPass;
             work.Queued = true;
             this.activeOriginRequirements.Add(work);
             this.originRequirementQueue.Enqueue(work);
@@ -43,28 +70,61 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.activeOriginRequirements.Count; i++)
         {
+            // One consumer at a time, so a monotonic stamp on the producer replaces an edge set.
+            this.originRequirementConsumer++;
             this.VisitRequirementTypes(this.activeOriginRequirements[i], collectEdges: true);
         }
 
-        // Only changed summaries wake their consumers; long declaration chains do not rescan the tree.
-        while (this.originRequirementQueue.TryDequeue(out var work))
+        // First discover structural variance. Then close unproven phantom positions as
+        // invariant and propagate that fact through all consumers using the same queue.
+        for (var phase = 0; phase < 2; phase++)
         {
-            work.Queued = false;
-            if (!this.VisitRequirementTypes(work, collectEdges: false))
+            if (phase == 1)
             {
-                continue;
+                foreach (var item in this.activeOriginRequirements)
+                {
+                    for (var i = 0; i < item.Schema.Origins.Count; i++)
+                    {
+                        var origin = item.Schema.Origins[i];
+                        if (origin.Variance == OriginVariance.Unused)
+                        {
+                            origin.Variance = OriginVariance.Invariant;
+                        }
+                    }
+
+                    for (var i = 0; i < item.Schema.GenericSlots.Count; i++)
+                    {
+                        var slot = item.Schema.GenericSlots[i];
+                        if (slot.OriginVariance == OriginVariance.Unused)
+                        {
+                            slot.OriginVariance = OriginVariance.Invariant;
+                        }
+                    }
+
+                    item.Queued = true;
+                    this.originRequirementQueue.Enqueue(item);
+                }
             }
 
-            for (var i = 0; i < work.Dependents.Count; i++)
+            while (this.originRequirementQueue.TryDequeue(out var work))
             {
-                var dependent = work.Dependents[i];
-                if (dependent.Queued)
+                work.Queued = false;
+                if (!this.VisitRequirementTypes(work, collectEdges: false))
                 {
                     continue;
                 }
 
-                dependent.Queued = true;
-                this.originRequirementQueue.Enqueue(dependent);
+                for (var i = 0; i < work.Dependents.Count; i++)
+                {
+                    var dependent = work.Dependents[i];
+                    if (dependent.Queued)
+                    {
+                        continue;
+                    }
+
+                    dependent.Queued = true;
+                    this.originRequirementQueue.Enqueue(dependent);
+                }
             }
         }
     }
@@ -83,6 +143,24 @@ public sealed partial class Binding
             }
 
             if (function.ReturnType?.BoundType is { } result)
+            {
+                Visit(result, 1);
+            }
+        }
+        else if (work.Owner is PropertyAccessorKoto accessor)
+        {
+            var operation = Accessor(accessor);
+            if (operation.Receiver is { } receiver)
+            {
+                Visit(receiver, -1);
+            }
+
+            if (operation.Input is { } input)
+            {
+                Visit(input, -1);
+            }
+
+            if (operation.Result is { } result)
             {
                 Visit(result, 1);
             }
@@ -115,8 +193,10 @@ public sealed partial class Binding
 
     private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer)
     {
-        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) && this.originRequirementEdges.Add((source, consumer)))
+        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) &&
+            source.Pass == this.originRequirementPass && source.Consumer != this.originRequirementConsumer)
         {
+            source.Consumer = this.originRequirementConsumer;
             source.Dependents.Add(consumer);
         }
 
@@ -133,6 +213,10 @@ public sealed partial class Binding
         internal DeclarationSchema Schema { get; set; } = schema;
 
         internal List<OriginRequirementWork> Dependents { get; } = new();
+
+        internal uint Pass { get; set; }
+
+        internal uint Consumer { get; set; }
 
         internal bool Queued { get; set; }
     }

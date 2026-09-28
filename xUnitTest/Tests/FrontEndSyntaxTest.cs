@@ -11,8 +11,74 @@ namespace XunitTest;
 public class FrontEndSyntaxTest
 {
     [Theory]
+    [InlineData("abstract open struct S\n    let value: i32", "abstract")]
+    [InlineData("virtual group G\n    func f() => ()", "virtual")]
+    [InlineData("override rootgroup G\n    let value: i32", "override")]
+    [InlineData("abstract enum E\n    A", "abstract")]
+    [InlineData("abstract contract C\n    func f()", "abstract")]
+    [InlineData("virtual func f() => ()", "virtual")]
+    [InlineData("virtual func f()", "virtual")]
+    [InlineData("public abstract open struct S", "abstract")]
+    [InlineData("virtual override abstract public unsafe func f() => ()", "virtual")]
+    [InlineData("virtual open func f() => ()", "virtual")]
+    [InlineData("abstract specialize func f<i32>() => ()", "abstract")]
+    [InlineData("struct S\n    virtual init() => ()", "virtual")]
+    [InlineData("struct S\n    override public deinit => ()", "override")]
+    [InlineData("struct S\n    virtual public let value: i32", "virtual")]
+    [InlineData("struct S\n    override var value: i32", "override")]
+    [InlineData("struct S\n    abstract computed value: i32\n        get(self: ref/Self) -> i32 => 1", "abstract")]
+    [InlineData("struct S\n    var value: i32\n        abstract get\n        set", "abstract")]
+    [InlineData("struct S\n    var value: i32\n        get\n        override open set", "override")]
+    [InlineData("struct S\n    computed value: i32\n        virtual get(self: ref/Self) -> i32\n            return 1", "virtual")]
+    [InlineData("contract C\n    virtual public func f()", "virtual")]
+    [InlineData("contract C\n    abstract property value: i32 has get", "abstract")]
+    [InlineData("contract C\n    override associate Element", "override")]
+    [InlineData("contract C\n    property value: i32 has abstract open get, set", "abstract")]
+    [InlineData("contract C\n    property value: i32 has get, virtual set", "virtual")]
+    [InlineData("contract C\n    property value: i32\n        abstract get(self: ref/Self) -> i32", "abstract")]
+    [InlineData("func outer()\n    virtual func inner() => ()", "virtual")]
+    [InlineData("#if true\nabstract struct S", "abstract")]
+    [InlineData("#switch\n    #case true\n        virtual func f() => ()", "virtual")]
+    public void UnavailableModifiersReportOneCauseAndRecover(string source, string modifier)
+    {
+        var tree = Parse(source + "\nstruct Following\n");
+        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
+        Assert.Equal("UnavailableFeature_Kd", diagnostic.Entry.Name);
+        Assert.Equal(source.IndexOf(modifier, StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal(modifier.Length, diagnostic.Span.Length);
+        Assert.Contains(modifier, diagnostic.Message);
+        Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
+        VerifyParents(tree.RootKoto);
+    }
+
+    [Theory]
+    [InlineData("struct abstract\n    let override: i32\n    func virtual(self: ref/Self) -> i32 => self.override")]
+    [InlineData("func virtual(x: i32) -> i32 => x\nlet override: i32 = virtual(1)")]
+    [InlineData("let value = x.abstract()\nvirtual(value)")]
+    [InlineData("abstract\nlet next: i32 = 2")]
+    [InlineData("func f()\n    abstract\n    let next: i32 = 2")]
+    [InlineData("func f()\n    abstract\nstruct Next")]
+    [InlineData("abstract /* comment */\nstruct Next")]
+    [InlineData("abstract\r\nfunc next() => ()")]
+    [InlineData("let abstract = func() => ()\nabstract()")]
+    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
+    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
+    public void UnavailableModifierSpellingsRemainOrdinaryNames(string source)
+        => AssertValid(Parse(source));
+
+    [Fact]
+    public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
+    {
+        var tree = Parse("struct S\n    virtual func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
+        Assert.Equal("UnavailableFeature_Kd", Assert.Single(tree.DiagnosticCollection.GetArray()).Entry.Name);
+        var structure = tree.RootKoto.NestedContainers.Single(x => x.Name == "S");
+        Assert.Equal("retained", Assert.IsType<FunctionKoto>(Assert.Single(structure.Members)).Name);
+        Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
+    }
+
+    [Theory]
     [InlineData("let a: [4 of i32] = [1, 2, 3, 4]")]
-    [InlineData("let a: [(N * 2 + 1) of ref/T from source] = values")]
+    [InlineData("let a: [(N * 2 + 1) of ref/T during source] = values")]
     [InlineData("let a: [Sizes.width of [2 of _]] = values")]
     [InlineData("let a: [::width of i32] = values")]
     [InlineData("func f<length N, T>(a: [N of T]) -> [N of T] => a")]
@@ -27,7 +93,7 @@ public class FrontEndSyntaxTest
     [InlineData("let a: [4 of _] = values")]
     [InlineData("let a: List<\n    List<i32>\n> = values")]
     [InlineData("let a: List <\n    List <i32>\n> = values")]
-    [InlineData("func f <\n    T\n>(value: T) => value")]
+    [InlineData("func f <\n    T\n>(! value: T) => value")]
     [InlineData("let a = f<\n    [4 of i32]\n>(values)")]
     [InlineData("func f<\n    length N,\n    T\n>(value: [N of T]) => ()")]
     [InlineData("let a = source\n    .first()\n    .second()")]
@@ -44,7 +110,7 @@ public class FrontEndSyntaxTest
     [InlineData("func f()\n    require valid else => return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
-    [InlineData("enum E origin a\n    A\n    B(ref/T from a)\n    func f() => ()")]
+    [InlineData("enum E {a}\n    A\n    B(ref/T during a)\n    func f() => ()")]
     [InlineData("let a = match value\n    .Some(let x) if x > 0 => x\n    .None => 0\n    _ => -1")]
     [InlineData("let a = match value\n    Option<i32>.Some(var x) => x\n    (let a, (var b, _)) => b\n    (1,) => 1\n    () => 0")]
     [InlineData("open struct Base\nstruct Derived : Base\n    init(value: i32) : base(value)\n        return\n    deinit\n        return")]
@@ -54,8 +120,8 @@ public class FrontEndSyntaxTest
     [InlineData("func f<F>(x: F)\n    F is Callable<ref, (i32) -> bool>\n    return")]
     [InlineData("specialize func f<i32>(x: i32) -> i32 => x")]
     [InlineData("protected internal struct S\n    private protected func f() => ()")]
-    [InlineData("group G\n    func f(other => self: i32) => ()")]
-    [InlineData("struct S\n    func f(self: ref/Self, self => other: i32) => ()")]
+    [InlineData("group G\n    func f(! other => self: i32) => ()")]
+    [InlineData("struct S\n    func f(self: ref/Self, value => other: i32) => ()")]
     public void PreservesSpecifiedSyntax(string source)
     {
         var tree = ParseSuccess(source);
@@ -86,8 +152,8 @@ public class FrontEndSyntaxTest
     [InlineData("let a: [2 of List<[4 of _]>] = values")]
     [InlineData("let a = f<[4 of _]>(values)")]
     [InlineData("struct S\n    func f(self: ref/Self, self: ref/Self) => ()")]
-    [InlineData("struct S\n    func f(other => self: ref/Self) => ()")]
-    [InlineData("enum E\n    A\n    func f(self?: E = E.A) => ()")]
+    [InlineData("struct S\n    func f(! other => self: ref/Self) => ()")]
+    [InlineData("enum E\n    A\n    func f(self: E = E.A) => ()")]
     [InlineData("contract C\n    func f(self: ref/Self, self: ref/Self)")]
     [InlineData("group G\n    static func f() => ()")]
     [InlineData("func f()\n    static let x = 1")]
