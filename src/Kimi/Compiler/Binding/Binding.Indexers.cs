@@ -73,13 +73,21 @@ public sealed partial class Binding
                     return false;
                 }
 
-                // SPEC 4.6.9: several Key conformances are distinct; selecting among them by the key Type remains a boundary (STATUS).
+                // SPEC 4.6.9: several Key conformances are distinct; the key's own Type selects one, and the call then selects
+                // that conformance's index by the same key. An unfitted literal key could fit several and stays ambiguous.
                 this.BindNode(source.Right, scope);
-                result = Fail(source, BindingFailure.Ambiguous);
-                return true;
-            }
+                if (!this.IndexableForKey(owner, indexable, source.Right))
+                {
+                    result = Fail(source, BindingFailure.Ambiguous);
+                    return true;
+                }
 
-            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformanceByDeclaration(owner, uniqIndexable, out _) is not null;
+                exclusiveAvailable = this.Library.UniqIndexable is { } uniqByKey && this.IndexableForKey(owner, uniqByKey, source.Right);
+            }
+            else
+            {
+                exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformanceByDeclaration(owner, uniqIndexable, out _) is not null;
+            }
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
         {
@@ -114,6 +122,35 @@ public sealed partial class Binding
 
         result = Complete(source, element);
         return true;
+    }
+
+    // Whether exactly one conformance of the owner to a bound reference of the Contract declaration takes the key's Type.
+    private bool IndexableForKey(BindingSymbol owner, BindingSymbol contract, Koto keyNode)
+    {
+        var key = KotoHelper.UnwrapParentheses(keyNode);
+        if (key is NumberLiteralKoto or NullLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
+            key.BoundType is not { } type || !this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return false;
+        }
+
+        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            type = type.Components[0]; // The key parameter is ref/Key; a borrowed key names its referent.
+        }
+
+        var found = 0;
+        for (var i = 0; i < identities.Count; i++)
+        {
+            var identity = identities[i];
+            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 &&
+                identity.Contract.Type is { Components: [var argument] } && ReferenceEquals(argument, type))
+            {
+                found++;
+            }
+        }
+
+        return found == 1;
     }
 
     // SPEC 8.4.2, 8.7: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.

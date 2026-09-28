@@ -22,6 +22,20 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 8.4.9: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
+    // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
+    private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    {
+        var head = AssociatedHead(clause);
+        head = head is OriginApplicationKoto applied ? UnwrapAssociatedHead(applied.Type) : head;
+        if (head is not MemberAccessKoto { Left.BoundSymbol: { Type.Kind: BoundTypeKind.Constructed } reference })
+        {
+            return true;
+        }
+
+        return ReferenceEquals(contract, reference) || contract.Contract?.Ancestors.Contains(reference) == true;
+    }
+
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
         => this.FindAssociated(type, scope, name, qualifier, use, out _);
 
@@ -244,6 +258,12 @@ public sealed partial class Binding
         {
             name = member.Right;
             qualifier = this.TypeName(member.Left, scope, false);
+            if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+            {
+                // SPEC 8.4.9: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
+                qualifier = this.BindContractReference(member.Left, qualifier, scope);
+            }
+
             if (qualifier?.Declaration is not ContractKoto)
             {
                 Fail(clause, BindingFailure.InvalidAssociatedType);
@@ -275,6 +295,12 @@ public sealed partial class Binding
         name!.BoundSymbol = associated;
         Complete(name, projection);
         Complete(clause.Left, projection);
+        if (head is MemberAccessKoto qualified && !ReferenceEquals(qualified, clause.Left) && applied is null)
+        {
+            qualified.BoundSymbol = associated;
+            Complete(qualified, projection); // A qualifier with Type arguments keeps the head inside a Type wrapper.
+        }
+
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
         if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
         {
@@ -334,7 +360,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint })
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && SpecifiesContract(clause, path.RootContract))
                 {
                     Collect(constraint, path);
                 }

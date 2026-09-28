@@ -76,6 +76,49 @@ public class IndexableContractTest
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
     }
 
+    // SPEC 8.4.9, 4.6.9: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
+    // through the bound reference; `receiver[key]` selects the conformance whose Key is the key's own Type, for reads and,
+    // through UniqIndexable, for updates.
+    private const string TwoKeys = """
+        struct Name
+            Self is Copy
+            public let id: isize
+            public init(id: isize) => self.id = id
+
+        struct Table
+            Self is UniqIndexable<isize>
+            Self is UniqIndexable<Name>
+            associate Indexable<isize>.Element is i32
+            associate Indexable<Name>.Element is i64
+            var small: i32
+            var large: i64
+            public init(small: i32, large: i64)
+                self.small = small
+                self.large = large
+            public func index(self, key: ref/isize) -> place ref/i32 during self => self.small
+            public func index(self, key: ref/Name) -> place ref/i64 during self => self.large
+            public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.small
+            public func indexUniq(self: uniq/Self, key: ref/Name) -> place uniq/i64 during self => self.large
+
+        """;
+
+    [Fact]
+    public void TheKeyTypeSelectsAmongSeveralConformances()
+    {
+        const string Use = "var table = Table.init(3, 4)\nlet k: isize = 0\nlet n = Name.init(1)\nlet a: i32 = table[k]\nlet b: i64 = table[n]\n" +
+            "table[k] = 30\ntable[n] = 40\nlet c: i32 = table[k]\nlet d: i64 = table[n]\nrequire a == 3 and b == 4 and c == 30 and d == 40 else => $abort(\"index\")\nConsole.writeLine(\"two keys\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractTwoKeys", TwoKeys + Use, "two keys\n");
+    }
+
+    [Theory]
+    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]")]
+    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]")]
+    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(TwoKeys + use);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Fact]
     public void BoundContractReferencesKeepDistinctIdentities()
     {
