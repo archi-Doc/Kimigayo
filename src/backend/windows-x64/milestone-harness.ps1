@@ -59,11 +59,10 @@ function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name,
             'run-input' { Invoke-Kimi @('run', $InputPath) $ExitCode }
         }
         $hex = [Convert]::ToHexString($actual.stdout)
-        # Source/project run prepends a project summary; direct execution must be exact.
+        # Source/project run prepends its project and build summary lines; direct execution must be exact.
         $outputMatches = if ($mode -eq 'run-input') {
             $text = $utf8.GetString($actual.stdout)
-            $summaryEnd = $text.IndexOf("`n")
-            $summaryEnd -ge 0 -and $text.Substring($summaryEnd + 1) -ceq $Stdout
+            $text.EndsWith($Stdout, [StringComparison]::Ordinal) -and ($text.Length -eq $Stdout.Length -or $text[$text.Length - $Stdout.Length - 1] -eq "`n")
         } else { $hex -ceq [Convert]::ToHexString($utf8.GetBytes($Stdout)) }
         if (-not $outputMatches -or $actual.stderr -cne $Stderr) { throw "Output mismatch: $Name.$Level.$mode; stdout=$hex; stderr=$($actual.stderr)" }
         $results.Add(@{ name = "$Name.$Level.$mode"; stdoutHex = $hex; stderr = $actual.stderr; exitCode = $actual.exitCode })
