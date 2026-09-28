@@ -893,8 +893,11 @@ public sealed partial class OwnershipAnalysis
             {
                 var op = KotoHelper.CompoundOperation(binary.Akind);
                 var previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
-                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n.
-                if (!(binary.Left.BoundType?.IsNumeric == true || (ReferenceTypes.IsPointer(binary.Left.BoundType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
+                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n. A generic integer (SPEC 8.4.7.3)
+                // is numeric in each instance; its universal verification has no values.
+                var updatedType = this.Concrete(binary.Left.BoundType);
+                if (!(updatedType?.IsNumeric == true || updatedType?.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection ||
+                    (ReferenceTypes.IsPointer(updatedType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
                 {
                     this.Unsupported(binary);
                 }
@@ -1008,6 +1011,13 @@ public sealed partial class OwnershipAnalysis
         if (leftValue < 0 || rightValue < 0)
         {
             return -1; // Later source operands were checked, but no operator value arrived.
+        }
+
+        if (binary.Akind is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.body.Places[left].Type, this.compilation.PointerWidth) == 128)
+        {
+            // SPEC 8.4.7.3, IMPL 21.5.3: an instance of a generic integer body diagnoses the profile's 128-bit division.
+            this.Unsupported(binary);
+            return -1;
         }
 
         var result = this.Temporary(binary);

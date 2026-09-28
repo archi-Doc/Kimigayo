@@ -216,7 +216,7 @@ public sealed partial class Binding
 
         if (IsUnfittedLiteral(source))
         {
-            return this.FitsInputLiteral(source, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            return this.FitsInputLiteral(source, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
         return source.BoundType is not { } actual ? CandidateApplicability.Pending :

@@ -190,6 +190,10 @@ public sealed partial class Binding
     private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
         => expected ?? (literal.IsInteger ? BoundType.I32 : BoundType.F64);
 
+    // SPEC 8.4.7.3: an untyped literal fits an unbound integer Type only when it fits all twelve integer Types, 0 through 127.
+    private static bool FitsGenericInteger(NumberLiteralKoto literal, bool negative)
+        => literal.IsInteger && literal.TryGetIntegerMagnitude(out var magnitude) && (negative ? magnitude == 0 : magnitude <= 127);
+
     private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
         => literal.IsInteger ? type.IsInteger : type.IsFloatingPoint;
 
@@ -228,9 +232,22 @@ public sealed partial class Binding
         return magnitude <= max;
     }
 
-    private bool FitsInputLiteral(Koto node, BoundType type)
+    // SPEC 8.4.7.3: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
+    // operations of its concrete Type.
+    private bool IsGenericInteger(BoundType? type, BindingScope scope)
+        => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
+
+    private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
+
+    private bool FitsInputLiteral(Koto node, BoundType type, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
+        if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.IsGenericInteger(type, scope))
+        {
+            return FitsGenericInteger(node as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)node).Operand, node is PrefixMinusKoto);
+        }
+
         return node switch
         {
             NumberLiteralKoto number => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
@@ -420,6 +437,11 @@ public sealed partial class Binding
             case InterpolatedStringKoto interpolation:
                 return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
+                if (this.IsGenericInteger(expected, scope))
+                {
+                    return !number.IsInteger ? Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : Fail(node, BindingFailure.InvalidLiteral);
+                }
+
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
@@ -927,6 +949,22 @@ public sealed partial class Binding
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
+            if (this.IsGenericInteger(expected, scope))
+            {
+                if (!number.IsInteger)
+                {
+                    return Fail(unary, BindingFailure.TypeMismatch);
+                }
+
+                if (!FitsGenericInteger(number, unary.Akind == KotoKind.PrefixMinus))
+                {
+                    return Fail(unary, BindingFailure.InvalidLiteral);
+                }
+
+                Complete(number, expected);
+                return Complete(unary, expected);
+            }
+
             // A directly signed literal is fitted as a signed value (SPEC 12.3.1).
             var type = DefaultLiteralType(number, expected);
             if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
@@ -959,7 +997,7 @@ public sealed partial class Binding
             case KotoKind.Not:
                 return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
-                return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+                return operand.IsNumeric || this.IsGenericInteger(operand, scope) ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
                 // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
                 return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
@@ -982,7 +1020,7 @@ public sealed partial class Binding
 
                 // Increment and decrement do not apply to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
-                return destination?.IsInteger == true ? Complete(unary, destination) : Fail(unary, BindingFailure.TypeMismatch);
+                return this.IsIntegerOperand(destination, scope) ? Complete(unary, destination) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : Fail(unary, BindingFailure.TypeMismatch);
@@ -1075,7 +1113,7 @@ public sealed partial class Binding
         var result = assignment ? BoundType.Unit : left;
         if (shift)
         {
-            return left.IsInteger && (right.IsInteger || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
+            return this.IsIntegerOperand(left, scope) && (this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
@@ -1154,8 +1192,9 @@ public sealed partial class Binding
             return Complete(binary, BoundType.Unit);
         }
 
-        // Built-in comparisons retain priority over the user Contract mapping (SPEC 13.4.1).
+        // Built-in comparisons retain priority over the user Contract mapping (SPEC 13.4.1); a generic integer uses them too.
         var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
+        var genericInteger = !primitive && this.IsGenericInteger(left, scope);
         if (comparison && ReferenceTypes.IsPointer(left))
         {
             // SPEC 5.1: same-Type pointers, or a pointer and null, compare addresses; ordering is not defined.
@@ -1166,12 +1205,17 @@ public sealed partial class Binding
         {
             // bool and Unit support equality only; numbers, char, and string are also ordered (SPEC 13.4).
             var ordered = left.IsNumeric || ReferenceEquals(left, BoundType.Char) || ReferenceEquals(left, BoundType.String);
-            if (primitive && (ordered || operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals))
+            if ((primitive && (ordered || operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals)) || genericInteger)
             {
                 return Complete(binary, BoundType.Boolean);
             }
 
             return primitive ? Fail(binary, BindingFailure.TypeMismatch) : this.BindContractComparison(binary, left, scope);
+        }
+
+        if (genericInteger)
+        {
+            return Complete(binary, result); // SPEC 8.4.7.3: every arithmetic, bitwise and remainder operator is defined for integers.
         }
 
         if (left.IsNumeric)

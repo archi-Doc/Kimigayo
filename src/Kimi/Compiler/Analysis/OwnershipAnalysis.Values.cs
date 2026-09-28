@@ -10,7 +10,9 @@ public sealed partial class OwnershipAnalysis
 
     private bool TryScalarLiteral(Koto source, out Int128 value)
     {
-        if (FloatingTypes.Supports(source.BoundType))
+        // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.4.7.3).
+        var type = this.Concrete(source.BoundType);
+        if (FloatingTypes.Supports(type))
         {
             var success = FloatingTypes.TryLiteral(source, out var bits);
             value = bits;
@@ -21,7 +23,7 @@ public sealed partial class OwnershipAnalysis
         var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
         if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude))
         {
-            return ScalarTypes.TryLiteral(source.BoundType, magnitude, negative, this.compilation.PointerWidth, out value);
+            return ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out value);
         }
 
         value = 0;
@@ -130,6 +132,11 @@ public sealed partial class OwnershipAnalysis
 
     private int ComputeUpdate(Koto source, BoundType? type, int previous, int right, KotoKind operation)
     {
+        if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Concrete(type), this.compilation.PointerWidth) == 128)
+        {
+            this.Unsupported(source); // SPEC 8.4.7.3, IMPL 21.5.3: a generic integer instance's 128-bit division.
+        }
+
         var updated = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Produce, source, updated);
         this.RegisterTemporary(updated);

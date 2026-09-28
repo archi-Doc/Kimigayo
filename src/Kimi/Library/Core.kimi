@@ -3,6 +3,7 @@ public contract Owned
 public contract Callable
 public contract Sealed
 public contract ObjectPayload
+public contract PrimitiveInteger
 
 public enum Option<T>
     Self is Copy when T is Copy

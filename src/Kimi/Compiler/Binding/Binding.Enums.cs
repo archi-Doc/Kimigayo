@@ -160,7 +160,7 @@ public sealed partial class Binding
             }
             else if (IsUnfittedLiteral(source))
             {
-                input = this.FitsInputLiteral(source, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+                input = this.FitsInputLiteral(source, type, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
             }
             else
             {

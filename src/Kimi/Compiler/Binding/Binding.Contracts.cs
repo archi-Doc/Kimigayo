@@ -492,9 +492,9 @@ public sealed partial class Binding
             {
                 Fail(use, BindingFailure.InvalidConstraint);
             }
-            else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
+            else if (constraint.Contract?.Intrinsic is IntrinsicKind.ObjectPayload or IntrinsicKind.PrimitiveInteger)
             {
-                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2: users cannot grant ObjectPayload.
+                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2-3: users cannot grant ObjectPayload or PrimitiveInteger.
             }
             else if (constraint.Kind == ConstraintKind.Not)
             {
@@ -613,6 +613,9 @@ public sealed partial class Binding
     {
         // Refinement assumptions are input evidence, not in-progress registrations.
         var premise = type.Symbol?.Declaration is ContractKoto own && this.AvailableContractPremise(own.BoundSymbol!) && IsRefinement(own.BoundSymbol!, contract);
+
+        // SPEC 8.4.7.3: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve Types.
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericInteger(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)

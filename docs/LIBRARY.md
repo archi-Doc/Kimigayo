@@ -26,6 +26,7 @@ These are compiler identities, not user-implementable replacements.
 | `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#86-callable-constraints) |
 | `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#8471-sealed) |
 | `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#8472-objectpayload) |
+| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, Scalar read, Copy, Owned, Equatable, Comparable, Utf8Format and literals 0 through 127; unary `-` is unavailable. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
 
 ### 1.2. Comparison
 

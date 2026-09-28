@@ -38,6 +38,18 @@ public sealed partial class Binding
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
+        if (kind == IntrinsicKind.PrimitiveInteger)
+        {
+            // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            {
+                return false;
+            }
+
+            result = type.Kind == BoundTypeKind.Primitive && type.Semantics == SemanticsKind.Owner && type.IsInteger ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
         if (kind == IntrinsicKind.ObjectPayload)
         {
             if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
@@ -487,6 +499,10 @@ public sealed partial class Binding
                 else if (fact.Kind == ConstraintKind.Contract && IsRefinement(fact.Contract!, work.Intrinsic) && this.AvailableContractPremise(fact.Contract!))
                 {
                     evidence = ConstraintProof.Proven;
+                }
+                else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
+                {
+                    evidence = ConstraintProof.Proven; // SPEC 8.4.7.3: every admitted integer Type is Copy and Owned.
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {

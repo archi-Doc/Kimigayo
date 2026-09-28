@@ -96,6 +96,7 @@ public sealed partial class KimiLibrary
         this.Callable = this.GetSymbol(KimiDeclarationId.Callable)!;
         this.Sealed = this.GetSymbol(KimiDeclarationId.Sealed)!;
         this.ObjectPayload = this.GetSymbol(KimiDeclarationId.ObjectPayload)!;
+        this.PrimitiveInteger = this.GetSymbol(KimiDeclarationId.PrimitiveInteger)!;
         this.Replace = this.GetSymbol(KimiDeclarationId.Replace)!;
         this.Exchange = this.GetSymbol(KimiDeclarationId.Exchange)!;
         this.Swap = this.GetSymbol(KimiDeclarationId.Swap)!;
@@ -166,6 +167,9 @@ public sealed partial class KimiLibrary
     public BindingSymbol Sealed { get; }
 
     public BindingSymbol ObjectPayload { get; }
+
+    /// <summary>Gets the compiler-intrinsic requirement of the twelve built-in integer Types (SPEC 8.4.7.3).</summary>
+    public BindingSymbol PrimitiveInteger { get; }
 
     public BindingSymbol Replace { get; }
 

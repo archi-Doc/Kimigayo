@@ -363,7 +363,7 @@ public sealed partial class Binding
         var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
             PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
             PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
-        var fit = plain && ((target is { IsInteger: true } && literal) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
+        var fit = plain && ((literal && (target is { IsInteger: true } || this.IsGenericInteger(target, scope))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
         var previousLiteral = this.floatingIntegerLiteral;
         BoundType? source;
         try
@@ -418,6 +418,13 @@ public sealed partial class Binding
             syntax is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
         {
             return this.CompleteIdentity(conversion, target);
+        }
+
+        // SPEC 8.4.7.3: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones.
+        if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)))
+        {
+            conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
+            return Complete(conversion, target);
         }
 
         if (source.IsNumeric && target.IsNumeric)

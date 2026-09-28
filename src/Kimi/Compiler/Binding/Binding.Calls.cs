@@ -1038,7 +1038,7 @@ public sealed partial class Binding
                 }
 
                 if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
-                    ScalarTypes.Supports(borrowed.Components[0]) && this.FitsInputLiteral(argument, borrowed.Components[0]))
+                    ScalarTypes.Supports(borrowed.Components[0]) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
                 {
                     // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
                     // its Place Origin binds the parameter's input Origin like any other borrowed temporary.
@@ -1051,7 +1051,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.FitsInputLiteral(argument, type))
+                if (!this.FitsInputLiteral(argument, type, scope))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
