@@ -45,7 +45,7 @@ The root contains the solution, shared build settings, license and contributor i
 
 - `artifacts/verify/`: logs, test results, source identities and replay inputs. Milestone bundles retain their reports and the programs and outputs needed to investigate a result.
 - `artifacts/benchmarks/`: generated measurements and comparison reports.
-- `artifacts/packages/`: NuGet packages and VSIX files.
+- `artifacts/packages/`: Published Kimi binaries, NuGet packages and VSIX files.
 - `artifacts/backend/`: native backend candidates and verification reports.
 - `artifacts/legacy/`: older records retained during the output-directory migration.
 - `artifacts/migrations/`: inventories mapping old output locations to their new locations. Existing raw logs keep their original paths as historical evidence.
@@ -248,6 +248,11 @@ For a permanent setting, open Windows **Environment Variables**, edit your user
 
 ## Development and verification
 
+To publish a Windows x64 NativeAOT Release build, run `./scripts/build-kimi.ps1`.
+It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes to
+`artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled.
+Both build scripts resolve paths from their own location and stop on command failures.
+
 Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. Use the verification script for changes; a direct `dotnet build` is not verification evidence.
 
 ```powershell
@@ -285,12 +290,11 @@ The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check
 2. Package and install the extension from the repository root:
 
    ```powershell
-   npm --prefix src/kimi-ext ci
-   npm --prefix src/kimi-ext run package
+   ./scripts/build-extension.ps1
    code --install-extension .\artifacts\packages\kimi-ext.vsix --force
    ```
 
-   Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
+   The script restores locked npm dependencies and packages the current version without incrementing it. Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
 
 3. Run **Preferences: Open User Settings (JSON)** and set your actual compiler path:
 
