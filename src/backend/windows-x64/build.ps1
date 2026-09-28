@@ -12,7 +12,9 @@ $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
-$outDir = Join-Path $PSScriptRoot 'bin'
+$outDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64'))
+$workDir = Join-Path $PSScriptRoot ('../../../temp/backend-build/' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $reportPath = Join-Path $outDir 'verification.json'
 # Invalidate the previous run before invoking any compiler or executable.
@@ -53,11 +55,11 @@ $tools['llvm-dlltool'] = Tool 'llvm-dlltool'
 $toolIdentities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool'] -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
 $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 @{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
-$kernel = New-KimiKernel32Library $tools (Join-Path $outDir 'kernel32.lib')
+$kernel = New-KimiKernel32Library $tools (Join-Path $workDir 'kernel32.lib')
 $kernelPath = $kernel.path
 $objects = @()
 foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
-    $obj = Join-Path $outDir "$name.obj"
+    $obj = Join-Path $workDir "$name.obj"
     Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot "src/$name.S"), '-o', $obj)
     $objects += $obj
     $inspection = & $tools['llvm-readobj'] --file-headers --symbols --unwind --coff-directives $obj | Out-String
@@ -72,7 +74,7 @@ foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
 }
 $archive = Join-Path $outDir 'kimi_backend_windows_x64_v1.lib'
 $librarian = (Resolve-Path -LiteralPath $tools['llvm-lib']).Path
-Push-Location -LiteralPath $outDir
+Push-Location -LiteralPath $workDir
 try {
     # COFF archive member names must not include the builder's checkout path.
     Run $librarian (@('/nologo', "/out:$archive") + @($objects | ForEach-Object { [IO.Path]::GetFileName($_) }))
@@ -87,23 +89,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect archive exports' }
 $symbols = @([regex]::Matches($defined, '(?m)^(\S+) T ') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
 if (($symbols -join ',') -cne '__chkstk,memcmp,memcpy,memmove,memset' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
 
-$probe = Join-Path $outDir 'probe.obj'
+$probe = Join-Path $workDir 'probe.obj'
 Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot 'tests/probe.S'), '-o', $probe)
-$inputIr = Join-Path $outDir 'native.ll'
+$inputIr = Join-Path $workDir 'native.ll'
 Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-S', '-emit-llvm', '-O0', '-Xclang', '-disable-O0-optnone', '-ffreestanding', '-fno-builtin', '-fno-stack-protector', '-fno-lto', '-fasynchronous-unwind-tables', '-march=x86-64', '-mno-avx', (Join-Path $PSScriptRoot 'tests/native.c'), '-o', $inputIr)
 Protect-KimiLlvmPaths $inputIr
 foreach ($level in @('O0', 'O2')) {
     $ir = $inputIr
     Run $tools.opt @('-passes=verify', '-disable-output', $ir)
     if ($level -eq 'O2') {
-        $ir = Join-Path $outDir 'native.O2.ll'
+        $ir = Join-Path $workDir 'native.O2.ll'
         Run $tools.opt @('-S', '-passes=default<O2>', $inputIr, '-o', $ir)
         Protect-KimiLlvmPaths $ir
         Run $tools.opt @('-passes=verify', '-disable-output', $ir)
     }
-    $obj = Join-Path $outDir "native.$level.obj"
+    $obj = Join-Path $workDir "native.$level.obj"
     Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir) $obj
-    $exe = Join-Path $outDir "native.$level.exe"
+    $exe = Join-Path $workDir "native.$level.exe"
     Run $tools['lld-link'] @($obj, $probe, $archive, $kernelPath, '/entry:test_entry', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe")
     # Bound a broken helper test; never leave a hung executable behind.
     $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
@@ -125,7 +127,7 @@ foreach ($file in $inputFiles) {
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."
 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($unverified -or $archiveHash -cne $profile.artifactSha256) {
-    Write-Warning 'Candidate retained in src/backend/windows-x64/bin; toolchain library was not updated. Installation requires pinned tools and the adopted archive hash.'
+    Write-Warning 'Candidate retained in artifacts/backend/windows-x64; toolchain library was not updated. Installation requires pinned tools and the adopted archive hash.'
 }
 else {
     $libraryDirectory = Join-Path $ToolchainRoot 'windows_x64'

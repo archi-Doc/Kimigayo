@@ -9,7 +9,7 @@ $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $source = Join-Path $repo 'tests/milestones/Milestone1.kimi'
-$work = Join-Path $repo "bin/milestone1/$Configuration/$([guid]::NewGuid().ToString('N'))"
+$work = Join-Path $repo "artifacts/verify/milestone1/$Configuration/$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $report = Join-Path $work 'verification.json'
 @{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $report

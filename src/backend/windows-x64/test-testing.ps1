@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $Compiler = 'src/Kimi/bin/Debug/net10.0/Kimi.dll',
-    [string] $ResultRoot = 'bin/test-profile-verification'
+    [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/test-profile-verification')
 )
 $ErrorActionPreference = 'Stop'
 $Compiler = [IO.Path]::GetFullPath($Compiler)

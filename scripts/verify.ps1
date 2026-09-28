@@ -1,4 +1,4 @@
-# Kimigayo verification entry point. Evidence goes to bin/verify/<timestamp>-<mode>[-<name>]/.
+# Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
 # Unit mode (per implementation unit): Debug build with warnings as errors, the selected xUnit
 # classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
@@ -35,7 +35,8 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
 $label = if ($Name) { "$stamp-$($Mode.ToLowerInvariant())-$Name" } else { "$stamp-$($Mode.ToLowerInvariant())" }
-$evidence = Join-Path $repo "bin/verify/$label"
+$evidence = Join-Path $repo "artifacts/verify/$label"
+$work = Join-Path $repo "temp/verify/$label"
 New-Item -ItemType Directory $evidence | Out-Null
 $steps = [Collections.Generic.List[object]]::new()
 $failed = $false
@@ -114,7 +115,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
-        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $evidence "native$suffix") } $log
+        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") } $log
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
         Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
@@ -152,7 +153,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

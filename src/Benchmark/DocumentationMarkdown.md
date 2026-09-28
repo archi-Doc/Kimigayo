@@ -331,9 +331,9 @@ Run from the repository root in PowerShell:
 ```powershell
 dotnet build Kimigayo.slnx -c Release --no-restore
 $env:DOTNET_TieredCompilation = '0'
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown bin/documentation-markdown/comparison.json
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown diagnostics bin/documentation-markdown/diagnostics.json
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown paired bin/documentation-markdown/dm4-baseline-binaries/Kimi.dll bin/documentation-markdown/paired.json
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown artifacts/benchmarks/documentation-markdown/comparison.json
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown diagnostics artifacts/benchmarks/documentation-markdown/diagnostics.json
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown paired artifacts/benchmarks/documentation-markdown/dm4-baseline-binaries/Kimi.dll artifacts/benchmarks/documentation-markdown/paired.json
 ```
 
 For the last command, preserve a Release build of commit `4c53331` **with its DLL
@@ -422,7 +422,7 @@ Reproduce after a Release build:
 
 ```powershell
 $env:DOTNET_TieredCompilation = '0'
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown output bin/documentation-markdown/dm5-output.json
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --documentation-markdown output artifacts/benchmarks/documentation-markdown/dm5-output.json
 ```
 
 The switch retains all prior conformance/difference tests, adds 320 exact official
@@ -467,4 +467,4 @@ workload uses 81% of the time and 73% of its allocation. ASCII URL time was abou
 9% higher in this small run, while its allocation and both parse allocations were
 unchanged. These are bounded microbenchmarks, not a uniform throughput improvement
 or a whole-compiler speed claim. The local probe and intermediate reports are in
-`bin/DocumentationReview/`; the final samples are retained above.
+`artifacts/benchmarks/DocumentationReview/`; the final samples are retained above.

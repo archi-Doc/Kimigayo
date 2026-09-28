@@ -11,7 +11,7 @@ $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $source = Join-Path $repo 'tests/milestones/Milestone5.kimi'
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $compilerHash = (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash
-$work = Join-Path $repo "bin/milestone5/$Configuration/$([guid]::NewGuid().ToString('N'))"
+$work = Join-Path $repo "artifacts/verify/milestone5/$Configuration/$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $report = Join-Path $work 'verification.json'
 @{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $report

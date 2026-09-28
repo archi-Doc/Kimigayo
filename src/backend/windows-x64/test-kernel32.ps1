@@ -17,7 +17,7 @@ foreach ($name in @('llvm-dlltool','llvm-readobj')) { $tools[$name] = (Resolve-P
 $identity = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
 if (-not $identity.hashMatched) { throw 'Pinned dlltool required' }
 $definition = Get-KimiKernel32Definition
-$root = Join-Path $PSScriptRoot ('bin/kernel32-tests/' + [guid]::NewGuid().ToString('N'))
+$root = Join-Path $PSScriptRoot ('../../../temp/kernel32-tests/' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $root | Out-Null
 $hashes = @()
 foreach ($name in @('first checkout', 'different checkout')) {

@@ -110,7 +110,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../../docs/dev/PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`bin/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). |
+| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). |
 | 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | IN_PROGRESS | The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references. The harness additionally checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Session verification passes; borrowing entry protocols, parameterized associated Types, LendingIterator and standard storage/adapter migration remain. |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (123 checks per configuration); shared string iteration is a positive case, while zero-sized Array elements retain an ownership-stage unsupported diagnostic. Allocation/cost probes pass. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../../docs/dev/PLAN_HISTORY.md#review-remediation). |
@@ -120,9 +120,9 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 34 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnresolvedBinding_Kd` at `Kimi.Intrinsics.makeRc`: the rc/arc creation and clone intrinsics have no declarations (PLAN G4). The payload, dependency-carrying payload, consuming `rc/Payload` parameter and `objref` view declarations bind. |
 | 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Node>`: `Weak<S>` is not formed and the Weak/cyclic intrinsics are undeclared (PLAN G4). |
 | 36 | YES | PASS | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
-| 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `bin/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. |
+| 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Lamp>` in the static registry; payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
-| 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `bin/verify/20260926-225920-160-session-p39-completion`). |
+| 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 
 [Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
@@ -323,7 +323,7 @@ It verifies LLVM IR through the normal build pipeline, runs the generated native
 executables and CLI `run`, and checks exact UTF-8 stdout, empty stderr, and exit 0.
 Separate variants cover owned string Move, Unicode, embedded NUL, empty strings,
 and ten rejected inputs. Results and build identities are retained under
-`bin/milestone1/<configuration>/<run-id>/`. Debug is also supported. The compiler
+`artifacts/verify/milestone1/<configuration>/<run-id>/`. Debug is also supported. The compiler
 must be built before running the script; it does not build or publish NativeAOT.
 
 The program numbers here are independent of PLAN.md's broader M stages.
@@ -359,7 +359,7 @@ native execution plus both forms of CLI `run`. Normal output is exactly
 stdout, reports `KIMI_E_ABORT: Unexpected sum` at line 13, column 5 on stderr,
 and exits 1 without printing `Done.`. Six invalid inputs must fail before IR or
 executable publication. Reports and build identities remain under
-`bin/milestone2/<configuration>/<run-id>/`; Debug is also supported.
+`artifacts/verify/milestone2/<configuration>/<run-id>/`; Debug is also supported.
 
 `AbortEmissionTest` additionally generates native fixtures for UTF-8/NUL/empty
 messages, owned strings, shadowing, nested Abort, one-time argument evaluation,
@@ -402,7 +402,7 @@ return value (the original successful output remains unchanged). Ten invalid
 argument/result/startup/defer/ownership inputs must fail before emission.
 All variants are generated separately; the milestone file is never edited.
 Reports and source/compiler/build identities remain in
-`bin/milestone3/<configuration>/<run-id>/`; Debug is also supported.
+`artifacts/verify/milestone3/<configuration>/<run-id>/`; Debug is also supported.
 
 ## Milestone 4: struct ownership and destruction
 
@@ -442,7 +442,7 @@ prints only `Counter created.`, reports Abort at 14:9 and exits 1 without either
 defer or deinit. A destructor-inspection variant verifies the value is still 55
 at destruction. Twelve invalid inputs must fail before IR/executable publication.
 Variants never edit the checked-in program. Reports and build/source/compiler
-identities are under `bin/milestone4/<configuration>/<run-id>/`; Debug is supported.
+identities are under `artifacts/verify/milestone4/<configuration>/<run-id>/`; Debug is supported.
 After running managed tests, related structure fixtures (including string release
 audits) can be executed with
 `./src/backend/windows-x64/test-scalars.ps1 -FixturePattern 'Struct*.ll'`.
@@ -497,7 +497,7 @@ The Abort variants exit 1 with the expected diagnostic and no termination cleanu
 Invalid cases include mutation/Move/replacement while deinit needs the borrow,
 temporary escape, shared writes, exclusive aliasing and parent access during a
 required reborrow. Reports and source/compiler/build identities are retained under
-`bin/milestone5/<configuration>/<run-id>/`. The script does not run NativeAOT.
+`artifacts/verify/milestone5/<configuration>/<run-id>/`. The script does not run NativeAOT.
 
 ## Milestone 6: value-producing control flow
 
@@ -540,7 +540,7 @@ wrong transfer targets, result mismatches (including unreachable results), impli
 Unit, a normally continuing require failure body, non-bool guards, non-exhaustive
 match and escaped arm-local bindings. Rejections must precede IR/executable
 publication. Reports and source/compiler/build
-identities remain under `bin/milestone6/<configuration>/<run-id>/`. Debug is also
+identities remain under `artifacts/verify/milestone6/<configuration>/<run-id>/`. Debug is also
 supported. The script does not build or run NativeAOT.
 
 ## Milestone 7: arrays and nested iteration
@@ -590,7 +590,7 @@ inputs rejected before emission. It checks LLVM verification, linking, exact nat
 stdout/stderr and exit codes, plus both CLI `run` forms. Successful output is the
 five lines above, stderr is empty and exit is 0. Bounds failures report the exact
 source position and `KIMI_E_INDEX_BOUNDS`, then exit 1. Reports and source/compiler/
-build identities are retained under `bin/milestone7/<configuration>/<run-id>/`.
+build identities are retained under `artifacts/verify/milestone7/<configuration>/<run-id>/`.
 Debug is supported; NativeAOT is not used.
 
 The current executable subset supports the `indices` ResolvedRange adapter and
@@ -674,7 +674,7 @@ first/last/singleton matches, absence, nonempty exhaustion, i64 instantiation an
 Abort without cleanup. Eight invalid programs check payload/callback Types, arity,
 Copy constraints, lengths, coverage, moved callbacks and local borrow escape.
 Reports and build identities are
-retained under `bin/milestone9/<configuration>/<run-id>/`. Debug is also supported;
+retained under `artifacts/verify/milestone9/<configuration>/<run-id>/`. Debug is also supported;
 the script does not build or run NativeAOT.
 
 ## Milestone 10: patterns inside result-producing control flow
@@ -717,7 +717,7 @@ stderr is empty and exit is 0. Abort exits 1 without the main defer. Invalid
 payload/pattern shapes, duplicate names, candidate assignment, wrong guard Types,
 missing Cases/targets, uninitialized storage and escaped bindings fail before
 IR or executable publication. Reports with source/compiler/build identities are
-retained under `bin/milestone10/<configuration>/<run-id>/`. Debug is also supported;
+retained under `artifacts/verify/milestone10/<configuration>/<run-id>/`. Debug is also supported;
 the script does not build or run NativeAOT. This independent program's completion
 does not imply completion of program 9 or of broader compiler plan stages.
 
@@ -769,7 +769,7 @@ exact stdout/stderr and exit status through native execution and both CLI run
 forms. Separate variants change default/specialized weights, the specialization
 key, array lengths and identifiers; ten invalid inputs must fail before emission.
 Debug is also supported. Reports and build/source/compiler hashes are retained
-under `bin/milestone11/<configuration>/<run-id>/`. This literal-only static path
+under `artifacts/verify/milestone11/<configuration>/<run-id>/`. This literal-only static path
 does not implement effectful initialization or mutable static storage. Closed
 Type specializations without inherited defaults, Constraints or explicit Origin
 binders are supported here; broader specialization forms remain explicit limits.
@@ -877,7 +877,7 @@ Verified program-14 reproduction (build the selected compiler configuration firs
 
 Debug is also supported. The script checks the unchanged target, O0/O2 copies,
 input/name/limit variants and rejected ownership/call variants. It writes reports
-under `bin/milestone14/<configuration>/<run-id>/` and does not run NativeAOT.
+under `artifacts/verify/milestone14/<configuration>/<run-id>/` and does not run NativeAOT.
 [STATUS](../../docs/STATUS.md) and [execution evidence](../../docs/dev/PLAN_HISTORY.md#program14-completion)
 record the verified source state and remaining object/generic boundaries.
 
@@ -929,7 +929,7 @@ destructor messages and mutation after the last borrow use, plus five invalid
 variants at both O0/O2. Normal runs check exact stdout, empty stderr and exit 0
 through direct execution and both CLI run forms. Builds verify LLVM before
 linking. Debug is also supported; NativeAOT is not run. Source/compiler hashes
-and reports are saved under `bin/milestone15/<configuration>/<run-id>/`.
+and reports are saved under `artifacts/verify/milestone15/<configuration>/<run-id>/`.
 
 Focus: [initialization and Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#151-initialization-and-consume-analysis),
 [Loan conflicts](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts),
@@ -1326,7 +1326,7 @@ passes. `CopyPropertyEmissionTest` adds 41 focused cases, including 21 fixtures
 verified and executed at O0/O2, abrupt RHS evaluation, prefix/postfix updates,
 getter-result projection/borrowing, and direct Move permissions. Completed
 Debug/Release full suites each pass 12,440 tests. Evidence is in
-`bin/verify/20260924-111727-097-session-p23-completion`; the earlier-program
+`artifacts/verify/20260924-111727-097-session-p23-completion`; the earlier-program
 regression portion was cancelled at the user's request, and target verification
 finished separately. No later-program implementation was started.
 
@@ -1636,7 +1636,7 @@ cases independently of the canonical target. Companion managed/native
 tests cover primitive boundaries, evaluation/destruction order and NaN mapping.
 The review remediation unit now passes the unchanged target and every Debug
 harness case, 415 related managed tests and 146 native O0/O2 executions
-(`bin/verify/20260924-021918-773-unit-comparison-composition-regressions`).
+(`artifacts/verify/20260924-021918-773-unit-comparison-composition-regressions`).
 Composite comparisons preserve witness effects and short-circuit order; floating
 Tuple operators retain unordered NaN results, while Contract equality is reflexive.
 The measured warm Tuple-operator Binding and native floating-composition workloads
@@ -2017,7 +2017,7 @@ All six sources pass syntax parsing, and the source catalog records their stages
 Programs 34, 35, 38 and 39 fail Binding at the anchors in the status table,
 Program 36 binds and stops at ownership analysis of its static group, and
 Program 37 binds, verifies and runs natively through its Debug harness
-(27 checks in `bin/verify/20260926-161205-335-unit-p37-2`: unchanged target,
+(27 checks in `artifacts/verify/20260926-161205-335-unit-p37-2`: unchanged target,
 `IndexTail` and `ResolvedTail` variants and three rejections at O0/O2). Expected output for the
 pending programs is specification-derived (Program 39: proposal-derived), not a
 passing test claim, and their native tests are NOT_RUN. Program 37's Release

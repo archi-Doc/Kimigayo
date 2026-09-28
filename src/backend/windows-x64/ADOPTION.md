@@ -6,7 +6,7 @@ The supply catalog is `profile.json`, embedded by the compiler and read by the b
 4ef5b90f70bf22dea6fd2a6fb495f11025e3ecf4b7afa68b356801c9252c5d26
 ```
 
-This replaces the ABI 1 four-symbol archive `30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd`. The existing four members are unchanged. Filename-only archive member names avoid checkout-path dependence. Local builds still report a *tested candidate*: their actual hash must match the catalog before use. Pinned, verified reproductions are installed into the selected toolchain's `windows_x64` directory; other candidates remain in `bin/` without replacing the installed archive. A different archive needs renewed review, verification and an immutable shared package release. These changes do not publish a package.
+This replaces the ABI 1 four-symbol archive `30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd`. The existing four members are unchanged. Filename-only archive member names avoid checkout-path dependence. Local builds still report a *tested candidate*: their actual hash must match the catalog before use. Pinned, verified reproductions are installed into the selected toolchain's `windows_x64` directory; other candidates remain in `artifacts/backend/windows-x64/` without replacing the installed archive. A different archive needs renewed review, verification and an immutable shared package release. These changes do not publish a package.
 
 ## Assembly and ABI review
 
@@ -26,4 +26,4 @@ Generated string-comparison modules use memcmp for content equality and common-p
 
 The independent runtime adapter suite covers partial/failed writes, invalid handles and lengths, nonrecursive diagnostics, allocation/free failures, Static/Heap destruction and no cleanup after Abort. String comparison adds no runtime operation or Windows API. Kernel32 imports continue to come from project-owned `kernel32.def` and the pinned llvm-dlltool executable; their supply identities are unchanged.
 
-Generated reports retain tool, source and archive hashes in `bin/verification.json`; runtime results are under `bin/emission-native/{Debug,Release}`. Scalar object dependency lists are under the repository's `bin/scalar-native`. Reports are local evidence, not committed binaries. The review does not claim general borrow/object execution, i128 helpers, complete machine-state exploration or measured throughput improvements. NativeAOT tests were not run for C.51.
+Generated reports retain tool, source and archive hashes in `artifacts/backend/windows-x64/verification.json`; runtime results are under `artifacts/verify/emission-native/{Debug,Release}`. Scalar object dependency lists are under the repository's `artifacts/verify/scalar-native`. Reports are local evidence, not committed binaries. The review does not claim general borrow/object execution, i128 helpers, complete machine-state exploration or measured throughput improvements. NativeAOT tests were not run for C.51.

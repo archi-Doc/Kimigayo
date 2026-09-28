@@ -27,7 +27,7 @@ if (-not $source.Equals($ToolchainRoot.TrimEnd('\', '/'), [StringComparison]::Or
 }
 & (Join-Path $PSScriptRoot 'build.ps1') -ToolchainRoot $ToolchainRoot
 $installed = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
-$candidate = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'bin/verification.json') -Raw | ConvertFrom-Json
+$candidate = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64/verification.json') -Raw | ConvertFrom-Json
 if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain -or $candidate.artifactSha256 -cne $profile.artifactSha256 -or
     (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) {
     throw 'Toolchain setup did not produce the adopted backend. Review the candidate report.'

@@ -208,7 +208,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile && node scripts/prepare-package.mjs",
-    "package": "npx @vscode/vsce@4.0.0 package -o kimi-ext.vsix",
+    "package": "npx @vscode/vsce@4.0.0 package -o ../../artifacts/packages/kimi-ext.vsix",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",

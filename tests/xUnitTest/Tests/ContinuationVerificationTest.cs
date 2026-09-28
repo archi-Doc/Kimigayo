@@ -188,7 +188,7 @@ public class ContinuationVerificationTest
             results.Add(new { Guards = count, RetainedRecords = retained, AllocatedBytes = allocated, AnalysisIterations = 64, ElapsedSeconds = Stopwatch.GetElapsedTime(start).TotalSeconds });
         }
 
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../bin/continuation-verification"));
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/benchmarks/continuation-verification"));
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, Configuration + "-growth.json"), System.Text.Json.JsonSerializer.Serialize(results));
     }

@@ -1,8 +1,9 @@
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 const extensionRoot = path.resolve(import.meta.dirname, '..');
 const repositoryRoot = path.resolve(extensionRoot, '../..');
+await mkdir(path.join(repositoryRoot, 'artifacts', 'packages'), { recursive: true });
 const readme = (await readFile(path.join(repositoryRoot, 'README.md'), 'utf8')).replace(/\r\n/g, '\n');
 const heading = '## Visual Studio Code\n';
 const start = readme.indexOf(heading);

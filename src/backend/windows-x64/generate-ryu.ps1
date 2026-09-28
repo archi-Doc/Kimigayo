@@ -8,7 +8,7 @@ $profile = Read-KimiWindowsProfile
 $clang = (Get-KimiLlvmToolIdentity (Join-Path $toolRoot 'clang.exe') $profile.llvmVersion).path
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $vendor = Join-Path $repo 'src/third_party/ryu'
-$build = Join-Path $repo 'bin/ryu'
+$build = Join-Path $repo 'temp/ryu'
 $include = Join-Path $build 'include'
 New-Item -ItemType Directory -Path $include -Force | Out-Null
 $headers = @{

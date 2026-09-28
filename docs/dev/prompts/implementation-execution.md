@@ -1,6 +1,6 @@
 # Kimigayo Implementation Execution
 
-Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, committed units. Spend the time on implementation, not on records: commits and `bin/verify/` are the evidence.
+Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, committed units. Spend the time on implementation, not on records: commits and `artifacts/verify/` are the evidence.
 
 ## Inputs
 
@@ -33,7 +33,7 @@ reproducer (a failing test or program variant)
 
 - Keep units small enough to verify in minutes. Split large work into committed steps that each keep the tree green.
 - Unit verification covers only the related tests, native fixtures and harnesses. Do not run the full Debug/Release suites per unit.
-- Never edit sources while a build or `scripts/verify.ps1` run is in progress. `scripts/verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `bin/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
+- Never edit sources while a build or `scripts/verify.ps1` run is in progress. `scripts/verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `temp/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
 - Write test source strings in C# with the Edit tool; shell heredocs corrupt backslashes.
 
 ## 3. Correctness rules

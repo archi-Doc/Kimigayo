@@ -149,7 +149,7 @@ public class ScalarEmissionTest
     internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
     {
         var path = Environment.GetEnvironmentVariable("KIMI_FIXTURE_DIRECTORY") ??
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../bin/scalar-fixtures"));
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/scalar-fixtures"));
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);

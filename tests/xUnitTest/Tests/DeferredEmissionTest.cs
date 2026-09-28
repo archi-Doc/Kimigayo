@@ -214,7 +214,7 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
         var body = c.Ownership.Bodies[0];
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../bin/deferred-growth"));
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/benchmarks/deferred-growth"));
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, $"depth-{depth}.txt"), $"depth={depth}; operations={body.Operations.Count}; places={body.Places.Count}; defers={body.DeferredPlans.Count}; locals={body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local)}");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));

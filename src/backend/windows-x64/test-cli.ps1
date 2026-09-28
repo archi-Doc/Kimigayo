@@ -11,7 +11,7 @@ $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
-$work = Join-Path $repo ('bin/cli-tests/' + [guid]::NewGuid().ToString('N') + '/project with spaces')
+$work = Join-Path $repo ('artifacts/verify/cli-tests/' + [guid]::NewGuid().ToString('N') + '/project with spaces')
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $project = Join-Path $work 'Hello.kimiproj'
 $source = Join-Path $work 'Hello.kimi'

@@ -12,8 +12,8 @@ if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
-$fixtures = Join-Path $repo "bin/emission-fixtures/$Configuration"
-$out = Join-Path $repo "bin/emission-native/$Configuration"
+$fixtures = Join-Path $repo "temp/emission-fixtures/$Configuration"
+$out = Join-Path $repo "artifacts/verify/emission-native/$Configuration"
 New-Item -ItemType Directory -Force $out | Out-Null
 $report = Join-Path $out 'verification.json'
 @{ status = 'incomplete' } | ConvertTo-Json | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
@@ -29,8 +29,8 @@ $identities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
 @{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 $kernel = New-KimiKernel32Library $tools (Join-Path $out 'kernel32.lib')
 $Kernel32 = $kernel.path
-$archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
-$candidate = Get-Content (Join-Path $PSScriptRoot 'bin/verification.json') -Raw | ConvertFrom-Json
+$archive = Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64/kimi_backend_windows_x64_v1.lib'
+$candidate = Get-Content (Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64/verification.json') -Raw | ConvertFrom-Json
 if (-not $candidate.reportedVersionsMatched -or $candidate.unverifiedToolchain -or $candidate.llvmVersion -cne $expectedVersion -or $candidate.status -cne 'tested-candidate' -or
     (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $candidate.artifactSha256) { throw 'Run the pinned native backend verification first' }
 function Invoke-Tool([string] $exe, [string[]] $arguments) {

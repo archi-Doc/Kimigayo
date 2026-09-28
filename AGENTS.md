@@ -34,8 +34,14 @@
 - `docs/LIBRARY.md` lists the public Kimi declarations (Types, Contracts, groups, functions and Properties) with a brief guarantee each. Update it in the same commit that adds, removes or changes a public Kimi declaration. The specification remains the authority, and `src/Kimi/Library/README.md` covers embedding and implementation policy.
 - `docs/dev/PLAN.md` records the current plan only: scope, working rules, current position, milestone order with completion conditions, next actions and open issues. Keep it under 200 lines. Deferred items (Appendix D) are not planned there.
 - `docs/STATUS.md` summarizes product-wide implemented capabilities, verified support boundaries, and remaining limitations. Do not describe planned or unverified work as completed support. Update it only when a support boundary changes.
-- `docs/dev/PLAN_HISTORY.md` holds a few lines per session. Detailed evidence lives in commits and `bin/verify/`; records before the 2026-09-22 compaction are in git (`git show 32324537:PLAN_HISTORY.md`).
+- `docs/dev/PLAN_HISTORY.md` holds a few lines per session. Detailed evidence lives in commits and `artifacts/verify/`; records before the 2026-09-22 compaction are in git (`git show 32324537:PLAN_HISTORY.md`).
 - The language is pre-alpha: a specification change needs neither a language-version bump nor breaking-change or migration documentation. Update the affected specification chapters, examples and milestone programs in place.
+
+# Generated Files
+
+- Put disposable repository work in `temp/`; it may be deleted when no build or test is running.
+- Keep verification evidence in `artifacts/verify/`, measurements in `artifacts/benchmarks/`, and distribution packages in `artifacts/packages/`. Retain failed-run evidence too.
+- Both roots are ignored by Git; retain or back up artifacts separately. Keep standard project-local `bin/` and `obj/` paths unchanged.
 
 # Implementation Workflow
 

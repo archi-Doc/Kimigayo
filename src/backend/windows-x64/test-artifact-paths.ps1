@@ -14,7 +14,7 @@ if ($json.path -cne '/_/project\bin\file.obj' -or $json.tool -cne '/_/user\tools
 $unrelated = ConvertTo-KimiArtifactText "$project-other/file.obj" -ProjectRoot $project -UserRoot ''
 if ($unrelated -cne "$project-other/file.obj") { throw 'Matched a partial directory name' }
 
-$out = Join-Path $PSScriptRoot 'bin'
+$out = Join-Path $PSScriptRoot '../../../temp/backend-path-tests'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $path = Join-Path $out ('path-test-' + [guid]::NewGuid().ToString('N') + '.ll')
 try {

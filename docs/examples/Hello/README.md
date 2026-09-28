@@ -62,4 +62,4 @@ dotnet test tests/xUnitTest/xUnitTest.csproj -c Release
 ./src/backend/windows-x64/test-cli.ps1 -MismatchedLlvmBin 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin'
 ```
 
-Unit tests export inspection fixtures under ignored `bin/emission-fixtures`. The native harness separately verifies/links/runs O0/O2 fixtures and tests fault-injecting adapters without changing the production Windows imports. Reports under `bin/emission-native` start incomplete and become passed only when every native case succeeds.
+Unit tests export inspection fixtures under ignored `temp/emission-fixtures`. The native harness separately verifies/links/runs O0/O2 fixtures and tests fault-injecting adapters without changing the production Windows imports. Reports under `artifacts/verify/emission-native` start incomplete and become passed only when every native case succeeds.

@@ -4,7 +4,7 @@ param(
     [string[]] $ArgumentList = @(),
     [string[]] $InputPath = @(),
     [ValidateRange(1, 86400)] [int] $TimeoutSeconds = 900,
-    [string] $ResultRoot = 'TestResults/verification'
+    [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/commands')
 )
 $ErrorActionPreference = 'Stop'
 $directory = Join-Path ([IO.Path]::GetFullPath($ResultRoot)) ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'))

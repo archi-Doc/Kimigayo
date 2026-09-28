@@ -2,7 +2,7 @@
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug',
     [string] $ToolchainRoot = '',
-    [string] $ResultRoot = 'bin/library-verification'
+    [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/library-verification')
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -24,7 +24,7 @@ function Invoke-Tool([string] $Name, [string[]] $Arguments) {
 $checks = [Collections.Generic.List[object]]::new()
 $status = 'FAIL'
 try {
-    $fixtures = @(Get-ChildItem -LiteralPath (Join-Path $repo 'bin/library-fixtures') -Filter '*.ll')
+    $fixtures = @(Get-ChildItem -LiteralPath (Join-Path $repo 'temp/library-fixtures') -Filter '*.ll')
     if ($fixtures.Count -eq 0) { throw 'Run LibraryEmissionTest to generate current fixtures first' }
     foreach ($fixture in $fixtures) {
         foreach ($level in @('O0', 'O2')) {

@@ -3,7 +3,7 @@ param()
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'These containment checks require Windows.' }
 $harness = Join-Path $PSScriptRoot 'invoke-verification.ps1'
-$root = Join-Path ([IO.Path]::GetFullPath('TestResults')) ('verification-check-' + [Guid]::NewGuid().ToString('N'))
+$root = Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../artifacts/verify'))) ('verification-check-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $root
 $shell = Join-Path $PSHOME 'pwsh.exe'
 function Invoke-Check([string] $name, [string] $code, [bool] $success, [int] $deadline = 30) {

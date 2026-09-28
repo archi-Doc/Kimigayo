@@ -277,7 +277,7 @@ public class MinimalEmissionTest
 #else
         const string Configuration = "Release";
 #endif
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../bin/emission-fixtures", Configuration));
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/emission-fixtures", Configuration));
         Directory.CreateDirectory(directory);
         foreach (var (name, source, path) in new[]
         {

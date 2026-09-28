@@ -90,9 +90,9 @@ finally { $env:DOTNET_TieredCompilation = $previousTiering }
 ## Verification
 
 The final focused run passed 82 tests, including 38 added regression cases:
-`bin/verify/20260927-235300-085-unit-lsp-review-final`.
+`artifacts/verify/20260927-235300-085-unit-lsp-review-final`.
 
-Session evidence is in `bin/verify/20260927-235430-539-session-lsp-review`, at clean
+Session evidence is in `artifacts/verify/20260927-235430-539-session-lsp-review`, at clean
 implementation HEAD `40d0e51a`. Both non-incremental Debug/Release builds passed with
 warnings treated as errors. Each full suite ran 13,269 tests: 13,265 passed and the
 four `TestProcessRecoveryTest` cases failed before child startup under the sandbox.
@@ -158,7 +158,7 @@ these are operation costs, not whole-editor latency.
 
 Each unit was verified with the focused LSP classes; the regression tests for the four
 defects fail on the code before the fix. The 93 LSP tests include 12 added in this
-review. Session evidence is in `bin/verify/20260928-031855-454-session-lsp-followup`
+review. Session evidence is in `artifacts/verify/20260928-031855-454-session-lsp-followup`
 at `04a27cb3`: non-incremental Debug and Release builds with warnings treated as
 errors, and 12,908 tests passing in each configuration. No NativeAOT run, compiler
 generation change, draft edit or milestone change was made.

@@ -2,7 +2,7 @@
 param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug',
     [string] $ToolchainRoot = '',
-    [string] $ResultRoot = 'bin/module-verification'
+    [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/module-verification')
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')

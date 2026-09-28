@@ -32,7 +32,7 @@ public class LibraryEmissionTest
         Assert.DoesNotContain("@__kimi_start", ir);
         Assert.DoesNotContain("@__kimi_entry_body", ir);
         Assert.Contains("@_fltused = global i32 0, align 4", ir);
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../bin/library-fixtures"));
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/library-fixtures"));
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, name + ".ll"), ir);
     }
