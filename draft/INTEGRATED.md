@@ -40,6 +40,7 @@
 | `2026-09-24 Complete Types and Static Contracts.md` | 取り込み済み | `Design/2026-09-25 Places Borrowing and Iteration.md` に統合され、同文書の取り込み（2026-09-26）で §8.4、§8.4.3、§8.4.5、§8.4.9 へ反映 |
 | `2026-09-26 Follow Copy and Specification Split.md` | 取り込み済み | SPEC と実装仕様の分離（`b71eba3b`）、実装 `d0acea79`（`@follow`）、`95cb6f4f`（`@copy`）、`80f74a75`（単一スロット束縛）。本書は事後の変更記録として作成 |
 | `2026-09-25 Shared Place Results.md` | 取り込み済み | 同上。§7.1.1、§4.6.9、§10.3 へ反映 |
+| `2026-09-28 Integer Ranges.md` | 取り込み済み | 2026-09-28 取り込み。§3.5.1、§3.5.3、§4.2、§4.6（§4.6.3 を `Range<T>`・`IndexRange`・`ResolvedRange` の 3 型へ再編、§4.6.4 を解決・評価・失敗へ改題）、§8.4.7（§8.4.7.3 `PrimitiveInteger` 新設）、§10.2、§10.8、§12.3.1（リテラル式）、§13.2–13.5、§14.6.2、§14.9.1、§17.3.1、§22.1、SPEC.md の宣言索引、付録 E、IMPL §21.5.3 と付録 A.13、STYLE |
 | `2026-09-24 Exclusive Iteration and Iterable Modes.md` | 保留 | `Obsolete/` へ移動済み。後続の `Design/2026-09-25 Places Borrowing and Iteration.md` が三つの列挙入口として置き換えた |
 
 ## Design

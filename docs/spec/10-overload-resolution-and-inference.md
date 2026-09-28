@@ -94,7 +94,7 @@ func positiveOrZero(value: ref/Option<i32>) -> i32
 
 **Temporaries.** An owner temporary may be borrowed at every value position, not only at arguments. It is evaluated once and materialized in a Temporary Place with the ordinary temporary lifetime (§3.6.2), which lasts at least through a call; that lifetime is neither shortened nor extended to keep a borrow valid. Using `view` after `let view: ref/Node = makeNode()`, or returning that borrow, is rejected with a diagnostic naming the expired temporary and the use. A borrow that ends within the full expression, such as inside an aggregate literal passed to a call, passes the same lifetime check. A known source Type infers `U`; an unfitted literal follows **Literals** below.
 
-**Literals.** An untyped integer literal fits any representable candidate integer Type directly; floating literals follow the numeric rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Generic inference processes receiver, other-argument and known-result constraints first, then candidate fitting, and applies the ordinary value defaults last. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. `null`, empty collections and untyped functions gain no universal fallback Type.
+**Literals.** An untyped integer literal, or a [literal-only expression](12-expressions.md#1231-type-inference), fits any representable candidate integer Type directly; floating literals follow the numeric rules. Literals are not defaulted to `i32`/`f64` before fitting, narrower widths are not preferred, and defaults never break overload ambiguity. Generic inference processes receiver, other-argument and known-result constraints first, then candidate fitting, and applies the ordinary value defaults last. Outside candidate comparison, an independent expression without an expected Type uses the ordinary numeric defaults. `null`, empty collections and untyped functions gain no universal fallback Type.
 
 ```kimi
 func choose(value: i32) -> () => ()
@@ -138,7 +138,7 @@ Candidates are checked for applicability with their acquisition plans, and the s
 | Class | Meaning |
 | --- | --- |
 | Exact | Normalized Type compatibility requiring no adaptation operation, including no borrow or Reborrow |
-| Literal fitting | Directly fitting an unresolved literal to the candidate's Type |
+| Literal fitting | Directly fitting an unresolved literal or literal-only expression to the candidate's Type |
 | Same-Semantics Reborrow | A Reborrow that preserves the input's outer Semantics |
 | Cross-Semantics adaptation | Any other borrow or Reborrow of the table, one shared reference through more than one layer, or a Scalar read |
 
@@ -310,7 +310,7 @@ Implicit erasure applies only after the expected common Function Type is fixed. 
 
 The additional [fixed-array inference rules](04-arrays-indexing-and-slices.md#44-function-length-parameters) apply to lengths and literal element counts. Lengths are kept alongside Type, Semantics and Origin bindings within each candidate.
 
-Within each candidate, explicit arguments bind first. The remaining structural Type, Semantics and Origin constraints are collected together from the receiver and the independently typable arguments under §10.2.1, never by fixing the first input and adapting later inputs to it; an independently known expected result fills only still-unbound parts. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence. An expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a Scalar read of it.
+Within each candidate, explicit arguments bind first. The remaining structural Type, Semantics and Origin constraints are collected together from the receiver and the independently typable arguments under §10.2.1, never by fixing the first input and adapting later inputs to it; an independently known expected result fills only still-unbound parts. The nested-expression boundaries and literal fitting apply, and literal defaults are used only after all other evidence. An expected Type propagates through a Semantics-preserving adaptation to an untyped literal: under an expected `s/T`, the untyped literal or literal-only operand `n` of `n@s` is fitted to `T`. A typed operand keeps its own Type there, so the borrow forms from its Place and never from a Scalar read of it.
 
 An unbound `s` is inferred directly from the source's outer Semantics. No implicit Borrow, Reborrow or other conversion is searched to find a common Semantics: `owner` and `ref` evidence for the same `s` conflict. Once a target Type is fixed, including by explicit arguments, normal adaptation is checked separately. Origin inference uses the [limited principal-solution rules](15-ownership-and-lifetime-analysis.md#1536-limited-origin-inference).
 

@@ -543,7 +543,7 @@ Complete Types are classified by Core, Semantics and stored components:
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
 | `Slice<T>{source}` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |
-| `Index`, `Range`, `ResolvedRange` | Copy |
+| `Index`, `Range<T>`, `IndexRange`, `ResolvedRange` | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
 | Common Function Type under `owner` Semantics | Non-Copy regardless of its hidden environment |
@@ -597,7 +597,7 @@ Proof may depend on declared constraints, but successful individual instantiatio
 
 ### 3.5.3. Scalar read
 
-At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that Scalar (§14.9.1), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. An unknown generic Type is never assumed to be a Scalar.
+At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that Scalar (§14.9.1), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. A generic Type is a Scalar only when its [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger) requirement is proven.
 
 ```kimi
 for number in numbers        // numbers: Array<i32>; number: ref/i32.
@@ -614,7 +614,7 @@ for number in references     // references: Array<ref/i32>; number: ref/(ref/i32
 ```
 
 - Only safe value-reference layers, including qualifying pair layers (§3.4.1), are followed. Object Semantics, raw pointers and Fields are not followed, and every layer is checked for initialization, capability and Loans. For `factor: s/i32` under `s is value or valueborrow`, `factor * 2` reads the `i32` in every admitted case.
-- No numeric conversion is added; an unresolved literal is fitted to the terminal Scalar Type. Overflow, operator availability and short-circuit evaluation are unchanged.
+- No numeric conversion is added; an unresolved literal or literal-only expression (§12.3.1) is fitted to the terminal Scalar Type. Overflow, operator availability and short-circuit evaluation are unchanged.
 - Every read takes the value at that evaluation; nothing is snapshotted at binding time.
 - The target of an assignment, compound assignment, increment or decrement is never redirected to a referent: `number += 1` on `number: ref/i32` is an error, and `number@follow += 1` updates the referent.
 - The original reference keeps its Loan, and the read result carries no new borrow.

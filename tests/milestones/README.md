@@ -1503,7 +1503,7 @@ specification, and a conformance that omits `indexUniq` while claiming
 `pair[0] = ...`; the exclusive receiver of `indexUniq` is reserved before the key
 is evaluated (§15.6.7). The Place result ABI is the reference ABI (§21.2).
 
-Focus: [bounds and failure](../../docs/spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure),
+Focus: [bounds and failure](../../docs/spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure),
 [Slice lifetimes](../../docs/spec/04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions),
 [element results](../../docs/spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results),
 [Indexable Contracts](../../docs/spec/04-arrays-indexing-and-slices.md#469-indexable-contracts),

@@ -335,9 +335,10 @@ The **item Type** is `LendingIterator.LentItem(step)` of the selected iterator T
 | `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
 | `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
+| `Range<T>` | `T` | `T` | `T` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
-Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. Ranges enumerate through `RangeIterator<T>`; `IndexRange` is not enumerable (§4.6.3.5).
 
 ```kimi
 for item in items            // Shared iteration; items remains usable.
@@ -358,8 +359,8 @@ for (key, value) in dictionary@uniq
 **Loans and cleanup.** The Subject Loan is kept while the iterator or an escaped item needs it; conflicting mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. Body fall-through and `continue` clean up the iteration scope before the next `next`. `exit`, `return`, `try` propagation and outward `yield` clean up the iteration scope, then the iterator, then the internal Subject. A Loan saved outside the loop is not ended by the iteration; when it conflicts with the next `next`, the loop's back edge is rejected. Early exit secures the dependencies of retained results before cleanup, does not destroy a Moved Subject twice, and consumes no further items of a ByValue Subject. Unnamed slots keep the same acquisition, dependencies and cleanup as named ones. Tuple components and separate bindings clean up last-to-first, after body locals and defers (§16.2–3). The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 
 ```kimi
-// n: isize, n >= 0. Range itself is not Iterable.
-for _ in (0..n).resolve(n) => tick()
+// n: isize. A reversed range Aborts when the loop starts.
+for _ in 0..n => tick()
 for (key, _) in pairs => use(key)
 ```
 
@@ -689,8 +690,8 @@ Syntax, Names, target and operand restrictions, local Types and match coverage a
 The **Target Result Type** constrains the results supplied to a target. It is determined independently of source traversal order:
 
 1. Use the declaration or the fixed Type from §14.2; otherwise use a fixed outer expectation.
-2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one Scalar Type, or are unfitted literals of it, that Scalar Type is the common Type and each reference source is Scalar-read (§3.5.3).
-3. Propagate the fixed Type to sources checkable against it; apply numeric literal defaults only after all other available evidence.
+2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one Scalar Type, or are unfitted literals or literal-only expressions of it (§12.3.1), that Scalar Type is the common Type and each reference source is Scalar-read (§3.5.3).
+3. Propagate the fixed Type to sources checkable against it, including literal-only sources such as `0..3` beside a typed `0..n`; apply literal defaults only after all other available evidence.
 4. Check every source for fitting. If an unresolved call, anonymous function or empty literal still needs a Type, require an annotation or explicit Type arguments.
 
 ```kimi

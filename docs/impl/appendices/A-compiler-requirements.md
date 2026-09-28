@@ -246,8 +246,9 @@ Preserve one-time receiver and argument evaluation, index-evaluation protection,
 
 | Verification area | Required coverage |
 | --- | --- |
-| Index and Range | Lengths 0/1, ^0/^1, negative offsets, excessive distances, saved values, half-open/inclusive/reversed ranges, operand evaluation before construction checks |
-| ResolvedRange | Maximum-isize end, finite and permanently exhausted iteration, rejection of direct Range iteration, reuse against shorter/resized targets |
+| Index and IndexRange | Lengths 0/1, ^0/^1, Index formation from every integer Type including negative and unrepresentable values and its order, excessive distances, saved values, half-open/inclusive/reversed resolution |
+| Range kind and Types | Kind from omitted and independently typed boundaries only, literal-only boundaries and defaults, candidate and branch fitting, rejection of mixed established Types and of context-dependent boundary calls |
+| Range<T> and ResolvedRange | Every integer Type, negative values, empty, one element, reversed-iteration Abort, minimum/maximum neighbors including an inclusive maximum, permanently exhausted iteration, Iterator Move/Copy rules, rejection of IndexRange iteration, `Range<I>` and `IndexRange` resolution agreement, reuse against shorter/resized targets |
 | Place acquisition | Bare Copy versus `@move` transfer (including Copy elements), rejection of a bare Non-Copy element without an expected borrow Type, literal-only eligibility, implicit borrows at expected Types, nested writes without intermediate Copy, reinitialization after Partial Move |
 | Indexable Contracts | `index` versus `indexUniq` selection from the use, several `Key` conformances, user conformances publishing Place results, rejection of exclusive selection through shared paths |
 | Slice boundaries | Zero-based reslicing, split endpoints, None from each try-prefixed API, failure inside arguments remaining Abort |

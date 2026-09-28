@@ -134,7 +134,7 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 
 ### 3.1. Index and Ranges
 
-[Specification: Index](spec/04-arrays-indexing-and-slices.md#462-index), [ranges](spec/04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [bounds](spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure).
+[Specification: Index](spec/04-arrays-indexing-and-slices.md#462-index), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
 
 Index, Range and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
 

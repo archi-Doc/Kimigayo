@@ -46,7 +46,7 @@ User-defined Types, Contracts and Declaration Containers conventionally use Pasc
 
 | Notation | Meaning and uses |
 | --- | --- |
-| `[]` | Array and Dictionary construction, fixed-array Types, indexing, Range-based slicing, and anonymous-function Capture Lists. |
+| `[]` | Array and Dictionary construction, fixed-array Types, indexing, range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions and operator precedence. |
 | `<>` | Type arguments and [function length arguments](04-arrays-indexing-and-slices.md#44-function-length-parameters). |
 | `{...}` | A closed struct or enum Origin schema (possibly empty), or a fresh binding-set name after a named Type (§15.3). Never a body or collection. Borrow annotations use `during` (§3.3.6). |

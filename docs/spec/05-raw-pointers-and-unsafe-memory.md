@@ -93,7 +93,7 @@ unsafe
     let prev = pointer[-1]
     pointer[10] = 123
     pointer[^1]   // Error: no from-end indexing.
-    pointer[0..4] // Error: no Range indexing.
+    pointer[0..4] // Error: no range indexing.
 ```
 
 ## 5.4. Pointer conversions

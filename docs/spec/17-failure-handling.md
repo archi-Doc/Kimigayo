@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; invalid indices or Range boundaries; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; invalid indices, Index formation or range resolution; the start of iteration over a reversed range; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 

@@ -94,6 +94,42 @@ let minimum: i8 = -128
 
 There are no implicit conversions between `bool`, `char` and numbers, and conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations (§10.2, §13.5.5).
 
+**Literal-only expressions.** A literal-only expression is a Type-inference classification, not syntax. It is one of:
+
+- an untyped integer literal;
+- a parenthesized literal-only expression;
+- a built-in unary `+` or `-`, arithmetic, bitwise or shift operation whose operands are all literal-only;
+- a range `a..b` or `a..=b` whose boundaries are both literal-only (§4.6.3).
+
+Typed values, explicit `@` operations, calls, and array or Dictionary literals are not literal-only. Every rule that fits an untyped integer literal to a Type applies to a literal-only expression: candidate fitting (§10.2), comparison operands (§13.4), the [Scalar read](03-types-and-values.md#353-scalar-read), control-flow result Types (§14.9.1), Semantics-preserving adaptation (§10.8) and length evaluation (§4.2). The only exception is numeric conversion: only a direct literal fits its target (§13.5.4), and every other operand is typed independently (§13.5.2), so `(200 + 100)@u8` computes in `i32` before converting.
+
+A literal-only expression fits a Type as follows:
+
+- **Propagation:** the Type flows to operands under each operator's Type rule: to both operands of arithmetic and bitwise operators, to the operand of a unary operator, to both boundaries of a range as its `T`, and only to the left operand of a shift. A shift count is typed independently (§13.3).
+- **Condition:** every literal fits the Type it receives (a directly attached sign follows §13.5.4), and every operator is defined for that Type. Thus `-(1)` does not fit `u8`, because unary `-` requires a signed integer.
+- **Class:** fitting a value directly is Literal fitting; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies (§10.2.1).
+- **Defaults:** applied only after all other evidence and never during candidate comparison: `i32` for an integer, `Range<i32>` for a range, and `isize` in length contexts (§4.2) and at Index formation (§4.6.2).
+
+The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
+
+```kimi
+func choose(value: i32) -> () => ()
+func choose(value: i64) -> () => ()
+choose(10)     // Error: both candidates fit.
+choose(2 * 5)  // Error: a literal-only expression fits both in the same way.
+
+func take(range: Range<i32>) -> () => ()
+func take(range: ref/Range<i32>) -> () => ()
+take(0..3)     // The value candidate; the other needs a borrow of a temporary.
+
+let x: i64 = 7
+let s: Range<i64> = 0..3
+let p = x == 2 * 5                  // 2 * 5 fits the other operand's i64.
+let q = s == (0..3)                 // (0..3) fits Range<i64>.
+let wide: Range<i64> = 0..(1 << 40) // 1 is i64; the shift count 40 is independently i32.
+let bad: u8 = 1 << 256              // 256 is i32; the shift-count check Aborts at run time.
+```
+
 [Overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference) fits unresolved literals to each candidate before defaulting (§10.2). Expected Types, nested calls, function inference and local Types are limited by the [inference boundaries](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization), and control-flow results collect all source constraints before defaulting (§14.9.1).
 
 ### 12.3.2. Names, literals, and grouping

@@ -143,7 +143,7 @@ across fragments for style: logical order controls initializer effects and rever
 | Mutate the caller's value | `uniq/T` | `f(value@uniq)` |
 | Store, return or consume a value | `T` | `f(value@move)`; a Copy value may be passed bare |
 
-`[Kimi]` Pass integers, `bool`, `Index`, `Range` and `Slice` by value; borrow large Copy aggregates.
+`[Kimi]` Pass integers, `bool`, `Index`, range values and `Slice` by value; borrow large Copy aggregates.
 Do not consume a Non-Copy input merely to inspect it. Temporaries and existing references follow ordinary
 acquisition and Reborrow rules.
 

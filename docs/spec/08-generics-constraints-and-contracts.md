@@ -385,7 +385,7 @@ Only the defined proof rules are used, not enumeration of instantiations or arbi
 
 ### 8.4.7. Intrinsic contracts and guarantees
 
-`Copy`, `Owned`, `Callable`, `Sealed` and `ObjectPayload` are **compiler-intrinsic** Contracts. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
+`Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` are **compiler-intrinsic** Contracts. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
 The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration Contracts and the Indexable Contracts. Their source conformance follows the ordinary static Contract rules, with the effect upper bounds of §8.4.5; their special behavior is otherwise limited to the specified formatting, comparison, iteration and indexing mappings.
 
@@ -444,6 +444,31 @@ contract Shape
 ```
 
 **Compatibility.** The opt-out is part of a declaration's public summary (§18.7, §21.3.4). Adding an opt-out or a `T is ObjectPayload` requirement invalidates dependents. Removing an opt-out changes a published capability whose negative results dependents may have used, and removing a requirement widens a candidate's applicability (§10.1); dependents are revalidated in both cases.
+
+#### 8.4.7.3. PrimitiveInteger
+
+`Kimi.PrimitiveInteger` is a compiler-intrinsic requirement without members. A normalized Type satisfies it exactly when its outer Semantics is `owner` and its Core is `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize` or `usize`. Floating-point Types, `char`, references and user Types never satisfy it, and neither user conformance nor a same-spelled declaration grants it.
+
+A proven `T is PrimitiveInteger` supplies every built-in capability common to the twelve Types:
+
+- **Capabilities:** Scalar, Copy and Owned, and the built-in Equatable, Comparable and Utf8Format conformances. A reference to `T` is read by the [Scalar read](03-types-and-values.md#353-scalar-read).
+- **Operators:** the built-in integer arithmetic, bitwise, shift and comparison operators, compound assignment, increment and decrement, with their ordinary operand, result and failure rules (§13.2–13.4). Unary `-` requires a signed integer and is unavailable.
+- **Conversions:** checked numeric conversion `value@U` between Types that satisfy PrimitiveInteger (§13.5.4).
+- **Literals:** an untyped literal fits an unbound `T` only when it fits all twelve Types, that is, 0 through 127. A literal-only expression fits `T` under the same condition (§12.3.1).
+
+A generic body is checked once against these capabilities, and each instantiation uses the operations of its concrete Type. This is a dedicated proof rule: a choice such as `T is i8 or u8 or …` supplies none of these capabilities, because §8.7 has no case analysis, and there is no user-extensible numeric Contract. An implementation profile that restricts an operation for some Types, such as 128-bit division (§21.5.3), diagnoses the concrete instantiation; the restriction does not weaken this requirement.
+
+```kimi
+func sum<T>(values: Range<T>) -> T
+    T is PrimitiveInteger
+    var total: T = 0
+    for value in values
+        total += value     // -value would be an error: unary - needs a signed Type.
+    return total
+
+let small = sum(1..5@u8)   // T = u8; 10
+let large = sum(0..1000)   // T = i32; 499500
+```
 
 ### 8.4.8. Conditional conformance
 
