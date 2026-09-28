@@ -140,6 +140,25 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.EmitFixture("DictionaryRemainderOwned", Source, "Dropped 20\nRemoved.\nDropped 10\nStop.\nDropped 40\nDropped 30\n");
     }
 
+    // A component bound by a nested pattern (`.Some((let key, let value))`) descends from the iterator that returned the
+    // item, so reading it in place while the exclusive iterator stays live for the next step is allowed; using the source
+    // Dictionary itself during that time is still rejected.
+    [Theory]
+    [InlineData("Console.writeLine(value)", true)]
+    [InlineData("Console.writeLine(value)\n                _ = entries.length", false)]
+    [InlineData("_ = entries.length", false)]
+    public void NestedItemComponentsDescendFromTheIterator(string use, bool valid)
+    {
+        var source = "func inspect(entries: uniq/Dictionary<i32, string>)\n    var it = entries.iterateUniq()\n    loop\n        match it.next()\n            .Some((let key, let value))\n                " + use +
+            "\n            .None => exit\nvar entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"one\")\n_ = entries.tryInsert(2, \"two\")\ninspect(entries@uniq)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        if (valid)
+        {
+            ScalarEmissionTest.WriteFixture("DictionaryRemainderNested", CompilationTestHelper.WriteIr(c), "one\ntwo\n");
+        }
+    }
+
     // The owning remainder releases the transferred buffer exactly once, including after a partial enumeration.
     [Fact]
     public void OwningIterationReleasesTheBufferOnce()

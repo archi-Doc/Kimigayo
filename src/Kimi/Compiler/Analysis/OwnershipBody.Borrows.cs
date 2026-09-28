@@ -924,21 +924,28 @@ public sealed partial class OwnershipBody
         return false;
     }
 
-    // A Case payload Place continues at the Subject it was decomposed from (SPEC 15.1.6).
+    // A Case payload Place continues at the Subject it was decomposed from (SPEC 15.1.6); a component of a nested
+    // pattern, such as `.Some((let key, let value))`, continues through each enclosing payload to the outermost Subject.
     private int PayloadSubject(int place)
     {
-        if (place < 0 || this.Places[place].Kind != OwnershipPlaceKind.Payload)
+        for (var depth = 0; depth < this.DecompositionStorage.Count && place >= 0 && this.Places[place].Kind == OwnershipPlaceKind.Payload; depth++)
         {
-            return place;
-        }
-
-        for (var i = 0; i < this.DecompositionStorage.Count; i++)
-        {
-            var decomposition = this.DecompositionStorage[i];
-            if (place >= decomposition.PayloadStart && place < decomposition.PayloadStart + decomposition.PayloadCount)
+            var subject = -1;
+            for (var i = 0; i < this.DecompositionStorage.Count && subject < 0; i++)
             {
-                return decomposition.Place;
+                var decomposition = this.DecompositionStorage[i];
+                if (place >= decomposition.PayloadStart && place < decomposition.PayloadStart + decomposition.PayloadCount)
+                {
+                    subject = decomposition.Place;
+                }
             }
+
+            if (subject < 0)
+            {
+                return place;
+            }
+
+            place = subject;
         }
 
         return place;
