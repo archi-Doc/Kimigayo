@@ -20,7 +20,14 @@ public class CollectionSignatureValidationTest
     [InlineData(KimiDeclarationId.ArraySwap)]
     [InlineData(KimiDeclarationId.ArrayShrinkToFit)]
     [InlineData(KimiDeclarationId.ArrayWithCapacity)]
-    public void EveryArrayOperationChecksItsCompleteBoundSignature(KimiDeclarationId id)
+    [InlineData(KimiDeclarationId.DictionaryReserve)]
+    [InlineData(KimiDeclarationId.DictionaryTryInsert)]
+    [InlineData(KimiDeclarationId.DictionaryInsertOrReplace)]
+    [InlineData(KimiDeclarationId.DictionaryRemove)]
+    [InlineData(KimiDeclarationId.DictionaryTryGet)]
+    [InlineData(KimiDeclarationId.DictionaryClear)]
+    [InlineData(KimiDeclarationId.DictionaryShrinkToFit)]
+    public void EveryOperationChecksItsCompleteBoundSignature(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
@@ -75,6 +82,39 @@ public class CollectionSignatureValidationTest
         var parameter = ((FunctionKoto)symbol.Declaration).Parameters[0].Type;
         var original = parameter.BoundType!;
         parameter.BoundType = new(original.Name, original.Kind, original.Symbol, original.Semantics, original.Components.ToArray(), origin: BoundOrigin.Static);
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(symbol.Declaration, c.Library.InvalidDeclaration);
+    }
+
+    [Fact]
+    public void DictionaryLookupDependsOnTheReceiverRatherThanTheSearchKey()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var symbol = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet)!;
+        var function = (FunctionKoto)symbol.Declaration;
+        var result = symbol.Type!;
+        var inner = result.Components[0];
+        var invalid = new BoundType(inner.Name, inner.Kind, inner.Symbol, inner.Semantics, inner.Components.ToArray(), origin: function.Parameters[1].Type.BoundType!.Origin);
+        symbol.Type = new(result.Name, result.Kind, result.Symbol, result.Semantics, [invalid]);
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(function, c.Library.InvalidDeclaration);
+    }
+
+    [Theory]
+    [InlineData(KimiDeclarationId.DictionaryTryInsert)]
+    [InlineData(KimiDeclarationId.DictionaryRemove)]
+    public void DictionaryPairResultsRetainKeyValueOrder(KimiDeclarationId id)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var symbol = c.Library.GetSymbol(id)!;
+        var result = symbol.Type!;
+        var pair = result.Components[^1];
+        var reversed = new BoundType(pair.Name, pair.Kind, pair.Symbol, pair.Semantics, [pair.Components[1], pair.Components[0]]);
+        var components = result.Components.ToArray();
+        components[^1] = reversed;
+        symbol.Type = new(result.Name, result.Kind, result.Symbol, result.Semantics, components);
         Assert.False(c.Library.ValidateBoundDeclarations());
         Assert.Same(symbol.Declaration, c.Library.InvalidDeclaration);
     }
