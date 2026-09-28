@@ -90,7 +90,7 @@ public sealed partial class KimiLibrary
 
             var matches = ReferenceEquals(symbol.Declaration.BoundSymbol, symbol) && symbol.Declaration.BindingState == BindingState.Resolved &&
                 this.ValidBoundStorageOperation(symbol, entry.Id) && this.ValidBoundCollectionOperation(symbol, entry.Id) && ValidBoundPrimitive(symbol, entry.Id) &&
-                this.ValidBoundFormattingLayout(symbol, entry.Id);
+                this.ValidBoundFormattingLayout(symbol, entry.Id) && this.ValidBoundFormattingSignature(symbol, entry.Id, KimiLibraryCatalog.Entries[i].Container);
             if (matches && entry.Id == KimiDeclarationId.LendingIterator)
             {
                 matches = this.ValidBoundLendingIterator(symbol);
