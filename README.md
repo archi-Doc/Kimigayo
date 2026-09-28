@@ -298,11 +298,10 @@ The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check
 2. Package and install the extension from the repository root:
 
    ```powershell
-   ./scripts/build-extension.ps1
-   code --install-extension .\artifacts\packages\kimi-ext.vsix --force
+   ./scripts/install-extension.ps1
    ```
 
-   The script restores locked npm dependencies and packages the current version without incrementing it. Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
+   The script runs `build-extension.ps1`, then installs `artifacts/packages/kimi-ext.vsix` using the VS Code `code` CLI on PATH. Use `-CodeCommand 'C:/path/to/VS Code/bin/code.cmd'` for another installation, or `-ExtensionsDirectory 'C:/path/to/test-extensions'` for an isolated extension directory. Run `./scripts/build-extension.ps1` when only a VSIX is needed. Both scripts keep the current version; locked npm dependencies include the packaging tool. Packaging compiles the extension and includes this section and the root MIT license. After updating, run **Developer: Reload Window** in VS Code.
 
 3. Run **Preferences: Open User Settings (JSON)** and set your actual compiler path:
 
@@ -357,5 +356,7 @@ npm --prefix src/kimi-ext run test:integration
 ```
 
 Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
+
+The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 
 Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once, update `src/kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-srckimi-ext).
