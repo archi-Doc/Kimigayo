@@ -5,7 +5,7 @@
       "label": "kimi-ext: watch",
       "type": "npm",
       "script": "watch",
-      "path": "kimi-ext",
+      "path": "src/kimi-ext",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "presentation": { "reveal": "never" }
