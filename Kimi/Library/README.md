@@ -21,9 +21,14 @@ embedded, validated and implemented.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owned`, `borrowed`, `Owned<I>`, `Borrowed<I>`) as ordinary Kimigayo.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi` and `StorageOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, or the
-  internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures). Only catalog-registered compiler
-  implementations are allowed in these groups; this is not public syntax for
-  declaring a user intrinsic or omitting a function body.
+  internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures).
+  Only catalog-registered compiler implementations may omit bodies. Ordinary
+  helpers in these containers use the normal compilation pipeline; this is not
+  public syntax for declaring a user intrinsic or omitting a function body.
+- `Storage.kimi` implements contiguous shared/exclusive `splitFirst` in ordinary
+  Kimigayo over the internal unsafe `lend`/`split` capabilities. Construction,
+  `takeFirst` and owning-remainder destruction still use compiler implementations;
+  their source migration requires the generic ownership and destruction work in PLAN G29.
 - Register compiler-recognized identities in `KimiLibraryCatalog` and validate
   their contracts in `KimiLibraryValidation`. Append new stable declaration IDs;
   never derive them from source order. Ordinary helper declarations need no ID. `SourceExpected` distinguishes a
