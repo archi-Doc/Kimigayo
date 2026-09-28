@@ -29,9 +29,16 @@ public sealed partial class OwnershipAnalysis
         return false;
     }
 
-    private bool SupportsPointerValue(Koto source)
+    private bool SupportsPointerValue(Koto source, bool abstractRead = false)
     {
-        var type = source.BoundType;
+        var type = this.Concrete(source.BoundType);
+        // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
+        // The closed ownership plan must still prove a supported pointee representation.
+        if (abstractRead && this.instance is null && type?.Kind == BoundTypeKind.Parameter)
+        {
+            return true;
+        }
+
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
             (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)) &&
                 this.compilation.Binding.ProveOwned(type, source) == ConstraintProof.Proven);
@@ -87,7 +94,7 @@ public sealed partial class OwnershipAnalysis
     {
         // A non-consuming access needs a raw Place/borrow plan, not a Move to a
         // disposable owner. In particular, string comparisons must not consume *p.
-        if (!this.SupportsPointerValue(source) ||
+        if (!this.SupportsPointerValue(source, abstractRead: true) ||
             (use != PlaceUseKind.Consume && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven))
         {
             this.Unsupported(source);
