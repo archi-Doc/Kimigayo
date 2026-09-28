@@ -354,7 +354,7 @@ public sealed class CheckSchedulerTest : IDisposable
         {
             this.Sender = new(this.output);
             this.Session = new(this.Sender, this.Start, item => this.posted.Writer.TryWrite(item)) { Runner = this.Run };
-            this.Message("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}");
+            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{\"target\":\"{WindowsProfile.Target}\"}}}}}}");
             this.Message("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}");
         }
 

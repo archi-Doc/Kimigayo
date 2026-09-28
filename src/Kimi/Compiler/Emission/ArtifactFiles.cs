@@ -23,8 +23,11 @@ internal static class ArtifactFiles
 
     internal static void CheckPath(string path)
     {
+        // A slash-prefixed linker option is also a fully qualified Unix path.
+        var colon = path.IndexOf(':');
+        var slashOption = path.StartsWith('/') && colon > 0 && path.AsSpan(1, colon - 1).IndexOfAny('/', '\\') < 0;
         if (string.IsNullOrWhiteSpace(path) || path.AsSpan().IndexOfAny("\0\r\n\"") >= 0 || path.StartsWith('-') ||
-            (path.StartsWith('/') && !Path.IsPathFullyQualified(path)))
+            slashOption || (path.StartsWith('/') && !Path.IsPathFullyQualified(path)))
         {
             throw new InvalidDataException("Paths must be nonempty file/directory names, without embedded linker options.");
         }

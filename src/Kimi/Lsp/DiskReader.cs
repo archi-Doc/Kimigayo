@@ -87,12 +87,18 @@ internal static class DiskReader
     {
         try
         {
+            // Unix reports ENOTDIR as DirectoryNotFoundException; an existing file is not an absent directory.
+            if ((File.GetAttributes(directory) & FileAttributes.Directory) == 0)
+            {
+                return InputState.Unestablished("IOException: The listing path is not a directory.");
+            }
+
             var stamp = Directory.GetLastWriteTimeUtc(directory).Ticks;
             var files = Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly);
             Array.Sort(files, StringComparer.Ordinal);
             return new() { DiskNames = files, Names = files, Stamp = stamp };
         }
-        catch (DirectoryNotFoundException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             return new() { DiskNames = [], Names = [] };
         }
