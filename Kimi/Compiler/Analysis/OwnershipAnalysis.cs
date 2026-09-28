@@ -360,7 +360,10 @@ public sealed partial class OwnershipAnalysis
             acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
         }
 
-        this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
+        this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition)
+        {
+            DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
+        });
         this.placeValues.Add(-1);
         this.resultDeclarations.Add(-1);
         this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication);

@@ -11,9 +11,14 @@ public class DeferredEmissionTest
 {
     private const string Snapshot = "var x = 1\nlet y = work: do\n    defer => x = 2\n    exit to work: x\nif y == 1 and x == 2 => Console.writeLine(\"ok\")";
 
+    private const string Formatting = "func show(flag: bool)\n    let value = 7\n    defer => Console.writeLine(\"\\(value)\")\n    if flag => return\nshow(true)\nshow(false)";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "DeferredOnly", "defer => Console.writeLine(\"end\")", "end\n" },
+        { "DeferredFormattingReturn", Formatting, "7\n7\n" },
+        { "DeferredFormattingLoop", "var value = 0\nwhile value < 3\n    defer => Console.writeLine(\"\\(value)\")\n    value += 1\n    if value < 3 => continue\n    exit", "1\n2\n3\n" },
+        { "DeferredFormattingNested", "func show(flag: bool)\n    let value = 7\n    defer\n        defer => Console.writeLine(\"inner \\(value)\")\n        Console.writeLine(\"outer \\(value)\")\n        if flag => exit\n    if flag => return\nshow(true)\nshow(false)", "outer 7\ninner 7\nouter 7\ninner 7\n" },
         { "DeferredEmpty", "defer => ()\nConsole.writeLine(\"ok\")", "ok\n" },
         { "DeferredOrder", "defer => Console.writeLine(\"first\")\ndefer => Console.writeLine(\"second\")\nConsole.writeLine(\"body\")", "body\nsecond\nfirst\n" },
         { "DeferredSnapshot", Snapshot, "ok\n" },
@@ -82,11 +87,12 @@ public class DeferredEmissionTest
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WarmDeferredAnalysisAndWritingAllocateNothing(bool nested)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void WarmDeferredAnalysisAndWritingAllocateNothing(int scenario)
     {
-        var c = MinimalEmissionTest.Analyze(nested ? ExpansionSource(2) : Snapshot);
+        var c = MinimalEmissionTest.Analyze(scenario == 2 ? Formatting : scenario == 1 ? ExpansionSource(2) : Snapshot);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);
@@ -103,6 +109,29 @@ public class DeferredEmissionTest
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
         Assert.True(success);
+    }
+
+    [Theory]
+    [InlineData("value += 1")]
+    [InlineData("let moved = value@move")]
+    public void RepeatedFormattingStillRejectsConflictingOuterAccess(string mutation)
+    {
+        var c = MinimalEmissionTest.Analyze($$"""
+            func show(flag: bool)
+                var value = 7
+                defer
+                    let borrowed = value@ref
+                    {{mutation}}
+                    Console.writeLine("\(borrowed)")
+                if flag => return
+            show(true)
+            show(false)
+            """);
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
     }
 
     [Theory]

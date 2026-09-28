@@ -95,6 +95,31 @@ public class GenericDestructorEmissionTest
     }
 
     [Fact]
+    public void DeferredFormattingUsesEachConcreteExitAndReceiver()
+    {
+        var source = """
+            struct Child
+                let tag: i32
+                public init(tag: i32) => self.tag = tag
+                deinit => Console.writeLine("child \(self.tag)")
+            struct Box<T>
+                let value: T
+                var tag: i32
+                public init(value: T, tag: i32)
+                    self.value = value@move
+                    self.tag = tag
+                deinit
+                    self.tag += 10
+                    defer => Console.writeLine("defer \(self.tag)")
+                    if self.tag == 11 => return
+                    Console.writeLine("body \(self.tag)")
+            let small = Box<i8>.init(7, 2)
+            let large = Box<(Child, i64)>.init((Child.init(3), 8), 1)
+            """;
+        ScalarEmissionTest.EmitFixture("GenericDestructorDeferredFormatting", source, "defer 11\nchild 3\nbody 12\ndefer 12\n");
+    }
+
+    [Fact]
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    deinit\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");

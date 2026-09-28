@@ -88,11 +88,11 @@ public sealed partial class KimiLibrary
             }
 
             var matches = ReferenceEquals(symbol.Declaration.BoundSymbol, symbol) && symbol.Declaration.BindingState == BindingState.Resolved &&
-                this.ValidBoundStorageOperation(symbol, entry.Id);
+                this.ValidBoundStorageOperation(symbol, entry.Id) && this.ValidBoundCollectionOperation(symbol, entry.Id) && ValidBoundPrimitive(symbol, entry.Id) &&
+                this.ValidBoundFormattingLayout(symbol, entry.Id);
             if (matches && entry.Id == KimiDeclarationId.LendingIterator)
             {
-                var next = (FunctionKoto)((ContractKoto)symbol.Declaration).Members[1];
-                matches = ReferenceEquals(next.BoundSymbol?.Type?.Symbol, this.Option);
+                matches = this.ValidBoundLendingIterator(symbol);
             }
 
             if (matches && entry.Id == KimiDeclarationId.Iterator)

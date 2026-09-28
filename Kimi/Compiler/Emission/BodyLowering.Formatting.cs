@@ -6,6 +6,10 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // Reuse the runtime ABI offsets: materializing the constant span's field handle
+    // on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
+    private static readonly int[] FormattingWriterOffsets = [0, 8, 16, 56, 24, 32, 40, 48];
+
     private int BuiltinFormatKind(BoundCall call)
     {
         var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
@@ -46,7 +50,7 @@ internal sealed partial class BodyLowering
             return Fail("Writer erasure requires a concrete exclusive input and its verified adapter layout.", out failure);
         }
 
-        ReadOnlySpan<int> offsets = [0, 8, 16, 56, 24, 32, 40, 48];
+        ReadOnlySpan<int> offsets = FormattingWriterOffsets;
         for (var i = 0; i < offsets.Length; i++)
         {
             if (layout.Offset(i) != offsets[i])
