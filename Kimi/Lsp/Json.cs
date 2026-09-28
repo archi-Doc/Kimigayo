@@ -13,33 +13,6 @@ namespace Kimi.Lsp;
 
 // The wire model never carries compiler objects; it mirrors the LSP 3.17 members the server reads or writes.
 
-public sealed class JsonRpcError
-{
-    public int Code { get; set; }
-
-    public string Message { get; set; } = string.Empty;
-}
-
-public sealed class JsonRpcNotification<T>
-{
-    public string Jsonrpc { get; set; } = "2.0";
-
-    public string Method { get; set; } = string.Empty;
-
-    public T? Params { get; set; }
-}
-
-public sealed class JsonRpcRequest<T>
-{
-    public string Jsonrpc { get; set; } = "2.0";
-
-    public int Id { get; set; }
-
-    public string Method { get; set; } = string.Empty;
-
-    public T? Params { get; set; }
-}
-
 public sealed class InitializeParams
 {
     public ClientCapabilities? Capabilities { get; set; }

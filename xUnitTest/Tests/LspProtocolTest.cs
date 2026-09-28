@@ -3,6 +3,8 @@
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Kimi.Checking;
 using Kimi.Lsp;
 using Xunit;
@@ -105,6 +107,55 @@ public sealed class LspProtocolTest
         await sender.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         await sender.DrainAsync();
         await sender.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task TheSenderWritesEachFrameOnceAndFlushesWhenTheQueueRunsEmpty()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var stream = new GatedStream();
+        var sender = new LspSender(stream);
+        for (var i = 0; i < 100; i++)
+        {
+            sender.Error(new RequestId(i, null), -32601, "Method not found: " + i);
+        }
+
+        stream.Open();
+        await sender.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), token);
+        Assert.Equal(100, stream.Writes);
+        Assert.Equal(1, stream.Flushes);
+
+        var reader = new LspFrameReader(new MemoryStream(stream.ToArray()));
+        for (var i = 0; i < 100; i++)
+        {
+            var frame = (await reader.ReadAsync(token))!.Value;
+            using var document = JsonDocument.Parse(frame.Buffer.AsMemory(0, frame.Length));
+            ArrayPool<byte>.Shared.Return(frame.Buffer);
+            Assert.Equal(i, document.RootElement.GetProperty("id").GetInt32());
+            Assert.Equal("Method not found: " + i, document.RootElement.GetProperty("error").GetProperty("message").GetString());
+        }
+
+        Assert.Null(await reader.ReadAsync(token));
+        await sender.DrainAsync();
+    }
+
+    [Fact]
+    public async Task AValueThatCannotBeSerializedIsDroppedAndOutputContinues()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var stream = new MemoryStream();
+        var sender = new LspSender(stream);
+        var options = new JsonSerializerOptions { TypeInfoResolver = new DefaultJsonTypeInfoResolver(), Converters = { new UnwritableConverter() } };
+        sender.Notify("test/unwritable", new Unwritable(), (JsonTypeInfo<Unwritable>)options.GetTypeInfo(typeof(Unwritable)));
+        sender.Error(null, -32600, "after");
+        await sender.DrainAsync();
+
+        var reader = new LspFrameReader(new MemoryStream(stream.ToArray()));
+        var frame = (await reader.ReadAsync(token))!.Value;
+        using var document = JsonDocument.Parse(frame.Buffer.AsMemory(0, frame.Length));
+        ArrayPool<byte>.Shared.Return(frame.Buffer);
+        Assert.Equal("after", document.RootElement.GetProperty("error").GetProperty("message").GetString());
+        Assert.Null(await reader.ReadAsync(token));
     }
 
     [Fact]
@@ -343,6 +394,65 @@ public sealed class LspProtocolTest
         await client.NotifyAsync("initialized", "{}");
         await client.RequestAsync("custom/barrier");
         Assert.Single(client.Received, static x => x.TryGetProperty("method", out var method) && method.GetString() == "client/registerCapability");
+    }
+
+    private sealed class Unwritable
+    {
+    }
+
+    private sealed class UnwritableConverter : JsonConverter<Unwritable>
+    {
+        public override Unwritable Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, Unwritable value, JsonSerializerOptions options) => throw new InvalidOperationException("The value cannot be written.");
+    }
+
+    // Holds every write until it is opened, so the sender's queue fills first; counts writes and flushes.
+    private sealed class GatedStream : Stream
+    {
+        private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly MemoryStream written = new();
+
+        public int Writes { get; private set; }
+
+        public int Flushes { get; private set; }
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public void Open() => this.gate.TrySetResult();
+
+        public byte[] ToArray() => this.written.ToArray();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await this.gate.Task;
+            this.Writes++;
+            this.written.Write(buffer.Span);
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            this.Flushes++;
+            return Task.CompletedTask;
+        }
+
+        public override void Flush() => this.Flushes++;
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class FailingStream : Stream

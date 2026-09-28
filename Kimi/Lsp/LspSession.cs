@@ -337,12 +337,10 @@ internal sealed class LspSession : IDisposable
             var registration = new Registration
             {
                 Id = WatchRegistration,
-                Method = "workspace/didChangeWatchedFiles",
+                Method = LspMethods.DidChangeWatchedFiles,
                 RegisterOptions = new() { Watchers = [new() { GlobPattern = "**/*.kimi" }, new() { GlobPattern = "**/*.kimiproj" }, new() { GlobPattern = "**/*.kimi.lock.json" }] },
             };
-            this.sender.Send(
-                new JsonRpcRequest<RegistrationParams> { Id = ++this.nextRequestId, Method = "client/registerCapability", Params = new() { Registrations = [registration] } },
-                LspJsonContext.Default.JsonRpcRequestRegistrationParams);
+            this.sender.Request(++this.nextRequestId, LspMethods.RegisterCapability, new RegistrationParams { Registrations = [registration] }, LspJsonContext.Default.RegistrationParams);
         }
 
         if (this.settings.SelectedProjects.Length != 0)
@@ -814,12 +812,12 @@ internal sealed class LspSession : IDisposable
             }
 
             var parameters = new PublishDiagnosticsParams { Uri = document?.Uri ?? uri.ToUri(), Version = version, Diagnostics = payload };
-            this.sender.Send(new JsonRpcNotification<PublishDiagnosticsParams> { Method = "textDocument/publishDiagnostics", Params = parameters }, LspJsonContext.Default.JsonRpcNotificationPublishDiagnosticsParams);
+            this.sender.Notify(LspMethods.PublishDiagnostics, parameters, LspJsonContext.Default.PublishDiagnosticsParams);
         }
     }
 
     private void Log(int type, string message)
-        => this.sender.Send(new JsonRpcNotification<LogMessageParams> { Method = "window/logMessage", Params = new() { Type = type, Message = message } }, LspJsonContext.Default.JsonRpcNotificationLogMessageParams);
+        => this.sender.Notify(LspMethods.LogMessage, new LogMessageParams { Type = type, Message = message }, LspJsonContext.Default.LogMessageParams);
 
     /// <summary>One required unit and its latest adopted result.</summary>
     /// <param name="key">The unit key.</param>

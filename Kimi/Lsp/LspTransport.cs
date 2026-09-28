@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.Buffers.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
@@ -177,12 +178,28 @@ internal sealed class LspFrameReader
 }
 
 /// <summary>Writes frames in order from one queue, so no two frames interleave and the state owner never waits on output.</summary>
+/// <remarks>
+/// Messages are queued as values and serialized on the pump. Each frame is written once, with its header before the body
+/// in one buffer, and the output is flushed when the queue runs empty rather than after every frame.
+/// </remarks>
 internal sealed class LspSender
 {
+    // "Content-Length: ", at most ten digits and the blank line fit before the body.
+    private const int HeaderSpace = 32;
+
+    private static readonly JsonEncodedText JsonRpcName = JsonEncodedText.Encode("jsonrpc");
+    private static readonly JsonEncodedText VersionValue = JsonEncodedText.Encode("2.0");
+    private static readonly JsonEncodedText IdName = JsonEncodedText.Encode("id");
+    private static readonly JsonEncodedText MethodName = JsonEncodedText.Encode("method");
+    private static readonly JsonEncodedText ParamsName = JsonEncodedText.Encode("params");
+    private static readonly JsonEncodedText ResultName = JsonEncodedText.Encode("result");
+    private static readonly JsonEncodedText ErrorName = JsonEncodedText.Encode("error");
+    private static readonly JsonEncodedText CodeName = JsonEncodedText.Encode("code");
+    private static readonly JsonEncodedText MessageName = JsonEncodedText.Encode("message");
+
     private readonly Stream output;
-    private readonly Channel<Action<Utf8JsonWriter>> queue = Channel.CreateUnbounded<Action<Utf8JsonWriter>>(new() { SingleReader = true });
-    private readonly ArrayBufferWriter<byte> body = new(4096);
-    private readonly byte[] headerBytes = new byte[64];
+    private readonly Channel<Outgoing> queue = Channel.CreateUnbounded<Outgoing>(new() { SingleReader = true });
+    private readonly ArrayBufferWriter<byte> frame = new(4096);
     private readonly Task pump;
 
     /// <summary>Initializes a new instance of the <see cref="LspSender"/> class.</summary>
@@ -193,54 +210,53 @@ internal sealed class LspSender
         this.pump = Task.Run(this.PumpAsync);
     }
 
+    private enum OutgoingKind : byte
+    {
+        Result,
+        Error,
+        Request,
+        Notification,
+        Flush,
+    }
+
     /// <summary>Queues a success response; a null result is written as <c>"result":null</c>.</summary>
     /// <typeparam name="T">The result type.</typeparam>
     /// <param name="id">The request ID.</param>
     /// <param name="result">The result.</param>
     /// <param name="typeInfo">The result's serializer metadata.</param>
     public void Result<T>(RequestId? id, T? result, JsonTypeInfo<T>? typeInfo)
-        => this.queue.Writer.TryWrite(writer =>
-        {
-            Begin(writer, id);
-            writer.WritePropertyName("result");
-            if (result is null || typeInfo is null)
-            {
-                writer.WriteNullValue();
-            }
-            else
-            {
-                JsonSerializer.Serialize(writer, result, typeInfo);
-            }
-
-            writer.WriteEndObject();
-        });
+        => this.queue.Writer.TryWrite(new(OutgoingKind.Result, id, null, result, typeInfo));
 
     /// <summary>Queues an error response; it carries <c>error</c> and no <c>result</c>.</summary>
     /// <param name="id">The request ID, or null when it is unknown.</param>
     /// <param name="code">The JSON-RPC error code.</param>
     /// <param name="message">The error message.</param>
     public void Error(RequestId? id, int code, string message)
-        => this.queue.Writer.TryWrite(writer =>
-        {
-            Begin(writer, id);
-            writer.WritePropertyName("error");
-            JsonSerializer.Serialize(writer, new JsonRpcError { Code = code, Message = message }, LspJsonContext.Default.JsonRpcError);
-            writer.WriteEndObject();
-        });
+        => this.queue.Writer.TryWrite(new(OutgoingKind.Error, id, message, null, null, code));
 
-    /// <summary>Queues a notification or request serialized from one immutable value.</summary>
-    /// <typeparam name="T">The message type.</typeparam>
-    /// <param name="message">The message.</param>
-    /// <param name="typeInfo">The message's serializer metadata.</param>
-    public void Send<T>(T message, JsonTypeInfo<T> typeInfo)
-        => this.queue.Writer.TryWrite(writer => JsonSerializer.Serialize(writer, message, typeInfo));
+    /// <summary>Queues a request to the client.</summary>
+    /// <typeparam name="T">The parameter type.</typeparam>
+    /// <param name="id">The request ID.</param>
+    /// <param name="method">The method.</param>
+    /// <param name="parameters">The parameters, which must not change afterwards.</param>
+    /// <param name="typeInfo">The parameters' serializer metadata.</param>
+    public void Request<T>(int id, string method, T parameters, JsonTypeInfo<T> typeInfo)
+        => this.queue.Writer.TryWrite(new(OutgoingKind.Request, new(id, null), method, parameters, typeInfo));
 
-    /// <summary>Waits until every frame queued so far is written, or the output has closed.</summary>
+    /// <summary>Queues a notification.</summary>
+    /// <typeparam name="T">The parameter type.</typeparam>
+    /// <param name="method">The method.</param>
+    /// <param name="parameters">The parameters, which must not change afterwards.</param>
+    /// <param name="typeInfo">The parameters' serializer metadata.</param>
+    public void Notify<T>(string method, T parameters, JsonTypeInfo<T> typeInfo)
+        => this.queue.Writer.TryWrite(new(OutgoingKind.Notification, null, method, parameters, typeInfo));
+
+    /// <summary>Waits until every frame queued so far is written and flushed, or the output has closed.</summary>
     /// <returns>A task that completes when the earlier frames are written or the sender stops.</returns>
     public Task FlushAsync()
     {
         var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!this.queue.Writer.TryWrite(_ => written.TrySetResult()))
+        if (!this.queue.Writer.TryWrite(new(OutgoingKind.Flush, null, null, written, null)))
         {
             written.TrySetResult();
         }
@@ -256,51 +272,119 @@ internal sealed class LspSender
         await this.pump.ConfigureAwait(false);
     }
 
-    private static void Begin(Utf8JsonWriter writer, RequestId? id)
+    private static void WriteBody(Utf8JsonWriter writer, in Outgoing message)
     {
         writer.WriteStartObject();
-        writer.WriteString("jsonrpc", "2.0");
-        writer.WritePropertyName("id");
-        if (id is { } value)
+        writer.WriteString(JsonRpcName, VersionValue);
+        if (message.Kind != OutgoingKind.Notification)
         {
-            value.WriteTo(writer);
+            writer.WritePropertyName(IdName);
+            if (message.Id is { } id)
+            {
+                id.WriteTo(writer);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
         }
-        else
+
+        switch (message.Kind)
+        {
+            case OutgoingKind.Result:
+                writer.WritePropertyName(ResultName);
+                WriteValue(writer, message);
+                break;
+            case OutgoingKind.Error:
+                writer.WriteStartObject(ErrorName);
+                writer.WriteNumber(CodeName, message.Code);
+                writer.WriteString(MessageName, message.Text);
+                writer.WriteEndObject();
+                break;
+            default:
+                writer.WriteString(MethodName, message.Text);
+                writer.WritePropertyName(ParamsName);
+                WriteValue(writer, message);
+                break;
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteValue(Utf8JsonWriter writer, in Outgoing message)
+    {
+        if (message.Value is null || message.TypeInfo is null)
         {
             writer.WriteNullValue();
         }
+        else
+        {
+            JsonSerializer.Serialize(writer, message.Value, message.TypeInfo);
+        }
     }
 
-    private static int WriteHeader(Span<byte> destination, int contentLength)
+    // Serializes one message after room for its header, then writes the header just before the body.
+    // A message that cannot be serialized is dropped, so one bad value never stops the output.
+    private bool TryFrame(Utf8JsonWriter writer, in Outgoing message, out ReadOnlyMemory<byte> bytes)
     {
-        "Content-Length: "u8.CopyTo(destination);
-        var position = 16;
-        Utf8Formatter.TryFormat(contentLength, destination[position..], out var written);
-        position += written;
-        "\r\n\r\n"u8.CopyTo(destination[position..]);
-        return position + 4;
+        bytes = default;
+        this.frame.ResetWrittenCount();
+        this.frame.GetSpan(HeaderSpace);
+        this.frame.Advance(HeaderSpace);
+        writer.Reset(this.frame);
+        try
+        {
+            WriteBody(writer, message);
+            writer.Flush();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException or JsonException)
+        {
+            return false;
+        }
+
+        var written = MemoryMarshal.AsMemory(this.frame.WrittenMemory);
+        Span<byte> header = stackalloc byte[HeaderSpace];
+        "Content-Length: "u8.CopyTo(header);
+        Utf8Formatter.TryFormat(written.Length - HeaderSpace, header[16..], out var digits);
+        "\r\n\r\n"u8.CopyTo(header[(16 + digits)..]);
+        var start = HeaderSpace - 20 - digits;
+        header[..(20 + digits)].CopyTo(written.Span[start..]);
+        bytes = written[start..];
+        return true;
     }
 
     private async Task PumpAsync()
     {
-        using var writer = new Utf8JsonWriter(this.body);
+        using var writer = new Utf8JsonWriter(this.frame);
+        var reader = this.queue.Reader;
         try
         {
-            await foreach (var write in this.queue.Reader.ReadAllAsync().ConfigureAwait(false))
+            while (await reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                this.body.ResetWrittenCount();
-                writer.Reset(this.body);
-                write(writer);
-                writer.Flush();
-                if (this.body.WrittenCount == 0)
+                var unflushed = false;
+                while (reader.TryRead(out var message))
                 {
-                    continue; // A flush marker.
+                    if (message.Kind == OutgoingKind.Flush)
+                    {
+                        if (unflushed)
+                        {
+                            await this.output.FlushAsync().ConfigureAwait(false);
+                            unflushed = false;
+                        }
+
+                        ((TaskCompletionSource)message.Value!).TrySetResult();
+                    }
+                    else if (this.TryFrame(writer, message, out var bytes))
+                    {
+                        await this.output.WriteAsync(bytes).ConfigureAwait(false);
+                        unflushed = true;
+                    }
                 }
 
-                var length = WriteHeader(this.headerBytes, this.body.WrittenCount);
-                await this.output.WriteAsync(this.headerBytes.AsMemory(0, length)).ConfigureAwait(false);
-                await this.output.WriteAsync(this.body.WrittenMemory).ConfigureAwait(false);
-                await this.output.FlushAsync().ConfigureAwait(false);
+                if (unflushed)
+                {
+                    await this.output.FlushAsync().ConfigureAwait(false);
+                }
             }
         }
         catch (IOException)
@@ -313,10 +397,16 @@ internal sealed class LspSender
         finally
         {
             this.queue.Writer.TryComplete();
-            while (this.queue.Reader.TryRead(out _))
+            while (reader.TryRead(out var message))
             {
-                // Release messages that can no longer be sent.
+                if (message.Kind == OutgoingKind.Flush)
+                {
+                    ((TaskCompletionSource)message.Value!).TrySetResult(); // Messages that can no longer be sent are released.
+                }
             }
         }
     }
+
+    // One queued message: the text is the method of a request or notification, or the message of an error.
+    private readonly record struct Outgoing(OutgoingKind Kind, RequestId? Id, string? Text, object? Value, JsonTypeInfo? TypeInfo, int Code = 0);
 }

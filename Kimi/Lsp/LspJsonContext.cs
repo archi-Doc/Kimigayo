@@ -11,10 +11,9 @@ namespace Kimi.Lsp;
 [JsonSerializable(typeof(DidCloseTextDocumentParams))]
 [JsonSerializable(typeof(DidChangeWatchedFilesParams))]
 [JsonSerializable(typeof(InitializeResult))]
-[JsonSerializable(typeof(JsonRpcError))]
-[JsonSerializable(typeof(JsonRpcNotification<PublishDiagnosticsParams>))]
-[JsonSerializable(typeof(JsonRpcNotification<LogMessageParams>))]
-[JsonSerializable(typeof(JsonRpcRequest<RegistrationParams>))]
+[JsonSerializable(typeof(PublishDiagnosticsParams))]
+[JsonSerializable(typeof(LogMessageParams))]
+[JsonSerializable(typeof(RegistrationParams))]
 internal partial class LspJsonContext : JsonSerializerContext
 {
 }
