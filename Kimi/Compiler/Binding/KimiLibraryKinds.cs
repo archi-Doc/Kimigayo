@@ -75,8 +75,8 @@ public enum CompilerFunctionKind : byte
     DictionaryShrinkToFit,
     StorageBorrowShared,
     StorageBorrowExclusive,
-    StorageSplitShared,
-    StorageSplitExclusive,
     StorageOwn,
     StorageTakeFirst,
+    StorageLend,
+    StorageSplit,
 }

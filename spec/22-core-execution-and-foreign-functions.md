@@ -224,6 +224,8 @@ internal func takeFirst<E>(state: uniq/OwnedRemainder<E>)
 
 Borrowed results depend on `source`, never on the `state` borrow or slot. The shared form needs no non-overlap proof but still delivers each element once, in order. The following also hold for empty and zero-sized Storage:
 
+The contiguous `splitFirst` bodies are ordinary Kimigayo. Two internal unsafe primitives provide their capability boundary: `lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source` and `split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source`. The caller proves that the aligned, initialized element belongs to the live source region; for `split`, it removes exactly that element from the untaken remainder before the call and never splits it again. The primitives neither advance state nor access the element's contents, allocate or call user code. They grant only the shared or split-child capability and the stated source dependency. A raw pointer alone grants neither capability, and these compiler-known internal declarations cannot be replaced by user declarations or reached from user source.
+
 1. the constructed target is complete; representation, construction, duplication and initialization-state changes are confined to these operations, and ordinary Field operations grant no capability;
 2. `splitFirst` and `takeFirst` return `None` when nothing remains and otherwise the first untaken element exactly once, in the order of §14.6.2, calling no user callback, comparison or destructor;
 3. an `OwnedRemainder` remains a complete handle over the unreturned part; it publishes neither a reference to the whole `S` with holes nor Take through a borrow;

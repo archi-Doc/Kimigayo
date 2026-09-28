@@ -3,7 +3,7 @@
 // its exclusive overload.
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
-internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
-internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
+internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source
+internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
 internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>

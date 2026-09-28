@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -102,7 +104,8 @@ public class StorageBoundaryTest
             "    match exclusive.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
             "    require values[0] == 11 and values[1] == 22 and values[2] == 33 else => $abort(\"values\")\n" +
             "    var empty: Array<i32> = []\n    var none = empty.iterateUniq()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"boundary\")";
-        ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
+        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryExplicit", Source, "boundary\n");
+        Assert.DoesNotContain("__kimi_array_split_", ir);
     }
 
     // The owning entry transfers each element out once and stays exhausted; retained items are owned values.
@@ -132,6 +135,8 @@ public class StorageBoundaryTest
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]
     [InlineData("let r = Storage.borrowStorage(values@ref)")]
+    [InlineData("let r = Kimi.Storage.lend(values@ref, null)")]
+    [InlineData("let r = Kimi.Storage.split(values@uniq, null)")]
     [InlineData("func f(r: Kimi.Storage.RefRemainder<Array<i32>>) => ()")]
     public void UserSourceCannotReachTheBoundary(string use)
     {
@@ -149,5 +154,30 @@ public class StorageBoundaryTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Library.ValidateDeclarations(), "declarations: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
         Assert.True(c.Library.ValidateBoundDeclarations(), "bound: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
+    }
+
+    [Theory]
+    [InlineData(KimiDeclarationId.StorageLend, false)]
+    [InlineData(KimiDeclarationId.StorageSplit, false)]
+    [InlineData(KimiDeclarationId.StorageLend, true)]
+    [InlineData(KimiDeclarationId.StorageSplit, true)]
+    public void CapabilityPrimitivesRejectChangedPointersAndOrigins(KimiDeclarationId id, bool changeOrigin)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var function = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(id)!.Declaration);
+        if (changeOrigin)
+        {
+            var result = Assert.IsType<TypeSemanticsKoto>(function.ReturnType);
+            result.SetOrigin(null, null, result.Span.End);
+            result.SetOrigin("static", result.Span.End);
+        }
+        else
+        {
+            function.Parameters[1].Type = function.Parameters[0].Type;
+        }
+
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd && ReferenceEquals(x.Node, function));
     }
 }

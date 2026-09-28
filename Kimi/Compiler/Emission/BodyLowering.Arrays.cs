@@ -153,7 +153,6 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.IteratorDrop => "__kimi_array_iterator_drop_",
             ArrayHelperKind.Swap => "__kimi_array_swap_",
             ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
-            ArrayHelperKind.SplitFirst => "__kimi_array_split_",
             ArrayHelperKind.OwnStorage => "__kimi_array_own_",
             ArrayHelperKind.TakeFirst => "__kimi_array_take_first_",
             ArrayHelperKind.OwnedDrop => "__kimi_array_owned_drop_",
@@ -181,7 +180,7 @@ internal sealed partial class BodyLowering
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.SplitFirst or ArrayHelperKind.TakeFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.TakeFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
@@ -354,6 +353,11 @@ internal sealed partial class BodyLowering
         var kind = plan.Target.CompilerFunction;
         var borrow = kind is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn;
         var owning = kind is CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst;
+        if (kind is CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit)
+        {
+            return this.LowerStorageCapability(body, function, id, call, plan, out failure);
+        }
+
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1)
         {
@@ -425,13 +429,51 @@ internal sealed partial class BodyLowering
         {
             CompilerFunctionKind.StorageOwn => ArrayHelperKind.OwnStorage,
             CompilerFunctionKind.StorageTakeFirst => ArrayHelperKind.TakeFirst,
-            _ => borrow ? ArrayHelperKind.BorrowStorage : ArrayHelperKind.SplitFirst,
+            _ => ArrayHelperKind.BorrowStorage,
         };
         var helper = this.GetArrayHelper(helperKind, element, borrow ? null : result, remainder);
         this.callOperands.Clear();
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
+        return true;
+    }
+
+    // The validated, internal unsafe primitives publish the remainder's source Origin; their runtime value is the
+    // supplied element pointer. Storage.kimi checks the untaken range and advances it before making this call.
+    private bool LowerStorageCapability(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        var exclusive = plan.Target.CompilerFunction == CompilerFunctionKind.StorageSplit;
+        var semantics = exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref;
+        var remainderId = exclusive ? KimiDeclarationId.UniqRemainder : KimiDeclarationId.RefRemainder;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || plan.ArgumentToParameter.Length != 2 || target.Parameters.Count != 2 ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [var remainder] } state || state.Semantics != semantics ||
+            remainder.Symbol?.LibraryDeclaration != remainderId || remainder.Components is not [var element] ||
+            SignatureType(this, plan.ArgumentOperations[1].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } pointer || !ReferenceEquals(pointee, element) ||
+            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Components: [var referent] } result || result.Semantics != semantics || !ReferenceEquals(referent, element) ||
+            !ReferenceEquals(SignatureType(this, call.BoundType), result))
+        {
+            return Fail("Storage capability does not match its element and remainder Types.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ScalarArrayArgument(body, id, 0, state, out _) || !this.ScalarArrayArgument(body, id, 1, pointer, out var address))
+        {
+            return Fail("Storage capability arguments are unavailable at the call.", out failure);
+        }
+
+        function.AddScalar(EmissionOpcode.BorrowAddress, id, [address]);
         return true;
     }
 

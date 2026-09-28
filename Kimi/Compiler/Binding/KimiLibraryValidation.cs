@@ -48,7 +48,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
-                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageTakeFirst => this.ValidStorageOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageSplit => this.ValidStorageOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -201,8 +201,9 @@ public sealed partial class KimiLibrary
         return null;
     }
 
-    private static bool ValidStorageField(DeclarationContainerKoto declaration, int index, VariableKind kind, string name, string type)
-        => StorageField(declaration, index) is { Modifier: ModifierKind.NoModifier or ModifierKind.Private, InitializerKoto: null, AttributeChain: null } field && field.VariableKind == kind &&
+    private static bool ValidStorageField(DeclarationContainerKoto declaration, int index, VariableKind kind, string name, string type, bool allowInternal = false)
+        => StorageField(declaration, index) is { InitializerKoto: null, AttributeChain: null } field && field.VariableKind == kind &&
+        (field.Modifier is ModifierKind.NoModifier or ModifierKind.Private || (allowInternal && field.Modifier == ModifierKind.Internal)) &&
         field.NameKoto.IdentifierName == name &&
         (name == "storage" ? field.TypeKoto is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, type) : BareName(field.TypeKoto, type));
 
@@ -522,30 +523,38 @@ public sealed partial class KimiLibrary
         declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) &&
         declaration.OriginNames.Count == (id == KimiDeclarationId.OwnedRemainder ? 0 : 1) && (id == KimiDeclarationId.OwnedRemainder || declaration.OriginNames[0] == "source") &&
         StorageFields(declaration) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
-        ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E") && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize") && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize") &&
-        (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize"));
+        ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E", true) && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize", true) && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize", true) &&
+        (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize", true));
 
     // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing
     // operations take a reference to the Array or remainder; ownStorage takes the Array by value.
     private bool ValidStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
+        var capability = id is KimiDeclarationId.StorageLend or KimiDeclarationId.StorageSplit;
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
             KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
-            KimiDeclarationId.StorageSplitShared => ("splitFirst", "state", SemanticsKind.Uniq, "RefRemainder"),
-            KimiDeclarationId.StorageSplitExclusive => ("splitFirst", "state", SemanticsKind.Uniq, "UniqRemainder"),
+            KimiDeclarationId.StorageLend => ("lend", "state", SemanticsKind.Ref, "RefRemainder"),
+            KimiDeclarationId.StorageSplit => ("split", "state", SemanticsKind.Uniq, "UniqRemainder"),
             KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
             _ => ("takeFirst", "state", SemanticsKind.Uniq, "OwnedRemainder"),
         };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
-            function.Name != name || function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
+            function.Name != name || function.Modifier != (capability ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
-            function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
+            function.Parameters.Count != (capability ? 2 : 1) || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
             function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != parameterName || parameter.ExternalName != parameter.InternalName)
+        {
+            return false;
+        }
+
+        if (capability && (function.Parameters[1] is not { InternalName: "element", ExternalName: "element", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } pointer } || !BareName(pointer.Type, "E") ||
+            BareType(function.ReturnType) is not TypeSemanticsKoto result || result.SemanticsKind != semantics || !BareName(result.Type, "E") ||
+            result.OriginExpression is not MemberAccessKoto origin || !BareName(origin.Left, "state") || !BareName(origin.Right, "source")))
         {
             return false;
         }
