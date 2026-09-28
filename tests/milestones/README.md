@@ -41,7 +41,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
-| [Milestone27](Milestone27.kimi) | Saved Index/Range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
+| [Milestone27](Milestone27.kimi) | Saved Index/IndexRange resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
 | [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
@@ -273,7 +273,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
-| 27 / 7, 13, 16, 19 | Resolve Index/Range values and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
+| 27 / 7, 13, 16, 19 | Resolve Index/IndexRange values and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
 | 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
@@ -546,8 +546,8 @@ supported. The script does not build or run NativeAOT.
 ## Milestone 7: arrays and nested iteration
 
 Traverse a fully initialized 3-by-4 fixed array using its `indices` snapshots.
-These are iterable ResolvedRange values with isize indices; an unresolved
-`0..length` Range is not directly iterable. Double each visited cell, skip the
+These are iterable ResolvedRange values with isize indices; iterating `0..3`
+instead yields `Range<i32>` values, which are not element positions. Double each visited cell, skip the
 row beginning with 0, and stop both loops before changing the cell holding 7.
 The accumulated total is `2 + 4 + 6 + 8 + 10 + 12 = 42`.
 
@@ -1452,11 +1452,11 @@ and [environment/erasure layout](../../docs/impl/21-layout-runtime-and-code-gene
 
 ## Milestone 27: general Slice, Index and Range
 
-The two Range boundaries evaluate once in source order. Resolving against a row
+The two IndexRange boundaries evaluate once in source order. Resolving against a row
 length produces `[1, 3)`; slicing nested rows preserves the element Type and
 backing storage. `middle` survives the local handles used to form it, is split
 without copying elements, and supports a from-end empty view and a generic tail.
-`^0` is a boundary but not an element, and applying the saved Range to a shorter
+`^0` is a boundary but not an element, and applying the saved IndexRange to a shorter
 length fails through `tryResolve`. Shared string access preserves its Non-Copy
 owner. A `Slice<ref/i32>` read copies the inner reference with its original
 dependency, distinct from the Slice's backing-slot dependency.
