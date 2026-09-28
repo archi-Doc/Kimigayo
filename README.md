@@ -337,13 +337,17 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 
 ### Settings and troubleshooting
 
-- **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and startup errors offer **Open Settings** and **Show Output**. Path changes restart the server; **Kimi: Restart Language Server** retries it.
+- **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and server errors offer **Open Settings** and **Show Output** once per unchanged setting during an extension session, shared by diagnostics and build/run/check commands. Repeated failures remain in the **Kimi** Output channel. Changing the setting allows a new notification and restarts the server; **Kimi: Restart Language Server** retries the same setting without repeating the popup. A failed connection does not automatically restart in a loop.
 - **`kimi.runBuilds`**: enable for current Kimi. The compatibility default is `false`, which uses `build` then `run` for Build and Run and leaves Run's behavior to the executable.
 - **`kimi.trace.server`**: `off` (default), `messages`, or `verbose`; see the **Kimi** Output channel.
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.
 
 Tasks need an open folder; diagnostics also work in standalone editor windows. Avoid `%` in native build paths with the verified Windows linker. Completion, hover, navigation and syntax highlighting are not included. Kimi.exe manages the toolchain.
+
+VS Code 1.139.1 can emit `DEP0169` (`url.parse()`) from its own CLI marketplace metadata request after installing a local VSIX ([upstream issue](https://github.com/microsoft/vscode/issues/326998)). This is outside the extension; the install script preserves the warning while awaiting an upstream fix.
+
+The `vsce` 4.0.0 message that `extension.js` is **large** means that this one file accounts for more than 85% of the unpacked package, not that it exceeds an absolute size limit. A minified single bundle naturally dominates this small VSIX (about 97 KB compressed). Keep the bundle; splitting it or adding filler only to change this ratio would not improve loading or download size.
 
 ### Extension development
 

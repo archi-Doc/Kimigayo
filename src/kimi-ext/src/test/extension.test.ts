@@ -96,10 +96,22 @@ suite('Kimi extension integration', () => {
     await configure('');
     assert.ok(errors.some(error => error.includes('kimi.serverPath must contain')));
   });
+  test('reports an unchanged invalid path only once across repeated restarts', async () => {
+    await configure(path.join(root, 'missing-once.exe'));
+    await vscode.commands.executeCommand('kimi.restartServer');
+    await vscode.commands.executeCommand('kimi.restartServer');
+    assert.equal(errors.length, 1, errors.join('\n'));
+    assert.ok(errors[0].includes('missing-once.exe'));
+    await configure(path.join(root, 'another-missing.exe'));
+    assert.equal(errors.length, 1, errors.join('\n'));
+    assert.ok(errors[0].includes('another-missing.exe'));
+  });
   test('reports failure to launch an existing invalid executable', async () => {
     const file = path.join(root, 'invalid.exe');
     await writeFile(file, 'This is not an executable.');
     await configure(file);
+    await vscode.commands.executeCommand('kimi.restartServer');
+    assert.equal(errors.length, 1, errors.join('\n'));
     assert.ok(errors.some(error => error.includes('Could not start') && error.includes('invalid.exe')));
   });
   test('recovers automatically after settings changes and publishes and clears diagnostics', async function () {

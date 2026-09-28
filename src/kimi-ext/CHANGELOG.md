@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.0.9
+
+- Report invalid server paths and server failures once per unchanged setting, shared across diagnostics and build/run/check commands; retain repeated details in the Kimi output.
+- Prevent duplicate language-client popups and automatic connection restart loops while preserving manual retry and recovery after configuration changes.
+- Explain VS Code's upstream url.parse warning and vsce's relative file-size annotation without suppressing them.
+
 ## 0.0.8
 
 - Replace Mocha's deprecated glob dependency and lock the VSIX packaging tool with the other development dependencies.
