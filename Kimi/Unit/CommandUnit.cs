@@ -36,7 +36,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<CheckCommand, KimiOptions>();
                 context.AddCommand<RestoreCommand, KimiOptions>();
                 context.AddCommand<EmitCommand, KimiOptions>();
-                context.AddCommand<RunCommand, KimiOptions>();
+                context.AddCommand<RunCommand, RunCommand.Options>();
                 context.AddCommand<TestCommand>();
 
                 // Logger

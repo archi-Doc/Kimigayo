@@ -146,8 +146,9 @@ Use `kimi <command> [project.kimiproj | solution.kimisln | directory] [options]`
 Omitting the path searches the current directory for a solution or projects.
 
 - `build`: compile and link; requires the LLVM toolchain above.
-- `run`: run the existing executable and forward its output and exit code. Run
-  `build` first, and again after source changes; `run` does not rebuild or require LLVM.
+- `run`: build the current source, then run the resulting executable and forward
+  its output and exit code. Requires the LLVM toolchain; a failed build does not run.
+  Add `--no-build` to run the existing executable without compiling or requiring LLVM.
 - `emit`: write LLVM IR (`.ll`) and a link manifest (`.link.json`) without
   invoking LLVM or linking.
 
@@ -156,6 +157,7 @@ Examples from the repository root, with `kimi` available on `PATH`:
 ```powershell
 kimi build examples/Hello/Hello.kimiproj
 kimi run examples/Hello/Hello.kimiproj
+kimi run examples/Hello/Hello.kimiproj --no-build
 kimi emit examples/Hello/Hello.kimiproj
 kimi build examples/Hello/Hello
 kimi emit examples/Hello/Hello.kimi
@@ -163,14 +165,15 @@ kimi build examples/Hello --ToolchainRoot 'C:/tools/kimi/toolchain'
 kimi run examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe
 ```
 
-The direct `.exe` form of `run` needs no project or build record.
+The direct `.exe` form of `run` executes that binary without building and needs no
+project, build record or LLVM toolchain.
 For `build`, `emit`, and `run`, an extensionless input `A` selects the exact path
 first, then `A.kimiproj`, then `A.kimi`. Explicit extensions select only that file.
 A selected `.kimi` becomes an in-memory Application project using only that source,
 the host target (currently Windows x64), and O2. No `.kimiproj` is created and sibling
 sources are not included. `--Target` overrides the implicit target. Artifacts go to
-`bin/<target>/` beside the source; `run A.kimi` executes its existing build without
-compiling it. Invalid selected inputs fail without trying another candidate.
+`bin/<target>/` beside the source; `run A.kimi` builds that source before executing
+it. Invalid selected inputs fail without trying another candidate.
 
 Each loaded project prints a one-line summary of its name, project/source file,
 Targets, OutputKind, and Optimization before the command proceeds. Implicit projects

@@ -25,10 +25,11 @@ public class KimiOptions
     public bool AllowUnpinnedToolchain { get; set; }
 
     // SimpleCommandLine requires values for Boolean options. Preserve the specified
-    // bare --locked spelling while retaining explicit Boolean values and other options.
+    // bare --locked and --no-build spellings while retaining explicit Boolean values and other options.
     internal static string ExpandFlags(string commandLine)
     {
-        if (!commandLine.Contains("-locked", StringComparison.OrdinalIgnoreCase))
+        if (!commandLine.Contains("-locked", StringComparison.OrdinalIgnoreCase) &&
+            !commandLine.Contains("-no-build", StringComparison.OrdinalIgnoreCase))
         {
             return commandLine;
         }
@@ -57,7 +58,8 @@ public class KimiOptions
                 break;
             }
 
-            if ((argument.Equals("--locked", StringComparison.OrdinalIgnoreCase) || argument.Equals("-locked", StringComparison.OrdinalIgnoreCase)) &&
+            if ((argument.Equals("--locked", StringComparison.OrdinalIgnoreCase) || argument.Equals("-locked", StringComparison.OrdinalIgnoreCase) ||
+                argument.Equals("--no-build", StringComparison.OrdinalIgnoreCase) || argument.Equals("-no-build", StringComparison.OrdinalIgnoreCase)) &&
                 (i + 1 == arguments.Length || !bool.TryParse(arguments[i + 1], out _)))
             {
                 if (expanded is null)

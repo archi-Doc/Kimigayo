@@ -49,7 +49,6 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
 
 Write-Project 'O2' ''
 '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
-$output = Invoke-Kimi @('build', $project)
 $output = Invoke-Kimi @('run', $project)
 if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', (Join-Path $work 'missing toolchain')) 1
@@ -75,7 +74,7 @@ $previousRecord = [IO.File]::ReadAllText($recordPath)
 $output = Invoke-Kimi @('emit', $project)
 if (-not (Test-Path $ir) -or [IO.File]::ReadAllText($recordPath) -cne $previousRecord) { throw 'emit must only publish LLVM inputs' }
 $output = Invoke-Kimi @('build', $project) 1
-$output = Invoke-Kimi @('run', $project) 1
+$output = Invoke-Kimi @('run', $project, '--no-build') 1
 foreach ($level in @('O0', 'O2')) {
     Write-Project $level 'missing LLVM directory'
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
@@ -85,18 +84,22 @@ foreach ($level in @('O0', 'O2')) {
     if ($record.kernel32.generator -cne 'llvm-dlltool' -or -not $record.tools.'llvm-dlltool'.hashMatched -or
         $record.kernel32.sha256 -cne (Get-FileHash (Join-Path (Split-Path $ir) "Hello.$level.kernel32.lib")).Hash.ToLowerInvariant()) { throw 'Missing generated import identity' }
     $exe = Join-Path (Split-Path $ir) "Hello.$level.exe"
-    $hash = (Get-FileHash $exe).Hash
     $before = (Get-Item $recordPath).LastWriteTimeUtc
-    $output = Invoke-Kimi @('run', $project)
+    $output = Invoke-Kimi @('run', $project, '--no-build')
     if (-not $output.Contains("Hello, world!")) { throw 'Run did not forward stdout' }
-    if ((Get-Item $recordPath).LastWriteTimeUtc -ne $before) { throw 'Run rewrote build metadata' }
+    if ((Get-Item $recordPath).LastWriteTimeUtc -ne $before) { throw 'Run --no-build rewrote build metadata' }
     $output = Invoke-Kimi @('run', $exe)
     if ($output.Trim() -cne 'Hello, world!') { throw 'Direct binary execution stdout mismatch' }
+    '::Kimi.Console.writeLine("Updated source")' | Set-Content -LiteralPath $source -Encoding utf8
+    $output = Invoke-Kimi @('run', $project, '--LlvmBin', $LlvmBin)
+    if ($output -notmatch '(?m)^Updated source\r?$' -or $output -match '(?m)^Hello, world!\r?$') { throw 'Run did not build the current source' }
+    $hash = (Get-FileHash $exe).Hash
     'let broken =' | Set-Content -LiteralPath $source
-    $output = Invoke-Kimi @('run', $project)
-    if (-not $output.Contains('Hello, world!')) { throw 'Run compiled modified sources' }
-    $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin) 1
-    $output = Invoke-Kimi @('run', $project) 1
+    $output = Invoke-Kimi @('run', $project, '--no-build')
+    if ($output -notmatch '(?m)^Updated source\r?$') { throw 'Run --no-build compiled modified sources' }
+    $output = Invoke-Kimi @('run', $project, '--LlvmBin', $LlvmBin) 1
+    if ($output -match '(?m)^Updated source\r?$') { throw 'Run executed a stale binary after build failure' }
+    $output = Invoke-Kimi @('run', $project, '--no-build') 1
     if ((Get-FileHash $exe).Hash -cne $hash) { throw 'Failed build overwrote the last executable' }
     '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 }
@@ -115,12 +118,12 @@ foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj')) {
     Copy-Item -LiteralPath (Join-Path $LlvmBin "$name.exe") -Destination (Join-Path $incompleteTools "$name.exe")
 }
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
-$output = Invoke-Kimi @('run', $project) 1
+$output = Invoke-Kimi @('run', $project, '--no-build') 1
 Copy-Item -LiteralPath (Join-Path $LlvmBin 'llvm-readobj.exe') -Destination (Join-Path $incompleteTools 'llvm-dlltool.exe')
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
 if (-not $output.Contains('SHA-256 mismatch')) { throw "Missing dlltool identity diagnostic: $output" }
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools, '--AllowUnpinnedToolchain', 'true') 1
-$output = Invoke-Kimi @('run', $project) 1
+$output = Invoke-Kimi @('run', $project, '--no-build') 1
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
 foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-dlltool')) { Remove-Item -LiteralPath (Join-Path $incompleteTools "$name.exe") -Force }
 Remove-Item -LiteralPath $incompleteTools -Force
@@ -149,7 +152,7 @@ $output = Invoke-Kimi @('emit-llvm', $project) 1
 $projectStem = [IO.Path]::ChangeExtension($project, $null)
 $output = Invoke-Kimi @('emit', $projectStem)
 $output = Invoke-Kimi @('build', $projectStem, '--LlvmBin', $LlvmBin)
-$output = Invoke-Kimi @('run', $projectStem)
+$output = Invoke-Kimi @('run', $projectStem, '--LlvmBin', $LlvmBin)
 if (-not $output.Contains('Hello, world!')) { throw 'Extensionless project lookup failed' }
 $singleDirectory = Join-Path $work 'single source'
 New-Item -ItemType Directory -Path $singleDirectory | Out-Null
@@ -161,19 +164,24 @@ $singleText | Set-Content -LiteralPath $singleSource -Encoding utf8
 'let broken =' | Set-Content -LiteralPath (Join-Path $singleDirectory 'BrokenSibling.kimi') -Encoding utf8
 $singleIr = Join-Path $singleDirectory 'bin/x86_64-pc-windows-msvc/Single.ll'
 $singleRecordPath = [IO.Path]::ChangeExtension($singleIr, '.link.build.json')
-$output = Invoke-Kimi @('run', $singleStem) 1
-if (Test-Path $singleIr) { throw 'Implicit run generated LLVM inputs' }
+$output = Invoke-Kimi @('run', $singleStem, '--no-build') 1
+if (Test-Path $singleIr) { throw 'Implicit run --no-build generated LLVM inputs' }
 $output = Invoke-Kimi @('emit', $singleStem, '--ToolchainRoot', (Join-Path $work 'missing toolchain'))
 if (-not (Test-Path $singleIr) -or (Test-Path $singleRecordPath) -or (Test-Path $singleProject)) { throw 'Implicit emit must only publish LLVM inputs' }
-$output = Invoke-Kimi @('build', $singleStem)
-$singleRecord = Get-Content -LiteralPath $singleRecordPath -Raw | ConvertFrom-Json
-if ($singleRecord.optimization -cne 'O2' -or $singleRecord.status -cne 'linked') { throw 'Implicit project did not use O2' }
 $output = Invoke-Kimi @('run', $singleStem)
 if (-not $output.Contains('Single source')) { throw 'Implicit source build/run failed' }
+$singleRecord = Get-Content -LiteralPath $singleRecordPath -Raw | ConvertFrom-Json
+if ($singleRecord.optimization -cne 'O2' -or $singleRecord.status -cne 'linked') { throw 'Implicit project did not use O2' }
+'::Kimi.Console.writeLine("Updated single source")' | Set-Content -LiteralPath $singleSource -Encoding utf8
+$output = Invoke-Kimi @('run', $singleSource)
+if ($output -notmatch '(?m)^Updated single source\r?$') { throw 'Implicit run did not rebuild changed source' }
 $singleBefore = [IO.File]::ReadAllText($singleRecordPath)
 'let broken =' | Set-Content -LiteralPath $singleSource -Encoding utf8
-$output = Invoke-Kimi @('run', $singleSource)
-if (-not $output.Contains('Single source') -or [IO.File]::ReadAllText($singleRecordPath) -cne $singleBefore) { throw 'Source run must not read or rebuild changed source' }
+$output = Invoke-Kimi @('run', $singleSource, '--no-build')
+if ($output -notmatch '(?m)^Updated single source\r?$' -or [IO.File]::ReadAllText($singleRecordPath) -cne $singleBefore) { throw 'Source run --no-build must not read or rebuild changed source' }
+$output = Invoke-Kimi @('run', $singleSource) 1
+if ($output -match '(?m)^Updated single source\r?$') { throw 'Implicit run executed a stale binary after build failure' }
+$output = Invoke-Kimi @('run', $singleSource, '--no-build') 1
 $singleText | Set-Content -LiteralPath $singleSource -Encoding utf8
 'OutputKind="Invalid"' | Set-Content -LiteralPath $singleProject -Encoding utf8
 foreach ($command in @('build', 'run', 'emit')) {
@@ -261,5 +269,5 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'run without compilation', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'source run without compilation', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"
