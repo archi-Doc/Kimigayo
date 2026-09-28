@@ -50,6 +50,54 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.WriteFixture("DictionaryRemainderShared", CompilationTestHelper.WriteIr(c), "dictionary storage\n");
     }
 
+    // SPEC 22.1.2.3: Dictionary.iterate returns the standard Iterator; an earlier item stays valid across later steps.
+    [Fact]
+    public void ExplicitIterationRetainsEarlierItems()
+    {
+        var c = MinimalEmissionTest.Analyze("""
+            var map: Dictionary<i32, i32> = [:]
+            _ = map.tryInsert(2, 20)
+            _ = map.tryInsert(1, 10)
+            _ = map.tryInsert(3, 30)
+            _ = map.remove(1)
+            var it = map.iterate()
+            var total: i32 = 0
+            var position: i32 = 1
+            loop
+                match it.next()
+                    .Some(let entry)
+                        let key: i32 = entry.0
+                        let value: i32 = entry.1
+                        require value == key * 10 else => $abort("pair")
+                        total += key * position
+                        position += 1
+                    .None => exit
+            require total == 8 else => $abort("order")
+            var again = map.iterate()
+            match again.next()
+                .Some(let first)
+                    match again.next()
+                        .Some(let second)
+                            let k1: i32 = first.0
+                            let k2: i32 = second.0
+                            require k1 == 2 and k2 == 3 else => $abort("retained")
+                        .None => $abort("second")
+                .None => $abort("first")
+            Console.writeLine("iterator")
+            """);
+        ScalarEmissionTest.WriteFixture("DictionaryRemainderIterator", CompilationTestHelper.WriteIr(c), "iterator\n");
+    }
+
+    [Theory]
+    [InlineData("_ = map.tryInsert(5, 50)", false)]
+    [InlineData("map.clear()", false)]
+    [InlineData("_ = map.length", true)]
+    public void ALiveIteratorKeepsTheDictionaryLoan(string use, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("var map: Dictionary<i32, i32> = [:]\n_ = map.tryInsert(1, 10)\nvar it = map.iterate()\n" + use + "\n_ = it.next()");
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+    }
+
     // The remainder keeps the shared Loan of the Dictionary: an exclusive use of the source before a later step is rejected.
     [Theory]
     [InlineData("values@uniq.clear()", false)]

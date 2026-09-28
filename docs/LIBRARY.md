@@ -258,6 +258,9 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 | `remove(self: uniq/Self, key: ref/K) -> Option<(K, V)>` | Returns the stored pair, or None when absent. |
 | `tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>` | Returns a shared value reference, or None when absent. |
 | `clear(self: uniq/Self) -> ()` | Destroys entries in reverse insertion order, each value before its key; retains capacity. |
+| `iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source` | The Iterable entry: a shared enumeration of the live entries in insertion order. |
+
+`DictionaryIterator<K, V> {source}` is the standard shared Dictionary iterator: an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. `for` over a Dictionary still uses the compiler-provided enumeration.
 
 Duplicate literal keys in the specification's statically comparable literal forms are compile-time errors. Other duplicates Abort at runtime after evaluating the key, before its value or later entries. Capacity operations are in §3.3; iteration modes are in §2.
 

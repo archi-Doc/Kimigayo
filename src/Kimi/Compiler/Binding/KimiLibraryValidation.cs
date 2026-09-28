@@ -144,10 +144,10 @@ public sealed partial class KimiLibrary
     private static bool BareName(Koto? node, string name) => BareType(node) is IdentifierNameKoto identifier ? identifier.IdentifierName == name :
         BareType(node) is TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type && type.Identifier == name;
 
-    // SPEC 14.6.2, 22.1.2.3: the Array clauses are its standard entry conformances and their iterator Types only.
-    private static bool ValidEntryConformances(StructKoto array)
+    // SPEC 14.6.2, 22.1.2.3: the clauses from `start` on are the standard entry conformances and their iterator Types only.
+    private static bool ValidEntryConformances(StructKoto array, int start)
     {
-        for (var i = 0; i < array.ConstraintNodes.Count; i++)
+        for (var i = start; i < array.ConstraintNodes.Count; i++)
         {
             var clause = array.ConstraintNodes[i];
             if (clause.IsNegated || clause.FormationType is not null || clause.AttributeChain is not null ||
@@ -499,11 +499,11 @@ public sealed partial class KimiLibrary
     {
         if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
             symbol.Declaration is not StructKoto { HasIncompatibleBindingHeader: false, OriginNames.Count: 0, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } array ||
-            array.Name != (dictionary ? "Dictionary" : "Array") || array.GenericParameterNodes.Count != (dictionary ? 2 : 1) || (dictionary ? array.ConstraintNodes.Count != 1 : !ValidEntryConformances(array)) ||
+            array.Name != (dictionary ? "Dictionary" : "Array") || array.GenericParameterNodes.Count != (dictionary ? 2 : 1) || !ValidEntryConformances(array, dictionary ? 1 : 0) ||
             !ReferenceEquals(array.Parent, this.Kotonoha.RootKoto) ||
             array.GenericParameterNodes[0] is not GenericParameterKoto { SemanticsParameter: null, AttributeChain: null } first || first.Identifier != (dictionary ? "K" : "T") ||
             (dictionary && (array.GenericParameterNodes[1] is not GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null } ||
-                !BareName(array.ConstraintNodes[0].Left, "K") || !BareName(array.ConstraintNodes[0].Right, "Equatable"))))
+                array.ConstraintNodes.Count == 0 || !BareName(array.ConstraintNodes[0].Left, "K") || !BareName(array.ConstraintNodes[0].Right, "Equatable"))))
         {
             return false;
         }
@@ -515,7 +515,7 @@ public sealed partial class KimiLibrary
                 continue; // A computed Property has accessors but no storage.
             }
 
-            if (!dictionary && array.Members[i] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null })
+            if (array.Members[i] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null })
             {
                 continue; // SPEC 22.1.2.3: the iterator Types of the standard entry conformances.
             }
