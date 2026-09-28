@@ -539,7 +539,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.StorageLend => ("lend", "state", SemanticsKind.Ref, "RefRemainder"),
             KimiDeclarationId.StorageSplit => ("split", "state", SemanticsKind.Uniq, "UniqRemainder"),
             KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
-            _ => ("takeFirst", "state", SemanticsKind.Uniq, "OwnedRemainder"),
+            _ => (string.Empty, string.Empty, SemanticsKind.Owner, string.Empty),
         };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||

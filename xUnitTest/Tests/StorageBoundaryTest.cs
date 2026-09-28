@@ -116,7 +116,8 @@ public class StorageBoundaryTest
             "    match first\n        .Some(let n) => total += n\n        .None => $abort(\"first\")\n    match second\n        .Some(let n) => total += n\n        .None => $abort(\"second\")\n" +
             "    match it.next()\n        .Some(let n) => total += n\n        .None => $abort(\"third\")\n    match it.next()\n        .Some(_) => $abort(\"exhausted\")\n        .None => ()\n" +
             "    require total == 6 else => $abort(\"total\")\n    var empty: Array<i32> = []\n    var none = (empty@move).intoIterator()\n    match none.next()\n        .Some(_) => $abort(\"empty\")\n        .None => Console.writeLine(\"owned\")";
-        ScalarEmissionTest.EmitFixture("StorageBoundaryOwned", Source, "owned\n");
+        var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryOwned", Source, "owned\n");
+        Assert.DoesNotContain("__kimi_array_take_first_", ir);
     }
 
     // SPEC 4.7.6, 22.1.2.5: a taken element is destroyed by its owner; the unreturned elements are destroyed with the

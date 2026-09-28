@@ -21,6 +21,14 @@ internal group Storage
         internal var count: isize
         internal var capacity: isize
 
+    /// Transfers the first unreturned element to its new owner and advances the owning remainder.
+    internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
+        require state.count > 0 else => return .None
+        let position = state.position
+        state.position += 1
+        state.count -= 1
+        unsafe => return .Some(state.storage[position])
+
     /// Lends the first untaken element and advances the shared remainder without allocating or invoking user code.
     internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
         require state.count > 0 else => return .None

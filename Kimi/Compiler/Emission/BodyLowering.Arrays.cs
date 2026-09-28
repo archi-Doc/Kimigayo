@@ -154,7 +154,6 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => "__kimi_array_swap_",
             ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
             ArrayHelperKind.OwnStorage => "__kimi_array_own_",
-            ArrayHelperKind.TakeFirst => "__kimi_array_take_first_",
             ArrayHelperKind.OwnedDrop => "__kimi_array_owned_drop_",
             _ => "__kimi_array_drop_",
         };
@@ -180,7 +179,6 @@ internal sealed partial class BodyLowering
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.TakeFirst => new(name, unit, [new("ptr", "state"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
@@ -343,16 +341,14 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 22.1.2.5: borrowStorage records the Array's buffer and length as the untaken range of a remainder; splitFirst
-    // lends or splits the first untaken element and advances, returning None once the range is empty. Neither allocates,
-    // aborts or runs a callback; the borrowed reference's Origin was checked by Binding.
+    // SPEC 22.1.2.5: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
+    // publish one pointer-backed capability. The source functions advance the untaken range.
     private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
         var kind = plan.Target.CompilerFunction;
-        var borrow = kind is CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageOwn;
-        var owning = kind is CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageTakeFirst;
+        var owning = kind == CompilerFunctionKind.StorageOwn;
         if (kind is CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit)
         {
             return this.LowerStorageCapability(body, function, id, call, plan, out failure);
@@ -374,7 +370,7 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation has an unsupported argument acquisition.", out failure);
         }
 
-        if (referent.Components is not [var elementType] || (borrow && referent.Kind != BoundTypeKind.Array) ||
+        if (referent.Components is not [var elementType] || referent.Kind != BoundTypeKind.Array ||
             !this.TryGetArrayElement(elementType, out var element))
         {
             return Fail("Storage operation has an unsupported collection or element Type.", out failure);
@@ -417,8 +413,8 @@ internal sealed partial class BodyLowering
         }
 
         // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
-        var remainder = borrow ? result : this.aggregateLayouts.Get(referent);
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) || (!borrow && result.Cases?.Length != 2) ||
+        var remainder = result;
+        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) ||
             (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
         {
             return Fail("Storage operation records do not have the boundary's shape.", out failure);
@@ -428,10 +424,9 @@ internal sealed partial class BodyLowering
         var helperKind = kind switch
         {
             CompilerFunctionKind.StorageOwn => ArrayHelperKind.OwnStorage,
-            CompilerFunctionKind.StorageTakeFirst => ArrayHelperKind.TakeFirst,
             _ => ArrayHelperKind.BorrowStorage,
         };
-        var helper = this.GetArrayHelper(helperKind, element, borrow ? null : result, remainder);
+        var helper = this.GetArrayHelper(helperKind, element, remainder: remainder);
         this.callOperands.Clear();
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));

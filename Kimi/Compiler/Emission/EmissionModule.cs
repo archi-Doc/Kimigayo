@@ -363,7 +363,6 @@ internal enum ArrayHelperKind : byte
     // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     OwnStorage,
-    TakeFirst,
     OwnedDrop,
 }
 

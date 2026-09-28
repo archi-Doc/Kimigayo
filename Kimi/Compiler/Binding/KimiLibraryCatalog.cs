@@ -121,7 +121,6 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
         new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
         new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn),
-        new(KimiDeclarationId.StorageTakeFirst, "takeFirst", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageTakeFirst),
         new(KimiDeclarationId.StorageLend, "lend", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLend),
         new(KimiDeclarationId.StorageSplit, "split", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplit),
     ];

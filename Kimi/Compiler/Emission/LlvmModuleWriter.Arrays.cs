@@ -138,7 +138,7 @@ internal static partial class LlvmModuleWriter
         foreach (var helper in module.ArrayHelpers)
         {
             output.Write(helper.Abi.GetDefinition(false));
-            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.TakeFirst or ArrayHelperKind.OwnedDrop ? "entry:\n" : ArrayHelperPrologue);
+            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnedDrop ? "entry:\n" : ArrayHelperPrologue);
             if (helper.Kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex)
             {
                 output.Write("  %index_offset = load i64, ptr %index_value, align 8\n  %direction_ptr = getelementptr i8, ptr %index_value, i64 8\n  %direction = load i8, ptr %direction_ptr, align 1\n  %from_end = icmp ne i8 %direction, 0\n  br i1 %from_end, label %resolve_end, label %resolve_start\nresolve_end:\n  %backward = sub i64 %length, %index_offset\n  br label %resolved\nresolve_start:\n  br label %resolved\nresolved:\n  %index = phi i64 [ %backward, %resolve_end ], [ %index_offset, %resolve_start ]\n");
@@ -174,9 +174,6 @@ internal static partial class LlvmModuleWriter
                     break;
                 case ArrayHelperKind.OwnStorage:
                     WriteArrayOwn(output);
-                    break;
-                case ArrayHelperKind.TakeFirst:
-                    WriteArrayTakeFirst(output, helper);
                     break;
                 case ArrayHelperKind.OwnedDrop:
                     WriteArrayOwnedDrop(output, helper);
@@ -330,20 +327,6 @@ internal static partial class LlvmModuleWriter
     {
         output.Write("  %buffer = load ptr, ptr %value, align 8\n  %length_ptr = getelementptr i8, ptr %value, i64 8\n  %length = load i64, ptr %length_ptr, align 8\n  %capacity_ptr = getelementptr i8, ptr %value, i64 16\n  %capacity = load i64, ptr %capacity_ptr, align 8\n" +
             "  store ptr %buffer, ptr %result, align 8\n  %position_slot = getelementptr i8, ptr %result, i64 8\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 16\n  store i64 %length, ptr %count_slot, align 8\n  %capacity_slot = getelementptr i8, ptr %result, i64 24\n  store i64 %capacity, ptr %capacity_slot, align 8\n  ret void\n");
-    }
-
-    // SPEC 22.1.2.5: takeFirst moves the first unreturned element into the Some payload and advances; an empty range
-    // writes None. The element's responsibility leaves the remainder before the payload is published.
-    private static void WriteArrayTakeFirst(TextWriter output, ArrayHelper helper)
-    {
-        var option = helper.Option ?? throw new InvalidOperationException("Storage take needs its Option layout.");
-        output.Write("  %count_ptr = getelementptr i8, ptr %state, i64 16\n  %count = load i64, ptr %count_ptr, align 8\n  %empty = icmp eq i64 %count, 0\n  br i1 %empty, label %none, label %some\nsome:\n  %position_ptr = getelementptr i8, ptr %state, i64 8\n  %position = load i64, ptr %position_ptr, align 8\n  %storage = load ptr, ptr %state, align 8\n  %offset = mul i64 %position, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %element = getelementptr i8, ptr %storage, i64 %offset\n  %advanced = add i64 %position, 1\n  store i64 %advanced, ptr %position_ptr, align 8\n  %left = sub i64 %count, 1\n  store i64 %left, ptr %count_ptr, align 8\n  %payload = getelementptr i8, ptr %result, i64 ");
-        WriteNumber(output, option.PayloadOffset);
-        output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %payload, ptr %element, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  store i32 0, ptr %result, align 4\n  ret void\nnone:\n  store i32 1, ptr %result, align 4\n  ret void\n");
     }
 
     // SPEC 4.7.6, 22.1.2.5: destroying an owning remainder destroys its unreturned range in reverse index order, then

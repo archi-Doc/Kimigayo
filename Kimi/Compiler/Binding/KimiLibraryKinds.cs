@@ -76,7 +76,6 @@ public enum CompilerFunctionKind : byte
     StorageBorrowShared,
     StorageBorrowExclusive,
     StorageOwn,
-    StorageTakeFirst,
     StorageLend,
     StorageSplit,
 }
