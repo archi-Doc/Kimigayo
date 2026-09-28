@@ -52,6 +52,8 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
+    internal CallEntry? ExpansionParent { get; set; }
+
     /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5).</summary>
     internal bool ResourceLimitExceeded { get; private set; }
 
@@ -86,6 +88,7 @@ internal sealed partial class GenericStoragePlan
         this.destructorNames.Clear();
         this.destructorQueue.Clear();
         this.preparedDestructors = 0;
+        this.ExpansionParent = null;
     }
 
     internal bool Prepare(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, IReadOnlyDictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
@@ -197,6 +200,17 @@ internal sealed partial class GenericStoragePlan
         }
 
         var function = template.Body.Function;
+        var ancestors = 0;
+        for (var parent = this.ExpansionParent; parent is not null; parent = parent.Parent)
+        {
+            if (ReferenceEquals(parent.Template.Body.Function, function) && ++ancestors >= GrowingKeyLimit)
+            {
+                entry = null;
+                this.ResourceLimitExceeded = true;
+                return Fail($"Generic instantiation of '{function.Name}' grows through destruction beyond {GrowingKeyLimit} nested substitutions.", out failure);
+            }
+        }
+
         this.chainCounts.TryGetValue(function, out var chain);
         if (chain >= GrowingKeyLimit)
         {
@@ -293,6 +307,7 @@ internal sealed partial class GenericStoragePlan
             };
         this.entries.Add(entry);
         this.calls.Add(call, entry);
+        entry.Parent = this.ExpansionParent;
         if (selected is not null)
         {
             // SPEC 21.3.4: the selected explicit specialization is the implementation; callers call its
@@ -301,6 +316,21 @@ internal sealed partial class GenericStoragePlan
         }
 
         module.PendingEntries.Add(entry);
+        var parent = this.ExpansionParent;
+        this.ExpansionParent = entry;
+        try
+        {
+            return this.PrepareEntryDependencies(compilation, module, layouts, call, template, entry, depth, out failure);
+        }
+        finally
+        {
+            this.ExpansionParent = parent;
+        }
+    }
+
+    private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
+    {
+        var binding = compilation.Binding;
         if (!this.PrepareDictionaryProjections(compilation, module, layouts, template.Body, call, out failure, depth + 1))
         {
             return false;
@@ -456,5 +486,7 @@ internal sealed partial class GenericStoragePlan
     internal sealed record CallEntry(Template Template, FunctionAbi Abi, FunctionAbi? Selected, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths, CallEntry?[] Direct)
     {
         internal BoundCall[]? ConcreteCalls { get; set; }
+
+        internal CallEntry? Parent { get; set; }
     }
 }

@@ -117,6 +117,20 @@ public class GenericDestructorEmissionTest
         }
     }
 
+    [Theory]
+    [InlineData("unsafe/T")]
+    [InlineData("(T, T)")]
+    public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
+    {
+        var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: unsafe/T\n    public init() => self.pointer = null\n    deinit\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out var error));
+        Assert.Empty(output.ToString());
+        Assert.True(c.Emission.FailureIsResourceLimit, error);
+        Assert.Contains("grows", error, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void GenericDestructorStillRejectsUninitializedFields()
     {

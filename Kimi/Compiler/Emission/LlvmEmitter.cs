@@ -291,6 +291,7 @@ public sealed class LlvmEmitter
             }
 
             var lowered = false;
+            this.generics.ExpansionParent = entry;
             if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
             {
                 var function = module.AddFunction(entry.Abi, exported: false);
@@ -315,6 +316,8 @@ public sealed class LlvmEmitter
                     module.RemoveLastFunction();
                 }
             }
+
+            this.generics.ExpansionParent = null;
 
             // No fallback: every generic call context must reach its concrete instance.
             if (!lowered)

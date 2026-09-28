@@ -5,7 +5,7 @@ namespace Kimi.Compiler;
 internal sealed partial class GenericStoragePlan
 {
     private readonly Dictionary<BoundCall, string> destructorNames = new(ReferenceEqualityComparer.Instance);
-    private readonly List<BoundCall> destructorQueue = new();
+    private readonly List<(BoundCall Call, CallEntry? Parent)> destructorQueue = new();
     private int preparedDestructors;
 
     internal bool HasPendingDestructors => this.preparedDestructors < this.destructorQueue.Count;
@@ -23,7 +23,7 @@ internal sealed partial class GenericStoragePlan
         {
             name = this.EntryName(this.entryNames++);
             this.destructorNames.Add(call, name);
-            this.destructorQueue.Add(call);
+            this.destructorQueue.Add((call, this.ExpansionParent));
         }
 
         return name;
@@ -34,15 +34,24 @@ internal sealed partial class GenericStoragePlan
         failure = null;
         while (this.HasPendingDestructors)
         {
-            var call = this.destructorQueue[this.preparedDestructors++];
+            var (call, parent) = this.destructorQueue[this.preparedDestructors++];
             if (call.Target.Declaration is not Parsing.FunctionKoto function || !this.templates.TryGetValue(function, out var template))
             {
                 return Fail("Generic destructor requires a universally verified body.", out failure);
             }
 
-            if (!this.PrepareEntry(compilation, module, layouts, call, template, out _, out failure))
+            var previous = this.ExpansionParent;
+            this.ExpansionParent = parent;
+            try
             {
-                return false;
+                if (!this.PrepareEntry(compilation, module, layouts, call, template, out _, out failure))
+                {
+                    return false;
+                }
+            }
+            finally
+            {
+                this.ExpansionParent = previous;
             }
         }
 
