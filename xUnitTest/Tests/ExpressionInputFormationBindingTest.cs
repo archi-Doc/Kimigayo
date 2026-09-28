@@ -20,7 +20,7 @@ public class ExpressionInputFormationBindingTest
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Null(Call(restored).BoundCall);
     }
@@ -37,7 +37,7 @@ public class ExpressionInputFormationBindingTest
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Null(Test(restored).BoundRuntimeTest);
     }
@@ -55,10 +55,10 @@ public class ExpressionInputFormationBindingTest
         var runtime = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(runtime.Binding.Result.IsComplete, MinimalEmissionTest.Describe(runtime, null));
         Assert.NotNull(Test(runtime).BoundRuntimeTest);
-        var restoredCall = Reload(call);
+        var restoredCall = CompilationTestHelper.Reload(call);
         Assert.True(restoredCall.Bind().IsComplete);
         Assert.NotNull(Call(restoredCall).BoundCall);
-        var restoredRuntime = Reload(runtime);
+        var restoredRuntime = CompilationTestHelper.Reload(runtime);
         Assert.True(restoredRuntime.Bind().IsComplete);
         Assert.NotNull(Test(restoredRuntime).BoundRuntimeTest);
     }
@@ -73,7 +73,7 @@ public class ExpressionInputFormationBindingTest
             : "group G\n    func take<T>() => ()\n    func call<U>()\n        U is i32\n        take<Source<U>.Origin.Item>()";
         var c = MinimalEmissionTest.Analyze(Prefix + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -129,17 +129,6 @@ public class ExpressionInputFormationBindingTest
                 throw new InvalidOperationException("Expression input formation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private const string Prefix = "contract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\n";

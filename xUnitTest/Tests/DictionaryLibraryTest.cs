@@ -34,10 +34,9 @@ public class DictionaryLibraryTest
     public void ProgramsWithoutDictionariesDoNotCompileStorageAlgorithms()
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"plain\")");
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        var outputIr = CompilationTestHelper.WriteIr(c);
         Assert.DoesNotContain(c.Ownership.Bodies, body => body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
-        Assert.DoesNotContain("__kimi_dictionary_", output.ToString());
+        Assert.DoesNotContain("__kimi_dictionary_", outputIr);
     }
 
     [Fact]
@@ -73,8 +72,7 @@ public class DictionaryLibraryTest
     public void RemovalCompilesTheOrdinaryLibrarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\n_ = entries.remove(1)");
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        var outputIr = CompilationTestHelper.WriteIr(c);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryUnlink));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppendSlot));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryInitialize));
@@ -85,8 +83,8 @@ public class DictionaryLibraryTest
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.BoundSymbol!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
-        Assert.DoesNotContain("%left_index = sub", output.ToString());
-        ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", output.ToString(), string.Empty);
+        Assert.DoesNotContain("%left_index = sub", outputIr);
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 
     [Theory]

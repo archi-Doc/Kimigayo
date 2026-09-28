@@ -29,7 +29,7 @@ public class ClosedContractConstraintBindingTest
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R");
         Assert.Equal(valid, c.Binding.GetConformanceDefinition(implementation.BoundType!, contract.BoundSymbol!)!.IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public class ClosedContractConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public class ClosedContractConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -136,16 +136,5 @@ public class ClosedContractConstraintBindingTest
                 throw new InvalidOperationException("Closed Contract proof failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

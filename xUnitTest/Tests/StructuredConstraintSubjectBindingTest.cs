@@ -29,7 +29,7 @@ public class StructuredConstraintSubjectBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
         try
@@ -57,7 +57,7 @@ public class StructuredConstraintSubjectBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -97,9 +97,9 @@ public class StructuredConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Dog\nfunc make() -> Dog => make()\nfunc f<T>(value: Dog)\n    " + expression);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
-        var function = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Empty(function.TypeConstraints);
-        Assert.Single(Walk(function.Body!).OfType<IsKoto>(), x => x.IsRuntimeTest);
+        Assert.Single(KotoTree.Walk(function.Body!).OfType<IsKoto>(), x => x.IsRuntimeTest);
     }
 
     [Theory]
@@ -144,29 +144,6 @@ public class StructuredConstraintSubjectBindingTest
 
     private static DeclarationContainerKoto Target(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
 
     private static string Source(string clause)
         => "public struct Box<T>\n    T is Copy\n    Self is Copy\n    let value: T\npublic struct Target\n    " + clause;

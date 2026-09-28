@@ -21,7 +21,7 @@ public class TestAttributeCertificateBindingTest
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
     }
@@ -86,17 +86,6 @@ public class TestAttributeCertificateBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
         Assert.True(c.Bind().IsComplete);
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static BoundConformance Definition(Compilation c)

@@ -19,7 +19,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -38,7 +38,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -52,7 +52,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -113,17 +113,6 @@ public class ClosedProjectionConstraintBindingTest
                 throw new InvalidOperationException("Closed projection proof failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string kind, string clause)

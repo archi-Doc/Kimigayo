@@ -82,13 +82,7 @@ public class AccessorReceiverBindingTest
         var c = MinimalEmissionTest.Analyze($"struct Other\nstruct Api\n    computed item: i32\n        get(self: {receiver}) -> i32 => 1");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, c.Bind().IsComplete);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }

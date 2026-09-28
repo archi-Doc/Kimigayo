@@ -29,7 +29,7 @@ public class ReferenceLayerAdaptationTest
     {
         ScalarEmissionTest.EmitFixture("ReferenceLayerExactUniq" + name, source, "ok\n");
         var c = MinimalEmissionTest.Analyze(source);
-        var initializer = All(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FieldKoto>().First(x => x.NameKoto.IdentifierName is "s" or "alias").InitializerKoto!;
+        var initializer = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FieldKoto>().First(x => x.NameKoto.IdentifierName is "s" or "alias").InitializerKoto!;
         Assert.True(c.Binding.TryGetAdaptation(initializer, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow);
     }
 
@@ -77,17 +77,5 @@ public class ReferenceLayerAdaptationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
-    }
-
-    private static IEnumerable<Kimi.Compiler.Parsing.Koto> All(Kimi.Compiler.Parsing.Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in All(child))
-            {
-                yield return nested;
-            }
-        }
     }
 }

@@ -26,9 +26,9 @@ public class EnumBindingTest
     [InlineData("let x: Option<Option<i32>> = .Some(.Some(1))")]
     public void ConstructsQualifiedAndExpectedCases(string source)
     {
-        var c = Parse("enum Message\n    Quit\n    Write(string)\n" + source);
+        var c = CompilationTestHelper.ParseSuccess("enum Message\n    Quit\n    Write(string)\n" + source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Contains(Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
     }
 
     [Theory]
@@ -50,9 +50,9 @@ public class EnumBindingTest
     [InlineData("var v: Option<i32>\nlet x = v.Some(1)")]
     public void RejectsInvalidConstruction(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
-        foreach (var expression in Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
+        foreach (var expression in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
         {
             Assert.False(c.Binding.TryGetEnumConstruction(expression, out _));
         }
@@ -61,9 +61,9 @@ public class EnumBindingTest
     [Fact]
     public void PayloadOperationsKeepOrderAndAcquisition()
     {
-        var c = Parse("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a@move, b@move)");
+        var c = CompilationTestHelper.ParseSuccess("enum Pair<T>\n    Pair(T, string)\nfunc f<T>(a: T, b: string) -> Pair<T> => Pair<T>.Pair(a@move, b@move)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var invocation = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
+        var invocation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
         Assert.Null(invocation.BoundCall);
         Assert.Equal(0, plan!.Case.Ordinal);
@@ -79,9 +79,9 @@ public class EnumBindingTest
     [Fact]
     public void CoreOptionUsesConditionalCopyAndResultUsesOrdinaryRules()
     {
-        var c = Parse("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>");
+        var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var variables = Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
+        var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(variables[0].BoundType!, variables[0]));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[1].BoundType!, variables[1]));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[2].BoundType!, variables[2]));
@@ -96,9 +96,9 @@ public class EnumBindingTest
     [InlineData("enum V<T> {a}\n    Some(ref/T during a)\n    None\nfunc f<T>(x: ref/T) -> V<T>{result}\n    origin result.a == x\n    return .None")]
     public void PreservesPayloadOriginContracts(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var use = Walk(c.Kotonoha.RootKoto).First(x => c.Binding.TryGetEnumConstruction(x, out _));
+        var use = KotoTree.Walk(c.Kotonoha.RootKoto).First(x => c.Binding.TryGetEnumConstruction(x, out _));
         Assert.True(c.Binding.TryGetEnumConstruction(use, out var plan));
         Assert.True(plan!.Type.OriginArguments.Count != 0 || plan.Type.Components[0].Origin is not null);
     }
@@ -117,7 +117,7 @@ public class EnumBindingTest
     [InlineData("enum E<T>\n    A(T)\n    public func f() => ()\nE.f()")]
     public void RejectsInvalidDeclarationsAndOriginContracts(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
     }
 
@@ -128,7 +128,7 @@ public class EnumBindingTest
     [InlineData("enum Message\n    Write(string)\nlet text = \"text\"\nlet x = Message.Write(text)")]
     public void BarePayloadPlacesRequireATransfer(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
     }
@@ -141,16 +141,16 @@ public class EnumBindingTest
     [InlineData("enum Option<T>\n    Mine(T)\nlet x = Option<i32>.Mine(1)\nlet y: ::Kimi.Option<i32> = .Some(1)")]
     public void SharesInferenceConstraintsAndMemberLookup(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]
     public void RebindInvalidatesConstructionAfterCaseCollision()
     {
-        var c = Parse("enum E\n    A(i32)\nlet x = E.A(1)");
+        var c = CompilationTestHelper.ParseSuccess("enum E\n    A(i32)\nlet x = E.A(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(call, out var plan));
         var declaration = (EnumKoto)plan!.Case.Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "func A() => ()");
@@ -163,7 +163,7 @@ public class EnumBindingTest
     [InlineData(KimiDeclarationId.Result)]
     public void CoreShapeMutationIsRejected(KimiDeclarationId id)
     {
-        var c = Parse("let x: Option<i32> = .Some(1)");
+        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var symbol = c.Library.GetSymbol(id)!;
         c.Library.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
@@ -175,7 +175,7 @@ public class EnumBindingTest
     [Fact]
     public void RepeatedCoreEnumHeaderInvalidatesCatalogEntry()
     {
-        var c = Parse("let x: Option<i32> = .Some(1)");
+        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public enum Option<T>");
         Assert.False(c.Bind().IsComplete);
@@ -185,13 +185,13 @@ public class EnumBindingTest
     [Fact]
     public void WarmEnumBindingReusesIdentitiesAndPlanStorage()
     {
-        var c = Parse("enum E<T>\n    Both(T, string)\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let v{i} = E<i32>.Both({i}, \"x\")")));
+        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Both(T, string)\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let v{i} = E<i32>.Both({i}, \"x\")")));
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
         }
 
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
         Assert.True(c.Binding.TryGetEnumConstruction(call, out var plan));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.True(c.Binding.TryGetEnumConstruction(call, out var rebound));
@@ -210,20 +210,20 @@ public class EnumBindingTest
     [InlineData("func f<T>(x: T) => ()\nfunc f(x: Option<i32>) => ()\nf(.None)", false)]
     public void CallCandidatesProbeContextualCasesWithoutCommittingLosers(string source, bool valid)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(valid, c.Bind().IsComplete);
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
         Assert.Equal(valid, call.BoundCall is not null);
         if (!valid)
         {
-            Assert.DoesNotContain(Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
+            Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
         }
     }
 
     [Fact]
     public void WarmContextualConstructionPreservesBorrowOperations()
     {
-        var c = Parse("func take(x: Option<ref/i32 during static>) => ()\nfunc f(x: ref/i32 during static)\n    take(.Some(x))");
+        var c = CompilationTestHelper.ParseSuccess("func take(x: Option<ref/i32 during static>) => ()\nfunc f(x: ref/i32 during static)\n    take(.Some(x))");
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
@@ -235,7 +235,7 @@ public class EnumBindingTest
     [Fact]
     public void BindingConstructionDoesNotCertifyOwnership()
     {
-        var c = Parse("let x: Option<i32> = .Some(1)");
+        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.True(c.Ownership.Analyze().IsVerified);
@@ -252,27 +252,6 @@ public class EnumBindingTest
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "enum E\n    A\n" + member);
         Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
-    }
-
-    private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
-        return c;
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node} ({x.Node.GetType().Name}, parent {x.Node.Parent?.GetType().Name})"));

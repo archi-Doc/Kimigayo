@@ -113,7 +113,7 @@ public class ConstraintBindingTest
         const string b = "func f(x: i32) -> i32 => x\n";
         var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.Empty(((FunctionKoto)call.BoundSymbol!.Declaration).GenericArguments);
     }
 
@@ -261,19 +261,7 @@ public class ConstraintBindingTest
         return c;
     }
 
-    private static FunctionKoto Function(Compilation c, string name) => Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

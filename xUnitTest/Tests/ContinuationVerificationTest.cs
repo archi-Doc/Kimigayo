@@ -85,13 +85,7 @@ public class ContinuationVerificationTest
     {
         var c = MinimalEmissionTest.Analyze(MixedSource + "\nf(true)");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var syntax = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref syntax);
-        Assert.NotNull(syntax);
-        syntax.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         for (var i = 0; i < 8; i++)

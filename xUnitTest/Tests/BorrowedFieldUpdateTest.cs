@@ -76,13 +76,7 @@ public class BorrowedFieldUpdateTest
         var c = MinimalEmissionTest.Analyze("func change(pair: uniq/(i32, bool))\n    pair.0 += 1\n    pair.0++\nvar pair: (i32, bool) = (40, true)\nchange(pair@uniq)\nrequire pair.0 == 42 else => $abort(\"value\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);

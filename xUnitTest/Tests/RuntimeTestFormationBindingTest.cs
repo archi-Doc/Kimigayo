@@ -20,7 +20,7 @@ public class RuntimeTestFormationBindingTest
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Null(Test(restored).BoundRuntimeTest);
     }
@@ -59,7 +59,7 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(restored.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(restored)));
     }
@@ -116,17 +116,6 @@ public class RuntimeTestFormationBindingTest
                 throw new InvalidOperationException("Runtime Type formation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static IsKoto Test(Compilation c)

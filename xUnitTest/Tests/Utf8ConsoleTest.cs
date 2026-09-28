@@ -33,9 +33,8 @@ public class Utf8ConsoleTest
         const string Source = "let n = 42@i64\nConsole.writeLine(\"My number is \\(n)\")";
         NativeAllocationAudit.WriteFixture("Utf8ConsoleStack", Source, 0, 0, 0, "My number is 42\n");
         var c = MinimalEmissionTest.Analyze(Source);
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), error);
-        Assert.Contains("%formatBytes0 = alloca [33 x i8], align 1", output.ToString());
+        var outputIr = CompilationTestHelper.WriteIr(c);
+        Assert.Contains("%formatBytes0 = alloca [33 x i8], align 1", outputIr);
     }
 
     [Theory]

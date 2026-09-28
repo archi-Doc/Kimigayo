@@ -114,9 +114,7 @@ public class EmissionPlanTest
     public void RuntimeDefinitionsAndCallsUseThePreparedAbi()
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), error);
-        var ir = output.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         foreach (var abi in new[] { WindowsLowering.Entry, WindowsLowering.Exit, WindowsLowering.WriteLine, WindowsLowering.DestroyString })
         {
             Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.

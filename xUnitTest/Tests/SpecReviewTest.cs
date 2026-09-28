@@ -50,9 +50,9 @@ public class SpecReviewTest
     public void OriginBoundsParseAndRoundTrip(string source)
     {
         var parsed = ParseSuccess(source);
-        var text = Write(parsed);
+        var text = ParseTestHelper.Unparse(parsed);
         Assert.Contains(source.Contains("func", StringComparison.Ordinal) ? "origin b outlives a" : "origin other outlives static", text);
-        Assert.Equal(text, Write(ParseSuccess(text)));
+        Assert.Equal(text, ParseTestHelper.Unparse(ParseSuccess(text)));
     }
 
     [Theory]
@@ -87,19 +87,5 @@ public class SpecReviewTest
         var c = Compilation.CreateForTest();
         c.Kotonoha.AddSource(new SourceDocument("origins.kimi", "func f<T>(x: ref/T during a, y: ref/T during b) => ()"));
         Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => x.Code)));
-    }
-
-    private static string Write(Kotonoha parsed)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            parsed.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
     }
 }

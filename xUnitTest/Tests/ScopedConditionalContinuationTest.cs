@@ -68,13 +68,7 @@ public class ScopedConditionalContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(declaration + "var x = 1\nvalue(true)\nlet y = x");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var kotonoha = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified);

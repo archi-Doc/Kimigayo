@@ -268,17 +268,5 @@ public class TypeBindingTest
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 
-    private static IEnumerable<Koto> Nodes(Compilation c) => Walk(c.Kotonoha.RootKoto);
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static IEnumerable<Koto> Nodes(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto);
 }

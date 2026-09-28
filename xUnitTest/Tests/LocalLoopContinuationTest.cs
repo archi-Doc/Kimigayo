@@ -54,13 +54,7 @@ public class LocalLoopContinuationTest
     public void ReloadAndWarmProofReuseAllocateNothing(string loop)
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var kotonoha = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

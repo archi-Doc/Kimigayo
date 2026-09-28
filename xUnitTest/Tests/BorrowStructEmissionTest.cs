@@ -95,13 +95,7 @@ public class BorrowStructEmissionTest
     public void RebindingAndReloadRetainSynthesis()
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public var n: i32 = 3\nlet s = S.init()");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var tree = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete);

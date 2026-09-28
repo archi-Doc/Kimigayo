@@ -96,13 +96,7 @@ public class ProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"public contract C\n    associate Element\n{access} struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func expose(value: S.C.Element) => ()");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, c.Bind().IsComplete);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }

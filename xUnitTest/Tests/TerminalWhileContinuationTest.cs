@@ -91,13 +91,7 @@ public class TerminalWhileContinuationTest
         var source = Source("var x = 1", "if c => return else => exit", "choice: match c\n                true => yield to choice\n                false => x = 3", "let y = x");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var syntax = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref syntax);
-        Assert.NotNull(syntax);
-        syntax.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         for (var i = 0; i < 2; i++)

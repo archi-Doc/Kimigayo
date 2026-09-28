@@ -54,9 +54,7 @@ public class ReferenceEmissionTest
         source = Same + source;
         // Short circuit may need conditional temporary-destruction flags.
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("ReferenceTemporary" + name, ir, stdout);
         StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, source, ir, stdout, audit);
     }

@@ -106,8 +106,6 @@ public class ModuleEmissionTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var failure), MinimalEmissionTest.Describe(c, failure));
-        return writer.ToString();
+        return CompilationTestHelper.WriteIr(c);
     }
 }

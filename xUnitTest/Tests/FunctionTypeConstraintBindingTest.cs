@@ -31,7 +31,7 @@ public class FunctionTypeConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().BindingState);
         Assert.Equal(valid, c.Bind().IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -97,16 +97,5 @@ public class FunctionTypeConstraintBindingTest
                 throw new InvalidOperationException("Function Type condition failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

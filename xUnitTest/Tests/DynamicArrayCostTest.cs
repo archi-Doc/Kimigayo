@@ -150,9 +150,7 @@ public class DynamicArrayCostTest
     private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call ptr @HeapAlloc(", ir);
         ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
         // Count only Array growth transfers; user payload construction and stable insert/remove are separate costs.

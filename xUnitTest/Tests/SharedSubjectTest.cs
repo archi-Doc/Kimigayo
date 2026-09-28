@@ -219,17 +219,5 @@ public class SharedSubjectTest
         Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, issue.Code);
     }
 
-    private static Koto FindIterable(Compilation c) => Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable;
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static Koto FindIterable(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable;
 }

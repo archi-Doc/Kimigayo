@@ -22,7 +22,7 @@ public class AssociatedRefinementCapabilityBindingTest
         var type = function.Parameters[0].Type.BoundType!;
         Assert.Equal(ConstraintProof.Proven, capability == "Copy" ? c.Binding.ProveCopy(type, function) : c.Binding.ProveOwned(type, function));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -99,17 +99,6 @@ public class AssociatedRefinementCapabilityBindingTest
                 throw new InvalidOperationException("Associated refinement proof failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static FunctionKoto Function(Compilation c)

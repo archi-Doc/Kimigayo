@@ -40,7 +40,6 @@ public class DynamicArrayBoundaryTest
         // A zero-sized component inside an element with bytes keeps an ordinary stride.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        var ir = CompilationTestHelper.WriteIr(c);
     }
 }

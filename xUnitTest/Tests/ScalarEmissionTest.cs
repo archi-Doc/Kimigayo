@@ -136,9 +136,7 @@ public class ScalarEmissionTest
     internal static string EmitFixture(string name, string source, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         // Only the failure-block Abort reason may use select; source control flow still branches.
         var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i8|i16|i32|i64) @__kimi_(?:entry_body|f\d+)\(");
         Assert.True(bodyStart.Success);

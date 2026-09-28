@@ -81,13 +81,7 @@ public class ArrayArgumentEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);

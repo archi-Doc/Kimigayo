@@ -20,7 +20,7 @@ public class ConditionalMemberAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         AssertMember(c, property, false);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertMember(restored, property, false);
     }
@@ -35,7 +35,7 @@ public class ConditionalMemberAccessBindingTest
         var c = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", access));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         AssertMember(c, property, true);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         AssertMember(restored, property, true);
     }
@@ -134,17 +134,6 @@ public class ConditionalMemberAccessBindingTest
                 throw new InvalidOperationException("Conditional member API validation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(bool property, string requirement, string memberAccess)

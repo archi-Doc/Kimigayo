@@ -29,7 +29,7 @@ public class ParameterNameDefaultTest
         Assert.Equal(accepted, c.Emission.Validate(out _));
         if (accepted)
         {
-            Assert.Equal(defaults, Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.DefaultArguments.Length);
+            Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.DefaultArguments.Length);
         }
     }
 
@@ -130,16 +130,16 @@ public class ParameterNameDefaultTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = 1) => ()\nf(3)\nf()");
         Assert.True(c.Binding.Result.IsComplete);
-        var original = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var donor = MinimalEmissionTest.Analyze("func f(! x: i32) => ()");
-        var replacement = Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.All(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.BoundCall));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.BoundCall));
         Assert.True(KotoHelper.Replace(parent, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(new[] { 0, 1 }, Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
+        Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class ParameterNameDefaultTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        var function = Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var function = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Equal(1, function.PositionalParameterCount);
         Assert.Null(function.Parameters[0].DefaultValue);
         Assert.Equal(1, function.NameBoundaryIndex);
@@ -207,17 +207,5 @@ public class ParameterNameDefaultTest
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(Verify));
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Walk(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }

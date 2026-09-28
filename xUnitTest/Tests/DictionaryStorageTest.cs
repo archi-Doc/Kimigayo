@@ -35,9 +35,8 @@ public class DictionaryStorageTest
     {
         var source = "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\nentries.reserve(" + amount + ")";
         var c = MinimalEmissionTest.Analyze(source);
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
-        ScalarEmissionTest.WriteFixture("DictionaryStorageLimit" + name, output.ToString(), string.Empty, 1, "Hello.kimi:3:1: abort " + reason + "\n");
+        var outputIr = CompilationTestHelper.WriteIr(c);
+        ScalarEmissionTest.WriteFixture("DictionaryStorageLimit" + name, outputIr, string.Empty, 1, "Hello.kimi:3:1: abort " + reason + "\n");
     }
 
     [Theory]

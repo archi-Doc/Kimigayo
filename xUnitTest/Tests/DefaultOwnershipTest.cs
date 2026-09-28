@@ -96,13 +96,7 @@ public class DefaultOwnershipTest
             Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
         }
 
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.False(restored.Ownership.Analyze().IsVerified);
         var issue = Assert.Single(restored.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);

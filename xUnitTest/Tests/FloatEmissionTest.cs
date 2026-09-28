@@ -207,14 +207,7 @@ public class FloatEmissionTest
         Assert.Contains(c.Ownership.Bodies[0].Values, x => x.Kind == OwnershipValueKind.Constant && x.Constant == 0x3F800001L);
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        Assert.Same(restored.Kotonoha, kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Ownership.Analyze();

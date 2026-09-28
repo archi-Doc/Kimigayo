@@ -72,8 +72,7 @@ public class ArrayBindingTest
         var c = MinimalEmissionTest.Analyze(Task + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), error);
+        var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
     // SPEC 4.3: an element literal reserves its count once and moves each payload into the buffer; without a fixed-array
@@ -118,9 +117,7 @@ public class ArrayBindingTest
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\nrequire values.length == 0 else => $abort(\"empty\")");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call void @__kimi_array_init(ptr %", ir);
         Assert.Contains("call void @__kimi_array_free(ptr %", ir);
         var free = ir.IndexOf("define internal void @__kimi_array_free", StringComparison.Ordinal);
@@ -141,8 +138,7 @@ public class ArrayBindingTest
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        var ir = CompilationTestHelper.WriteIr(c);
     }
 
     // SPEC 4.7.2, 4.7.4: growth, insertion, removal, pop, shrinking and clearing over scalar elements.

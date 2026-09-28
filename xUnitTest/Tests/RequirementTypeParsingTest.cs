@@ -25,14 +25,14 @@ public class RequirementTypeParsingTest
     public void RequirementsPreserveSyntaxThroughWritingAndReload(string requirement)
     {
         var tree = ParseTestHelper.ParseSuccess($"func use<T>(value: T)\n    T is {requirement}\n    ()");
-        var written = Write(tree);
+        var written = ParseTestHelper.Unparse(tree);
         Assert.Contains(requirement, written);
-        Assert.Equal(written, Write(ParseTestHelper.ParseSuccess(written)));
+        Assert.Equal(written, ParseTestHelper.Unparse(ParseTestHelper.ParseSuccess(written)));
         var restored = Tinyhand.TinyhandSerializer.Deserialize<Kotonoha>(Tinyhand.TinyhandSerializer.Serialize(tree));
         Assert.NotNull(restored);
         restored.OnDeserialized(Compilation.CreateForTest());
         ParseTestHelper.AssertValid(restored);
-        Assert.Equal(written, Write(restored));
+        Assert.Equal(written, ParseTestHelper.Unparse(restored));
         AssertParents(restored.RootKoto);
     }
 
@@ -160,20 +160,6 @@ public class RequirementTypeParsingTest
         {
             Assert.Same(node, child.Parent);
             AssertParents(child);
-        }
-    }
-
-    private static string Write(Kotonoha tree)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            tree.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
         }
     }
 }

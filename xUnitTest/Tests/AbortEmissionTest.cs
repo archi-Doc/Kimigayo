@@ -84,9 +84,7 @@ public class AbortEmissionTest
     public void AbortRuntimeCannotReturnOrDestroyItsMessage()
     {
         var c = MinimalEmissionTest.Analyze("$abort(\"x\")");
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         var start = ir.IndexOf("define internal void @__kimi_abort_message(", StringComparison.Ordinal);
         Assert.True(start >= 0);
         var runtime = ir[start..ir.IndexOf("\n}", start, StringComparison.Ordinal)];
@@ -101,13 +99,7 @@ public class AbortEmissionTest
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
     {
         var c = MinimalEmissionTest.Analyze("let text = \"x\"\n$abort(text@move)");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var kotonoha = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

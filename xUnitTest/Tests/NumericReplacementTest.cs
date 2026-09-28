@@ -60,9 +60,8 @@ public class NumericReplacementTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        ScalarEmissionTest.WriteFixture("NumericReplacement" + name, writer.ToString(), "ok\n");
+        var ir = CompilationTestHelper.WriteIr(c);
+        ScalarEmissionTest.WriteFixture("NumericReplacement" + name, ir, "ok\n");
         var written = c.Kotonoha.GeneratedFunction!.Body!.ToString();
         Assert.True(MinimalEmissionTest.Analyze(written).Binding.Result.IsComplete);
     }

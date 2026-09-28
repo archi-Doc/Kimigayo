@@ -23,7 +23,7 @@ public class ProjectedConstraintCallBindingTest
         AssertCall(c, true);
         Assert.True(c.Bind().IsComplete);
         AssertCall(c, true);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         AssertCall(restored, true);
     }
@@ -41,7 +41,7 @@ public class ProjectedConstraintCallBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         AssertCall(c, false);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NoApplicableCandidate);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertCall(restored, false);
     }
@@ -57,7 +57,7 @@ public class ProjectedConstraintCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
     }
 
@@ -88,7 +88,7 @@ public class ProjectedConstraintCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         AssertCall(c, valid);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         AssertCall(restored, valid);
     }
@@ -128,17 +128,6 @@ public class ProjectedConstraintCallBindingTest
                 throw new InvalidOperationException("Projected constraint call failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string requirement, string argument)

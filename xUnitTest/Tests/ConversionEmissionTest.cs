@@ -181,7 +181,7 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("func id<T>(x: T) -> T => x\nlet a = id(300)@u8\nlet b = (200 + 100)@u8\nlet d = ((-128))@i8");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        var nodes = All(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);
         Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
         Assert.Same(BoundType.I32, nodes[0].Left.BoundType);
@@ -270,20 +270,8 @@ public class ConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var field = All(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
         Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
-    }
-
-    private static IEnumerable<Koto> All(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in All(child))
-            {
-                yield return nested;
-            }
-        }
     }
 
     private static (BigInteger Min, BigInteger Max) Range(string name)

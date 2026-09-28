@@ -26,7 +26,7 @@ public class FunctionParameterIdentityBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(same, c.Binding.Result.IsComplete);
         Assert.Equal(same, c.Bind().IsComplete);
-        Assert.Equal(same, Reload(c).Bind().IsComplete);
+        Assert.Equal(same, CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -62,7 +62,7 @@ public class FunctionParameterIdentityBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -86,7 +86,7 @@ public class FunctionParameterIdentityBindingTest
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + parameters + " -> bool is " + required + " -> bool\npublic func use(value: Target<i32>) => ()");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -121,16 +121,5 @@ public class FunctionParameterIdentityBindingTest
                 throw new InvalidOperationException("Function parameter identity failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

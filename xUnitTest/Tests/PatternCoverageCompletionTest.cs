@@ -17,7 +17,7 @@ public class PatternCoverageCompletionTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Bind().IsComplete);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.DoesNotContain(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
     }
@@ -30,7 +30,7 @@ public class PatternCoverageCompletionTest
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Binding.CheckBound().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Contains(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
     }
@@ -59,17 +59,6 @@ public class PatternCoverageCompletionTest
                 throw new InvalidOperationException("Nonexhaustive match was accepted.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string access)

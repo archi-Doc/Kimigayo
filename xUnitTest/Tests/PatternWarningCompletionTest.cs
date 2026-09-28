@@ -19,7 +19,7 @@ public class PatternWarningCompletionTest
         Assert.Empty(c.Binding.PatternWarnings);
         Assert.False(c.Bind().IsComplete);
         Assert.Empty(c.Binding.PatternWarnings);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Empty(restored.Binding.PatternWarnings);
     }
@@ -36,7 +36,7 @@ public class PatternWarningCompletionTest
         Assert.Single(c.Binding.PatternWarnings);
         Assert.True(c.Bind().IsComplete);
         Assert.Single(c.Binding.PatternWarnings);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.Single(restored.Binding.PatternWarnings);
     }
@@ -74,17 +74,6 @@ public class PatternWarningCompletionTest
                 throw new InvalidOperationException("Pattern warning completion failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string access, string first, string second)

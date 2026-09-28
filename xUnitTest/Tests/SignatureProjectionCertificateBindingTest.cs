@@ -24,7 +24,7 @@ public class SignatureProjectionCertificateBindingTest
 
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
     }
@@ -47,7 +47,7 @@ public class SignatureProjectionCertificateBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
         CheckLast(c);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         CheckLast(restored);
         void CheckLast(Compilation compilation)
@@ -87,7 +87,7 @@ public class SignatureProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -115,17 +115,6 @@ public class SignatureProjectionCertificateBindingTest
                 throw new InvalidOperationException("Signature projection verification failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Prefix(string access)

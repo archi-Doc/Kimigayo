@@ -21,7 +21,7 @@ public class SignatureInputFormationBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Call(c).BoundCall is not null);
         Assert.Equal(valid, c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, Call(restored).BoundCall is not null);
     }
@@ -40,7 +40,7 @@ public class SignatureInputFormationBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Property(c).IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, Property(restored).IsVerified);
     }
@@ -117,17 +117,6 @@ public class SignatureInputFormationBindingTest
     }
 
     private const string Prefix = "contract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\n";
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 
     private static InvocationKoto Call(Compilation c)
         => Assert.IsType<InvocationKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);

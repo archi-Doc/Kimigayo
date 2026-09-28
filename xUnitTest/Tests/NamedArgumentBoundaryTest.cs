@@ -95,7 +95,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public func f(" + parameters + ") -> i32 => x\nfunc use(s: ref/S) -> i32 => " + bound + " + " + unbound);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        var f = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Equal(k, f.PositionalParameterCount);
     }
 
@@ -125,7 +125,7 @@ public class NamedArgumentBoundaryTest
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
         if (accepted)
         {
-            var selected = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall!.Target;
+            var selected = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall!.Target;
             Assert.Equal("A", selected.Scope.Owner.BoundSymbol!.Name);
         }
     }
@@ -135,7 +135,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("func f<T>(x: i32 ! y: i32 = 2) -> i32 => x + y\nspecialize func f<i32>(x: i32, y: i32) -> i32 => x + y\nf<i32>(1)");
         Assert.True(c.Binding.Result.IsComplete);
-        var specialized = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
+        var specialized = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
         Assert.Equal(-1, specialized.NameBoundaryIndex);
         Assert.Equal(1, specialized.PositionalParameterCount);
     }
@@ -145,7 +145,7 @@ public class NamedArgumentBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("open struct B\n    public func f(! external => x: i32 = 1) -> i32 => x\nstruct D: B\nfunc fromBase() -> i32 => B.f()\nfunc fromDerived() -> i32 => D.f()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var calls = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal(2, calls.Length);
         for (var i = 0; i < calls.Length; i++)
         {
@@ -175,7 +175,7 @@ public class NamedArgumentBoundaryTest
     public void ConstructorBaseArgumentsUseCallSyntaxWithoutABoundary()
     {
         var tree = ParseTestHelper.ParseSuccess("open struct Base\n    public init(! x: i32) => ()\nstruct Derived: Base\n    public init(x: i32 ! y: i32 = 2): base(x: x) => ()");
-        var derived = Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.BaseInitializer is not null);
+        var derived = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.BaseInitializer is not null);
         Assert.Equal(1, derived.NameBoundaryIndex);
         Assert.Equal("x", derived.BaseInitializer!.GetArgumentLabel(0));
     }
@@ -189,7 +189,7 @@ public class NamedArgumentBoundaryTest
         var arguments = string.Join(", ", Enumerable.Range(0, count).Reverse().Select(i => "p" + i + ": " + i));
         var c = MinimalEmissionTest.Analyze("func f(! " + parameters + ") -> i32 => p0\nf(" + arguments + ")\nf(" + arguments + ")");
         Assert.True(c.Binding.Result.IsComplete);
-        foreach (var call in Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
+        foreach (var call in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
         {
             Assert.Equal(Enumerable.Range(0, count).Reverse(), call.BoundCall!.ArgumentToParameter.ToArray());
         }
@@ -233,18 +233,6 @@ public class NamedArgumentBoundaryTest
         Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
         Assert.Empty(tree.RootKoto.ChildNodes);
         Assert.Null(tree.GeneratedFunction);
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Walk(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }
 

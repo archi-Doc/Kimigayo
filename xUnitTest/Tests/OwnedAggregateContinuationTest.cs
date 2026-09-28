@@ -108,13 +108,7 @@ public class OwnedAggregateContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(Source("E<(string, i32)>", ".Some((\"payload\", 2))", ".Some((_, let n)) if (if c => stop() else => false) => x = n\n                .Some((let text, _)) => Console.writeLine(text)\n                .None => exit"));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var syntax = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref syntax);
-        Assert.NotNull(syntax);
-        syntax.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         for (var i = 0; i < 8; i++)

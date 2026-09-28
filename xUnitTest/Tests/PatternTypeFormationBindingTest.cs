@@ -25,7 +25,7 @@ public class PatternTypeFormationBindingTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(restored).Coverage.State);
     }
@@ -49,7 +49,7 @@ public class PatternTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value@move\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(restored).Coverage.State);
     }
@@ -114,34 +114,11 @@ public class PatternTypeFormationBindingTest
         }));
     }
 
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
-
     private static BoundMatch Plan(Compilation c)
     {
-        var function = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var match = Assert.IsType<MatchKoto>(function.ExpressionBody);
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         return Assert.IsType<BoundMatch>(plan);
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 }

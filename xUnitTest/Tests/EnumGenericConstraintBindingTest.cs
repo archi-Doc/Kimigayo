@@ -24,7 +24,7 @@ public class EnumGenericConstraintBindingTest
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
         Assert.False(c.Bind().IsComplete);
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(restored.Binding.TryGetEnumConstruction(Use(restored), out _));
     }
@@ -46,7 +46,7 @@ public class EnumGenericConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is " + argument + "\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<Box<" + argument + ">> => .Empty");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.TryGetEnumConstruction(Use(c), out _));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(restored.Binding.TryGetEnumConstruction(Use(restored), out _));
     }
@@ -56,7 +56,7 @@ public class EnumGenericConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\nenum E<T>\n    Empty\ngroup Consumer\n    func make<U>() -> E<Box<U>>\n        U is Copy\n        return .Empty");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -94,17 +94,6 @@ public class EnumGenericConstraintBindingTest
                 throw new InvalidOperationException("Nested enum argument Binding failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static FunctionKoto Function(Compilation c)

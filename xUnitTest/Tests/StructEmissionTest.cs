@@ -115,22 +115,15 @@ public class StructEmissionTest
     public void ExplicitCLayoutUsesItsSelectedRepresentation()
     {
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct S\n    var value: i32\n    public init() => self.value = 0\nlet s = S.init()");
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Contains("{ i32 }", writer.ToString());
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains("{ i32 }", ir);
     }
 
     [Fact]
     public void RebindReloadAndWarmPassesPreserveStructPlans()
     {
         var c = MinimalEmissionTest.Analyze(Resource + "let value = Resource.init()\nif value.value == 7 => Console.writeLine(\"ok\")");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var tree = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

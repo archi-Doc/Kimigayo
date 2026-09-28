@@ -27,7 +27,7 @@ public class WholeValueTest
     [InlineData("rc/S", false)]
     public void SealedTestsOnlyOuterCore(string type, bool expected)
     {
-        var c = Parse($"open struct B\nstruct S\nstruct Cell<T>\n    let item: T\nfunc inspect(x: {type}) => ()");
+        var c = CompilationTestHelper.Parse($"open struct B\nstruct S\nstruct Cell<T>\n    let item: T\nfunc inspect(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
         Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.BoundType!, f));
@@ -42,7 +42,7 @@ public class WholeValueTest
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@follow@{target}");
+        var c = CompilationTestHelper.Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@follow@{target}");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
@@ -54,7 +54,7 @@ public class WholeValueTest
     [InlineData("contract C: Sealed\nopen struct S\n    Self is C")]
     public void RejectsMissingOrManufacturedPayloadEvidence(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete, Describe(c));
     }
 
@@ -64,7 +64,7 @@ public class WholeValueTest
     [InlineData("Kimi.Intrinsics.swap(x@uniq, y@uniq)")]
     public void UpdateSignaturesBindNormally(string expression)
     {
-        var c = Parse("var x: i32 = 1\nvar y: i32 = 2\n" + expression);
+        var c = CompilationTestHelper.Parse("var x: i32 = 1\nvar y: i32 = 2\n" + expression);
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -112,7 +112,7 @@ public class WholeValueTest
     [InlineData("(i32, string)")]
     public void ObjectsMayHaveNonStructPayloads(string type)
     {
-        var c = Parse($"func f(x: objref/{type}) -> ref/{type} during x => x@follow@ref");
+        var c = CompilationTestHelper.Parse($"func f(x: objref/{type}) -> ref/{type} during x => x@follow@ref");
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -156,14 +156,14 @@ public class WholeValueTest
     [InlineData("not Sealed and ObjectPayload", false)]
     public void ProjectionUsesDeclaredProofRules(string constraint, bool expected)
     {
-        var c = Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@follow@ref");
+        var c = CompilationTestHelper.Parse($"func f<T>(x: objref/T) -> ref/T during x\n    T is {constraint}\n    return x@follow@ref");
         Assert.Equal(expected, c.Bind().IsComplete);
     }
 
     [Fact]
     public void CompletePayloadReceiverUsesOrdinaryCallPath()
     {
-        var c = Parse("struct S\n    public func reset(self: uniq/Self) => Kimi.Intrinsics.replace(self, with: S.init())\nfunc f(x: objuniq/S) => x.reset()");
+        var c = CompilationTestHelper.Parse("struct S\n    public func reset(self: uniq/Self) => Kimi.Intrinsics.replace(self, with: S.init())\nfunc f(x: objuniq/S) => x.reset()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Assert.IsType<InvocationKoto>(f.ExpressionBody);
@@ -204,14 +204,8 @@ public class WholeValueTest
     [Fact]
     public void RebindingAndSerializationRetainUpdates()
     {
-        var c = Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: 3)\n()");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var tree = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(c);
+        var c = CompilationTestHelper.Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: 3)\n()");
+        c = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 3; i++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
@@ -226,14 +220,14 @@ public class WholeValueTest
     [InlineData("func f(x: objref/Cell<i32>) -> ref/Cell<i32> during x => x@follow@(ref/Cell<i32> during x)")]
     public void PayloadProjectionDoesNotConvertInternalTypesOrAcceptTargetOrigin(string function)
     {
-        var c = Parse("struct Cell<T>\n    let item: T\n" + function);
+        var c = CompilationTestHelper.Parse("struct Cell<T>\n    let item: T\n" + function);
         Assert.False(c.Bind().IsComplete && !c.Kotonoha.HasSourceErrors);
     }
 
     [Fact]
     public void RequiredUpdateDeclarationShapeIsValidatedAgain()
     {
-        var c = Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)");
+        var c = CompilationTestHelper.Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var function = (FunctionKoto)c.Library.Replace.Declaration;
         function.Parameters[1].Type = function.Parameters[0].Type;
@@ -247,14 +241,6 @@ public class WholeValueTest
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../.."));
         var source = File.ReadAllText(Path.Combine(root, "examples", "WholeValueReplacement", "WholeValueReplacement.kimi"));
         this.EmitsWholeUpdates("Example", source, "Destroyed 1.\nReplacement installed.\nExchange and swap complete.\nDestroyed 2.\n");
-    }
-
-    private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        return c;
     }
 
     private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues);

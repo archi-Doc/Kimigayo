@@ -19,7 +19,7 @@ public class EnumInputFormationBindingTest
         Assert.Equal(valid, Definition(c).IsVerified);
         Assert.Equal(valid, c.Binding.TryGetEnumConstruction(Construction(c), out _));
         Assert.Equal(valid, c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, Definition(restored).IsVerified);
         Assert.Equal(valid, restored.Binding.TryGetEnumConstruction(Construction(restored), out _));
@@ -67,17 +67,6 @@ public class EnumInputFormationBindingTest
     }
 
     private const string Prefix = "contract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\n";
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 
     private static Koto Construction(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single().ExpressionBody!;

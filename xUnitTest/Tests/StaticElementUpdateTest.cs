@@ -89,13 +89,7 @@ public class StaticElementUpdateTest
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [1, 2]\nKimi.Intrinsics.swap(a[0]@uniq, a[1]@uniq)");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);

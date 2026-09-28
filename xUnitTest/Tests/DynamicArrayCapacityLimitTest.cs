@@ -64,9 +64,8 @@ public class DynamicArrayCapacityLimitTest
     internal static string RuntimeIr()
     {
         var compilation = MinimalEmissionTest.Analyze("var values: Array<u8> = []\nvalues@uniq.append(1)\nvalues@uniq.insert(0, 2)\nvalues@uniq.clear()");
-        using var writer = new StringWriter();
-        Assert.True(compilation.Emission.WriteIr(writer, out var error), error);
-        return writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(compilation);
+        return ir;
     }
 
     internal static string ReplaceDefinition(string ir, string name, string replacement)

@@ -24,7 +24,7 @@ public class ConstraintContextBindingTest
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(proposition, function));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         var restoredFunction = Query(restored);
         Assert.Equal(ConstraintProof.Error, restored.Binding.Prove(((IsKoto)restoredFunction.TypeConstraints[0]).BoundConstraint!, restoredFunction));
@@ -89,15 +89,4 @@ public class ConstraintContextBindingTest
 
     private static FunctionKoto Query(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 }

@@ -17,7 +17,7 @@ public class AssociatedSubjectConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
     }
 
@@ -37,7 +37,7 @@ public class AssociatedSubjectConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(Source(enumeration, item, requirement));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
     }
 
@@ -64,7 +64,7 @@ public class AssociatedSubjectConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(c, "call").ExpressionBody).BoundCall is not null);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(restored, "call").ExpressionBody).BoundCall is not null);
     }
@@ -88,7 +88,7 @@ public class AssociatedSubjectConstraintBindingTest
         var source = Source(enumeration, "string", "i32").Replace("func accept(x: Box<Source>) => ()", "func accept<U>(x: Box<U>)\n        U is Origin\n        U.Origin.Item is i32\n        ()", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -124,17 +124,6 @@ public class AssociatedSubjectConstraintBindingTest
                 throw new InvalidOperationException("Associated subject constraint check failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static FunctionKoto Function(Compilation c, string name)

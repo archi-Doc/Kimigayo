@@ -151,7 +151,7 @@ public class StartupBindingTest
         var main = GetMain(c);
         var bodyCall = Assert.IsType<InvocationKoto>(main.ExpressionBody);
         Assert.Equal("A", Assert.IsType<GroupKoto>(bodyCall.BoundCall!.Target.Declaration.Parent).Name);
-        var call = All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method.ToString() == "main");
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method.ToString() == "main");
         Assert.Same(main.BoundSymbol, call.BoundCall!.Target);
         Assert.Same(c.Kotonoha.SourceDocuments[0], main.CodeContext.SourceDocument);
     }
@@ -173,7 +173,7 @@ public class StartupBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!;
         Assert.Same(c.Library.WriteLine, call.Target);
         Assert.Equal(CompilerFunctionKind.WriteLine, call.Target.CompilerFunction);
         Assert.Null(call.Receiver);
@@ -199,7 +199,7 @@ public class StartupBindingTest
         var c = Parse(source);
         Assert.False(c.Bind().IsComplete);
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Null(Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public class StartupBindingTest
     {
         var c = Parse("func writeLine(text: string) => ()\nwriteLine(\"x\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var target = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.Target;
+        var target = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.Target;
         Assert.NotSame(c.Library.WriteLine, target);
         Assert.Equal(CompilerFunctionKind.None, target.CompilerFunction);
     }
@@ -218,7 +218,7 @@ public class StartupBindingTest
         var c = Parse("Console.writeLine(\"x\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var call = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall;
         var core = c.Library.WriteLine;
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "public func main() => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
@@ -227,7 +227,7 @@ public class StartupBindingTest
         Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Contains(c.Binding.StartupIssues, x => x.Code == DiagnosticCode.MixedStartupBodies_Kd);
         Assert.Same(core, c.Library.WriteLine);
-        Assert.Same(call, Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Same(call, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public class StartupBindingTest
     {
         var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nCore.writeLine(\"user\")\n::Kimi.Console.writeLine(\"compiler\")\nwriteLine(\"alias\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var calls = All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal(CompilerFunctionKind.None, calls[0].BoundCall!.Target.CompilerFunction);
         Assert.Same(c.Library.WriteLine, calls[1].BoundCall!.Target);
         Assert.Same(calls[0].BoundCall!.Target, calls[2].BoundCall!.Target);
@@ -382,7 +382,7 @@ public class StartupBindingTest
     {
         var c = Parse($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.PendingBinding);
         Assert.Empty(flow.Issues);
@@ -415,7 +415,7 @@ public class StartupBindingTest
     }
 
     private static FunctionKoto GetMain(Compilation c)
-        => All(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "main");
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "main");
 
     private static Compilation Parse(params string[] sources)
     {
@@ -432,16 +432,4 @@ public class StartupBindingTest
 
     private static string Describe(Compilation c)
         => string.Join(Environment.NewLine, c.Binding.Issues.Concat(c.Binding.StartupIssues).Select(x => $"{x.Code}: {x.Node}"));
-
-    private static IEnumerable<Koto> All(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in All(child))
-            {
-                yield return nested;
-            }
-        }
-    }
 }

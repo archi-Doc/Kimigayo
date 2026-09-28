@@ -46,8 +46,7 @@ public class UserIterationTest
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.EntryCall!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
     [Fact]
@@ -62,8 +61,7 @@ public class UserIterationTest
         Assert.Same(loop.Body, loop.Iteration!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
     [Fact]

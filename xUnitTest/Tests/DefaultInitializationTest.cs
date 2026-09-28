@@ -59,13 +59,7 @@ public class DefaultInitializationTest
     {
         var source = invalid ? NeverDefault + "f(3)" : "func f(x: i32, y: i32 = (scope: do\n    var n: i32\n    n = x + 1\n    exit to scope: n\n)) -> i32 => y\nf(2)";
         var c = MinimalEmissionTest.Analyze(source);
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var kotonoha = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);

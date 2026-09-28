@@ -196,13 +196,7 @@ public class NeverContinuationTest
     public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
     {
         var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var kotonoha = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

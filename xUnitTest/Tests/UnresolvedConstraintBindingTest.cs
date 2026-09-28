@@ -74,7 +74,7 @@ public class UnresolvedConstraintBindingTest
         Assert.Empty(c.Binding.Issues);
         c.Binding.ReportDiagnostics();
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class UnresolvedConstraintBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", generated));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Generated.kimi").GetArray());
         Assert.Equal(valid, c.Bind().IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -174,7 +174,7 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure is BindingFailure.MissingType or BindingFailure.InvalidConstraint);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -202,7 +202,7 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Binding.GetConformanceDefinition(target.BoundType!, Container(c, "Marker").BoundSymbol!)!.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Future"));
         Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.BindingFailure}:{x.Node.Span}")));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -263,17 +263,6 @@ public class UnresolvedConstraintBindingTest
                 throw new InvalidOperationException("Missing constraint declaration became invalid.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name)

@@ -54,9 +54,7 @@ public class WorkloadCostTest
     private static void WriteWorkload(string name, string source, string stdout, int bound)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains("call ptr @HeapAlloc(", ir);
         ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
 

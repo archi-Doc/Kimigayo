@@ -25,7 +25,7 @@ public class GenericConstraintCertificateBindingTest
         Assert.False(property.BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(property.BoundSymbol.Property.IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Property(restored).BoundSymbol!.Property!.IsVerified);
     }
@@ -60,7 +60,7 @@ public class GenericConstraintCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single()).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class GenericConstraintCertificateBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\nstruct S<U>\n    U is Copy\n    var value: Box<U>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Property(c).BoundSymbol!.Property!.IsVerified);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -110,15 +110,4 @@ public class GenericConstraintCertificateBindingTest
 
     private static PropertyKoto Property(Compilation c)
         => Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.Single(x => x is PropertyKoto));
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 }

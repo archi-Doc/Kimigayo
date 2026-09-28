@@ -143,9 +143,7 @@ public class DivisionEmissionTest
     public void AbortTableHasStableIndicesAndDerivedLengths()
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        var ir = writer.ToString();
+        var ir = CompilationTestHelper.WriteIr(c);
         Assert.Equal(16, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);

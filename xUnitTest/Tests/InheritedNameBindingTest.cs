@@ -25,7 +25,7 @@ public class InheritedNameBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Type(c)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
         Assert.False(c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Contains(restored.Binding.Issues, x => ReferenceEquals(x.Node, Type(restored)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
@@ -38,7 +38,7 @@ public class InheritedNameBindingTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    " + parent + "\nstruct S: Base\n    " + child);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
     }
 
@@ -117,17 +117,6 @@ public class InheritedNameBindingTest
                 throw new InvalidOperationException("Inherited Name validation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static StructKoto Type(Compilation c)

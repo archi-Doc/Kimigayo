@@ -62,13 +62,7 @@ public class BorrowedTupleEmissionTest
         var c = MinimalEmissionTest.Analyze("func first(pair: ref/(u8, bool)) -> u8 => pair.0\nrequire first((255, true)) == 255 else => $abort(\"value\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(restored.Bind().IsComplete);

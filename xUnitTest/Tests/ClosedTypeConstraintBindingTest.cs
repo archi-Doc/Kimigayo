@@ -32,7 +32,7 @@ public class ClosedTypeConstraintBindingTest
         }
 
         Assert.Equal(valid, c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(restored).BindingState);
     }
@@ -74,7 +74,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
-        Assert.Null(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);
+        Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);
         Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
         Assert.False(c.Binding.GetConformanceDefinition(Target(c).BoundType!, contract.BoundSymbol!)?.IsVerified);
@@ -134,29 +134,6 @@ public class ClosedTypeConstraintBindingTest
                 throw new InvalidOperationException("Closed constraint failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 
     private static string Source(string kind, string clause)

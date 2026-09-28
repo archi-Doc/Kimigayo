@@ -14,7 +14,7 @@ public class InheritedReceiverBindingTest
     [InlineData("public")]
     public void DerivedAccessDoesNotPermitHidingAnAccessibleBaseName(string access)
     {
-        var c = Parse($"open struct Base\n    public func f(x: i32) -> i32 => x\nstruct D: Base\n    {access} func f(x: string) -> i32 => 1\nfunc use() -> i32 => D.f(1)");
+        var c = CompilationTestHelper.ParseSuccess($"open struct Base\n    public func f(x: i32) -> i32 => x\nstruct D: Base\n    {access} func f(x: string) -> i32 => 1\nfunc use() -> i32 => D.f(1)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is StructKoto { Name: "D" } && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
@@ -24,7 +24,7 @@ public class InheritedReceiverBindingTest
     [InlineData("type")]
     public void ReceiverMismatchDoesNotReopenTheBaseLayer(string syntax)
     {
-        var c = Parse("open struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\n    public func f(x: i32) -> i32 => x\nfunc use(x: ref/D) -> i32 => " + (syntax == "value" ? "x.f()" : "D.f(x)"));
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\n    public func f(x: i32) -> i32 => x\nfunc use(x: ref/D) -> i32 => " + (syntax == "value" ? "x.f()" : "D.f(x)"));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Binding.TryGetReceiverOperation(Call(c), out _));
@@ -33,7 +33,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ATypeDeclarationDoesNotStopValueMemberLookup()
     {
-        var c = Parse("open struct Base\n    public func f() -> i32 => 1\nstruct D<f>: Base\nfunc use() -> i32 => D<i32>.f()");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f() -> i32 => 1\nstruct D<f>: Base\nfunc use() -> i32 => D<i32>.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("Base", Call(c).BoundCall!.DeclaringType!.Name);
     }
@@ -41,9 +41,9 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void StorageProjectionSubstitutesOriginsAtEveryBaseLayer()
     {
-        var c = Parse("open struct Base<T>\n    public let view: T\nopen struct Middle<U>: Base<U>\nstruct D<V>: Middle<V>\nfunc use(x: ref/D<ref/i32 during a>) -> ref/i32 during a => x.view");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    public let view: T\nopen struct Middle<U>: Base<U>\nstruct D<V>: Middle<V>\nfunc use(x: ref/D<ref/i32 during a>) -> ref/i32 during a => x.view");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var access = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
+        var access = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(access, out var plan));
         Assert.NotNull(plan.BasePath!.Parent);
         Assert.Same(access.BoundType!.Origin, plan.BasePath.Type.Components[0].Origin);
@@ -56,7 +56,7 @@ public class InheritedReceiverBindingTest
     [InlineData("S.f(1, x)", 2)]
     public void ReceiverPositionIsIndependentOfSourceEvaluationOrder(string expression, int explicitCount)
     {
-        var c = Parse($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var plan = Call(c).BoundCall!;
         Assert.Equal(1, plan.Target.ReceiverIndex);
@@ -77,7 +77,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AGroupParameterNamedSelfIsAnOrdinaryArgument()
     {
-        var c = Parse("group G\n    public func f(self: i32) -> i32 => self\nfunc use() -> i32 => G.f(1)");
+        var c = CompilationTestHelper.ParseSuccess("group G\n    public func f(self: i32) -> i32 => self\nfunc use() -> i32 => G.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(-1, Call(c).BoundCall!.Target.ReceiverIndex);
     }
@@ -85,7 +85,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AnUnboundCallDoesNotGainMemberProjection()
     {
-        var c = Parse("open struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\nfunc use(x: ref/D) -> i32 => D.f(x)");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\nfunc use(x: ref/D) -> i32 => D.f(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Binding.TryGetReceiverOperation(Call(c), out _));
@@ -97,7 +97,7 @@ public class InheritedReceiverBindingTest
     [InlineData("uniq", "ref", ArgumentAdaptation.CrossSemanticsBorrow)]
     public void ProjectedCallsRetainTheirPlanButRequireEffectProof(string input, string expected, ArgumentAdaptation quality)
     {
-        var c = Parse($"open struct Base<T>\n    public func f(self: {expected}/Self) -> i32 => 1\nopen struct Middle<U>: Base<U>\nstruct D: Middle<i32>\nfunc use(x: {input}/D) -> i32 => x.f()");
+        var c = CompilationTestHelper.ParseSuccess($"open struct Base<T>\n    public func f(self: {expected}/Self) -> i32 => 1\nopen struct Middle<U>: Base<U>\nstruct D: Middle<i32>\nfunc use(x: {input}/D) -> i32 => x.f()");
         Assert.False(c.Bind().IsComplete);
         var call = Call(c);
         Assert.Null(call.BoundCall);
@@ -118,7 +118,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void SharedReceiversCannotSupplyExclusiveBaseAccess()
     {
-        var c = Parse("open struct Base\n    public func f(self: uniq/Self) => ()\nstruct D: Base\nfunc use(x: ref/D) => x.f()");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f(self: uniq/Self) => ()\nstruct D: Base\nfunc use(x: ref/D) => x.f()");
         Assert.False(c.Bind().IsComplete);
         Assert.False(c.Binding.TryGetReceiverOperation(Call(c), out _));
     }
@@ -126,9 +126,9 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void StandardInheritedStorageDoesNotBorrowTheWholeBase()
     {
-        var c = Parse("open struct Base<T>\n    public var item: T\nstruct D: Base<i32>\nfunc use(x: ref/D) -> i32 => x.item");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    public var item: T\nstruct D: Base<i32>\nfunc use(x: ref/D) -> i32 => x.item");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var access = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
+        var access = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(access, out var plan));
         Assert.Equal(ArgumentOperationKind.StorageProjection, plan.Kind);
         Assert.Equal(ConstraintProof.Proven, plan.ObjectCompatibility);
@@ -141,7 +141,7 @@ public class InheritedReceiverBindingTest
     [InlineData("ref/Sibling", false)]
     public void ProtectedAccessUsesTheOriginalReceiver(string receiver, bool valid)
     {
-        var c = Parse($"open struct Base\n    protected var item: i32\nstruct Sibling: Base\nstruct D: Base\n    func use(x: {receiver}) -> i32 => x.item");
+        var c = CompilationTestHelper.ParseSuccess($"open struct Base\n    protected var item: i32\nstruct Sibling: Base\nstruct D: Base\n    func use(x: {receiver}) -> i32 => x.item");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
@@ -151,7 +151,7 @@ public class InheritedReceiverBindingTest
     public void AnInaccessibleStoredPropertyIsAnAccessFault(string source)
     {
         // The Name resolves; only its access fails (PLAN G16: formerly UnresolvedBinding_Kd).
-        var c = Parse(source);
+        var c = CompilationTestHelper.ParseSuccess(source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InaccessibleBinding_Kd);
     }
@@ -159,7 +159,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AccessorFailureCannotFallBackToAnotherProperty()
     {
-        var c = Parse("open struct Base\n    public var item: i32\nstruct D: Base\n    public var item: i32\n        private get\nfunc use(x: ref/D) -> i32 => x.item");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public var item: i32\nstruct D: Base\n    public var item: i32\n        private get\nfunc use(x: ref/D) -> i32 => x.item");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InaccessibleBinding_Kd);
     }
@@ -170,7 +170,7 @@ public class InheritedReceiverBindingTest
     [InlineData("uniq", "ref", ArgumentAdaptation.CrossSemanticsBorrow)]
     public void DirectReceiverCallsRetainRequiredBorrowOperations(string input, string expected, ArgumentAdaptation quality)
     {
-        var c = Parse($"struct S\n    public func f(self: {expected}/Self) -> i32 => 1\nfunc use(x: {input}/S) -> i32 => x.f()");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    public func f(self: {expected}/Self) -> i32 => 1\nfunc use(x: {input}/S) -> i32 => x.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(quality, Call(c).BoundCall!.ReceiverOperation.Adaptation);
     }
@@ -178,7 +178,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void OwningPlacesMayBeBorrowedForADirectReceiver()
     {
-        var c = Parse("struct S\n    public func f(self: ref/Self) -> i32 => 1\nfunc use(x: S) -> i32 => x.f()");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self) -> i32 => 1\nfunc use(x: S) -> i32 => x.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(ArgumentOperationKind.Borrow, Call(c).BoundCall!.ReceiverOperation.Kind);
     }
@@ -187,7 +187,7 @@ public class InheritedReceiverBindingTest
     public void AdaptationAdvantagesAcrossSourceArgumentsAreIncomparable()
     {
         // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared.
-        var c = Parse("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/i32) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/i32, y: ref/i32) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/i32, y: uniq/i32) -> i32 => s.f(x, y)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/i32) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/i32, y: ref/i32) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/i32, y: uniq/i32) -> i32 => s.f(x, y)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Call(c)) && x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
@@ -199,7 +199,7 @@ public class InheritedReceiverBindingTest
     public void FunctionsOfOneNameShareOneReceiverShape(string source)
     {
         // SPEC 7.3: differing receiver shapes within one member group are a declaration error.
-        var c = Parse(source + "\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
+        var c = CompilationTestHelper.ParseSuccess(source + "\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.ReceiverShapeMismatch_Kd));
     }
@@ -207,7 +207,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void GenericPreferenceAppliesAfterTheCommonReceiverAcquisition()
     {
-        var c = Parse("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nfunc use(s: uniq/S, x: i32) -> i32 => s.f(x)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Empty(Call(c).BoundCall!.TypeArguments.ToArray());
     }
@@ -215,7 +215,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void InheritedTypeFunctionWitnessPreservesBaseArguments()
     {
-        var c = Parse("struct Box<T>\ncontract C\n    associate E\n    func f(x: E) -> E\nopen struct Base<T>\n    public func f(x: Box<T>) -> Box<T> => x\nstruct D<U>: Base<U>\n    Self is C\n    associate C.E is Box<U>");
+        var c = CompilationTestHelper.ParseSuccess("struct Box<T>\ncontract C\n    associate E\n    func f(x: E) -> E\nopen struct Base<T>\n    public func f(x: Box<T>) -> Box<T> => x\nstruct D<U>: Base<U>\n    Self is C\n    associate C.E is Box<U>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var witness = Assert.Single(Path(c, "D", "C").Witnesses);
         Assert.Equal("Base", witness.Function!.DeclaringType.Symbol!.Name);
@@ -226,7 +226,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void InheritedBorrowedWitnessIsUnavailableUntilItsEffectsAreProven()
     {
-        var c = Parse("contract C\n    func f(self: ref/Self) -> i32\nopen struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    func f(self: ref/Self) -> i32\nopen struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
         Assert.False(c.Bind().IsComplete);
         var path = Path(c, "D", "C");
         var witness = Assert.Single(path.Witnesses);
@@ -243,7 +243,7 @@ public class InheritedReceiverBindingTest
     [InlineData("self: ref/Self, other: Self", "i32", "1")]
     public void ReceiverProjectionDoesNotRewriteOwnersResultsOrOtherArguments(string parameters, string result, string expression)
     {
-        var c = Parse($"contract C\n    func f({parameters}) -> {result}\nopen struct Base\n    public func f({parameters}) -> {result} => {expression}\nstruct D: Base\n    Self is C");
+        var c = CompilationTestHelper.ParseSuccess($"contract C\n    func f({parameters}) -> {result}\nopen struct Base\n    public func f({parameters}) -> {result} => {expression}\nstruct D: Base\n    Self is C");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.MissingContractImplementation_Kd or DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
@@ -254,7 +254,7 @@ public class InheritedReceiverBindingTest
     [InlineData("self: unsafe/Self")]
     public void InvalidReceiverDeclarationsCannotSupplyCalls(string parameter)
     {
-        var c = Parse($"struct S\n    func f({parameter}) => ()");
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    func f({parameter}) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
@@ -262,7 +262,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void UnqualifiedInstanceCallsCannotPretendToBeUnboundCalls()
     {
-        var c = Parse("struct S\n    func f(self: ref/Self) => ()\n    func use(x: ref/Self) => f(x)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    func f(self: ref/Self) => ()\n    func use(x: ref/Self) => f(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
     }
@@ -270,7 +270,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void APropertyStillCommitsTheValueRoleWhenACallWasWritten()
     {
-        var c = Parse("open struct Base\n    public func f() -> i32 => 1\nstruct D: Base\n    public var f: i32\nfunc use(x: ref/D) -> i32 => x.f()");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f() -> i32 => 1\nstruct D: Base\n    public var f: i32\nfunc use(x: ref/D) -> i32 => x.f()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NotCallable_Kd);
     }
@@ -278,7 +278,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void CallArgumentsCannotDisambiguateTypeAndValuePaths()
     {
-        var c = Parse("struct S\n    public func f(x: i32) -> i32 => x\nstruct Other\n    public func f(self: ref/Self, x: string) -> i32 => 1\nfunc use(S: ref/Other) -> i32 => S.f(1)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(x: i32) -> i32 => x\nstruct Other\n    public func f(self: ref/Self, x: string) -> i32 => 1\nfunc use(S: ref/Other) -> i32 => S.f(1)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
@@ -291,7 +291,7 @@ public class InheritedReceiverBindingTest
         // SPEC 7.3: overloads that differ only in receiver shape are a declaration error, whatever their order.
         const string Shared = "    public func f(self: ref/Self) -> i32 => 1\n";
         const string Exclusive = "    public func f(self: uniq/Self) -> i32 => 2\n";
-        var c = Parse("struct S\n" + (reversed ? Exclusive + Shared : Shared + Exclusive) + "func use(x: uniq/S) -> i32 => x.f()");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n" + (reversed ? Exclusive + Shared : Shared + Exclusive) + "func use(x: uniq/S) -> i32 => x.f()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(2, c.Binding.Issues.Count(x => x.Code == DiagnosticCode.ReceiverShapeMismatch_Kd));
     }
@@ -299,7 +299,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void NamedArgumentsAreComparedBySourcePosition()
     {
-        var c = Parse("struct S\n    public func f(self: ref/Self, a: i32, b: uniq/i32) -> i32 => 1\n    public func f(self: ref/Self, b: ref/i32, a: i32) -> i32 => 2\nfunc use(s: ref/S, x: uniq/i32) -> i32 => s.f(b: x, a: 1)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, a: i32, b: uniq/i32) -> i32 => 1\n    public func f(self: ref/Self, b: ref/i32, a: i32) -> i32 => 2\nfunc use(s: ref/S, x: uniq/i32) -> i32 => s.f(b: x, a: 1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(2, Call(c).BoundCall!.ArgumentToParameter[0]);
         Assert.Equal(ArgumentAdaptation.SameSemanticsReborrow, Call(c).BoundCall!.ArgumentOperations[0].Adaptation);
@@ -308,7 +308,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void FewerUsedDefaultsWinsOnlyAfterEquivalentEarlierJudgments()
     {
-        var c = Parse("struct S\n    public func f(self: ref/Self, x: i32, y: i32 = 0) -> i32 => 1\n    public func f(x: i32, self: ref/Self) -> i32 => 2\nfunc use(s: ref/S) -> i32 => s.f(1)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, x: i32, y: i32 = 0) -> i32 => 1\n    public func f(x: i32, self: ref/Self) -> i32 => 2\nfunc use(s: ref/S) -> i32 => s.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(1, Call(c).BoundCall!.Target.ReceiverIndex);
     }
@@ -316,7 +316,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ExpectedResultsFilterCandidatesWithoutAdaptingTheirResults()
     {
-        var c = Parse("struct S\n    public func f(self: ref/Self, x: i32) -> i32 => 1\n    public func f(self: ref/Self, x: i64) -> bool => true\nfunc use(s: ref/S) -> bool => s.f(1)");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, x: i32) -> i32 => 1\n    public func f(self: ref/Self, x: i64) -> bool => true\nfunc use(s: ref/S) -> bool => s.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("bool", Call(c).BoundCall!.ReturnType.Name);
     }
@@ -324,7 +324,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ASelectedProjectedMethodDoesNotRetryAfterItsEffectProofFails()
     {
-        var c = Parse("open struct Base\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nstruct D: Base\nfunc use(s: uniq/D, x: i32) -> i32 => s.f(x)");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: uniq/Self, x: i32) -> i32 => 2\nstruct D: Base\nfunc use(s: uniq/D, x: i32) -> i32 => s.f(x)");
         Assert.False(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetReceiverOperation(Call(c), out var plan));
         Assert.Equal(SemanticsKind.Uniq, plan.ParameterType!.Semantics);
@@ -334,9 +334,9 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ReceiverExpressionsHaveOneSourceAnchorBeforeExplicitArguments()
     {
-        var c = Parse("struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc receiver(x: ref/S) -> ref/S => x\nfunc argument() -> i32 => 1\nfunc use(x: ref/S) -> i32 => receiver(x).f(argument())");
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc receiver(x: ref/S) -> ref/S => x\nfunc argument() -> i32 => 1\nfunc use(x: ref/S) -> i32 => receiver(x).f(argument())");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var call = Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is MemberAccessKoto);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is MemberAccessKoto);
         var plan = call.BoundCall!;
         Assert.Same(((MemberAccessKoto)call.Method).Left, plan.ReceiverOperation.Source);
         Assert.IsType<InvocationKoto>(plan.ReceiverOperation.Source);
@@ -347,7 +347,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ProjectedCustomAccessorWitnessKeepsItsUnprovenEffectObligation()
     {
-        var c = Parse("contract C\n    property item: i32 has get\nopen struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get\nopen struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
         Assert.False(c.Bind().IsComplete);
         var path = Path(c, "D", "C");
         var witness = Assert.Single(path.PropertyWitnesses);
@@ -360,9 +360,9 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ProjectedAccessorAccessRetainsItsBaseBorrowPlan()
     {
-        var c = Parse("open struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\nfunc use(x: ref/D) -> i32 => x.item");
+        var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\nfunc use(x: ref/D) -> i32 => x.item");
         Assert.False(c.Bind().IsComplete);
-        var use = Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
+        var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(use, out var plan));
         Assert.Equal(ArgumentOperationKind.BaseBorrow, plan.Kind);
         Assert.Equal(ConstraintProof.Unknown, plan.ObjectCompatibility);
@@ -374,7 +374,7 @@ public class InheritedReceiverBindingTest
     [InlineData("uniq", true)]
     public void StandardStorageProjectionPreservesWritePermissions(string semantics, bool valid)
     {
-        var c = Parse($"open struct Base\n    public var item: i32\nstruct D: Base\nfunc use(x: {semantics}/D) => x.item = 1");
+        var c = CompilationTestHelper.ParseSuccess($"open struct Base\n    public var item: i32\nstruct D: Base\nfunc use(x: {semantics}/D) => x.item = 1");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
     }
 
@@ -383,7 +383,7 @@ public class InheritedReceiverBindingTest
     [InlineData("private", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     public void PublicConformanceCannotUseInvalidOrPrivateSelectedImplementation(string baseAccess, DiagnosticCode failure)
     {
-        var c = Parse("public contract C\n    func f() -> i32\npublic open struct Base\n    " + baseAccess + " func f() -> i32 => 1\npublic struct D: Base\n    Self is C\n    private func f() -> i32 => 2");
+        var c = CompilationTestHelper.ParseSuccess("public contract C\n    func f() -> i32\npublic open struct Base\n    " + baseAccess + " func f() -> i32 => 1\npublic struct D: Base\n    Self is C\n    private func f() -> i32 => 2");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == failure);
     }
@@ -391,7 +391,7 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void ConditionalInheritedWitnessUsesBaseConditionsWithDerivedArguments()
     {
-        var c = Parse("contract C\n    func f() -> i32\nopen struct Base<T>\n    Self is C when T is Copy\n        public func f() -> i32 => 1\nstruct D<U>: Base<U>\n    Self is C when U is Copy");
+        var c = CompilationTestHelper.ParseSuccess("contract C\n    func f() -> i32\nopen struct Base<T>\n    Self is C when T is Copy\n        public func f() -> i32 => 1\nstruct D<U>: Base<U>\n    Self is C when U is Copy");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("Base", Assert.Single(Path(c, "D", "C").Witnesses).Function!.DeclaringType.Symbol!.Name);
     }
@@ -399,10 +399,10 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AncestorPathsKeepTheFullInheritedFunctionCorrespondence()
     {
-        var c = Parse("contract A\n    func f() -> i32\ncontract C: A\nopen struct Base<T>\n    public func f() -> i32 => 1\nstruct D<U>: Base<U>\n    Self is A when U is Copy\n    Self is C when U is Owned");
+        var c = CompilationTestHelper.ParseSuccess("contract A\n    func f() -> i32\ncontract C: A\nopen struct Base<T>\n    public func f() -> i32 => 1\nstruct D<U>: Base<U>\n    Self is A when U is Copy\n    Self is C when U is Owned");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var d = Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").BoundType!;
-        var a = Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
+        var d = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").BoundType!;
+        var a = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
         var paths = c.Binding.GetConformanceDefinition(d, a)!.Paths;
         Assert.Equal(2, paths.Count);
         Assert.All(paths, x => Assert.NotNull(Assert.Single(x.Witnesses).Function!.BasePath));
@@ -414,11 +414,11 @@ public class InheritedReceiverBindingTest
     public void RebindInvalidatesAndRestoresCallOperations(string change)
     {
         const string Source = "struct S\n    public func f(self: ref/Self) -> i32 => 1\nfunc use(x: ref/S) -> i32 => x.f()";
-        var c = Parse(Source);
+        var c = CompilationTestHelper.ParseSuccess(Source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var fragment = Parse(change == "access" ? Source.Replace("public func", "private func", StringComparison.Ordinal) : Source.Replace("self: ref", "self: uniq", StringComparison.Ordinal));
-        var original = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        var replacement = Walk(fragment.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var fragment = CompilationTestHelper.ParseSuccess(change == "access" ? Source.Replace("public func", "private func", StringComparison.Ordinal) : Source.Replace("self: ref", "self: uniq", StringComparison.Ordinal));
+        var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var replacement = KotoTree.Walk(fragment.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var parent = original.Parent!;
         var call = Call(c);
         var oldPlan = call.BoundCall;
@@ -436,12 +436,12 @@ public class InheritedReceiverBindingTest
     public void RebindReplacesBaseTypeSubstitutions()
     {
         const string Source = "open struct Base<T>\n    public func f() -> i32 => 1\nstruct D: Base<i32>\nfunc use() -> i32 => D.f()";
-        var c = Parse(Source);
+        var c = CompilationTestHelper.ParseSuccess(Source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var fragment = Parse(Source.Replace("Base<i32>", "Base<bool>", StringComparison.Ordinal));
-        var d = Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D");
+        var fragment = CompilationTestHelper.ParseSuccess(Source.Replace("Base<i32>", "Base<bool>", StringComparison.Ordinal));
+        var d = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D");
         var original = d.Bases[0];
-        var replacement = Walk(fragment.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").Bases[0];
+        var replacement = KotoTree.Walk(fragment.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").Bases[0];
         Assert.True(KotoHelper.Replace(d, original, replacement));
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         Assert.Equal("bool", Call(c).BoundCall!.DeclaringType!.Components[0].Name);
@@ -464,7 +464,7 @@ public class InheritedReceiverBindingTest
             source.Append("struct D").Append(i).Append("<T>: Base<T>\n    Self is C when T is Copy\n    public func read(self: ref/Self) -> i32 => self.item\nfunc use").Append(i).Append("(x: ref/D").Append(i).Append("<i32>) -> i32 => D").Append(i).Append("<i32>.f(x.read())\n");
         }
 
-        var c = Parse(source.ToString());
+        var c = CompilationTestHelper.ParseSuccess(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
         for (var i = 0; i < 8; i++)
         {
@@ -478,33 +478,12 @@ public class InheritedReceiverBindingTest
 
     private static BoundConformancePath Path(Compilation c, string type, string contract)
     {
-        var t = Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).BoundType!;
-        var target = Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == contract).BoundSymbol!;
+        var t = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).BoundType!;
+        var target = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == contract).BoundSymbol!;
         return Assert.Single(c.Binding.GetConformanceDefinition(t, target)!.Paths);
     }
 
-    private static InvocationKoto Call(Compilation c) => Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-
-    private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
-        return c;
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static InvocationKoto Call(Compilation c) => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

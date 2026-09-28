@@ -12,11 +12,10 @@ public class OwnedPatternVerificationTest
     {
         const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
         var c = MinimalEmissionTest.Analyze(Source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        var ir = CompilationTestHelper.WriteIr(c);
         // No handle is allowed: any destruction terminates immediately with 121.
         // An exit-only count check could never detect early cleanup before a loop.
-        var audited = StringLifetimeAudit.Instrument(writer.ToString(), []);
+        var audited = StringLifetimeAudit.Instrument(ir, []);
         ScalarEmissionTest.WriteFixture("VerificationOwnedPatternDivergenceAudit", audited, string.Empty, timeoutMilliseconds: 300);
     }
 

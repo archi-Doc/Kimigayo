@@ -22,7 +22,7 @@ public class LibraryImportTargetBindingTest
         Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         var restoredType = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var restoredContract = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -352,16 +352,5 @@ public class LibraryImportTargetBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         return c;
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

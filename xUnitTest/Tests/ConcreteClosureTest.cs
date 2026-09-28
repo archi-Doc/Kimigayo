@@ -20,8 +20,7 @@ public class ConcreteClosureTest
         Assert.Equal(BoundTypeKind.Closure, closure.EnvironmentType!.Kind);
         Assert.Equal(receiver, closure.Receiver);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.True(c.Emission.WriteIr(output, out var failure), MinimalEmissionTest.Describe(c, failure));
+        var outputIr = CompilationTestHelper.WriteIr(c);
     }
 
     [Fact]

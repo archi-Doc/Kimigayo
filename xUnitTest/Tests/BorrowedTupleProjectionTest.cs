@@ -72,13 +72,7 @@ public class BorrowedTupleProjectionTest
         const string Source = "func change(pair: uniq/((i32, bool), bool))\n    let item = pair.0@uniq\n    item.0 += 41\n    pair.1 = false\nvar pair: ((i32, bool), bool) = ((1, true), true)\nchange(pair@uniq)\nrequire pair.0.0 == 42 and not pair.1 else => $abort(\"value\")";
         var original = ScalarEmissionTest.EmitFixture("BorrowedTupleProjectionNestedUpdate", Source, string.Empty);
         var c = MinimalEmissionTest.Analyze(Source);
-        var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-        c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        var tree = c.Kotonoha;
-        TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(c);
+        c = CompilationTestHelper.Reload(c);
         for (var i = 0; i < 2; i++)
         {
             Assert.True(c.Bind().IsComplete);

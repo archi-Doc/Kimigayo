@@ -81,7 +81,7 @@ public class ContainerFragmentBindingTest
         c.Kotonoha.AddSource(baseFirst ? withBase : withoutBase);
         c.Kotonoha.AddSource(baseFirst ? withoutBase : withBase);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete, MinimalEmissionTest.Describe(restored, null));
         Assert.True(restored.Bind().IsComplete);
     }
@@ -98,7 +98,7 @@ public class ContainerFragmentBindingTest
         Assert.True(c.Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("second.kimi", second));
         Assert.False(c.Bind().IsComplete);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Contains(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Duplicate);
     }
@@ -119,17 +119,5 @@ public class ContainerFragmentBindingTest
                 throw new InvalidOperationException("Merged declaration Binding failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
     }
 }

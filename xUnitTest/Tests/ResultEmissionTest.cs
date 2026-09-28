@@ -103,9 +103,8 @@ public class ResultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        Assert.NotEmpty(writer.ToString());
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.NotEmpty(ir);
     }
 
     [Theory]

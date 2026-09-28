@@ -205,7 +205,7 @@ public class PatternBindingTest
         var c = Parse($"func f(x: {type}) => match x@move\n    {first} => ()\n    {second} => ()\n    _ => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(0, Assert.Single(c.Binding.PatternWarnings).CoveringArm);
-        Assert.All(Walk(Plan(c).Syntax.Arms[0].Pattern), p => Assert.False(c.Binding.TryGetEnumConstruction(p, out _)));
+        Assert.All(KotoTree.Walk(Plan(c).Syntax.Arms[0].Pattern), p => Assert.False(c.Binding.TryGetEnumConstruction(p, out _)));
     }
 
     [Theory]
@@ -289,14 +289,14 @@ public class PatternBindingTest
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.UnresolvedBinding_Kd && ReferenceEquals(i.Node, match.Arms[0].Body));
         Assert.DoesNotContain(plan.Positions, p => ReferenceEquals(p.Source, oldPattern));
-        var newName = Assert.Single(Walk(newPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "m");
+        var newName = Assert.Single(KotoTree.Walk(newPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "m");
         // Reusing an old Pattern child must not resurrect its old arm scope or Symbol.
-        var oldName = Assert.Single(Walk(oldPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "n");
+        var oldName = Assert.Single(KotoTree.Walk(oldPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "n");
         Assert.True(KotoHelper.Replace(newName.Parent!, newName, oldName));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("n", Assert.Single(plan.Positions, p => p.Kind == BoundPatternKind.Binding).BodySymbol!.Name);
-        var function = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
-        var empty = Assert.Single(Walk(Parse("func g() => ()").Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
+        var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
+        var empty = Assert.Single(KotoTree.Walk(Parse("func g() => ()").Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
         Assert.True(KotoHelper.Replace(function.Parent!, function, empty));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Binding.TryGetMatch(match, out _));
@@ -409,24 +409,12 @@ public class PatternBindingTest
         return c;
     }
 
-    private static MatchKoto[] Matches(Compilation c) => Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>().ToArray();
+    private static MatchKoto[] Matches(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>().ToArray();
 
     private static BoundMatch Plan(Compilation c)
     {
         Assert.True(c.Binding.TryGetMatch(Assert.Single(Matches(c)), out var plan));
         return plan!;
-    }
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));

@@ -27,7 +27,7 @@ public class LayoutAttributeBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     // SPEC 21.1: rejected on declaration, whether or not generation reaches the struct.
@@ -72,7 +72,7 @@ public class LayoutAttributeBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -102,7 +102,7 @@ public class LayoutAttributeBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLayoutAttribute_Kd or DiagnosticCode.ConflictingLayout_Kd or DiagnosticCode.SplitCLayoutStorage_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public class LayoutAttributeBindingTest
         c.Kotonoha.AddSource(storageFirst ? storage : methods);
         c.Kotonoha.AddSource(storageFirst ? methods : storage);
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -145,7 +145,7 @@ public class LayoutAttributeBindingTest
         Assert.False(c.Bind().IsComplete);
         var issue = Assert.Single(c.Binding.Issues, x => x.Code == expected);
         Assert.Equal("later.kimi", issue.Node.CodeContext.SourceDocument?.Path);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -185,17 +185,5 @@ public class LayoutAttributeBindingTest
                 throw new InvalidOperationException("Layout Binding failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
     }
 }

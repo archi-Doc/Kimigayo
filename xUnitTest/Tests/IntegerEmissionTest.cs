@@ -111,9 +111,8 @@ public class IntegerEmissionTest
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(ScalarTypes.Supports(BoundType.Char));
         Assert.Equal(0, ScalarTypes.Width(BoundType.Char));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), error);
-        Assert.Contains("store i32 97", writer.ToString());
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains("store i32 97", ir);
     }
 
     [Theory]

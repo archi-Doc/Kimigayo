@@ -23,7 +23,7 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var array = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
+        var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         Assert.Equal(expected, array.BoundType!.Length);
     }
 
@@ -63,7 +63,7 @@ public class ConstantLengthBindingTest
     public void AdaptationSyntaxIsNotPartOfLengthExpressions()
     {
         var c = MinimalEmissionTest.Analyze("let N = 4\nlet row: [(N@isize) of u8]");
-        Assert.Contains(Nodes(c.Kotonoha.RootKoto), x => x.Akind == KotoKind.Error);
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.Akind == KotoKind.Error);
         Assert.False(c.Binding.Result.IsComplete);
     }
 
@@ -76,7 +76,7 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row: [(N + Width) of u8]) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var array = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
+        var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var expression = array.BoundType!.LengthExpression!;
         Assert.Equal(KotoKind.Plus, expression.Operation);
         var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
@@ -118,11 +118,11 @@ public class ConstantLengthBindingTest
     public void RebindingRecomputesChangedInitializerValues()
     {
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of u8]");
-        var variable = Nodes(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "N");
-        var array = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
+        var variable = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "N");
+        var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
         var oldType = array.BoundType;
         var replacementSource = MinimalEmissionTest.Analyze("3");
-        var replacement = Assert.Single(Nodes(replacementSource.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
+        var replacement = Assert.Single(KotoTree.Walk(replacementSource.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(3, array.BoundType!.Length);
@@ -135,13 +135,7 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of string] = [\"one\", \"two\"]\nConsole.writeLine(row[1])");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Ownership.Analyze();
@@ -162,17 +156,5 @@ public class ConstantLengthBindingTest
                 throw new InvalidOperationException("Constant length Binding failed.");
             }
         }));
-    }
-
-    private static IEnumerable<Koto> Nodes(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Nodes(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }

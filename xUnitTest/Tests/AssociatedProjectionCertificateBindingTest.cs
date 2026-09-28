@@ -21,7 +21,7 @@ public class AssociatedProjectionCertificateBindingTest
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
         Assert.False(c.Bind().IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.All(Definition(restored).Paths, path => Assert.False(path.IsVerified));
     }
@@ -36,7 +36,7 @@ public class AssociatedProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form).Replace("Source.Origin.Item", "([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.All(Definition(restored).Paths, path => Assert.True(path.IsVerified));
     }
@@ -114,17 +114,6 @@ public class AssociatedProjectionCertificateBindingTest
                 throw new InvalidOperationException("Associated projection verification failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Prefix(string access)

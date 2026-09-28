@@ -21,7 +21,7 @@ The authority is the formal [Documentation Markdown profile](../../../spec/docum
 | Lazy continuation, replaced by explicit continuation | 9 |
 | Unadopted named character references | 4 |
 
-The remaining **372 examples** each have two tests: an independent-parser assertion against official expected HTML, and a Markdig comparison also checked against that oracle. Markdig uses `DisableHtml().UsePreciseSourceLocation()` with no extensions. Both receive identical LF text. The structural fixture renderer uses the examples' URL percent-encoding convention; it performs no URL validation, source-relative resolution, heading relocation or publication policy. Markdig's omitted newline between `<li>` and `<p>` is the only layout normalization. Text/code whitespace, attributes and inline structure are otherwise compared exactly.
+The remaining **372 examples** assert the independent parser against official expected HTML. The redundant checks of Markdig against the same corpus were removed: Markdig is not a product dependency. The structural fixture renderer uses the examples' URL percent-encoding convention; it performs no URL validation, source-relative resolution, heading relocation or publication policy. The separate generated-input comparisons still exercise the product parser against Markdig, using `DisableHtml().UsePreciseSourceLocation()` with no extensions and identical LF text. Their only layout normalization is Markdig's omitted newline between `<li>` and `<p>`; text/code whitespace, attributes and inline structure remain exact.
 
 All 652 examples also receive tree and source-range invariant checks (selected examples in their conformance tests, excluded examples in the manifest audit). The audit verifies upstream identity, unique exclusions, valid reasons and complete accounting. Excluded examples are not reported as conformance passes or silently skipped xUnit cases.
 
@@ -29,8 +29,8 @@ All 652 examples also receive tree and source-range invariant checks (selected e
 
 | Suite | Scope |
 | --- | --- |
-| `DocumentationMarkdownConformanceTest` | 372 official conformance cases, 372 Markdig comparisons, 320 exact official non-link HTML expectations through the product renderer, manifest audit, and 592 deterministic delimiter/link combinations |
-| `DocumentationMarkdownDifferenceTest` | Every profile §2.4 boundary row, the five-space list case, and explicitly recorded Markdig output differences |
+| `DocumentationMarkdownConformanceTest` | 372 official conformance cases, 320 exact official non-link HTML expectations through the product renderer, manifest audit, and 592 deterministic delimiter/link comparisons |
+| `DocumentationMarkdownDifferenceTest` | Product expectations for every profile §2.4 boundary row, the five-space list case, empty titles and nested links; assertions of Markdig's own output are no longer retained |
 | `DocumentationMarkdownBoundaryTest` | Container 3/4-column boundaries, partial tabs, exact decoded/multiline/EOF ranges under LF/CR/CRLF, Unicode 15 under en-US/ja-JP/tr-TR cultures, non-NFC/case-sensitive names, character-reference limits, GC stability, cancellation and concurrent publication |
 | `DocumentationMarkdownIntegrationTest` | Actual external/generic/Semantics/length/Origin names, Binding receiver roles, namespace ambiguity, independent fragments, generated provenance, configuration reload, edited declarations, effective access/specialization, interrupted Markdown without language errors |
 | `DocumentationMarkdownOutputTest` | URL components, one-pass UTF-8 decoding, source/output mapping and project identity, display page versus HTML base, generated references, rewrite validation, escaping, deep/concurrent/reentrant/cancelled output, Binding-based classification and assembly dependency isolation |
@@ -45,8 +45,8 @@ exclusion is used. Markdig is a private dependency of tests/benchmarks only.
 Recorded comparison findings:
 
 - `[x]( "title")` denotes a quoted destination, not an empty destination with a title. Destination scanning precedes title scanning, also in the [CommonMark reference implementation](https://github.com/commonmark/cmark/blob/0.31.1/src/inlines.c). The independent parser's earlier special case was removed; `[x](<> "title")` remains the explicit empty-destination form with a title. Regression expectations were corrected and expanded.
-- Markdig omits an empty HTML `title` attribute. The independent syntax API retains absent versus empty titles; this difference is asserted separately rather than erased by normalization.
-- Markdig emits nested anchors for `[<https://a.b>](u)` and its empty-destination variant. The independent parser follows the adopted no-nested-links rule, keeping the outer brackets/destination as text. These are explicit comparison differences, not exceptions to the independent parser's acceptance criteria.
+- Markdig omits an empty HTML `title` attribute. The independent syntax API retains absent versus empty titles; the product regression remains explicit rather than erasing the distinction by normalization.
+- Markdig emits nested anchors for `[<https://a.b>](u)` and its empty-destination variant. The independent parser follows the adopted no-nested-links rule, keeping the outer brackets/destination as text. Product regressions retain both inputs and their specified expectations.
 
 ## Reproduction and limits
 

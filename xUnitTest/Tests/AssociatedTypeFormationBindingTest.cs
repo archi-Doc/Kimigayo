@@ -21,7 +21,7 @@ public class AssociatedTypeFormationBindingTest
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
     }
@@ -35,7 +35,7 @@ public class AssociatedTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + type);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Definition(restored).IsVerified);
     }
@@ -106,17 +106,6 @@ public class AssociatedTypeFormationBindingTest
                 throw new InvalidOperationException("Associated Type formation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static BoundConformance Definition(Compilation c)

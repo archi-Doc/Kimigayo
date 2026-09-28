@@ -20,7 +20,7 @@ public class ExpressionProjectionCertificateBindingTest
         AssertCertificate(c, runtime, false);
         Assert.False(c.Bind().IsComplete);
         AssertCertificate(c, runtime, false);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertCertificate(restored, runtime, false);
     }
@@ -36,7 +36,7 @@ public class ExpressionProjectionCertificateBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         AssertCertificate(c, runtime, valid);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         AssertCertificate(restored, runtime, valid);
     }
@@ -87,17 +87,6 @@ public class ExpressionProjectionCertificateBindingTest
                 throw new InvalidOperationException("Projection witness validation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string access, bool runtime)

@@ -20,7 +20,7 @@ public class CallCompletionBindingTest
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Null(Call(restored).BoundCall);
     }
@@ -43,7 +43,7 @@ public class CallCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Source(contractAccess, apiAccess));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Call(c).BoundCall);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.NotNull(Call(restored).BoundCall);
     }
@@ -98,17 +98,6 @@ public class CallCompletionBindingTest
 
     private static string Source(string contractAccess, string apiAccess)
         => contractAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + apiAccess + " group Api\n    public func identity(value: i32) -> Source.Hidden.Element => value\ngroup Consumer\n    func call() => Api.identity(1)";
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 
     private static InvocationKoto Call(Compilation c)
         => Assert.IsType<InvocationKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);

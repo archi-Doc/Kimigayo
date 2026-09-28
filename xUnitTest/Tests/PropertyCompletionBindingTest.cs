@@ -21,7 +21,7 @@ public class PropertyCompletionBindingTest
         Assert.False(Property(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Property(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Property(restored).IsVerified);
     }
@@ -35,7 +35,7 @@ public class PropertyCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: " + type);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Property(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Property(restored).IsVerified);
     }
@@ -103,17 +103,6 @@ public class PropertyCompletionBindingTest
     }
 
     private const string Prefix = "public contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\n";
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 
     private static BoundProperty Property(Compilation c)
         => Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<PropertyKoto>().Single()).BoundSymbol!.Property!;

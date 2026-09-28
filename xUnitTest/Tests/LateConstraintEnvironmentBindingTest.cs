@@ -21,7 +21,7 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(c, valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         AssertConsumers(c, valid);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         AssertConsumers(restored, valid);
     }
@@ -105,16 +105,5 @@ public class LateConstraintEnvironmentBindingTest
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, caller.BindingState);
         Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.BoundType!, caller));
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(caller.Body!.Items.Single()).BoundCall is not null);
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

@@ -21,7 +21,7 @@ public class ConstraintProjectionCertificateBindingTest
         AssertCertificate(c, form, false);
         Assert.False(c.Bind().IsComplete);
         AssertCertificate(c, form, false);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertCertificate(restored, form, false);
     }
@@ -36,7 +36,7 @@ public class ConstraintProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         AssertCertificate(c, form, true);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         AssertCertificate(restored, form, true);
     }
@@ -124,17 +124,6 @@ public class ConstraintProjectionCertificateBindingTest
         AssertCertificate(c, form, valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         AssertCertificate(c, form, valid);
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Prefix(string access)

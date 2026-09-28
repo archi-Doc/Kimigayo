@@ -30,7 +30,7 @@ public class PendingRefinementDeclarationBindingTest
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(BindingState.Resolved, Container(c, "Child").BindingState);
         Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -58,7 +58,7 @@ public class PendingRefinementDeclarationBindingTest
         Assert.Equal(BindingState.Invalid, Container(c, "Child").BindingState);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(c, "Child").BindingState);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(0, restored.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(restored, "Child").BindingState);
     }
@@ -113,17 +113,6 @@ public class PendingRefinementDeclarationBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         return c;
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name)

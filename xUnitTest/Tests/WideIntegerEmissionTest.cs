@@ -159,14 +159,7 @@ public class WideIntegerEmissionTest
         var c = MinimalEmissionTest.Analyze($"let x: u128 = {UnsignedMax}\nlet y: i128 = {Min}\nif x >> 127 == 1 and y >> 127 == -1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        Assert.Same(restored.Kotonoha, kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         restored.Bind();
         restored.Binding.CheckStartup(OutputKind.Application);
         restored.Ownership.Analyze();

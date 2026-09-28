@@ -20,7 +20,7 @@ public class ValueCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = Assert.IsType<BoundValueCall>(call.BoundValueCall);
         Assert.Null(call.BoundCall);
         Assert.Same(call.Method, plan.Receiver);
@@ -51,7 +51,7 @@ public class ValueCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value@move)");
         Assert.True(c.Binding.Result.IsComplete);
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.BoundValueCall;
         for (var i = 0; i < 100; i++)
         {
@@ -67,18 +67,6 @@ public class ValueCallBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        Assert.NotNull(Assert.Single(Nodes(restored.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundValueCall);
-    }
-
-    private static IEnumerable<Koto> Nodes(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Nodes(child))
-            {
-                yield return descendant;
-            }
-        }
+        Assert.NotNull(Assert.Single(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundValueCall);
     }
 }

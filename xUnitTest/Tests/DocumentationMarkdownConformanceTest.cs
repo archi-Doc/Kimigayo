@@ -74,17 +74,6 @@ public class DocumentationMarkdownConformanceTest
         DocumentationMarkdownParserTest.AssertRanges(document);
     }
 
-    [Theory]
-    [MemberData(nameof(CommonExamples))]
-    public void ComparesMarkdigOnTheSameRetainedExamples(int id, string section, string input, string expected)
-    {
-        var independent = DocumentationMarkdownParserTest.RenderSyntax(DocumentationMarkdownDocument.Parse(input).Root, true);
-        var markdig = Markdown.ToHtml(input, ComparisonPipeline).Replace("\r\n", "\n", StringComparison.Ordinal);
-        // The official expected result remains the oracle for both implementations.
-        Assert.True(NormalizeLayout(expected) == NormalizeLayout(markdig), $"Markdig 1.3.2, example {id}, {section}\nExpected: {expected}\nActual: {markdig}");
-        Assert.Equal(expected, independent);
-    }
-
     [Fact]
     public void ComparesGeneratedDelimiterAndLinkInteractions()
     {

@@ -24,7 +24,7 @@ public class AggregateProjectionCertificateBindingTest
         CheckConstruction(c, form, false);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
         CheckConstruction(restored, form, false);
@@ -43,7 +43,7 @@ public class AggregateProjectionCertificateBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
         CheckConstruction(c, form, true);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Definition(restored).IsVerified);
         CheckConstruction(restored, form, true);
@@ -113,17 +113,6 @@ public class AggregateProjectionCertificateBindingTest
             var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single().ExpressionBody!;
             Assert.Equal(valid, c.Binding.TryGetEnumConstruction(expression, out _));
         }
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(int form, bool reverse, string access)

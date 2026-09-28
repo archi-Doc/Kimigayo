@@ -85,7 +85,7 @@ public class OriginSyntaxRevisionTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.False(c.Kotonoha.HasSourceErrors);
         Assert.True(c.Bind().IsComplete);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
 
         var builder = default(IndentedStringBuilder);
         try
@@ -135,7 +135,7 @@ public class OriginSyntaxRevisionTest
     {
         var compilation = MinimalEmissionTest.Analyze(View + source);
         Assert.Equal(valid, compilation.Binding.Result.IsComplete);
-        Assert.Equal(valid, Reload(compilation).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(compilation).Bind().IsComplete);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class OriginSyntaxRevisionTest
         var valid = MinimalEmissionTest.Analyze(Source);
         Assert.True(valid.Ownership.Result.IsVerified, string.Join("\n", valid.Binding.Obligations) + "\n" + string.Join("\n", valid.Ownership.ControlFlow!.Issues) + "\n" + string.Join("\n", valid.Ownership.ControlFlow.PendingBinding));
         ScalarEmissionTest.EmitFixture("AnonymousAggregateOrigin", Source, string.Empty);
-        valid = Reload(valid);
+        valid = CompilationTestHelper.Reload(valid);
         for (var i = 0; i < 3; i++)
         {
             Assert.True(valid.Bind().IsComplete);
@@ -179,18 +179,6 @@ public class OriginSyntaxRevisionTest
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("if read", "counter.value = 8\nif read", StringComparison.Ordinal));
         Assert.False(invalid.Emission.Validate(out _));
-    }
-
-    private static Compilation Reload(Compilation source)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(source.Kotonoha);
-        var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
-        var tree = compilation.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(compilation);
-        return compilation;
     }
 
     private static IEnumerable<BoundOrigin> Origins(BoundType type)

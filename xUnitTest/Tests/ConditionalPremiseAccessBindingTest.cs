@@ -21,7 +21,7 @@ public class ConditionalPremiseAccessBindingTest
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
     }
@@ -41,7 +41,7 @@ public class ConditionalPremiseAccessBindingTest
         var c = MinimalEmissionTest.Analyze(Source(typeAccess, contractAccess, hiddenAccess, sourceAccess, requirement));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, Definition(restored).IsVerified);
     }
@@ -130,17 +130,6 @@ public class ConditionalPremiseAccessBindingTest
                 throw new InvalidOperationException("Conditional premise access check failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static string Source(string typeAccess, string contractAccess, string hiddenAccess, string sourceAccess, string requirement)

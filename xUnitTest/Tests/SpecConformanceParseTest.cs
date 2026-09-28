@@ -281,7 +281,7 @@ public class SpecConformanceParseTest
         const string Source = "func f()\n    var text = \"one\r\n  two\rthree\"\n    var raw = \"\"\"one\r\n  two\"\"\"";
         var parsed = Parse(Source);
         AssertValid(parsed);
-        var text = Write(parsed);
+        var text = ParseTestHelper.Unparse(parsed);
         Assert.Contains("\"one\r\n  two\rthree\"", text);
         Assert.Contains("\"\"\"one\r\n  two\"\"\"", text);
         RoundTrip(parsed);
@@ -308,7 +308,7 @@ public class SpecConformanceParseTest
     {
         var parsed = Parse(source);
         AssertValid(parsed);
-        Assert.Contains("deinit", Write(parsed));
+        Assert.Contains("deinit", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
@@ -333,7 +333,7 @@ public class SpecConformanceParseTest
                 property count: i32 has get
             """);
         AssertValid(parsed);
-        Assert.Contains("associate Element", Write(parsed));
+        Assert.Contains("associate Element", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
@@ -345,32 +345,18 @@ public class SpecConformanceParseTest
     public void DiagnosesCompileTimeIfWithoutATarget(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 
-    private static string Write(Kotonoha parsed)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            parsed.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-    }
-
     private static void RoundTrip(Kotonoha parsed)
     {
-        var text = Write(parsed);
+        var text = ParseTestHelper.Unparse(parsed);
         var reparsed = Parse(text);
         AssertValid(reparsed);
-        Assert.Equal(text, Write(reparsed));
+        Assert.Equal(text, ParseTestHelper.Unparse(reparsed));
         var bytes = TinyhandSerializer.Serialize(parsed);
         var compilation = Compilation.CreateForTest();
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         Assert.NotNull(restored);
         restored.OnDeserialized(compilation);
-        Assert.Equal(text, Write(restored));
+        Assert.Equal(text, ParseTestHelper.Unparse(restored));
     }
 }

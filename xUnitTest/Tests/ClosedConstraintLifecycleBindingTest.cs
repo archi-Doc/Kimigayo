@@ -23,7 +23,7 @@ public class ClosedConstraintLifecycleBindingTest
         AppendSourceConformance(c);
         Assert.Equal(!negative, c.Bind().IsComplete);
         Assert.Equal(!negative, Certificate(c));
-        Assert.Equal(!negative, Reload(c).Bind().IsComplete);
+        Assert.Equal(!negative, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -109,7 +109,7 @@ public class ClosedConstraintLifecycleBindingTest
         Assert.False(c.Bind().IsComplete);
         Assert.False(property.IsVerified);
         Assert.False(Certificate(c));
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -129,17 +129,6 @@ public class ClosedConstraintLifecycleBindingTest
                 throw new InvalidOperationException("Closed condition lifecycle failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static void AppendSourceConformance(Compilation c)

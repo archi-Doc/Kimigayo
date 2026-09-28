@@ -36,8 +36,8 @@ public class DefaultBindingTest
     public void DefaultsCannotTransferOutsideTheirOwnExpression(string source, string keyword)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        var function = Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        var jump = Assert.Single(Walk(function.Parameters[0].DefaultValue!).OfType<JumpKoto>());
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var jump = Assert.Single(KotoTree.Walk(function.Parameters[0].DefaultValue!).OfType<JumpKoto>());
         Assert.Null(KotoHelper.ResolveTransferTarget(jump));
         var flow = c.Ownership.ControlFlow!;
         Assert.Contains(flow.Issues, x => ReferenceEquals(x.Node, jump) && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
@@ -175,7 +175,7 @@ public class DefaultBindingTest
         var oldPlan = call.BoundCall!;
         var original = (FunctionKoto)oldPlan.Target.Declaration;
         var replacementCompilation = MinimalEmissionTest.Analyze("func f(x: i32) => ()");
-        var replacement = Walk(replacementCompilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        var replacement = KotoTree.Walk(replacementCompilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.True(c.Bind().IsComplete);
@@ -207,13 +207,7 @@ public class DefaultBindingTest
         Assert.True(c.Bind().IsComplete);
         Assert.Same(plan, Assert.Single(Calls(c)).BoundCall);
         Assert.Same(expression, plan.DefaultArguments[0].Expression);
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         var restoredPlan = Assert.Single(Calls(restored)).BoundCall!;
         var restoredFunction = (FunctionKoto)restoredPlan.Target.Declaration;
@@ -326,17 +320,5 @@ public class DefaultBindingTest
         }));
     }
 
-    private static IEnumerable<InvocationKoto> Calls(Compilation c) => Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>();
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in Walk(child))
-            {
-                yield return nested;
-            }
-        }
-    }
+    private static IEnumerable<InvocationKoto> Calls(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>();
 }

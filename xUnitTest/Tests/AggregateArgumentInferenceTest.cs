@@ -25,7 +25,7 @@ public class AggregateArgumentInferenceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }
 
     [Theory]
@@ -34,7 +34,7 @@ public class AggregateArgumentInferenceTest
     public void LiteralDefaultsCannotSelectAnAggregateOverload(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.Ambiguous, call.BindingFailure);
         Assert.Null(call.BoundCall);
@@ -65,7 +65,7 @@ public class AggregateArgumentInferenceTest
     public void RejectsInvalidAggregateCandidates(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingFailure.NoApplicableCandidate, call.BindingFailure);
         Assert.Null(call.BoundCall);
@@ -109,17 +109,5 @@ public class AggregateArgumentInferenceTest
                 throw new InvalidOperationException("Aggregate argument inference failed.");
             }
         }));
-    }
-
-    private static IEnumerable<Koto> Nodes(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Nodes(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }

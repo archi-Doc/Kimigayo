@@ -20,7 +20,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nlet result = " + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal(BoundTypeKind.FixedArray, call.BoundType!.Kind);
         Assert.Equal(length, call.BoundType.Length);
         Assert.Same(BoundType.I32, call.BoundType.Components[0]);
@@ -83,7 +83,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nlet result = " + expression);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
@@ -98,7 +98,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
     }
 
     [Theory]
@@ -124,7 +124,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Size\nlet Size: isize = 2\nfunc f<T>() => ()\nfunc f<length N>() => ()\nf<Size>()");
         Assert.False(c.Binding.Result.IsComplete);
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.BoundCall);
         Assert.Equal(BindingFailure.Unsupported, call.BindingFailure);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
@@ -135,12 +135,12 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nkeep<2, i32>(a)");
         Assert.True(c.Binding.Result.IsComplete);
-        var call = Assert.Single(Nodes(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var plan = call.BoundCall;
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = generic.TypeArguments[0];
         var donor = MinimalEmissionTest.Analyze("3");
-        var replacement = Assert.Single(Nodes(donor.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
+        var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(call.BoundCall);
@@ -162,7 +162,7 @@ public class LengthCallBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        Assert.All(Nodes(restored.Kotonoha.RootKoto).OfType<InvocationKoto>(), call => Assert.Equal(2, call.BoundCall!.LengthArguments[0]!.Value));
+        Assert.All(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>(), call => Assert.Equal(2, call.BoundCall!.LengthArguments[0]!.Value));
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
@@ -175,17 +175,5 @@ public class LengthCallBindingTest
                 throw new InvalidOperationException("Length call Binding failed.");
             }
         }));
-    }
-
-    private static IEnumerable<Koto> Nodes(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Nodes(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }

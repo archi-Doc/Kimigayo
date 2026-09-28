@@ -22,7 +22,7 @@ public class BaseTypeFormationBindingTest
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Type(restored).BindingState);
         Assert.False(Definition(restored).IsVerified);
@@ -50,7 +50,7 @@ public class BaseTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\n" + declaration);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Definition(restored).IsVerified);
     }
@@ -109,17 +109,6 @@ public class BaseTypeFormationBindingTest
                 throw new InvalidOperationException("Base Type formation failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static StructKoto Type(Compilation c)

@@ -25,7 +25,7 @@ public class NamedAliasTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         Assert.All(
-            All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall is not null),
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall is not null),
             x => Assert.Same(c.Library.WriteLine, x.BoundCall!.Target));
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out error), error);
@@ -108,7 +108,7 @@ public class NamedAliasTest
     {
         var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nwriteLine(\"user\")\n::Kimi.Console.writeLine(\"library\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var calls = All(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.NotSame(c.Library.WriteLine, calls[0].BoundCall!.Target);
         Assert.Same(c.Library.WriteLine, calls[1].BoundCall!.Target);
     }
@@ -146,8 +146,8 @@ public class NamedAliasTest
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
-            Assert.Contains(All(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>(), x => ReferenceEquals(x.BoundSymbol, c.Library.WriteLine));
-            Assert.Single(All(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.IsValueCall);
+            Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>(), x => ReferenceEquals(x.BoundSymbol, c.Library.WriteLine));
+            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.IsValueCall);
             c.Kotonoha.OnDeserialized(c);
         }
     }
@@ -215,18 +215,6 @@ public class NamedAliasTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Aliases.kimi", source));
         return c;
-    }
-
-    private static IEnumerable<Koto> All(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var nested in All(child))
-            {
-                yield return nested;
-            }
-        }
     }
 
     private static string Describe(Compilation c)

@@ -38,15 +38,15 @@ public class NestedTypeParseTest
                 func use(value: {type}) -> {type}
                     return value
             """);
-        var written = Write(tree);
+        var written = ParseTestHelper.Unparse(tree);
         Assert.Contains(type, written);
-        Assert.Equal(written, Write(ParseSuccess(written)));
+        Assert.Equal(written, ParseTestHelper.Unparse(ParseSuccess(written)));
 
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(tree));
         Assert.NotNull(restored);
         restored.OnDeserialized(Compilation.CreateForTest());
         AssertValid(restored);
-        Assert.Equal(written, Write(restored));
+        Assert.Equal(written, ParseTestHelper.Unparse(restored));
         AssertTree(restored.RootKoto);
     }
 
@@ -123,7 +123,7 @@ public class NestedTypeParseTest
         var comparison = Assert.IsType<LessThanKoto>(field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(comparison.Left);
         Assert.Equal(type, conversion.Right.ToString());
-        Assert.Equal(Write(tree), Write(ParseSuccess(Write(tree))));
+        Assert.Equal(ParseTestHelper.Unparse(tree), ParseTestHelper.Unparse(ParseSuccess(ParseTestHelper.Unparse(tree))));
     }
 
     [Theory]
@@ -183,20 +183,6 @@ public class NestedTypeParseTest
             }
 
             AssertTree(child);
-        }
-    }
-
-    private static string Write(Kotonoha tree)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            tree.RootKoto.UnparseAll(ref builder);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
         }
     }
 }

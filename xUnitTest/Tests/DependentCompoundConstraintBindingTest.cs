@@ -29,7 +29,7 @@ public class DependentCompoundConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
         Assert.Equal(valid, c.Bind().IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -40,7 +40,7 @@ public class DependentCompoundConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public struct Box<T>\npublic struct Target<T>\n    Box<T> is Box<i32>\npublic func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -53,7 +53,7 @@ public class DependentCompoundConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public " + kind + " Target<T>\n    T is Copy\n    ((Self)) is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "public func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class DependentCompoundConstraintBindingTest
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
-        Assert.Equal(valid, Reload(c).Bind().IsComplete);
+        Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -152,16 +152,5 @@ public class DependentCompoundConstraintBindingTest
                 throw new InvalidOperationException("Compound constraint failed.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 }

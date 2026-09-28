@@ -40,7 +40,7 @@ public class ContainerNestingTest
     [InlineData("struct Family<T> {}\n    public contract Marker\nstruct S<T>\n    Self is Family<T>.Marker\nfunc accept<T>(x: T)\n    T is Family<i32>.Marker\n    ()\naccept(S<i32>.init())")]
     public void BindsNestedDeclarations(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
@@ -77,14 +77,14 @@ public class ContainerNestingTest
     [InlineData("struct Family<T> {}\n    public contract Marker\nstruct S<T>\n    Self is Family<T>.Marker\nfunc accept<T>(x: T)\n    T is Family<i32>.Marker\n    ()\naccept(S<string>.init())")]
     public void RejectsInvalidPlacementAndUnboundEnvironment(string source)
     {
-        var c = Parse(source);
+        var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete && !c.Kotonoha.HasSourceErrors, Describe(c));
     }
 
     [Fact]
     public void UnusedOuterArgumentsRemainPartOfIdentity()
     {
-        var c = Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc a(x: Outer<i32>.Tag) => ()\nfunc b(x: Outer<i64>.Tag) => ()\nfunc same(x: Outer<i32>.Tag) => ()");
+        var c = CompilationTestHelper.Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc a(x: Outer<i32>.Tag) => ()\nfunc b(x: Outer<i64>.Tag) => ()\nfunc same(x: Outer<i32>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var functions = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().ToArray();
         var first = functions[0].Parameters[0].Type.BoundType!;
@@ -114,7 +114,7 @@ public class ContainerNestingTest
     [Fact]
     public void InheritedNestedReferenceKeepsDefiningIdentity()
     {
-        var c = Parse("open struct Base<T> {}\n    public struct Node {}\nstruct Derived: Base<i32>\nfunc f(a: Base<i32>.Node, b: Derived.Node) => ()");
+        var c = CompilationTestHelper.Parse("open struct Base<T> {}\n    public struct Node {}\nstruct Derived: Base<i32>\nfunc f(a: Base<i32>.Node, b: Derived.Node) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
         Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
@@ -123,7 +123,7 @@ public class ContainerNestingTest
     [Fact]
     public void EmptyNestedTypeRetainsUnusedBorrowDependency()
     {
-        var c = Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc f(x: Outer<ref/i32 during a>.Tag) => ()");
+        var c = CompilationTestHelper.Parse("struct Outer<T> {}\n    public struct Tag {}\nfunc f(x: Outer<ref/i32 during a>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
@@ -140,7 +140,7 @@ public class ContainerNestingTest
     [Fact]
     public void InheritedSlotsShareIdentityButNotAnalysisState()
     {
-        var c = Parse("struct Outer<T> {source}\n    public struct Inner<U> {local}\n        let value: T");
+        var c = CompilationTestHelper.Parse("struct Outer<T> {source}\n    public struct Inner<U> {local}\n        let value: T");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var outer = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
         var inner = Assert.Single(outer.NestedContainers);
@@ -173,7 +173,7 @@ public class ContainerNestingTest
         }
 
         source.Append(") => ()");
-        var c = Parse(source.ToString());
+        var c = CompilationTestHelper.Parse(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
         var declaration = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
         var outerSlot = Assert.Single(declaration.BoundSymbol!.Schema!.GenericSlots).Symbol;
@@ -187,7 +187,7 @@ public class ContainerNestingTest
     [Fact]
     public void RoundTripsMergedNestedDeclarations()
     {
-        var c = Parse("struct Outer<T> {}\n    public struct Inner {}\n        var value: T\nstruct Outer<T> {}\n    public struct Inner {}\n        func echo(value: T) -> T => value@move");
+        var c = CompilationTestHelper.Parse("struct Outer<T> {}\n    public struct Inner {}\n        var value: T\nstruct Outer<T> {}\n    public struct Inner {}\n        func echo(value: T) -> T => value@move");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha));
         Assert.NotNull(restored);
@@ -196,14 +196,6 @@ public class ContainerNestingTest
         restored.OnDeserialized(compilation);
         Assert.Empty(restored.DiagnosticCollection.GetArray());
         Assert.Single(Assert.Single(restored.RootKoto.NestedContainers).NestedContainers);
-    }
-
-    private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        return c;
     }
 
     private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues) + "\n" + string.Join('\n', c.Kotonoha.DiagnosticCollection.GetArray());

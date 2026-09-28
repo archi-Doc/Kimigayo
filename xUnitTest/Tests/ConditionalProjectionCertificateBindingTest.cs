@@ -20,7 +20,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.False(Definition(restored).IsVerified);
     }
@@ -33,7 +33,7 @@ public class ConditionalProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix(lateWitness, true) + Consumer.Replace("T is Source.Origin.Item", "T is ([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Definition(restored).IsVerified);
     }
@@ -136,7 +136,7 @@ public class ConditionalProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze("contract Origin\n    associate Item\nstruct Input<T>\n    T is Copy\n    Self is Origin\n    associate Origin.Item is i32\ncontract C\nstruct S<T, U>\n    Self is C when " + conditions);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.True(Definition(restored).IsVerified);
     }
@@ -173,7 +173,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.True(Type(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, ConditionalProperty(c).IsVerified);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
         Assert.Equal(valid, ConditionalProperty(restored).IsVerified);
     }
@@ -206,17 +206,6 @@ public class ConditionalProjectionCertificateBindingTest
         => lateWitness
             ? (valid ? "public" : "internal") + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n"
             : "contract Origin\n    associate Item\nstruct Input<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is i32\nstruct Source\n    Self is Origin\n    associate Origin.Item is Input<" + (valid ? "i32" : "string") + ">.Origin.Item\n";
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
-    }
 
     private static DeclarationContainerKoto Type(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");

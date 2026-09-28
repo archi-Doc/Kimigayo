@@ -53,7 +53,7 @@ public class EnumProjectionAccessBindingTest
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
         Assert.False(c.Binding.GetConformanceDefinition(api.BoundType!, marker.BoundSymbol!)?.IsVerified ?? false);
-        Assert.DoesNotContain(Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
+        Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
     }
 
     [Theory]
@@ -107,18 +107,6 @@ public class EnumProjectionAccessBindingTest
 
     private static SyntaxFormKoto Payload(Compilation c)
         => (SyntaxFormKoto)((SyntaxFormKoto)c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members[0]).Operands[1];
-
-    private static IEnumerable<Koto> Walk(Koto node)
-    {
-        yield return node;
-        foreach (var child in node.ChildNodes)
-        {
-            foreach (var descendant in Walk(child))
-            {
-                yield return descendant;
-            }
-        }
-    }
 
     private static Compilation Check(string source, bool valid)
     {

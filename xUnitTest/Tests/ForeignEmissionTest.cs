@@ -1012,8 +1012,7 @@ public class ForeignEmissionTest
     public void OwnedAggregatePointerWritesHaveCompleteCleanupPlans(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/{type}, value: {type})\n    unsafe => *p = value@move\npublic func main() => ()");
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var failure), MinimalEmissionTest.Describe(c, failure));
+        var ir = CompilationTestHelper.WriteIr(c);
     }
 
     [Theory]
@@ -1070,8 +1069,7 @@ public class ForeignEmissionTest
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "compare");
         Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.PointerLoad);
         Assert.DoesNotContain(body.Places, x => ReferenceEquals(x.Type, BoundType.String) && x.Source.ToString() == expression);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        var ir = CompilationTestHelper.WriteIr(c);
     }
 
     [Fact]
@@ -1415,9 +1413,8 @@ public class ForeignEmissionTest
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\nfunc read(p: unsafe/Pair)\n    unsafe\n        let value = *p\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Contains("{ i8, i64 }", writer.ToString());
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains("{ i8, i64 }", ir);
     }
 
     [Fact]
@@ -1588,9 +1585,7 @@ public class ForeignEmissionTest
     private static string Emit(string source, string kind)
     {
         var c = Analyze(source, kind);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        return writer.ToString();
+        return CompilationTestHelper.WriteIr(c);
     }
 
     private static Compilation Analyze(string source, string kind)

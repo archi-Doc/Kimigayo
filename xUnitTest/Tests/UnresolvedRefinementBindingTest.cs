@@ -26,7 +26,7 @@ public class UnresolvedRefinementBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", qualified ? "public group Api\n    public contract Future" : "public contract Future"));
         Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues.Select(x => x.ToString())));
         Assert.True(c.Binding.GetConformanceDefinition(Container(c, "Target").BoundType!, contract.BoundSymbol!)!.IsVerified);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -93,7 +93,7 @@ public class UnresolvedRefinementBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(BindingState.Invalid, Container(c, "Child").BindingState);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(0, restored.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(restored, "Leaf").BindingState);
     }
@@ -114,17 +114,6 @@ public class UnresolvedRefinementBindingTest
                 throw new InvalidOperationException("Absent parent became invalid.");
             }
         }));
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var restored = Compilation.CreateForTest();
-        Assert.True(restored.Prepare(WindowsProfile.Target));
-        var tree = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha), ref tree);
-        Assert.NotNull(tree);
-        tree.OnDeserialized(restored);
-        return restored;
     }
 
     private static Compilation Parse(string source)
