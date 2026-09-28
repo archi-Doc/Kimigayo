@@ -66,7 +66,8 @@ public sealed partial class Binding
         }
 
         var exclusive = source.Mode == SubjectMode.Exclusive;
-        // Dynamic Array uses its ordinary Kimigayo entry and iterator; fixed arrays retain the sequence boundary.
+        // Dynamic Array and Dictionary use their ordinary Kimigayo entries and iterators; fixed arrays retain the sequence
+        // boundary (SPEC 14.6.2, 22.1.2.5).
         var sequence = iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable) ? iterable :
             ReferenceTypes.IsArray(iterable) ? iterable!.Components[0] : null;
         if (sequence is not null)
@@ -81,32 +82,12 @@ public sealed partial class Binding
                 : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: origin);
         }
 
-        var dictionary = ReferenceTypes.IsDictionary(iterable) ? iterable!.Components[0] : iterable?.Kind == BoundTypeKind.Dictionary ? iterable : null;
-        if (dictionary is not null && (ReferenceTypes.IsDictionary(iterable) || IsBarePlace(source.Iterable)))
-        {
-            source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
-        }
-
         // SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries directly; a
         // validated interval never Aborts, so no iterator value is formed.
         var view = source.SharedIterable ?? iterable;
         var element = view is null ? null : view.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize
             : exclusive && ReferenceTypes.IsArray(view) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
-        if (dictionary is not null)
-        {
-            // SPEC 14.6.2: shared Dictionary iteration yields (ref/K, ref/V) and exclusive iteration (ref/K, uniq/V),
-            // including for Copy components; owned iteration yields a pair of values.
-            var key = dictionary.Components[0];
-            var value = dictionary.Components[1];
-            if (source.SharedIterable is { } shared)
-            {
-                key = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: shared.Origin);
-                value = this.InternType(BoundTypeKind.Semantics, null, shared.Semantics, [value], origin: shared.Origin);
-            }
-
-            element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
-        }
 
         var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
@@ -163,7 +144,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
+        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
             !(exclusive && ReferenceTypes.IsArray(view)))
         {
             return this.FailIterationSubject(source, scope, iterable);
