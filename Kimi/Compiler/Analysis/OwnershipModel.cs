@@ -140,7 +140,11 @@ public enum OwnershipFailure : byte
     UnprovenOrigin,
 }
 
-public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
+public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
+{
+    // Deferred bodies share syntax, but each expansion has distinct temporary storage.
+    internal int DeferredExecution { get; init; } = -1;
+}
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
 public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None, int Projection = -1, int Reservation = -1)

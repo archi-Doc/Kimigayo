@@ -310,11 +310,18 @@ public sealed partial class OwnershipBody
 
                 // A parameter's Projection Origin is bound by its function and resolves through SymbolPlaces above;
                 // the function's Result place shares that Source and is never the borrowed storage.
+                var hasDeferredRoot = false;
+                if (this.Places[place].DeferredExecution >= 0 && origin.Binder is not Parsing.FunctionKoto)
+                {
+                    for (var root = 0; root < count && !hasDeferredRoot; root++)
+                    {
+                        hasDeferredRoot = this.IsTemporaryOriginRoot(root, origin) && this.SharesDeferredExecution(place, root);
+                    }
+                }
+
                 for (var root = 0; root < count && origin.Binder is not Parsing.FunctionKoto; root++)
                 {
-                    var candidate = this.Places[root];
-                    if (origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || EnumStorage.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary || ScalarTypes.Supports(candidate.Type)) &&
-                        ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root)))
+                    if (this.IsTemporaryOriginRoot(root, origin) && (!hasDeferredRoot || this.SharesDeferredExecution(place, root)))
                     {
                         Record(root);
                     }
@@ -1147,6 +1154,36 @@ public sealed partial class OwnershipBody
         }
 
         return -1;
+    }
+
+    private bool IsTemporaryOriginRoot(int root, BoundOrigin origin)
+    {
+        var candidate = this.Places[root];
+        return origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
+            (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || EnumStorage.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary || ScalarTypes.Supports(candidate.Type)) &&
+            ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root));
+    }
+
+    private bool SharesDeferredExecution(int place, int root)
+    {
+        var required = this.Places[root].DeferredExecution;
+        if (required < 0)
+        {
+            return true;
+        }
+
+        var current = this.Places[place].DeferredExecution;
+        for (var remaining = this.DeferredPlans.Count; remaining > 0 && (uint)current < (uint)this.DeferredPlans.Count; remaining--)
+        {
+            if (current == required)
+            {
+                return true;
+            }
+
+            current = this.DeferredPlans[current].Parent;
+        }
+
+        return false;
     }
 
     // The receiver's CallEntry, the first of the entries that immediately precede the Call.
