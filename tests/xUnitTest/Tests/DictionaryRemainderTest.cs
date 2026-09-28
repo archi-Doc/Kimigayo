@@ -174,6 +174,38 @@ public class DictionaryRemainderTest
         ScalarEmissionTest.EmitFixture("DictionaryRemainderFor", Source, "Dropped 10\nDropped 30\nDropped 20\nAfter.\n");
     }
 
+    // Warm analysis and emission of an exclusive Dictionary loop through the Kimigayo entry allocate nothing (the shared and
+    // owning loops are covered by DictionaryCostTest).
+    [Theory]
+    [InlineData("Binding")]
+    [InlineData("Ownership")]
+    [InlineData("Emission")]
+    public void WarmExclusiveDictionaryLoopAllocatesNothing(string stage)
+    {
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, string> = [:]\n_ = entries.tryInsert(1, \"a\")\nfor (key, value) in entries@uniq\n    Console.writeLine(value)");
+        for (var i = 0; i < 32; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            var valid = stage switch
+            {
+                "Binding" => c.Bind().IsComplete,
+                "Ownership" => c.Ownership.Analyze().IsVerified,
+                _ => c.Emission.WriteIr(TextWriter.Null, out _),
+            };
+            if (!valid)
+            {
+                throw new InvalidOperationException(stage + " failed.");
+            }
+        }));
+    }
+
     // The owning remainder releases the transferred buffer exactly once, including after a partial enumeration.
     [Fact]
     public void OwningIterationReleasesTheBufferOnce()
