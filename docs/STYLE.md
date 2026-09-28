@@ -11,7 +11,7 @@ specified API and Contract signatures.
 | `[Kimi]` | A library coding convention | Required | Recommended |
 | `[Advice]` | A recommendation | Explain deviations when reviewing changes | Recommended |
 
-The Kimi scope is `Kimi/Library` and examples in `spec/`; other code includes user programs, `examples/`,
+The Kimi scope is `src/Kimi/Library` and examples in `spec/`; other code includes user programs, `docs/examples/`,
 milestones and tests. A tag covers its paragraph and any table, list or example it introduces.
 
 Apply conventions to changed declarations, without unrelated formatting or behavior changes. Examples

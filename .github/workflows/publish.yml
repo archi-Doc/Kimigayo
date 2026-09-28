@@ -19,7 +19,7 @@ jobs:
       run: dotnet test --no-restore --verbosity normal
 
     - name: Package1
-      run: dotnet pack -c Release -o bin Kimi/Kimi.csproj
+      run: dotnet pack -c Release -o bin src/Kimi/Kimi.csproj
       
     - name: Publish
       run: dotnet nuget push bin/*.nupkg -k ${{secrets.NUGET_API_KEY}} -s https://api.nuget.org/v3/index.json

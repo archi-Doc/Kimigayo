@@ -21,4 +21,4 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release --no-restore
     - name: Test
-      run: dotnet test --project xUnitTest/xUnitTest.csproj --configuration Release --no-build --no-restore --minimum-expected-tests 1 --parallel none
+      run: dotnet test --project tests/xUnitTest/xUnitTest.csproj --configuration Release --no-build --no-restore --minimum-expected-tests 1 --parallel none

@@ -7,16 +7,16 @@ Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, 
 - **Plan:** `docs/dev/PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
 - **Target:** the milestone named by the request; otherwise the first milestone in PLAN §4 that is not DONE.
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
-- **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only when a PLAN §7 issue records its conflict with the SPEC and the user has approved the change. Creating or completing the target milestone's harness (`backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
+- **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only when a PLAN §7 issue records its conflict with the SPEC and the user has approved the change. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
 
 ## 1. Start (keep it under 10 minutes)
 
 1. Record the start time.
 2. Run `git status` and `git log -3`, and read PLAN §3–§7.
 3. Read only the owning SPEC sections and the code paths needed for the next action.
-4. Do not rerun a baseline if HEAD matches the last session's verified commit (PLAN §3). Otherwise run `./verify.ps1` on the affected area first.
+4. Do not rerun a baseline if HEAD matches the last session's verified commit (PLAN §3). Otherwise run `./scripts/verify.ps1` on the affected area first.
 5. Preserve uncommitted user changes; if they overlap the work, ask before touching them.
-6. Sessions that may run in parallel use separate git worktrees, so a build or `verify.ps1` run never reads another session's edits. Stage only the files the unit changed (`git add <paths>`), never `git add -A`.
+6. Sessions that may run in parallel use separate git worktrees, so a build or `scripts/verify.ps1` run never reads another session's edits. Stage only the files the unit changed (`git add <paths>`), never `git add -A`.
 
 Do not print a long inspection report. Begin the first unit.
 
@@ -25,7 +25,7 @@ Do not print a long inspection report. Begin the first unit.
 ```
 reproducer (a failing test or program variant)
 → smallest coherent implementation
-→ ./verify.ps1 -Class <related tests> [-Fixtures '<pattern>'] [-Milestone <n>]
+→ ./scripts/verify.ps1 -Class <related tests> [-Fixtures '<pattern>'] [-Milestone <n>]
 → fix failures at their root
 → commit (descriptive message; this is the unit's record)
 → next unit
@@ -33,7 +33,7 @@ reproducer (a failing test or program variant)
 
 - Keep units small enough to verify in minutes. Split large work into committed steps that each keep the tree green.
 - Unit verification covers only the related tests, native fixtures and harnesses. Do not run the full Debug/Release suites per unit.
-- Never edit sources while a build or `verify.ps1` run is in progress. `verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `bin/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
+- Never edit sources while a build or `scripts/verify.ps1` run is in progress. `scripts/verify.ps1` isolates fixtures by run and configuration; direct test invocations still share `bin/scalar-fixtures` unless `KIMI_FIXTURE_DIRECTORY` is set.
 - Write test source strings in C# with the Edit tool; shell heredocs corrupt backslashes.
 
 ## 3. Correctness rules
@@ -54,7 +54,7 @@ reproducer (a failing test or program variant)
 ## 5. Session end
 
 1. The duration covers unit work only. Stop starting units when it has elapsed; finish or cleanly revert the current unit.
-2. Then run `./verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
+2. Then run `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
 3. Update the documents briefly, then commit:
    - **docs/dev/PLAN.md:** §3 position (HEAD, test count), milestone states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds.
    - **docs/dev/PLAN_HISTORY.md:** one table row for the session (date, what changed, result).

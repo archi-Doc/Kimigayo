@@ -10,12 +10,12 @@ launchSettings.json
 Generated/
 
 # VS Code extension: dependencies are covered by node_modules/ below.
-/kimi-ext/out/
-/kimi-ext/.vscode-test/
-/kimi-ext/*.vsix
+/src/kimi-ext/out/
+/src/kimi-ext/.vscode-test/
+/src/kimi-ext/*.vsix
 # Generated from the repository documentation when packaging.
-/kimi-ext/README.md
-/kimi-ext/LICENSE
+/src/kimi-ext/README.md
+/src/kimi-ext/LICENSE
 
 # User-specific files
 *.rsuser

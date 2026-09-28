@@ -4,7 +4,7 @@ A concise reference to the public Kimi APIs required by the language specificati
 
 - **Authority:** [SPEC.md](SPEC.md) and its chapters define required behavior and take precedence over this reference.
 - **Support:** [STATUS.md](STATUS.md) records implemented and verified support. Inclusion here does not imply implementation.
-- **Implementation:** [Kimi/Library/README.md](../Kimi/Library/README.md) describes source embedding and implementation policy.
+- **Implementation:** [Kimi/Library/README.md](../src/Kimi/Library/README.md) describes source embedding and implementation policy.
 - **Conventions:** [STYLE.md](STYLE.md) defines coding and API conventions.
 
 Names are relative to `Kimi`. The default alias opens its root, but not nested groups such as `Text` or `Intrinsics`. Use group-qualified names for their members.
@@ -405,16 +405,16 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
-[LendingIterator.kimi](../Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound remains P28 work.
+[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound remains P28 work.
 
-[Iterable.kimi](../Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P28 work.
+[Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P28 work.
 
-[IntoIterable.kimi](../Kimi/Library/IntoIterable.kimi) accepts any LendingIterator for `IteratorType`. Concrete and generic owned loops support items borrowing the iterator, including cleanup before backedges and `continue`.
+[IntoIterable.kimi](../src/Kimi/Library/IntoIterable.kimi) accepts any LendingIterator for `IteratorType`. Concrete and generic owned loops support items borrowing the iterator, including cleanup before backedges and `continue`.
 
 | Source interface | Difference and intended treatment |
 | --- | --- |
-| `Index.init(! unchecked: isize)` in [Core.kimi](../Kimi/Library/Core.kimi) | A normalization helper can admit negative values, unlike specified Index construction. It must not be treated as the specified constructor. |
-| `Range.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](../Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
-| `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](../Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |
+| `Index.init(! unchecked: isize)` in [Core.kimi](../src/Kimi/Library/Core.kimi) | A normalization helper can admit negative values, unlike specified Index construction. It must not be treated as the specified constructor. |
+| `Range.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](../src/Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
+| `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](../src/Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |
 
 `SliceIterator<T> {source}` is the current public concrete Slice iterator. Its `next(self: uniq/Self) -> Option<ref/T during source>` returns elements in order and retains the backing Loan. Source declaration shape and compiler-provided support may differ during implementation; use [STATUS.md](STATUS.md) to assess support.

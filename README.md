@@ -2,23 +2,41 @@
 
 Work in progress
 
+## Repository layout
+
+- `src/`: compiler and core library (`Kimi/`), benchmarks (`Benchmark/`), playground (`Playground/`), VS Code extension (`kimi-ext/`), native backend and third-party sources.
+- `tests/`: managed regression tests (`xUnitTest/`) and milestone programs (`milestones/`).
+- `docs/`: [language specification](docs/SPEC.md), [implementation contracts](docs/IMPL.md), [library catalog](docs/LIBRARY.md), [coding conventions](docs/STYLE.md), [support status](docs/STATUS.md) and executable examples.
+- `docs/dev/`: [current plan](docs/dev/PLAN.md), [session history](docs/dev/PLAN_HISTORY.md) and development prompts.
+- `scripts/`: repository verification entry point.
+- `draft/`: proposals; integrated documents remain frozen.
+- `toolchain/` and `bin/`: local tools and generated artifacts, excluded from Git.
+
+Run verification from the repository root after restoring dependencies:
+
+```powershell
+dotnet restore Kimigayo.slnx
+./scripts/verify.ps1 -Class XunitTest.ToolchainResolverTest
+./scripts/verify.ps1 -Mode Session
+```
+
 ## Check source semantics
 
 ```powershell
-dotnet run --project Kimi -- check examples/Strings/main.kimi --Target x86_64-pc-windows-msvc
+dotnet run --project src/Kimi -- check docs/examples/Strings/main.kimi --Target x86_64-pc-windows-msvc
 ```
 
 `check` accepts the same input paths as `emit` and requires no LLVM installation. It checks source semantics, including all Project dependency bodies, without generating artifacts or running the program. Direct dependency names and aliases resolve in each defining module's environment.
 
 Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
 
-See the [transitive source dependency example](examples/SourceDependencies/README.md).
+See the [transitive source dependency example](docs/examples/SourceDependencies/README.md).
 
-The [UTF-8 formatting example](examples/Utf8Formatting/README.md) covers owning interpolation, user formatters, short-circuit writes and allocation-free fixed buffers.
+The [UTF-8 formatting example](docs/examples/Utf8Formatting/README.md) covers owning interpolation, user formatters, short-circuit writes and allocation-free fixed buffers.
 
 ## Toolchain (Windows x64)
 
-Use LLVM **22.1.8**, as specified in [profile.json](backend/windows-x64/profile.json).
+Use LLVM **22.1.8**, as specified in [profile.json](src/backend/windows-x64/profile.json).
 Place `toolchain/` at the repository root, or beside `Kimi.exe` / `Kimi.dll` for a standalone installation.
 
 For building Kimi applications (`kimi build`), include:
@@ -44,10 +62,10 @@ From the repository root, copy the tools and supporting DLLs from an existing LL
 installation, then build, test, and install the backend library with:
 
 ```powershell
-./backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
+./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
 ```
 
-To rebuild the native library later, run `./backend/windows-x64/build.ps1`.
+To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
 Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain.
 
 ## Add toolchain to PATH
@@ -156,14 +174,14 @@ Omitting the path searches the current directory for a solution or projects.
 Examples from the repository root, with `kimi` available on `PATH`:
 
 ```powershell
-kimi build examples/Hello/Hello.kimiproj
-kimi run examples/Hello/Hello.kimiproj
-kimi run examples/Hello/Hello.kimiproj --no-build
-kimi emit examples/Hello/Hello.kimiproj
-kimi build examples/Hello/Hello
-kimi emit examples/Hello/Hello.kimi
-kimi build examples/Hello --ToolchainRoot 'C:/tools/kimi/toolchain'
-kimi run examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe
+kimi build docs/examples/Hello/Hello.kimiproj
+kimi run docs/examples/Hello/Hello.kimiproj
+kimi run docs/examples/Hello/Hello.kimiproj --no-build
+kimi emit docs/examples/Hello/Hello.kimiproj
+kimi build docs/examples/Hello/Hello
+kimi emit docs/examples/Hello/Hello.kimi
+kimi build docs/examples/Hello --ToolchainRoot 'C:/tools/kimi/toolchain'
+kimi run docs/examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe
 ```
 
 The direct `.exe` form of `run` executes that binary without building and needs no
@@ -181,34 +199,34 @@ Targets, OutputKind, and Optimization before the command proceeds. Implicit proj
 are marked `implicit`; an explicit `--Target` selection is shown separately.
 
 For a source checkout, build the compiler with .NET 10 and replace `kimi` in the
-examples with `dotnet Kimi/bin/Release/net10.0/Kimi.dll`:
+examples with `dotnet src/Kimi/bin/Release/net10.0/Kimi.dll`:
 
 ```powershell
-dotnet build Kimi/Kimi.csproj -c Release
-dotnet Kimi/bin/Release/net10.0/Kimi.dll build examples/Hello/Hello.kimiproj
-dotnet Kimi/bin/Release/net10.0/Kimi.dll run examples/Hello/Hello.kimiproj
+dotnet build src/Kimi/Kimi.csproj -c Release
+dotnet src/Kimi/bin/Release/net10.0/Kimi.dll build docs/examples/Hello/Hello.kimiproj
+dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimiproj
 ```
 
 ## Visual Studio Code
 
-The [kimi-ext](kimi-ext/) extension provides diagnostics and build/run/check commands. It shares the compiler and toolchain described above.
+The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check commands. It shares the compiler and toolchain described above.
 
 ### QuickStart
 
 1. Install .NET 10, Node.js LTS and VS Code 1.138 or later (1.x). From the repository root, build the compiler and [prepare the toolchain](#toolchain-windows-x64) for native builds:
 
    ```powershell
-   dotnet build Kimi/Kimi.csproj -c Release
-   ./backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
+   dotnet build src/Kimi/Kimi.csproj -c Release
+   ./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
    ```
 
-   Use `Kimi/bin/Release/net10.0/Kimi.exe` with its accompanying files. Diagnostics and Check need no LLVM tools. Standalone installations keep `toolchain/` beside the executable, or set `KIMI_TOOLCHAIN_ROOT` before starting VS Code.
+   Use `src/Kimi/bin/Release/net10.0/Kimi.exe` with its accompanying files. Diagnostics and Check need no LLVM tools. Standalone installations keep `toolchain/` beside the executable, or set `KIMI_TOOLCHAIN_ROOT` before starting VS Code.
 
 2. Package and install the extension from the repository root:
 
    ```powershell
-   npm --prefix kimi-ext ci
-   npm --prefix kimi-ext run package
+   npm --prefix src/kimi-ext ci
+   npm --prefix src/kimi-ext run package
    code --install-extension .\kimi-ext\kimi-ext.vsix --force
    ```
 
@@ -261,11 +279,11 @@ Tasks need an open folder; diagnostics also work in standalone editor windows. A
 Run from the repository root:
 
 ```powershell
-npm --prefix kimi-ext test
-$env:KIMI_TEST_SERVER_PATH = (Resolve-Path Kimi/bin/Release/net10.0/Kimi.exe).Path
-npm --prefix kimi-ext run test:integration
+npm --prefix src/kimi-ext test
+$env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe).Path
+npm --prefix src/kimi-ext run test:integration
 ```
 
 Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
 
-Edit this README section and the root `LICENSE`; packaging generates ignored copies under `kimi-ext/`. For a new release, run `npm --prefix kimi-ext run version:patch` once, update `kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-kimi-ext).
+Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once, update `src/kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-kimi-ext).

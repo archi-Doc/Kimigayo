@@ -5,8 +5,8 @@
       "name": "Kimi Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/kimi-ext"],
-      "outFiles": ["${workspaceFolder}/kimi-ext/out/**/*.js"],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/src/kimi-ext"],
+      "outFiles": ["${workspaceFolder}/src/kimi-ext/out/**/*.js"],
       "preLaunchTask": "kimi-ext: watch"
     }
   ]

@@ -4,7 +4,7 @@ Current plan only: position, milestone order, completion conditions, next action
 
 ## 1. Scope
 
-Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the implementation contracts of [IMPLEMENTATION.md](../IMPL.md) (Chapters 20–21, the test execution profile and Appendix A) for the Windows x64 profile, excluding Appendix D. Progress is driven vertically by the [Milestone Programs](../../milestones/README.md): each milestone completes one program end to end (Binding, ownership, generation, native execution and required rejections).
+Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the implementation contracts of [IMPL.md](../IMPL.md) (Chapters 20–21, the test execution profile and Appendix A) for the Windows x64 profile, excluding Appendix D. Progress is driven vertically by the [Milestone Programs](../../tests/milestones/README.md): each milestone completes one program end to end (Binding, ownership, generation, native execution and required rejections).
 
 - **Generics:** the initial profile monomorphizes (§21.3.1). Generic code sharing is deferred; milestone P22 replaced the existing shared generation path.
 - **Origins and the Contract/type system** (§8, §15) remain complete requirements; implementation limits never narrow them.
@@ -15,8 +15,8 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 | Rule | Detail |
 | --- | --- |
 | Unit | One coherent change: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message. |
-| Unit verification | `./verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]`: Debug build with warnings as errors, related tests, related native O0/O2 fixtures and harnesses. |
-| Session verification | Once at session end: `./verify.ps1 -Mode Session [-Fixtures ...] [-Milestone ...]` (Debug and Release builds and full suites, then Release native runs). Do not edit sources while it runs. |
+| Unit verification | `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]`: Debug build with warnings as errors, related tests, related native O0/O2 fixtures and harnesses. |
+| Session verification | Once at session end: `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone ...]` (Debug and Release builds and full suites, then Release native runs). Do not edit sources while it runs. |
 | Performance | Measure allocation (warm zero-allocation probes) only on hot paths and at milestone completion. Do not claim unmeasured improvements. |
 | Documents | PLAN: position, milestone states and next actions at session end. PLAN_HISTORY: a few lines per session. STATUS: only when support boundaries change. Evidence lives in commits and `bin/verify/`. |
 | Failures | Fix root causes; never weaken tests or diagnostics to pass. Record a blocker with the exact next step. |
@@ -28,7 +28,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 - **P31 IN_PROGRESS:** the unchanged target and all 71 Debug/Release harness checks pass. Search, ordered links, slot reuse, initialization, reverse cleanup and shrink-to-fit compile from `DictionaryStorage.kimi`. Public generic API/capacity migration, nonempty runtime literals and borrowed/nested storage forms remain; the indexing and iteration bridges wait for P27/P28.
 - **P25/P33 paused (IN_PROGRESS):** Program 25 stops at inherited field ownership projection; Program 33 stops at flow-refined member lookup.
 - **Verified implementation HEAD:** `1dca1516`; final Session `20260928-073155-750-session-p28-contracts-final` passes warning-free Debug/Release builds, 13,029 tests per configuration, 872 native O0/O2 executions and 31 Release harnesses (1,635 checks). Evidence is retained under `bin/worktrees/p28-contracts-20260928/bin/verify/`. No NativeAOT run.
-- The program status table is [milestones/README.md](../../milestones/README.md); product support boundaries are in STATUS. Source authoring or a successful target alone does not complete a milestone.
+- The program status table is [milestones/README.md](../../tests/milestones/README.md); product support boundaries are in STATUS. Source authoring or a successful target alone does not complete a milestone.
 
 ## 4. Milestones (execution order)
 
@@ -65,7 +65,7 @@ P22, P19, P20, P21, P29, P32, P30, P23, P27, P37 and P39 are done. P28 is the ac
 
 The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](../../draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
 
-The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](../../Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
+The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](../../src/Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
 
 | ID | Subject | Acceptance |
 | --- | --- | --- |
@@ -80,12 +80,12 @@ The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency def
 ## 5. Completion conditions (every program milestone)
 
 1. The spec-derived program source builds unchanged with the Debug and Release compilers and runs at O0 and O2 with the expected stdout, exit code and stderr.
-2. `backend/windows-x64/test-milestone<N>.ps1` exists and passes: target, listed variants and required rejections with their specified diagnostic codes.
+2. `src/backend/windows-x64/test-milestone<N>.ps1` exists and passes: target, listed variants and required rejections with their specified diagnostic codes.
 3. Session verification passes: zero warnings, full Debug and Release suites, and the harnesses of all earlier completed programs.
 4. The owning SPEC sections exercised by the program have focused positive and negative tests; unsupported neighboring forms fail with a diagnostic, never with wrong code.
-5. STATUS.md describes the new support boundary, and the milestone is marked DONE here and in `milestones/README.md`.
+5. STATUS.md describes the new support boundary, and the milestone is marked DONE here and in `tests/milestones/README.md`.
 
-A specification change that re-spells a completed program keeps it DONE when conditions 1–3 hold for the re-spelled source; `milestones/README.md` records the re-spelling.
+A specification change that re-spells a completed program keeps it DONE when conditions 1–3 hold for the re-spelled source; `tests/milestones/README.md` records the re-spelling.
 
 Features that a program's source does not use belong to the milestone that owns them, not to that program.
 
@@ -108,6 +108,6 @@ Concurrent sessions use separate worktrees and stage only their own paths. Libra
 | G3 | Array and Dictionary growth, allocation, reuse and warm compilation costs have native/counter evidence (`DynamicArrayCostTest`, `DictionaryCostTest`). The remaining general Slice operations still need their §4.6.8 cost evidence; there is no public collection ABI. | P27 |
 | G4 | Weak and the rc/arc ownership family already have individual catalog identities with `SourceExpected: false`; source declarations, validation, Binding and runtime implementations remain unavailable (§22.1, §13.5.8–9). Catalog presence is not implemented support. | P34/P35 |
 | G10 | Named function groups used as Function Types need selection, Origin and erasure paths (overloads, generics, members). | P26 |
-| G20 | The user requested Dictionary in Kimigayo. Ordered storage algorithms compile from ordinary source, but public generic operation/result dispatch, reserve/growth and typed index/iteration bridges still reside in the compiler. The index bridge becomes `UniqIndexable<K>` (P27) and the iteration bridge the standard entries over `Kimi.Storage` (P28). See `Kimi/Library/README.md`. | P31 |
+| G20 | The user requested Dictionary in Kimigayo. Ordered storage algorithms compile from ordinary source, but public generic operation/result dispatch, reserve/growth and typed index/iteration bridges still reside in the compiler. The index bridge becomes `UniqIndexable<K>` (P27) and the iteration bridge the standard entries over `Kimi.Storage` (P28). See `src/Kimi/Library/README.md`. | P31 |
 | G28 | The Iterator effect summary treats a local or a match Subject of an abstract item Type as destroyed even when its payload is moved out, so wrappers that inspect an item before returning it (retry after None, peek) fail the bound although no destructor runs. Proposed: apply the ownership analysis' move-out facts, or a local rule for a by-value payload binding that is moved on every path. | P28 |
 | G22 | Two exclusive element borrows of one collection conflict even for distinct runtime indices (§3.4). A splitting API over `Kimi.Storage` (for example `pairUniq(first, second) -> Option<(uniq/E, uniq/E)>`) keeps disjointness out of the Get operation. Needs an API decision after P28 provides the storage boundary. | P40 |

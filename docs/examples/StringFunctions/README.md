@@ -1,0 +1,12 @@
+# Owned string functions
+
+Ordinary functions can receive and return owned strings. Passing a local moves it; an unused parameter or discarded call result is destroyed. This example combines nested calls, named arguments, a result secured before deferred cleanup, and local reinitialization. It prints `cleanup` and `after`, each followed by LF, and exits 0.
+
+```powershell
+dotnet run --project src/Kimi -c Release --no-build -- build docs/examples/StringFunctions/StringFunctions.kimiproj
+dotnet run --project src/Kimi -c Release --no-build -- run docs/examples/StringFunctions/StringFunctions.kimiproj
+```
+
+Requires the pinned tools and backend archive in [backend setup](../../../src/backend/windows-x64/README.md). The compiler currently passes string arguments through acquired slots and returns strings through a separate hidden result slot. These are implementation choices, not a public ABI. Cleanup must complete before the caller receives the result; Abort and nontermination do not deliver it.
+
+Borrowed/generic/default signatures, indirect calls, concatenation/interpolation, explicit ownership adaptations and Heap-string construction remain unsupported. See [STATUS C.50](../../STATUS.md#4-llvm-generation-coverage); [StringComparisons](../StringComparisons/README.md) demonstrates nonconsuming comparisons added in C.51.

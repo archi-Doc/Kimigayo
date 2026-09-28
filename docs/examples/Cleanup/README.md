@@ -1,0 +1,10 @@
+# Cleanup
+
+An implicit Application demonstrating a secured i32 result, reverse deferred execution, a nested defer, and self-targeted `exit` from cleanup. It prints `cleanup` and `ok`, each followed by LF. The result retains `1` while cleanup changes the original local to `2`.
+
+```powershell
+dotnet run --project src/Kimi -- build docs/examples/Cleanup/Cleanup.kimiproj
+dotnet run --project src/Kimi -- run docs/examples/Cleanup/Cleanup.kimiproj
+```
+
+The published NativeAOT compiler accepts the same commands. Requires the pinned LLVM tools and verified Windows backend archive described in [backend setup](../../../src/backend/windows-x64/README.md). See [STATUS.md C.42](../../STATUS.md#4-llvm-generation-coverage) for implementation scope and limits.

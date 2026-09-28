@@ -84,7 +84,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 
 #### Appendix C. Implementation status
 
-[STATUS.md](STATUS.md) records implementation coverage, verified support boundaries and the status of the executable examples, separately from language conformance. The documented limits of the [examples](../examples/) and [milestone programs](../milestones/README.md) do not narrow the language rules.
+[STATUS.md](STATUS.md) records implementation coverage, verified support boundaries and the status of the executable examples, separately from language conformance. The documented limits of the [examples](examples/) and [milestone programs](../tests/milestones/README.md) do not narrow the language rules.
 
 ## Where to start
 
@@ -97,7 +97,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](impl/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.
 - **Editor and tool integration:** the [language server](spec/23-compiler-services.md#234-language-server-protocol) publishes the diagnostics of the shared [check foundation](spec/23-compiler-services.md#233-check-foundation), which the future [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol) also uses.
-- **Milestone programs:** the [milestone roadmap](../milestones/README.md) plans 40 independent programs of increasing difficulty, from Hello World through ownership and lifetimes, control flow and Patterns, arrays, generics and specialization, closures, iteration, collections, Properties, formatting and objects. Programs 1–39 have source files and 40 has a design and verification scope; the README records their status. Source creation does not establish compiler support, and expected behavior follows this specification.
+- **Milestone programs:** the [milestone roadmap](../tests/milestones/README.md) plans 40 independent programs of increasing difficulty, from Hello World through ownership and lifetimes, control flow and Patterns, arrays, generics and specialization, closures, iteration, collections, Properties, formatting and objects. Programs 1–39 have source files and 40 has a design and verification scope; the README records their status. Source creation does not establish compiler support, and expected behavior follows this specification.
 
 ## Kimi declaration and function reference
 
