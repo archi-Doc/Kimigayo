@@ -55,6 +55,11 @@ public sealed partial class KimiLibrary
             return ValidBoundRemainder(symbol, id);
         }
 
+        if (id is KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive)
+        {
+            return this.ValidBoundFixedStorage(symbol, id == KimiDeclarationId.StorageBorrowFixedExclusive);
+        }
+
         if (id is >= KimiDeclarationId.DictionaryRefRemainder and <= KimiDeclarationId.StorageLendValue or >= KimiDeclarationId.DictionaryUniqRemainder and <= KimiDeclarationId.StorageValueAt)
         {
             return this.ValidBoundDictionaryStorage(symbol, id);
@@ -202,6 +207,19 @@ public sealed partial class KimiLibrary
     private bool DictionaryRemainder(BoundType type, KimiDeclarationId id, BoundType key, BoundType value, int origins = 1)
         => type is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, Components: [var storedKey, var storedValue] } && type.OriginArguments.Count == origins &&
             ReferenceEquals(type.Symbol, this.GetSymbol(id)) && ReferenceEquals(storedKey, key) && ReferenceEquals(storedValue, value);
+
+    // The input borrows [N of E] with its own length parameter N; the remainder keeps E and the borrow's Origin.
+    private bool ValidBoundFixedStorage(BindingSymbol symbol, bool exclusive)
+    {
+        return symbol.Declaration is FunctionKoto { GenericArguments: [var elementParameter, var lengthParameter], Parameters: [var parameter] } function &&
+            elementParameter.BoundType is { Kind: BoundTypeKind.Parameter } element && lengthParameter.BoundSymbol is { } length &&
+            parameter.Type.BoundType is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var array] } input &&
+            input.Semantics == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) &&
+            input.Origin is { Kind: OriginKind.Parameter, Slot: 0 } origin && ReferenceEquals(origin.Binder, function) &&
+            array is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var stored], LengthExpression: { Parameter: { } n, Left: null, Right: null } } &&
+            ReferenceEquals(stored, element) && ReferenceEquals(n, length) && symbol.Type is { } result &&
+            this.BoundStorageContainer(result, exclusive ? KimiDeclarationId.UniqRemainder : KimiDeclarationId.RefRemainder, element, 1) && ReferenceEquals(result.OriginArguments[0], origin);
+    }
 
     private bool BoundStorageContainer(BoundType type, KimiDeclarationId id, BoundType element, int origins)
         => type.Kind == (id == KimiDeclarationId.Array ? BoundTypeKind.Array : BoundTypeKind.Constructed) &&

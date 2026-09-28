@@ -54,6 +54,7 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.StorageBorrowDictionary and <= KimiDeclarationId.StorageLendValue or
                             >= KimiDeclarationId.StorageBorrowDictionaryExclusive and <= KimiDeclarationId.StorageSplitValue or
                             >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt => this.ValidDictionaryStorageOperation(symbol, entry.Id),
+                        KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive => this.ValidFixedStorageOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -621,6 +622,21 @@ public sealed partial class KimiLibrary
             function.Parameters[1] is { InternalName: "slot", ExternalName: "slot", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } pointer } && BareName(pointer.Type, "u8") &&
             BareType(function.ReturnType) is TypeSemanticsKoto element && element.SemanticsKind == lent && BareName(element.Type, result) &&
             (lent == SemanticsKind.Unsafe ? element.OriginExpression is null : element.OriginExpression is MemberAccessKoto origin && BareName(origin.Left, "state") && BareName(origin.Right, "source"));
+    }
+
+    // SPEC 22.1.2.5: borrowStorage over ref/[N of E] or uniq/[N of E] during a returns the contiguous RefRemainder<E> or
+    // UniqRemainder<E> during a; the compiler implements it.
+    private bool ValidFixedStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var exclusive = id == KimiDeclarationId.StorageBorrowFixedExclusive;
+        return symbol.CompilerFunction == KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function &&
+            symbol.Declaration is FunctionKoto { Name: "borrowStorage", AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, Modifier: ModifierKind.Internal } function &&
+            ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
+            function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { OriginName: "a", Type: FixedArrayTypeKoto array } input }] &&
+            input.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && BareName(array.ElementType, "E") && BareName(array.Length, "N") &&
+            function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, OriginName: "a", Type: GenericsKoto { TypeArguments: [var element] } result } &&
+            BareName(result.Identifier, exclusive ? "UniqRemainder" : "RefRemainder") && BareName(element, "E");
     }
 
     // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing

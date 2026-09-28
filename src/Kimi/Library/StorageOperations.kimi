@@ -19,3 +19,5 @@ internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemain
 internal unsafe func keyAt<K, V>(slot: unsafe/u8) -> unsafe/K
 internal unsafe func valueAt<K, V>(slot: unsafe/u8) -> unsafe/V
 internal unsafe func release<E>(storage: unsafe/E)
+internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
+internal func borrowStorage<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a

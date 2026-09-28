@@ -98,6 +98,45 @@ public class DictionaryStorageValidationTest
         Assert.Same(function, c.Library.InvalidDeclaration);
     }
 
+    // SPEC 22.1.2.5: the fixed-array borrowStorage overloads keep [N of E] with their own N, the borrow mode and its Origin.
+    [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedShared, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedShared, "element")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedShared, "length")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedShared, "result-static")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedExclusive, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedExclusive, "length")]
+    [InlineData(KimiDeclarationId.StorageBorrowFixedExclusive, "result-static")]
+    public void FixedArrayBorrowsKeepTheirCompleteSignatures(KimiDeclarationId id, string mutation)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Library.ValidateBoundDeclarations());
+        var symbol = c.Library.GetSymbol(id)!;
+        var function = (FunctionKoto)symbol.Declaration;
+        var input = function.Parameters[0].Type;
+        var original = input.BoundType!;
+        var array = original.Components[0];
+        switch (mutation)
+        {
+            case "input-mode":
+                input.BoundType = Copy(original, semantics: original.Semantics == SemanticsKind.Ref ? SemanticsKind.Uniq : SemanticsKind.Ref);
+                break;
+            case "element":
+                input.BoundType = Copy(original, components: [new(array.Name, array.Kind, array.Symbol, array.Semantics, [BoundType.ISize], array.Length, array.Origin, [], array.LengthExpression)]);
+                break;
+            case "length":
+                input.BoundType = Copy(original, components: [new(array.Name, array.Kind, array.Symbol, array.Semantics, array.Components.ToArray(), array.Length, array.Origin, [], new BoundLength(KotoKind.NumberLiteral, 4, null, null, null))]);
+                break;
+            case "result-static":
+                symbol.Type = Copy(symbol.Type!, origins: [BoundOrigin.Static]);
+                break;
+        }
+
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(function, c.Library.InvalidDeclaration);
+    }
+
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
     [InlineData("unsafe => _ = Kimi.Storage.lendKey(map@ref, null@unsafe/u8)")]
