@@ -574,6 +574,13 @@ public sealed partial class Binding
             this.BindHeader(symbol);
         }
 
+        // The indexing pass only had the nominal shell. A constructor/destructor body sees the complete Self,
+        // including its Type parameters and Origins, just as an explicit receiver does.
+        if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)
+        {
+            receiver.Type = this.SelfType(owner);
+        }
+
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {
             this.BindType(function.GenericArguments[i], scope);

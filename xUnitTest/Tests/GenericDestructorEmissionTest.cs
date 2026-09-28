@@ -7,6 +7,22 @@ namespace XunitTest;
 
 public class GenericDestructorEmissionTest
 {
+    [Theory]
+    [InlineData("T", "ref/T", true)]
+    [InlineData("unsafe/T", "unsafe/T", true)]
+    [InlineData("unsafe/T", "unsafe/u8", false)]
+    public void DestructorFieldsUseCompleteGenericSelf(string fieldType, string localType, bool accepted)
+    {
+        var c = MinimalEmissionTest.Analyze($$"""
+            struct Box<T>
+                let value: {{fieldType}}
+                deinit
+                    let observed: {{localType}} = self.value
+            ()
+            """);
+        Assert.Equal(accepted, c.Binding.Result.IsComplete);
+    }
+
     [Fact]
     public void SharedBodyRunsBeforeInstantiatedFieldCleanup()
         => ScalarEmissionTest.EmitFixture(
