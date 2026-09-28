@@ -17,7 +17,7 @@ public struct Array<T>
         return ArrayUniqIterator<T>.init(Storage.borrowStorage(self))
 
     /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
-    /// with the iterator in index order (SPEC 4.7.6).
+    /// with the iterator in reverse index order (SPEC 4.7.6).
     public func intoIterator(self: Self) -> ArrayOwningIterator<T>
         return ArrayOwningIterator<T>.init(Storage.ownStorage(self@move))
 
