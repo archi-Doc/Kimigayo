@@ -382,6 +382,30 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: a constructor's first assignment of a field without a default initializes it, so an Iterator may build a
+    // struct item around a value it hands out.
+    private const string Entries = "struct Entries<T>\n    Self is Iterator\n    associate Iterator.Item is Entry<T>\n    var value: Option<T>\n" +
+        "    public init(value: T) => self.value = .Some(value@move)\n    public func next(self: uniq/Self) -> Option<Entry<T>>\n" +
+        "        match Kimi.Intrinsics.exchange(self.value@uniq, with: .None)\n            .Some(let value) => return .Some(Entry<T>.init(7, value@move))\n            .None => return .None\n";
+
+    [Fact]
+    public void AnItemBuiltByAConstructorIsAccepted()
+    {
+        const string Entry = "struct Entry<T>\n    public let position: isize\n    public let value: T\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = value@move\n";
+        var source = Entry + Entries + "var entries = Entries<string>.init(\"Entry value.\")\nvar positions: isize = 0\nloop\n    match entries.next()\n" +
+            "        .Some(let entry)\n            positions += entry.position\n            Console.writeLine(entry.value)\n        .None => exit\nrequire positions == 7 else => $abort(\"entry\")\nConsole.writeLine(\"constructed\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorConstructedItem", source, "Entry value.\nconstructed\n");
+    }
+
+    // A field with a default is initialized before the body, so assigning it replaces and destroys that value.
+    [Fact]
+    public void AConstructorReplacingADefaultFieldIsRejected()
+    {
+        const string Entry = "struct Entry<T>\n    public let position: isize\n    public var value: Option<T> = .None\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = .Some(value@move)\n";
+        var c = MinimalEmissionTest.Analyze(Entry + Entries);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // G28: an item passed by value to a helper is owned by the helper, whose parameter is not destroyed when its body
     // transfers it at once.
     private const string Helper = "struct Helper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +

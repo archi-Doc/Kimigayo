@@ -137,7 +137,7 @@ public sealed partial class Binding
                 this.Comparison(this.Type(dictionary) is { } key ? binding.DictionaryComparison(key) : null);
             }
 
-            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced } assigned && !this.Reinitializes(assigned))
+            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced } assigned && !this.Reinitializes(assigned) && !this.InitializesField(assigned))
             {
                 this.Destruction(this.Type(replaced), node);
             }
@@ -523,6 +523,38 @@ public sealed partial class Binding
             }
 
             return false;
+        }
+
+        // G28: a constructor's assignment of a stored field without a default initializer, with no earlier statement of its
+        // body naming the field, initializes the field and destroys nothing.
+        private bool InitializesField(BinaryKoto assignment)
+        {
+            if (KotoHelper.UnwrapParentheses(assignment.Left) is not MemberAccessKoto
+                {
+                    Left: IdentifierNameKoto { IdentifierName: "self" },
+                    BoundSymbol: { Declaration: PropertyKoto { InitializerKoto: null }, Property.IsStored: true } field,
+                })
+            {
+                return false;
+            }
+
+            switch (assignment.Parent)
+            {
+                case FunctionKoto { IsConstructor: true } constructor:
+                    return ReferenceEquals(constructor.ExpressionBody, assignment);
+                case CodeBlockKoto { Parent: FunctionKoto { IsConstructor: true } constructor } block when ReferenceEquals(constructor.Body, block):
+                    for (var i = 0; i < block.Items.Count && !ReferenceEquals(block.Items[i], assignment); i++)
+                    {
+                        if (!this.inertScan.Check(block.Items[i], field, exits: false))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         // Whether statement `start` onward transfers `symbol` before anything could destroy it. Abort destroys nothing
@@ -1556,7 +1588,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (this.symbol is not null && ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto)
+            if (this.symbol is not null && ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto or MemberAccessKoto)
             {
                 this.inert = false;
                 return;
