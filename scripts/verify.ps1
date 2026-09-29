@@ -1,6 +1,6 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
-# Unit mode (per implementation unit): Debug build with warnings as errors, the selected xUnit
+# Unit mode (per implementation unit): Release build with warnings as errors, the selected xUnit
 # classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
 # selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
@@ -8,9 +8,14 @@
 #   ./scripts/verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
 #   ./scripts/verify.ps1 -Milestone 18
 #
-# Session mode (once at the end of a session): Debug and Release builds and full suites, then
-# the selected native fixtures and milestone harnesses with the Release compiler.
+# Session mode (once at the end of a session): Release build and full suite, then
+# the selected native fixtures and milestone harnesses with the same compiler configuration.
 #   ./scripts/verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
+#
+# Both modes use one compiler configuration. Select Debug explicitly when needed:
+#   ./scripts/verify.ps1 -Configuration Debug -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
+#   ./scripts/verify.ps1 -Mode Session -Configuration Debug
+# Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
 # Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
@@ -21,6 +26,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
     # One or more fixture patterns; each runs as its own native step over the same fixture directory.
@@ -118,7 +124,6 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
 
 $head = (& git -C $repo rev-parse --short HEAD).Trim()
 $dirty = [bool](& git -C $repo status --porcelain --untracked-files=no)
-$configurations = if ($Mode -eq 'Session') { @('Debug', 'Release') } else { @('Debug') }
 $filters = @()
 foreach ($c in $Class) { $filters += @('-class', $c) }
 foreach ($m in $Method) { $filters += @('-method', $m) }
@@ -136,15 +141,14 @@ foreach ($pattern in $classPatterns) {
         if ($testClass -like $pattern) { $needsLspAccess = $true }
     }
 }
-if ($needsLspAccess -and -not (Test-LspDiscoveryAccess)) { $configurations = @() }
+if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
-foreach ($configuration in $configurations) {
-    if (-not (Invoke-Build $configuration)) { continue }
-    if ($Mode -eq 'Session') { Invoke-Tests $configuration @() 'full' }
-    elseif ($filters.Count -gt 0) { Invoke-Tests $configuration $filters 'focused' }
+if (-not $failed -and (Invoke-Build $Configuration)) {
+    if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
+    elseif ($filters.Count -gt 0) { Invoke-Tests $Configuration $filters 'focused' }
 }
 
-$native = if ($Mode -eq 'Session') { 'Release' } else { 'Debug' }
+$native = $Configuration
 if (-not $failed -and $Fixtures.Count -gt 0) {
     # Fixtures come from the tests run above; run them only when those tests passed.
     $fixtureDirectory = Join-Path $evidence "fixtures-$native"
@@ -192,7 +196,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+[ordered]@{ mode = $Mode; configuration = $Configuration; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

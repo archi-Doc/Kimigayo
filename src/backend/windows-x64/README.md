@@ -9,20 +9,25 @@ Use the repository's `scripts/verify.ps1` for implementation-unit and end-of-ses
 ```powershell
 ./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
 ./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+# Debug is opt-in in either mode:
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 
-Both modes keep non-incremental builds with warnings as errors. Unit mode runs the selected tests;
-Session mode runs the full Debug and Release suites. Test collections run up to four at a time,
+Both modes default to one Release compiler build and keep non-incremental builds with warnings as errors.
+Use `-Configuration Debug` explicitly for Debug verification. Unit mode runs the selected tests;
+Session mode runs the full suite once. Builds, tests, fixture selection and milestone harnesses all use
+the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to four at a time,
 respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
 processes, up to eight at a time; both defaults are capped by the logical processor count.
 Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every
 stage announces its start and records its duration, along with the total duration and concurrency
-settings, in `artifacts/verify/<run>/summary.json`. Do not edit sources during verification.
+settings and selected compiler configuration, in `artifacts/verify/<run>/summary.json`. Do not edit sources during verification.
 
 For bounded local verification with separate stdout/stderr logs and a JSON result, run commands through `invoke-verification.ps1` from the repository root:
 
 ```powershell
-./src/backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'tests/xUnitTest/xUnitTest.csproj', '-c', 'Debug', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
+./src/backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'tests/xUnitTest/xUnitTest.csproj', '-c', 'Release', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
 ```
 
 Build the selected configuration first. The default command deadline is 900 seconds and output draining is bounded to five seconds. Optional `-InputPath` records SHA-256 hashes of exact input files and verifies that they remain unchanged. Records use unique directories under ignored `artifacts/verify/commands`. On Windows, a waiting worker is assigned to a [job with kill-on-close](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before receiving the target command. Closing the job removes descendants even after the target exits; no target process starts before containment. Other hosts use process-tree termination while the root remains alive.

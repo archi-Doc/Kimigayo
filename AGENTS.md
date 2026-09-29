@@ -48,8 +48,8 @@ The specification and implementation are not set in stone. The specification gui
 # Implementation Workflow
 
 - Work in coherent units: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message.
-- Unit verification: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (non-incremental Debug build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses). A direct `dotnet build` may leave analyzer warnings unreported to later incremental builds, so only the script's build counts as evidence.
-- Session verification, once at the end of a session: `./scripts/verify.ps1 -Mode Session [...]` (Debug and Release builds and full suites). Never edit sources while a build or verification run is in progress.
+- Unit verification: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (non-incremental Release build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses). A direct `dotnet build` may leave analyzer warnings unreported to later incremental builds, so only the script's build counts as evidence.
+- Session verification, once at the end of a session: `./scripts/verify.ps1 -Mode Session [...]` (Release build and full suite). Both modes use Release by default; pass `-Configuration Debug` explicitly for Debug verification. Builds, tests, fixture selection and milestone harnesses use the selected compiler configuration; native O0/O2 coverage is unchanged. Never edit sources while a build or verification run is in progress.
 - Measure allocations only on hot paths and at milestone completion.
 
 # VS Code Extension (`src/kimi-ext/`)

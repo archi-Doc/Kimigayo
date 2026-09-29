@@ -15,8 +15,8 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 | Rule | Detail |
 | --- | --- |
 | Unit | One coherent change: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message. |
-| Unit verification | `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]`: Debug build with warnings as errors, related tests, related native O0/O2 fixtures and harnesses. |
-| Session verification | Once at session end: `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone ...]` (Debug and Release builds and full suites, then Release native runs). Do not edit sources while it runs. |
+| Unit verification | `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]`: Release build with warnings as errors, related tests, related native O0/O2 fixtures and harnesses. Pass `-Configuration Debug` explicitly when needed. |
+| Session verification | Once at session end: `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone ...]` (Release build and full suite). Pass `-Configuration Debug` explicitly when needed; all stages use the selected compiler configuration, with native O0/O2 coverage unchanged. Do not edit sources while it runs. |
 | Performance | Measure allocation (warm zero-allocation probes) only on hot paths and at milestone completion. Do not claim unmeasured improvements. |
 | Documents | PLAN: position, milestone states and next actions at session end. PLAN_HISTORY: a few lines per session. STATUS: only when support boundaries change. Evidence lives in commits and `artifacts/verify/`. |
 | Failures | Fix root causes; never weaken tests or diagnostics to pass. Record a blocker with the exact next step. |

@@ -262,11 +262,15 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 # Include the related native fixtures and milestone when needed.
 ./scripts/verify.ps1 -Class XunitTest.ContainerNestingTest -Fixtures 'ContainerNestingExample.ll' -Milestone 1
 
-# Once at session end: Debug and Release builds and all managed tests.
+# Once at session end: Release build and all managed tests.
 ./scripts/verify.ps1 -Mode Session
+
+# Debug is opt-in in either mode.
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.ToolchainResolverTest
+./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 
-Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain. NativeAOT tests are separate and are not run by these commands.
+Both modes default to Release and use one compiler configuration for the build, tests, fixtures and milestone harnesses. Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain and retain O0/O2 coverage regardless of the compiler configuration. NativeAOT tests are separate and are not run by these commands.
 
 LSP tests require directory-listing access from the OS temporary directory through every
 ancestor to the filesystem root: project discovery must distinguish an unreadable directory
