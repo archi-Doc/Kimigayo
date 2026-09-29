@@ -477,8 +477,8 @@ public sealed partial class KimiLibrary
     private bool ValidSlice(BindingSymbol symbol)
     {
         if (symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
-            symbol.Declaration is not StructKoto { Name: "Slice", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 1, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } slice ||
-            !ReferenceEquals(slice.Parent, this.Kotonoha.RootKoto) || slice.OriginNames[0] != "source" ||
+            symbol.Declaration is not StructKoto { Name: "Slice", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 1, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } slice ||
+            !ReferenceEquals(slice.Parent, this.Kotonoha.RootKoto) || slice.OriginNames[0] != "source" || !ValidEntryConformances(slice, 0) ||
             slice.GenericParameterNodes[0] is not GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } ||
             FindDeclaration(slice, "iterate", true) is not FunctionKoto)
         {
@@ -487,6 +487,11 @@ public sealed partial class KimiLibrary
 
         for (var i = 0; i < slice.Members.Count; i++)
         {
+            if (slice.Members[i] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null })
+            {
+                continue; // SPEC 22.1.2.3: the iterator Types of the standard entry conformances.
+            }
+
             if (slice.Members[i] is not FunctionKoto)
             {
                 return false; // Slice storage is compiler-managed; helpers cannot add fields.

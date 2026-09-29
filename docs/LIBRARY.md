@@ -182,8 +182,11 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
 | `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
 | `firstIndex<F>(self: Self, matching: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `matching` returns true, or None. |
+| `iterate(self: ref/Self during handle) -> SliceIterator<T> during source` | The Iterable entry: a shared enumeration in index order. Items keep `source`, not the borrow of the handle. |
+| `iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source` | The UniqIterable entry: exclusive access lends only the handle, so the items stay shared. |
+| `intoIterator(self: Self) -> SliceIterator<T> during source` | The IntoIterable entry: the same shared enumeration from a Slice value, such as a range selection. |
 
-Split boundaries include zero and length. Both results retain the source dependency, including empty results. Indexable and the three iteration conformances follow §2.
+Split boundaries include zero and length. Both results retain the source dependency, including empty results. `SliceIterator<T> {source}` is an `Iterator` whose `Item` is `ref/T during source`; it copies the handle and keeps a position. Indexable and the iteration modes follow §2.
 
 Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` returns None, but `tryGet(^(-1))` Aborts while constructing the argument.
 

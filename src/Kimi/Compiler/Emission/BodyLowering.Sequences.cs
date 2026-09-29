@@ -6,26 +6,6 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private bool TrySequenceComponent(BoundType receiver, Koto source, int index, out BoundType? component, out AggregateLayout? layout)
-    {
-        component = receiver.Components.Count == 1 ? receiver.Components[0] : null;
-        layout = null;
-        if (index == -1)
-        {
-            return component is not null;
-        }
-
-        if (index < 0 || component?.Kind != BoundTypeKind.Tuple || source is not ForKoto { IsTupleBinding: true } loop ||
-            loop.Bindings.Count != component.Components.Count || (uint)index >= (uint)component.Components.Count ||
-            (layout = this.aggregateLayouts.Get(component)) is null)
-        {
-            return false;
-        }
-
-        component = component.Components[index];
-        return true;
-    }
-
     private bool LowerSequence(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;
@@ -48,8 +28,6 @@ internal sealed partial class BodyLowering
         {
             FromEndIndexKoto fromEnd => ElementAccess.ValueSource(fromEnd.Operand),
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
-            // A bare array Place iterates through its implicit Slice, whose temporary is sourced by the loop itself.
-            ForKoto { SharedIterable: not null } loop => plan.Kind == SequenceOperation.Slice || loop.SharedIterable.Kind == BoundTypeKind.Semantics ? ElementAccess.ValueSource(loop.Iterable) : loop,
             ForKoto loop => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
         };
@@ -79,7 +57,7 @@ internal sealed partial class BodyLowering
             if (operation.Source is not FromEndIndexKoto || !ReferenceEquals(receiver, BoundType.ISize) ||
                 !ReferenceEquals(result, SignatureType(this, operation.Source.BoundType)) ||
                 result is null || !ReferenceEquals(result.Symbol, library.Index) ||
-                value.Count != 0 || plan.Projection != -1 || plan.End != -1 || plan.Element != -1 ||
+                value.Count != 0 || plan.Projection != -1 || plan.End != -1 ||
                 (uint)plan.Index >= (uint)id || ValuePlace(body.Operations[plan.Index]) != plan.Receiver ||
                 !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
@@ -141,23 +119,17 @@ internal sealed partial class BodyLowering
         if (plan.Kind == SequenceOperation.Borrow)
         {
             var reference = ValueType(body, id);
-            if (!this.TrySequenceComponent(receiver, operation.Source, plan.Element, out var component, out var tupleLayout))
-            {
-                return Fail("Iteration component does not match its Tuple binding shape.", out failure);
-            }
-
             var originSource = Binding.PlaceOriginSource(syntaxReceiver);
             var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray
                 ? ReferenceEquals(reference?.Origin, receiverPlace.Type.Origin)
                 : reference?.Origin is { Kind: OriginKind.Projection } origin && ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) && origin.Slot == Binding.PlaceOriginSlot(originSource);
-            // SPEC 14.6.2, 4.6.9: exclusive enumeration and an exclusive element borrow address the elements through a uniq
-            // array reference.
+            // SPEC 4.6.9: an exclusive element borrow addresses the elements through a uniq array reference.
             var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&
-                (operation.Source is ForKoto { Mode: SubjectMode.Exclusive } || (operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq));
+                operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq;
             var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && exclusiveElements;
             if ((receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array) && !fixedElements) || !ReferenceTypes.IsStorage(reference) ||
-                reference!.Semantics != (exclusiveElements ? SemanticsKind.Uniq : SemanticsKind.Ref) ||
-                !ReferenceEquals(reference.Components[0], component) || !sameOrigin ||
+                reference!.Semantics != (exclusiveElements ? SemanticsKind.Uniq : SemanticsKind.Ref) || receiver.Components.Count != 1 ||
+                !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !sameOrigin ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                 (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
                 FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } element ||
@@ -172,33 +144,25 @@ internal sealed partial class BodyLowering
             }
 
             var bound = new EmissionOperand(EmissionOperandKind.Integer, fixedElements ? receiver.Length : -1);
-            ReadOnlySpan<EmissionOperand> borrowedOperands = tupleLayout is null
-                ? [address, this.PhysicalOperand(body, plan.Index), bound]
-                : [address, this.PhysicalOperand(body, plan.Index), bound,
-                    new(EmissionOperandKind.Integer, tupleLayout.Value.Layout.Stride), new(EmissionOperandKind.Integer, tupleLayout.Offset(plan.Element))];
+            ReadOnlySpan<EmissionOperand> borrowedOperands = [address, this.PhysicalOperand(body, plan.Index), bound];
             function.AddScalar(EmissionOpcode.Sequence, id, borrowedOperands, place: body.Operations.Count + id, location: borrowLocation, op: fixedElements ? "ArrayAddress" : "SliceAddress", check: ArithmeticCheckKind.Bounds, representation: element);
             return true;
         }
 
-        if (plan.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead)
+        if (plan.Kind == SequenceOperation.Read)
         {
-            var arrayRead = plan.Kind == SequenceOperation.ArrayRead || (borrowedArray && receiver.Kind == BoundTypeKind.FixedArray);
+            var arrayRead = borrowedArray && receiver.Kind == BoundTypeKind.FixedArray;
             if (arrayRead && (receiver.Length == 0 || this.aggregateLayouts.Get(receiver)?.Value.Layout.Size == 0))
             {
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
             var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(SignatureType(this, index.Left.BoundType)) || ReferenceTypes.IsDynamicArray(SignatureType(this, index.Left.BoundType))) :
-                arrayRead ? operation.Source is ForKoto { Iterable.BoundType.Kind: BoundTypeKind.FixedArray } :
-                operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array } or ForKoto { IsTupleBinding: true };
-            if (!this.TrySequenceComponent(receiver, operation.Source, plan.Element, out var readType, out var itemLayout))
-            {
-                return Fail("Iteration component does not match its Tuple binding shape.", out failure);
-            }
-
+                operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array };
             var aggregate = this.aggregateLayouts.Get(ValueType(body, id)!);
             if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
-                (!ReferenceEquals(ValueType(body, id), readType) && !SharedReadTypes.ReadsStoredPointer(readType!, ValueType(body, id))) ||
+                receiver.Components is not [var readType] ||
+                (!ReferenceEquals(ValueType(body, id), readType) && !SharedReadTypes.ReadsStoredPointer(readType, ValueType(body, id))) ||
                 (!ReferenceTypes.IsValue(ValueType(body, id)) && aggregate is null && !ReferenceEquals(ValueType(body, id), BoundType.Unit)) ||
                 body.Places[operation.Place].Acquisition != AcquisitionKind.Copy ||
                 (uint)plan.Index >= (uint)id || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
@@ -207,10 +171,7 @@ internal sealed partial class BodyLowering
                 return Fail("Slice read requires a protected handle and an isize index.", out failure);
             }
 
-            ReadOnlySpan<EmissionOperand> operands = plan.Element < 0
-                ? [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)]
-                : [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1),
-                    new(EmissionOperandKind.Integer, itemLayout!.Value.Layout.Stride), new(EmissionOperandKind.Integer, itemLayout.Offset(plan.Element))];
+            ReadOnlySpan<EmissionOperand> operands = [address, this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, arrayRead ? receiver.Length : -1)];
             var storage = aggregate is not null || ReferenceEquals(ValueType(body, id), BoundType.Unit);
             function.AddScalar(EmissionOpcode.Sequence, id, operands, place: body.Operations.Count + id, location: location, op: storage ? arrayRead ? "ArrayStorageRead" : "SliceStorageRead" : arrayRead ? "ArrayRead" : "Read", check: ArithmeticCheckKind.Bounds, representation: aggregate?.Value ?? WindowsLowering.GetValue(ValueType(body, id)!));
             if (aggregate is { Value.Layout.Size: > 0 })
@@ -225,7 +186,7 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.Slice)
         {
-            // A whole-range Slice is written values[..] or implied by bare iteration over an array Place (SPEC 14.6.2).
+            // SPEC 4.6.4: a range selection is written with range boundaries or applied through one ResolvedRange key.
             Koto? startSyntax = null;
             Koto? endSyntax = null;
             Koto? resolvedKey = null;
@@ -241,10 +202,6 @@ internal sealed partial class BodyLowering
                 startSyntax = rangeSyntax.Start;
                 endSyntax = rangeSyntax.End;
                 sliceType = SignatureType(this, source.BoundType);
-            }
-            else if (operation.Source is ForKoto { SharedIterable: { } implicitSlice })
-            {
-                sliceType = SignatureType(this, implicitSlice);
             }
 
             if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) || sliceType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||

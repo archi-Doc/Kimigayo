@@ -30,6 +30,23 @@ public class SliceOperationsTest
         "match tryTail(words[2..])\n    .Some(_) => $abort(\"empty tail\")\n    .None => Console.writeLine(\"None for an empty tail.\")\n" +
         "Console.writeLine(\"ok\")";
 
+    // SPEC 4.6.7, 14.6.2: every mode enumerates the shared elements through the Slice's own entries; a range selection is
+    // an owned temporary Subject, and a borrowed Slice selects its entry at the referent.
+    private const string Entries =
+        "var values: [4 of string] = [\"a\", \"b\", \"c\", \"d\"]\nvar s = values[1..]\nvar n = 0\n" +
+        "for v in s => n += 1\nfor v in s@uniq => n += 1\nfor v in s@move => n += 1\nfor v in values[..2] => n += 1\n" +
+        "func count(items: ref/Slice<string>) -> i32\n    var k = 0\n    for v in items => k += 1\n    return k\n" +
+        "func countUniq(items: uniq/Slice<string>) -> i32\n    var k = 0\n    for v in items => k += 1\n    return k\n" +
+        "func generic<C>(items: ref/C) -> i32\n    C is Iterable\n    var k = 0\n    for v in items => k += 1\n    return k\n" +
+        "var t = values[..]\nn += count(t@ref) + countUniq(t@uniq) + generic(t@ref)\n" +
+        "var it = t.iterate()\nmatch it.next()\n    .Some(let first) => Console.writeLine(first)\n    .None => $abort(\"first\")\n" +
+        "var owning = values[3..].intoIterator()\nmatch owning.next()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"last\")\n" +
+        "require n == 23 else => $abort(\"count\")\nConsole.writeLine(values[0])";
+
+    [Fact]
+    public void EntriesEnumerateEveryMode()
+        => ScalarEmissionTest.EmitFixture("SliceEntries", Entries, "a\nd\na\n");
+
     [Fact]
     public void Executes()
         => ScalarEmissionTest.EmitFixture("SliceOperations", Operations, "None for 10.\nEnd boundary is not an element.\nNone for split 5.\nNone for 2..=5.\nNone for resolved.\nLast text.\nLast text.\nNone for an empty tail.\nok\n");

@@ -116,7 +116,7 @@ internal sealed partial class BodyLowering
                 body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && this.aggregatePlaces[operation.Place] is not null &&
                 (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && operation.Source is IndexKoto &&
-                        body.Sequences[(int)body.Values[id].Constant].Kind is SequenceOperation.Read or SequenceOperation.ArrayRead) ||
+                        body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Read) ||
                     (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
                         body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } read && read.Input == operation.Place && ReferenceEquals(read.Source, operation.Source))))
             {
@@ -350,8 +350,8 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
             case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
-            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary:
-                // SPEC 4.6.1: metadata shares the handle in place; the sequence operation loads its fields.
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
+                // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Array receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)

@@ -73,20 +73,12 @@ internal static partial class LlvmModuleWriter
 
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
-            Name(output, operands.Length == 5 ? "  %itemoffset" : "  %offset", id);
+            Name(output, "  %offset", id);
             output.Write(" = mul i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", ");
-            WriteNumber(output, operands.Length == 5 ? (long)operands[3].Value : instruction.Representation!.Layout.Stride);
+            WriteNumber(output, instruction.Representation!.Layout.Stride);
             output.Write('\n');
-            if (operands.Length == 5)
-            {
-                Name(output, "  %offset", id);
-                Name(output, " = add i64 %itemoffset", id);
-                output.Write(", ");
-                WriteNumber(output, (long)operands[4].Value);
-                output.Write('\n');
-            }
 
             Name(output, "  %element", id);
             output.Write(" = getelementptr i8, ptr ");

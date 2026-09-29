@@ -95,12 +95,12 @@ public sealed partial class OwnershipAnalysis
         return converted;
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int element = -1)
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
         this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, element));
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
         return this.RegisterTemporary(result);
     }
 
@@ -115,14 +115,13 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ImplicitPairAdmitted(receiver) != SemanticsMask.None)
         {
-            var mode = receiver.Parent is ForKoto { Mode: SubjectMode.Exclusive } ? SemanticsKind.Uniq : SemanticsKind.Ref;
-            if (this.ThroughPairLayers(receiver, mode) is var through && through != -2)
+            if (this.ThroughPairLayers(receiver, SemanticsKind.Ref) is var through && through != -2)
             {
                 return through;
             }
 
-            // SPEC 14.6.2, 13.5.5.1: a pair Subject in a ref or uniq instance is read as the reference it holds; the universal
-            // verification and an owner instance share the Place itself for the loop.
+            // SPEC 13.5.5.1: a pair receiver in a ref or uniq instance is read as the reference it holds; the universal
+            // verification and an owner instance share the Place itself for the operation.
             var pair = this.Expression(source, PlaceUseKind.Read);
             if (pair >= 0 && !ReferenceTypes.IsBorrow(this.body.Places[pair].Type))
             {
@@ -224,48 +223,17 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        var shared = source.SharedIterable;
-        var exclusive = source.Mode == SubjectMode.Exclusive && shared is not null;
-
-        // SPEC 14.6.2: a borrowed Copy iterable such as ref/Slice<T> is read as its value; Binding recorded that read.
+        // SPEC 4.6.3.5: a ResolvedRange loop enumerates its isize positions directly; every other Subject iterates through
+        // its entry conformance. A borrowed interval is read as its Copy value; Binding recorded that read.
         var iterableType = this.compilation.Binding.TryGetAdaptation(source.Iterable, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead
             ? read.Type : source.Iterable.BoundType;
-        var array = shared is null && iterableType?.Kind == BoundTypeKind.FixedArray;
-        var slice = shared is not null || iterableType?.Kind == BoundTypeKind.Slice;
-        if (!array && !slice && !ReferenceTypes.IsResolvedRange(iterableType))
+        if (!ReferenceTypes.IsResolvedRange(iterableType))
         {
             this.Unsupported(source);
             return;
         }
 
-        var element = slice ? source.Bindings[0].BoundType! : array ? iterableType!.Components[0] : BoundType.ISize;
-
-        if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
-        {
-            this.Unsupported(source);
-            return;
-        }
-
-        int iterable;
-        if (shared is not null && exclusive)
-        {
-            // SPEC 14.6.2: an exclusively enumerated array is borrowed for the loop in the Subject mode.
-            iterable = this.BorrowStruct(source.Iterable, shared);
-        }
-        else if (shared is not null)
-        {
-            // SPEC 14.6.2: a bare array Place is borrowed for the loop as its implicit whole-range Slice.
-            var depth = this.comparisonDepth++;
-            var receiver = this.SequenceReceiver(source.Iterable, out var projection);
-            iterable = receiver < 0 ? -1 : this.SequenceValue(source, shared, SequenceOperation.Slice, receiver, projection);
-            this.EndComparisonLoans(depth, source);
-            this.comparisonDepth = depth;
-        }
-        else
-        {
-            iterable = this.Expression(source.Iterable);
-        }
-
+        var iterable = this.Expression(source.Iterable);
         if (iterable < 0)
         {
             return;
@@ -292,32 +260,16 @@ public sealed partial class OwnershipAnalysis
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
         // Each slot has the ordinary iteration lifetime, including unnamed slots.
-        // Fixed-array elements are Copy.
         for (var slot = 0; slot < source.Bindings.Count; slot++)
         {
             var name = source.Bindings[slot];
-            var slotType = name.BoundType!;
-            var binding = this.LocalPlace(name.BoundSymbol, name, slotType, source.IsMutableSlot(slot));
+            var binding = this.LocalPlace(name.BoundSymbol, name, name.BoundType!, source.IsMutableSlot(slot));
             this.locals.Add(new(binding, name, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, name, binding);
-            int item;
-            if (array)
-            {
-                item = this.SequenceValue(source, slotType, SequenceOperation.ArrayRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
-            }
-            else if (slice)
-            {
-                // SPEC 14.6.2: every borrowed item and Tuple component is a reference into the backing storage.
-                item = this.SequenceValue(source, slotType, SequenceOperation.Borrow, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
-            }
-            else
-            {
-                item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
-                var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
-                this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
-                this.RegisterTemporary(item);
-            }
-
+            var item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
+            var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
+            this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
+            this.RegisterTemporary(item);
             this.Emit(OwnershipOperationKind.Write, name, binding, item);
         }
 

@@ -1,5 +1,23 @@
 public struct Slice<T> {source}
-    public func iterate(self: Self) -> SliceIterator<T> during source
+    Self is Iterable
+    associate Iterable.IteratorType(handle) is SliceIterator<T> during source
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(handle) is SliceIterator<T> during source
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is SliceIterator<T> during source
+
+    /// Starts an enumeration of the elements in index order. The iterator copies the handle, so its items keep
+    /// `source` and not the borrow of the handle (SPEC 14.6.2).
+    public func iterate(self: ref/Self during handle) -> SliceIterator<T> during source
+        return SliceIterator<T>.init(self@follow)
+
+    /// Starts the same shared enumeration: exclusive access to a Slice lends only its handle, and the elements stay
+    /// shared (SPEC 4.6.7).
+    public func iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source
+        return SliceIterator<T>.init(self@follow)
+
+    /// Starts the same shared enumeration from a Slice value.
+    public func intoIterator(self: Self) -> SliceIterator<T> during source
         return SliceIterator<T>.init(self)
 
     /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.

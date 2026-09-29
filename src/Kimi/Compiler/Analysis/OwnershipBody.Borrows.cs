@@ -1079,20 +1079,6 @@ public sealed partial class OwnershipBody
         {
             var operation = this.Operations[value];
             var node = this.Values[value];
-            if (operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.Sequence &&
-                this.Sequences[(int)node.Constant] is { Element: >= 0 } component)
-            {
-                // SPEC 14.6.2, 15.6.2: a Tuple component of an iteration item is a static element path below the item
-                // of its receiver; distinct components are disjoint whatever the item's index.
-                if (depth == selectors.Length)
-                {
-                    return -1;
-                }
-
-                selectors[depth++] = component.Element;
-                return component.Receiver;
-            }
-
             if (operation.Kind == OwnershipOperationKind.Borrow && node.Kind == OwnershipValueKind.Address)
             {
                 if (node.Count == 0)

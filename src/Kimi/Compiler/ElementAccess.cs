@@ -57,6 +57,10 @@ internal static class ElementAccess
     // SPEC 4.6.4: a range selection applied through one ResolvedRange value rather than two isize boundaries.
     internal static bool IsResolvedSlice(Koto source) => source is IndexKoto index && index.CodeContext.Compilation.Binding.IsResolvedSlice(index);
 
+    // SPEC 4.6.6: a range selection, written with a range or applied through a ResolvedRange key, produces a Slice value,
+    // not a Place.
+    internal static bool IsSlicing(Koto source) => source is IndexKoto { BoundType.Kind: BoundTypeKind.Slice } slice && (slice.Right is RangeKoto || IsResolvedSlice(slice));
+
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)
     {

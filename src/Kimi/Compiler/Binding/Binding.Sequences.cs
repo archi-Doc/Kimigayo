@@ -52,25 +52,22 @@ public sealed partial class Binding
     {
         var iterable = this.BindNode(source.Iterable, scope);
         source.Iteration?.Decomposition.Reset(null);
-        source.SharedIterable = null;
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
         source.Mode = SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice } or { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
+        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
-            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
-            // interval is the entry receiver and is read once for the loop. Exclusive enumeration of a
-            // Slice lends only the handle, so its elements stay shared.
+            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy interval is the
+            // entry receiver and is read once for the loop.
             this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
             iterable = iterable.Components[0];
         }
 
-        // Dynamic Array, Dictionary and fixed-array loops use their Kimigayo entries and iterators (SPEC 14.6.2, 22.1.2.5,
-        // PLAN G32, G33). SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
+        // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
+        // 22.1.2.5). SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
         // directly; a validated interval never Aborts, so no iterator value is formed.
         var view = iterable;
-        var element = view is null ? null : view.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
+        var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
 
         var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
@@ -127,7 +124,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not BoundTypeKind.Slice)
+        if (!userEntry && !ReferenceTypes.IsResolvedRange(view))
         {
             return this.FailIterationSubject(source, scope, iterable);
         }
