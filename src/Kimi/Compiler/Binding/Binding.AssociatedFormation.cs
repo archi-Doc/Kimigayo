@@ -28,7 +28,10 @@ public sealed partial class Binding
     // Whether `type` is the stored Type or one of the Type arguments stored in it, through nested value layers.
     private static bool StoresTypeArgument(BoundType stored, BoundType type)
     {
-        if (ReferenceEquals(stored, type))
+        // SPEC 8.1.1: a stored pair original `s/T` keeps every dependency of its whole Type, which includes those of its
+        // target `T`.
+        if (ReferenceEquals(stored, type) ||
+            (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && ReferenceEquals(stored, whole)))
         {
             return true;
         }
