@@ -17,7 +17,7 @@ public class TypeArityBindingTest
     public void ExplicitAritiesSelectDistinctDeclarations(string declarations)
     {
         var c = Parse(declarations + "\nfunc plain(x: Box) => ()\nfunc generic(x: Box<i32>) => ()");
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
         var functions = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().ToArray();
         var plain = functions.Single(x => x.Name == "plain").Parameters[0].Type.BoundType!;
@@ -62,7 +62,7 @@ public class TypeArityBindingTest
     public void AritySelectionPreservesRelatedSemantics(string declarations, string use)
     {
         var c = Parse(declarations + "\n" + use);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.True(Reload(c).Bind().IsComplete);
     }

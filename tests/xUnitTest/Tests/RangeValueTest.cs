@@ -83,6 +83,6 @@ public class RangeValueTest
     public void InclusiveEndCannotBeOmitted()
     {
         var c = MinimalEmissionTest.Analyze("let r = 1..=");
-        Assert.NotEmpty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
     }
 }

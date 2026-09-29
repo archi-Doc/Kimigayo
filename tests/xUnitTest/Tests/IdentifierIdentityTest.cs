@@ -43,8 +43,8 @@ public class IdentifierIdentityTest
         Assert.False(IdentifierHelper.IsValidIdentifier(name));
         foreach (var source in new[] { $"let {name} = 1", name, $"let item: {name}", $"call({name}: 1)" })
         {
-            var diagnostics = Parse(source).DiagnosticCollection.GetArray();
-            Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.InvalidIdentifier_Kd) && x.Entry.Severity == DiagnosticSeverity.Error);
+            var diagnostics = TestDiagnostics.Of(Parse(source));
+            Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.InvalidIdentifier_Kd) && x.Severity == DiagnosticSeverity.Error);
         }
     }
 
@@ -73,8 +73,8 @@ public class IdentifierIdentityTest
         foreach (var suffix in new[] { "e\u0301", "\u200d" })
         {
             Assert.Contains(
-                Parse($"let {prefix}{suffix} = 1").DiagnosticCollection.GetArray(),
-                x => x.Entry.Name == nameof(DiagnosticCode.InvalidIdentifier_Kd));
+                TestDiagnostics.Of(Parse($"let {prefix}{suffix} = 1")),
+                x => x.Code == nameof(DiagnosticCode.InvalidIdentifier_Kd));
         }
 
         Assert.False(IdentifierHelper.IsValidIdentifier("a\ud800"));

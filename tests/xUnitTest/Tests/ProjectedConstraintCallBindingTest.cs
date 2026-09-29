@@ -18,7 +18,7 @@ public class ProjectedConstraintCallBindingTest
     public void ConcreteProjectedRequirementAdmitsMatchingArgument(string requirement, string argument)
     {
         var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         AssertCall(c, true);
         Assert.True(c.Bind().IsComplete);
@@ -37,7 +37,7 @@ public class ProjectedConstraintCallBindingTest
     public void RefutedProjectionConstraintRejectsCall(string requirement, string argument)
     {
         var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         AssertCall(c, false);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NoApplicableCandidate);
@@ -55,7 +55,7 @@ public class ProjectedConstraintCallBindingTest
         var source = Source("Source.Origin.Item", "i32");
         source = source[..source.LastIndexOf("take<i32>()", StringComparison.Ordinal)] + "func caller<U>()\n    U is " + evidence + "\n    take<U>()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);

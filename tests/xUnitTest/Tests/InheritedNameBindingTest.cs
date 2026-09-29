@@ -21,7 +21,7 @@ public class InheritedNameBindingTest
     public void AccessibleBaseNamesCannotBeRedeclared(string parent, string child)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    " + parent + "\nstruct S: Base\n    " + child);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Type(c)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
         Assert.False(c.Bind().IsComplete);
@@ -70,7 +70,7 @@ public class InheritedNameBindingTest
     public void ConditionalPremisesDoNotExemptNames(string declarations)
     {
         var c = MinimalEmissionTest.Analyze("contract C\n" + declarations);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Type(c)) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }

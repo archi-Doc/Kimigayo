@@ -15,7 +15,7 @@ public class LibraryImportTargetBindingTest
     public void NonFunctionImportTargetCannotCertifyConformance(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -82,7 +82,7 @@ public class LibraryImportTargetBindingTest
     public void ValidImportDeclarationCompletesBinding()
     {
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var import = Assert.Single(c.Binding.LibraryImports);
@@ -329,7 +329,7 @@ public class LibraryImportTargetBindingTest
     {
         var source = "group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(" + parameter + ") -> i32";
         var c = AnalyzeImport(source, "codec");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
     }
 

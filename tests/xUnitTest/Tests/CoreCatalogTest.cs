@@ -150,7 +150,7 @@ public class CoreCatalogTest
         }
 
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func missing() -> ()");
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
     }
 
     [Fact]

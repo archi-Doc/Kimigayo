@@ -251,7 +251,7 @@ public class EnumBindingTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "enum E\n    A\n" + member);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node} ({x.Node.GetType().Name}, parent {x.Node.Parent?.GetType().Name})"));

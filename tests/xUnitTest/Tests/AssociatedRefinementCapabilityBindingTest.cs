@@ -16,7 +16,7 @@ public class AssociatedRefinementCapabilityBindingTest
     public void AssociatedContractPremisesEntailIntrinsicAncestors(string capability, bool indirect)
     {
         var c = MinimalEmissionTest.Analyze("public contract Base: " + capability + "\n" + (indirect ? "public contract Trait: Base\n" : string.Empty) + "public contract Elements\n    associate Item is " + (indirect ? "Trait" : "Base") + "\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
         var type = function.Parameters[0].Type.BoundType!;
@@ -61,7 +61,7 @@ public class AssociatedRefinementCapabilityBindingTest
     public void GenericCallsConsumeAssociatedRefinementEvidence(string capability)
     {
         var c = MinimalEmissionTest.Analyze("public contract Trait: " + capability + "\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func take<U>()\n        U is " + capability + "\n        ()\n    func inspect<T>(value: T.Item)\n        T is Elements\n        take<T.Item>()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
         Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
@@ -75,7 +75,7 @@ public class AssociatedRefinementCapabilityBindingTest
     {
         var type = "T.Item" + string.Concat(Enumerable.Repeat(".Next", depth));
         var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\n    associate Next is Trait\npublic contract Elements\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: " + type + ")\n        T is Elements\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));

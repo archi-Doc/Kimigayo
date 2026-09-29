@@ -37,7 +37,7 @@ public class StructEmissionTest
     public void ExecutesConstructionAndDestruction(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(!c.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray()));
+        Assert.True(!c.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", TestDiagnostics.Of(c)));
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(
             c.Library.IsValid && !c.Kotonoha.HasSourceErrors && c.Ownership.Result.IsVerified &&

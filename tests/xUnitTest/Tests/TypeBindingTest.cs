@@ -262,7 +262,7 @@ public class TypeBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         return c;
     }
 

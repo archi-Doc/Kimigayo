@@ -81,7 +81,7 @@ public class ForParseTest
             """;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.True(kotonoha.DiagnosticCollection.GetArray().Length >= 2);
+        Assert.True(TestDiagnostics.Of(kotonoha).Length >= 2);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(3, body.Items.Count);
@@ -103,7 +103,7 @@ public class ForParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -128,7 +128,7 @@ public class ForParseTest
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, unparsed);
-            Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(reparsed));
         }
         finally
         {

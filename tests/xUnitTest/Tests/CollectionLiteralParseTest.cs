@@ -98,7 +98,7 @@ public class CollectionLiteralParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -127,7 +127,7 @@ public class CollectionLiteralParseTest
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, text);
-            Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(reparsed));
         }
         finally
         {
@@ -149,7 +149,7 @@ public class CollectionLiteralParseTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        Assert.True(kotonoha.DiagnosticCollection.GetArray().Length >= 3);
+        Assert.True(TestDiagnostics.Of(kotonoha).Length >= 3);
         var body = Assert.IsType<CodeBlockKoto>(kotonoha.GeneratedFunction?.Body);
         var fields = body.Items.OfType<FieldKoto>().ToArray();
         Assert.Equal(4, fields.Length);
@@ -162,7 +162,7 @@ public class CollectionLiteralParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.True(
             diagnostics.Length == 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));

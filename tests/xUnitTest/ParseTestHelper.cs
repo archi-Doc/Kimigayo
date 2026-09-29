@@ -32,7 +32,7 @@ internal static class ParseTestHelper
 
     internal static void AssertValid(Kotonoha tree)
     {
-        var diagnostics = tree.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(tree);
         Assert.True(
             diagnostics.Length == 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));

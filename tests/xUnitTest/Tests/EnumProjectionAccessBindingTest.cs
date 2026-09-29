@@ -14,7 +14,7 @@ public class EnumProjectionAccessBindingTest
     public void NormalizationCannotHidePayloadProjectionAccess(string typeAccess, string contractAccess)
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct Source\n    Self is C\n    associate C.Element is i32\npublic enum Api\n    Item(Source.C.Element)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
@@ -111,7 +111,7 @@ public class EnumProjectionAccessBindingTest
     private static Compilation Check(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {

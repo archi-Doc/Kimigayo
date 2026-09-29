@@ -23,7 +23,7 @@ public class ClosedTypeConstraintBindingTest
     public void ClosedSubjectsAreDeclarationObligations(string kind, string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source(kind, clause));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
         if (!valid)
@@ -71,7 +71,7 @@ public class ClosedTypeConstraintBindingTest
         const string source = "public struct Source\n    string is Copy\n    Self is Origin\n";
         const string target = "public struct Target\n    Source is Origin\n    Self is Origin\n    public computed value: i32\n        get(self: ref/Self) -> i32 => 1\n    public func read() -> i32 => 1\n";
         var c = MinimalEmissionTest.Analyze("public contract Origin\n" + (reverse ? target + source : source + target) + "let x = Target.read()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
         Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);

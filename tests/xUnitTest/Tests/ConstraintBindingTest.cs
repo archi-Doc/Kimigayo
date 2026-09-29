@@ -255,7 +255,7 @@ public class ConstraintBindingTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         if (!allowParserErrors)
         {
-            Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(c));
         }
 
         return c;

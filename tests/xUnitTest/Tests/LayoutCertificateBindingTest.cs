@@ -17,7 +17,7 @@ public class LayoutCertificateBindingTest
     public void InvalidLayoutCannotCertifyConformance(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + declaration);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
@@ -41,7 +41,7 @@ public class LayoutCertificateBindingTest
     public void WrongLayoutTargetsCannotSupplyWitnesses(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLayoutAttribute_Kd);
         Assert.False(Definition(c).IsVerified);
@@ -55,7 +55,7 @@ public class LayoutCertificateBindingTest
         const string invalidBase = "#Layout(\"bad\")\nopen struct Base {}\n";
         const string derived = "struct S {}: Base\n    Self is Marker\n";
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + (reverseOrder ? derived + invalidBase : invalidBase + derived));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
     }

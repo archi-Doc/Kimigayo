@@ -330,7 +330,7 @@ public class EnumOwnershipTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         return c;
     }

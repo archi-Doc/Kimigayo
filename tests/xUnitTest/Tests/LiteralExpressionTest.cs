@@ -56,7 +56,7 @@ public class LiteralExpressionTest
     public void RejectsWhatLiteralFittingDoesNotAdmit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Length == 0, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Binding.Result.IsComplete && TestDiagnostics.Of(c, "Hello.kimi").Length == 0, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

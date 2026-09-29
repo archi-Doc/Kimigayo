@@ -132,7 +132,7 @@ public class UnreachableOwnershipTest
         Assert.False(c.Ownership.Analyze().IsVerified);
         c.Ownership.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
-        Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Single(TestDiagnostics.Of(c));
     }
 
     [Theory]
@@ -167,7 +167,7 @@ public class UnreachableOwnershipTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         return c;
     }

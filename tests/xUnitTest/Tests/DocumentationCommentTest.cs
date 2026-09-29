@@ -34,7 +34,7 @@ public class DocumentationCommentTest
         var documented = Parse(source);
         Assert.Empty(normal.DocumentationSources);
         Assert.Equal(normal.RootKoto.ToString(), documented.RootKoto.ToString());
-        Assert.Empty(documented.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(documented));
     }
 
     [Theory]

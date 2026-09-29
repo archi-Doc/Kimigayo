@@ -18,7 +18,7 @@ public class GenericCallFormationBindingTest
     public void InvalidExplicitArgumentCannotPublishCall(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         Assert.Null(Call(c).BoundCall);
@@ -33,7 +33,7 @@ public class GenericCallFormationBindingTest
     public void InvalidInferredArgumentCannotPublishCall()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>(value: T) => ()\n    func call(value: Box<string>) => take(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
     }

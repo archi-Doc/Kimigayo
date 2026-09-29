@@ -21,8 +21,8 @@ public class FuncDeclarationParseTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.MissingReturnType_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(kotonoha));
+        Assert.Equal(nameof(DiagnosticCode.MissingReturnType_Kd), diagnostic.Code);
         Assert.Equal(source.IndexOf("->", StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(2, diagnostic.Span.Length);
         Assert.Contains("remove '->'", diagnostic.Message);
@@ -62,7 +62,7 @@ public class FuncDeclarationParseTest
             """;
         context.Parse(kotonoha.RootKoto, source);
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.True(
             diagnostics.Length == 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));

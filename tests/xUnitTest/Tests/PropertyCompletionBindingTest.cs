@@ -15,7 +15,7 @@ public class PropertyCompletionBindingTest
     public void LateInvalidPropertyTypeCannotRemainVerified(string type)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nstruct S\n    var value: " + type);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(Property(c).IsVerified);

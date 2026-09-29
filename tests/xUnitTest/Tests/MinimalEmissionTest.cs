@@ -178,7 +178,7 @@ public class MinimalEmissionTest
         var c = Analyze("Console.writeLine(\"original\")");
         var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi");
         c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "struct S\n    public func read(self: ref/Self) -> i32 => self.value\n    public let value: i32"));
-        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(diagnostics.GetArray()).Entry.Severity);
+        Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(TestDiagnostics.Of(c, "Added.kimi")).Severity);
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Ownership.Analyze();

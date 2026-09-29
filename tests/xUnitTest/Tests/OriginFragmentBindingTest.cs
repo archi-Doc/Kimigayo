@@ -74,7 +74,7 @@ public class OriginFragmentBindingTest
     [InlineData("static")]
     [InlineData("a.source")]
     public void HeaderBoundsAndExpressionsAreRejected(string header)
-        => Assert.NotEmpty(ParseTestHelper.Parse($"struct S {{{header}}}").DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse($"struct S {{{header}}}")));
 
     [Theory]
     [InlineData(true)]
@@ -121,7 +121,7 @@ public class OriginFragmentBindingTest
         var right = new SourceDocument("right.kimi", second);
         c.Kotonoha.AddSource(reverse ? right : left);
         c.Kotonoha.AddSource(reverse ? left : right);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     private static Compilation Create()

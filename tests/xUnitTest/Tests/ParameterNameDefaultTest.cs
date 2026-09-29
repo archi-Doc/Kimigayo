@@ -55,7 +55,7 @@ public class ParameterNameDefaultTest
     [InlineData("contract C\n    func f(! x: i32 = 1)")]
     [InlineData("specialize func f<i32>(! x: i32) => ()")]
     public void RejectsMarkersAndDefaultsInInvalidContexts(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Theory]
     [InlineData("! a: i32 = 1, b: i32", "f(3)", false)]

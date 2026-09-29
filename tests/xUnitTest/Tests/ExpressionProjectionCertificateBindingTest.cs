@@ -14,7 +14,7 @@ public class ExpressionProjectionCertificateBindingTest
     public void LateInvalidWitnessRevokesExpressionCertificate(bool runtime)
     {
         var c = MinimalEmissionTest.Analyze(Source("internal", runtime));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         AssertCertificate(c, runtime, false);
@@ -33,7 +33,7 @@ public class ExpressionProjectionCertificateBindingTest
     public void NestedProjectionInputsKeepWitnessValidity(bool runtime, string access, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source(access, runtime).Replace("<Source.Origin.Item>", "<([2 of Source.Origin.Item], i32)>", StringComparison.Ordinal));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         AssertCertificate(c, runtime, valid);
         var restored = CompilationTestHelper.Reload(c);

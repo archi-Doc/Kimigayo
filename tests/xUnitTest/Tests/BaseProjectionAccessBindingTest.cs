@@ -14,7 +14,7 @@ public class BaseProjectionAccessBindingTest
     public void NormalizationCannotHideBaseProjectionAccess(string sourceAccess, string contractAccess)
     {
         var c = MinimalEmissionTest.Analyze($"public open struct Base\n{contractAccess} contract C\n    associate Element\n{sourceAccess} struct Source\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source.C.Element");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
@@ -108,7 +108,7 @@ public class BaseProjectionAccessBindingTest
     private static Compilation Check(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {

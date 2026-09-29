@@ -25,7 +25,7 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Same(symbol, call.BoundSymbol);
         Assert.Same(plan, call.BoundCall);
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
     }
 
     [Fact]

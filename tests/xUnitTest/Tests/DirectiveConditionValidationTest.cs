@@ -33,8 +33,8 @@ public class DirectiveConditionValidationTest
                 {
                     var compilation = Parse(source);
                     Assert.Contains(
-                        compilation.Kotonoha.DiagnosticCollection.GetArray(),
-                        x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+                        TestDiagnostics.Of(compilation),
+                        x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
                 }
             }
         }
@@ -61,7 +61,7 @@ public class DirectiveConditionValidationTest
             """;
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var written = function.ToString();
         Assert.Contains("T is Copy", written);
@@ -87,8 +87,8 @@ public class DirectiveConditionValidationTest
         var compilation = Parse($"#if {condition}\nvar excluded = 1");
 
         Assert.Contains(
-            compilation.Kotonoha.DiagnosticCollection.GetArray(),
-            x => x.Entry.Name == nameof(DiagnosticCode.ConditionMustBeBool_Kd));
+            TestDiagnostics.Of(compilation),
+            x => x.Code == nameof(DiagnosticCode.ConditionMustBeBool_Kd));
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
@@ -106,8 +106,8 @@ public class DirectiveConditionValidationTest
     public void UnknownNamesAreErrorsEvenWhenTruthIsKnown(string condition)
     {
         var compilation = Parse($"#if {condition}\nvar value = 1");
-        var diagnostic = Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(compilation));
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Code);
         Assert.Contains("missing", diagnostic.Message);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
         Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
@@ -119,7 +119,7 @@ public class DirectiveConditionValidationTest
     public void BuildConfigurationDoesNotHideUnknownNames(bool debug)
     {
         var compilation = Parse("#if debug and missing\nvar conditional = 1", debug);
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
@@ -141,7 +141,7 @@ public class DirectiveConditionValidationTest
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = function.Body!;
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(body.Items));
     }
 
@@ -153,15 +153,15 @@ public class DirectiveConditionValidationTest
         var compilation = Parse($"#switch\n    #case true\n        ()\n    #case {condition}\n        ()");
 
         Assert.Contains(
-            compilation.Kotonoha.DiagnosticCollection.GetArray(),
-            x => x.Entry.Name == nameof(DiagnosticCode.ConditionMustBeBool_Kd));
+            TestDiagnostics.Of(compilation),
+            x => x.Code == nameof(DiagnosticCode.ConditionMustBeBool_Kd));
     }
 
     [Fact]
     public void ExcludingAStackedPrefixDoesNotHideAnEarlierError()
     {
         var compilation = Parse("#if missing\n#if false\nvar incomplete =");
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
@@ -180,9 +180,9 @@ public class DirectiveConditionValidationTest
                     var incomplete =
                     ()
             """);
-        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(compilation);
         Assert.Equal(3, diagnostics.Length);
-        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Entry.Name));
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Code));
         Assert.Contains(diagnostics, x => x.Message.Contains("outerMissing", StringComparison.Ordinal));
         Assert.Contains(diagnostics, x => x.Message.Contains("innerMissing", StringComparison.Ordinal));
         Assert.Contains(diagnostics, x => x.Message.Contains("functionMissing", StringComparison.Ordinal));
@@ -193,7 +193,7 @@ public class DirectiveConditionValidationTest
     {
         var compilation = Parse("#if false\n    #if nestedMissing\n    var incomplete =");
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
@@ -205,7 +205,7 @@ public class DirectiveConditionValidationTest
     public void FalseStackedPrefixSkipsInnerCondition(string inner)
     {
         var compilation = Parse($"#if false\n{inner}\nvar incomplete =\nvar retained = 1");
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items)).NameKoto.IdentifierName);
     }
 
@@ -217,10 +217,10 @@ public class DirectiveConditionValidationTest
     {
         var source = "#switch\n    #case true\n        ()\n    #case _\n        " + nested.Replace("\n", "\n        ");
         var compilation = Parse(source);
-        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(compilation);
         if (error)
         {
-            Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(diagnostics).Entry.Name);
+            Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(diagnostics).Code);
         }
         else
         {
@@ -236,9 +236,9 @@ public class DirectiveConditionValidationTest
     public void UnknownNamesOnBothSidesAreDiagnosedAtTheirSourceSpans(string condition)
     {
         var source = $"#if {condition}\nvar ignored = 1";
-        var diagnostics = Parse(source).Kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(Parse(source));
         Assert.Equal(2, diagnostics.Length);
-        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Entry.Name));
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Code));
         Assert.Contains(diagnostics, x => x.Span.Start == source.IndexOf("firstMissing", StringComparison.Ordinal) && x.Span.Length == "firstMissing".Length);
         Assert.Contains(diagnostics, x => x.Span.Start == source.IndexOf("secondMissing", StringComparison.Ordinal) && x.Span.Length == "secondMissing".Length);
     }
@@ -248,7 +248,7 @@ public class DirectiveConditionValidationTest
     [InlineData("func f<T>()\n    #if T\n        ()")]
     public void SourceDeclarationsCannotSupplyConditionValues(string source)
     {
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(Parse(source).Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(Parse(source))).Code);
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class DirectiveConditionValidationTest
         var body = Assert.IsType<DoKoto>(labeled.Target).Body;
         var analysis = compilation.AnalyzeControlFlow();
 
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         Assert.Empty(analysis.Issues);
         Assert.Empty(analysis.PendingBinding);
         Assert.Single(body.Items);
@@ -275,10 +275,10 @@ public class DirectiveConditionValidationTest
         context.Parse(compilation.Kotonoha.RootKoto, first);
         context.Parse(compilation.Kotonoha.RootKoto, second);
 
-        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(compilation);
         Assert.Equal(2, diagnostics.Length);
-        Assert.Contains(diagnostics, x => ReferenceEquals(first, x.SourceDocument) && x.Message.Contains("firstMissing", StringComparison.Ordinal));
-        Assert.Contains(diagnostics, x => ReferenceEquals(second, x.SourceDocument) && x.Message.Contains("secondMissing", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, x => x.Path == first.Path && x.Message.Contains("firstMissing", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, x => x.Path == second.Path && x.Message.Contains("secondMissing", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -290,8 +290,8 @@ public class DirectiveConditionValidationTest
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
         restored.OnDeserialized(compilation);
-        var diagnostic = Assert.Single(restored.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(restored));
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Code);
         Assert.Contains("missing", diagnostic.Message);
         Assert.Null(restored.GeneratedFunction);
     }
@@ -304,7 +304,7 @@ public class DirectiveConditionValidationTest
     {
         var compilation = Parse($"#if {condition}\nvar value = 1");
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
     }
 

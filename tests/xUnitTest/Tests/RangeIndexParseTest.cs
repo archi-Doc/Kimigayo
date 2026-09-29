@@ -96,7 +96,7 @@ public class RangeIndexParseTest
             """;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.True(kotonoha.DiagnosticCollection.GetArray().Length >= 2);
+        Assert.True(TestDiagnostics.Of(kotonoha).Length >= 2);
         var fields = GetChildren(kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
         Assert.Equal(3, fields.Length);
         Assert.IsType<RangeKoto>(fields[0].InitializerKoto);
@@ -114,7 +114,7 @@ public class RangeIndexParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -141,7 +141,7 @@ public class RangeIndexParseTest
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, builder.ToString());
-            Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(reparsed));
         }
         finally
         {

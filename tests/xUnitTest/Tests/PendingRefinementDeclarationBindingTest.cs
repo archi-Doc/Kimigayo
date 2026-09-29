@@ -20,7 +20,7 @@ public class PendingRefinementDeclarationBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source {}\n" + (reverse ? child + marker : marker + child) + "group G\n    func take<T>()\n        T is Child\n        ()\n    func inspect<T>(value: T)\n        T is Child\n        take<T>()"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(c, "Child").BindingState);
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
@@ -111,7 +111,7 @@ public class PendingRefinementDeclarationBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         return c;
     }
 

@@ -35,7 +35,7 @@ public class OptionalTryDiscardTest
     public void RejectsSyntaxOutsideDedicatedPositions(string source)
     {
         var parsed = ParseTestHelper.Parse(source);
-        Assert.NotEmpty(parsed.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(parsed));
     }
 
     [Theory]
@@ -215,7 +215,7 @@ public class OptionalTryDiscardTest
     [InlineData("let x = value@(ref/T during a)")]
     [InlineData("let x = value@ref/(ref/T during a)")]
     public void RejectsReservedAndIncompleteForms(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Fact]
     public void GenericWarningsAreIssuedAtDefinitionOnce()
@@ -244,7 +244,7 @@ public class OptionalTryDiscardTest
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
         c.AnalyzeControlFlow(c.Binding.TypeSystem).ReportDiagnostics();
-        Assert.Contains(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), d => d.Message.Contains("payload Type", StringComparison.Ordinal) && d.Message.Contains("without try", StringComparison.Ordinal));
+        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Message.Contains("payload Type", StringComparison.Ordinal) && d.Message.Contains("without try", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public class OptionalTryDiscardTest
 
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.BindingFailure + ":" + x.Node)) +
-            "\n" + string.Join("\n", c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.Message)) +
+            "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message)) +
             "\n" + string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             "\nPending: " + string.Join(", ", c.Ownership.ControlFlow?.PendingBinding.Select(x => x.ToString()) ?? []);
 }

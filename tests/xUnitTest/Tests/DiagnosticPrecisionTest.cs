@@ -37,7 +37,7 @@ public class DiagnosticPrecisionTest
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, $"../../../../../tests/milestones/Milestone{number}.kimi"));
         Assert.Contains(before, source);
         var c = MinimalEmissionTest.Analyze(source.Replace(before, after, StringComparison.Ordinal));
-        var codes = c.Binding.Issues.Select(x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(x => x.Failure + "_Kd")).ToArray();
+        var codes = c.Binding.Issues.Select(x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(x => x.Code.ToString())).ToArray();
         var detail = string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)) + "\n" + string.Join("\n", c.Ownership.Issues);
         Assert.True(codes.Length > 0 && codes.All(x => x == expected), detail);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));

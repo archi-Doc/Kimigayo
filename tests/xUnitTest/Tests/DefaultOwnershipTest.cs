@@ -26,7 +26,7 @@ public class DefaultOwnershipTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
         c.Ownership.ReportDiagnostics();
-        Assert.Contains(issue.Source.CodeContext.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == issue.Source.Span);
+        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd) && x.Span == issue.Source.Span);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -65,9 +65,9 @@ public class DefaultOwnershipTest
         Assert.IsType<IdentifierNameKoto>(issue.Source);
         Assert.Equal("x", issue.Source.BoundSymbol!.Name);
         c.Ownership.ReportDiagnostics();
-        var diagnostic = Assert.Single(issue.Source.CodeContext.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
+        var diagnostic = Assert.Single(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
         Assert.Equal(issue.Source.Span, diagnostic.Span);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Entry.Severity);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.False(c.Emission.Validate(out _));
     }
 

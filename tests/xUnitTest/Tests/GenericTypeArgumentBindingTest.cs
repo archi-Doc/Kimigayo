@@ -23,7 +23,7 @@ public class GenericTypeArgumentBindingTest
     public void CompleteArrayTypesAreValidGenericArguments(string type)
     {
         var c = Parse($"struct Box<T>\nfunc f(value: Box<{type}>) => ()\nfunc take<T>() => ()\ntake<{type}>()");
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         var argument = Assert.Single(f.Parameters[0].Type.BoundType!.Components);

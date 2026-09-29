@@ -31,8 +31,8 @@ public sealed class CheckServiceTest : IDisposable
         first.Kotonoha.AddSource(new SourceDocument("main.kimi", Broken));
         second.Kotonoha.AddSource(new SourceDocument("main.kimi", Valid));
 
-        Assert.NotEmpty(first.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
-        Assert.Empty(second.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(first, "main.kimi"));
+        Assert.Empty(TestDiagnostics.Of(second, "main.kimi"));
         Assert.Empty(kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
     }
 

@@ -119,7 +119,7 @@ public class ModuleBindingTest
             root.CompileTimeSettings.Add("feature", new() { Bool = true });
             library.CompileTimeSettings.Add("feature", new() { Bool = false });
         });
-        Assert.True(compilation.Bind().IsComplete, string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + " | " + string.Join("; ", compilation.SourceModules.SelectMany(x => x.DiagnosticCollection.GetArray()).Select(x => x.ToString())));
+        Assert.True(compilation.Bind().IsComplete, string.Join("; ", compilation.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")) + " | " + string.Join("; ", compilation.SourceModules.SelectMany(x => TestDiagnostics.Of(x)).Select(x => x.ToString())));
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(compilation.Ownership.Analyze().IsVerified);
     }
@@ -260,7 +260,7 @@ public class ModuleBindingTest
     {
         var c = Create("public func main() => ()", "public group Api\n    internal contract C\n        associate Element\n    public struct Source {}\n        Self is C\n        associate C.Element is i32\n    " + access + " " + declaration);
         Assert.True(c.Bind().IsComplete == valid, string.Join(", ", c.Binding.Issues.Select(x => x.Code)));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.BindingFailure == BindingFailure.Access);
@@ -313,7 +313,7 @@ public class ModuleBindingTest
         Verify();
         void Verify()
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
             Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
@@ -338,8 +338,8 @@ public class ModuleBindingTest
         Verify();
         void Verify()
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
             Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
@@ -569,8 +569,8 @@ public class ModuleBindingTest
         Verify();
         void Verify()
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             if (form == 0)
             {
@@ -637,8 +637,8 @@ public class ModuleBindingTest
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             if (form is 0 or 3 or 4)
             {
@@ -706,8 +706,8 @@ public class ModuleBindingTest
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
             Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
@@ -788,8 +788,8 @@ public class ModuleBindingTest
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
             Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
@@ -813,7 +813,7 @@ public class ModuleBindingTest
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Null(Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall);
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "public group Api\n    public contract Future"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Generated.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Generated.kimi"));
         VerifyImportedProjectionCertificate(c, false, true);
     }
 
@@ -907,7 +907,7 @@ public class ModuleBindingTest
         var c = Create(source, "public group Api");
         Assert.True(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal(warns, c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray().Any(x => x.Entry.Name == nameof(DiagnosticCode.HiddenNamedAlias_Kd)));
+        Assert.Equal(warns, TestDiagnostics.Of(c, "root.kimi").Any(x => x.Code == nameof(DiagnosticCode.HiddenNamedAlias_Kd)));
     }
 
     [Fact]
@@ -958,8 +958,8 @@ public class ModuleBindingTest
     {
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("root.kimi").GetArray());
-            Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("library.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
+            Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody;
             Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).BoundRuntimeTest is not null : Assert.IsType<InvocationKoto>(expression).BoundCall is not null);

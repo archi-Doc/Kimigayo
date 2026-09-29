@@ -32,7 +32,7 @@ public class CurrentControlFlowTest
         Parse(output);
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha))!;
         restored.OnDeserialized(Compilation.CreateForTest());
-        Assert.Empty(restored.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(restored));
     }
 
     [Theory]
@@ -56,7 +56,7 @@ public class CurrentControlFlowTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
     }
 
     [Theory]
@@ -194,7 +194,7 @@ public class CurrentControlFlowTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, source + "\n" + string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.Message)));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, source + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.Message)));
         return c;
     }
 

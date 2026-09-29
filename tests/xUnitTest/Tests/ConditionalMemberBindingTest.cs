@@ -95,7 +95,7 @@ public class ConditionalMemberBindingTest
     public void BlocksRejectLayoutOrNestedConformanceDeclarations(string member)
     {
         var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\n        {member}", allowDiagnostics: true);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     [Theory]
@@ -256,7 +256,7 @@ public class ConditionalMemberBindingTest
     public void EnumBlocksRejectCasesAndComputedMembers(string member)
     {
         var c = Parse($"contract C\nenum S<T>\n    None\n    Self is C when T is Copy\n        {member}", allowDiagnostics: true);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     [Fact]
@@ -402,7 +402,7 @@ public class ConditionalMemberBindingTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         if (!allowDiagnostics)
         {
-            Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(c));
         }
 
         return c;

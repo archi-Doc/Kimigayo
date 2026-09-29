@@ -41,7 +41,7 @@ public class PositionWarningTest
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var warning = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+        var warning = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
         Assert.Contains(message, warning.Message, StringComparison.Ordinal);
     }
 
@@ -72,7 +72,7 @@ public class PositionWarningTest
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
-        Assert.DoesNotContain(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+        Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
     }
 
     // SPEC 17.4.4: the warned access still compiles and Aborts only when executed.

@@ -44,8 +44,8 @@ public class ElementMoveEmissionTest
     public void RemainingResponsibilityIsDestroyedExactlyOnce(string name, string source, string destructions)
     {
         var analysis = MinimalEmissionTest.Analyze(source);
-        Assert.False(analysis.Kotonoha.HasSourceErrors, string.Join("\n", analysis.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.ToString("source"))));
-        Assert.False(analysis.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", analysis.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
+        Assert.False(analysis.Kotonoha.HasSourceErrors, string.Join("\n", TestDiagnostics.Of(analysis, "Hello.kimi").Select(x => x.ToString())));
+        Assert.False(analysis.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", TestDiagnostics.Of(analysis).Select(x => x.ToString())));
         var fixture = "ElementMove" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "ok\n");
         StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "ok\n", destructions);

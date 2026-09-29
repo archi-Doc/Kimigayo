@@ -18,7 +18,7 @@ public class EnumContextBindingTest
     public void InvalidOwnerContextCannotPublishConstruction(string attribute, string @case, string expression)
     {
         var c = MinimalEmissionTest.Analyze(attribute + "\ngroup Invalid\n    public enum E\n        " + @case + "\ngroup Consumer\n    func make() -> Invalid.E => " + expression);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var use = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single().ExpressionBody!;
         Assert.False(c.Binding.TryGetEnumConstruction(use, out _));

@@ -14,7 +14,7 @@ public class CallTypeCompletionBindingTest
     public void LateInvalidGenericArgumentCannotRemainCallable(string type)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + type + ">()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
@@ -29,7 +29,7 @@ public class CallTypeCompletionBindingTest
     public void InvalidConstructedReceiverCannotRemainCallable()
     {
         var c = MinimalEmissionTest.Analyze("struct Owner<T>\n    T is i32\n    public func take(self: ref/Self) => ()\ngroup Consumer\n    func call(value: ref/Owner<string>) => value.take()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
     }
@@ -41,7 +41,7 @@ public class CallTypeCompletionBindingTest
     public void LateInvalidSignatureTypeCannotRemainCallable(string type)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);

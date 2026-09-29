@@ -63,7 +63,7 @@ public class NamedArgumentBoundaryTest
     [InlineData("func f(a: i32 = do\n    1 ! b: i32) => ()")]
     [InlineData("func f(a: () -> i32 = func ()\n    return 1 ! b: i32) => ()")]
     public void RejectsInvalidBoundarySyntax(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Theory]
     [InlineData("(a: i32 ! b: i32, c: i32)", "f(1, b: 2, c: 3)", true)]
@@ -213,7 +213,7 @@ public class NamedArgumentBoundaryTest
             typeof(Kotonoha).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(tree, value);
             var destination = Compilation.CreateForTest();
             tree.OnDeserialized(destination);
-            Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+            Assert.NotEmpty(TestDiagnostics.Of(tree));
             Assert.Empty(tree.RootKoto.ChildNodes);
             Assert.Null(tree.GeneratedFunction);
         }
@@ -230,7 +230,7 @@ public class NamedArgumentBoundaryTest
         TinyhandSerializer.DeserializeObject(bytes, ref tree);
         Assert.NotNull(tree);
         tree.OnDeserialized(c);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.Empty(tree.RootKoto.ChildNodes);
         Assert.Null(tree.GeneratedFunction);
     }

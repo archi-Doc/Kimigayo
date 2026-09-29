@@ -38,13 +38,13 @@ public class CompileTimeSwitchParseTest
     [InlineData("func f()\n    #match\n        #case _\n            ()")]
     [InlineData("struct S\n    #match\n        #case _\n            let value: i32")]
     public void RemovedDirectiveSpellingIsRejected(string source)
-        => Assert.NotEmpty(Parse(source).Kotonoha.DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("let switch = 1")]
     [InlineData("switch true\n    #case _\n        ()")]
     public void SwitchIsReservedAndRequiresTheDirectivePrefix(string source)
-        => Assert.NotEmpty(Parse(source).Kotonoha.DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void KeywordPrefixDoesNotReserveLongerNames()
@@ -117,7 +117,7 @@ public class CompileTimeSwitchParseTest
                 #case siblingCondition
                     ()
             """);
-        Assert.Equal(3, compilation.Kotonoha.DiagnosticCollection.GetArray().Length);
+        Assert.Equal(3, TestDiagnostics.Of(compilation).Length);
         AssertDiagnostic(compilation, DiagnosticCode.UnknownCompileTimeName_Kd);
         var items = compilation.Kotonoha.GeneratedFunction!.Body!.Items;
         var outer = Assert.IsType<CompileTimeSwitchKoto>(items[0]);
@@ -130,7 +130,7 @@ public class CompileTimeSwitchParseTest
         var written = outer.ToString();
         Assert.StartsWith("#switch\n", written);
         var restored = Parse(written);
-        Assert.Equal(2, restored.Kotonoha.DiagnosticCollection.GetArray().Length);
+        Assert.Equal(2, TestDiagnostics.Of(restored).Length);
         AssertDiagnostic(restored, DiagnosticCode.UnknownCompileTimeName_Kd);
         var restoredSwitch = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restored.Kotonoha.GeneratedFunction!.Body!.Items));
         Assert.Equal(written, restoredSwitch.ToString());
@@ -203,7 +203,7 @@ public class CompileTimeSwitchParseTest
     public void UnknownIfRejectsTheEntireSwitchAsOneItem()
     {
         var compilation = Parse("#if outerCondition\n#switch\n    #case innerCondition\n        ()\n    #case _\n        ()\n#switch\n    #case _\n        ()");
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         Assert.IsType<UnitLiteralKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
@@ -243,7 +243,7 @@ public class CompileTimeSwitchParseTest
                         property other: i32 has get
             """);
 
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         var contract = Assert.Single(compilation.Kotonoha.RootKoto.NestedDeclarationContainers);
         var group = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(contract.Members));
         Assert.All(group.Arms, arm => Assert.IsType<PropertyKoto>(Assert.Single(arm.Body.Items)));
@@ -253,10 +253,10 @@ public class CompileTimeSwitchParseTest
         => Assert.IsType<FieldKoto>(item).NameKoto.IdentifierName;
 
     private static void AssertValid(Compilation compilation)
-        => Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        => Assert.Empty(TestDiagnostics.Of(compilation));
 
     private static void AssertDiagnostic(Compilation compilation, DiagnosticCode code)
-        => Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), diagnostic => diagnostic.Entry.Name == code.ToString());
+        => Assert.Contains(TestDiagnostics.Of(compilation), diagnostic => diagnostic.Code == code.ToString());
 
     private static Compilation Parse(string source)
     {

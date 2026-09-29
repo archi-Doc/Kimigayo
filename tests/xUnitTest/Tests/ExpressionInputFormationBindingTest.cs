@@ -15,7 +15,7 @@ public class ExpressionInputFormationBindingTest
     public void InvalidExplicitCallInputsCannotCertify(string argument)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
@@ -32,7 +32,7 @@ public class ExpressionInputFormationBindingTest
     public void InvalidRuntimeTargetInputsCannotCertify(string argument)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.False(c.Bind().IsComplete);

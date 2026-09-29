@@ -315,7 +315,7 @@ public class MatchOwnershipTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: bool)\n    consume(\n        match x\n            true => 1\n            false => 0\n        2\n    )");
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
     }
 
     [Fact]
@@ -386,7 +386,7 @@ public class MatchOwnershipTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(i => i.ToString("source"))));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, string.Join("\n", TestDiagnostics.Of(c).Select(i => i.ToString())));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(i => $"{i.Code}: {i.Node}")));
         return c;
     }

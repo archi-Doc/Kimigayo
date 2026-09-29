@@ -166,7 +166,7 @@ public class FunctionBodyParseTest
     public void RecoversInvalidAttributedDoAndParsesFollowingSelections()
     {
         var tree = ParseTestHelper.Parse("func f()\n    #Inline do => ()\n    let a = if flag => 1 else => 2\n    let b = match flag\n        true => 1\n        false => 2\n    return");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
         var items = function.Body!.Items;
         Assert.IsType<DoKoto>(items[0]);
@@ -202,7 +202,7 @@ public class FunctionBodyParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var serialized = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -225,7 +225,7 @@ public class FunctionBodyParseTest
             var reparsed = reparsedCompilation.Kotonoha;
             var unparsed = builder.ToString();
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, unparsed);
-            var diagnostics = reparsed.DiagnosticCollection.GetArray();
+            var diagnostics = TestDiagnostics.Of(reparsed);
             Assert.True(
                 diagnostics.Length == 0,
                 $"{unparsed}{Environment.NewLine}{string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}"))}");
@@ -249,7 +249,7 @@ public class FunctionBodyParseTest
             """;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.NotEmpty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(kotonoha));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(3, body.Items.Count);

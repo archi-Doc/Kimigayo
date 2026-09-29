@@ -133,7 +133,7 @@ public class DependencyConfigurationTest
         var libraryNode = new DependencyNode("library@1", new("library.kimiproj", library, [], []), 0, "Lib");
         rootNode.Edges.Add("Lib", libraryNode.Key);
         Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode])));
-        Assert.Equal(!valid, c.Kotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Name == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)));
+        Assert.Equal(!valid, TestDiagnostics.Of(c).Any(x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd)));
     }
 
     [Theory]
@@ -178,7 +178,7 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() };
         Assert.False(c.Prepare(WindowsProfile.Target));
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.KotonohaArray = [new() { Name = "Math", Version = "1" }];
         Assert.False(c.Prepare(WindowsProfile.Target));
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd));
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class DependencyConfigurationTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.Dependencies.Add("Math", new() { PackageId = "example.math", PackageVersion = "1", Project = "Math.kimiproj" });
         Assert.False(c.Prepare(WindowsProfile.Target));
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UnresolvedDependencyGraph_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.UnresolvedDependencyGraph_Kd));
         Assert.Null(c.BuildMetadata);
     }
 

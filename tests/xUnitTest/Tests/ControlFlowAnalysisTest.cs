@@ -47,7 +47,7 @@ public class ControlFlowAnalysisTest
         var compilation = Compilation.CreateForTest();
         var tree = compilation.Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, "var i3 = if (Func()) => 1 else => 0");
-        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(tree));
         var analysis = compilation.AnalyzeControlFlow(new ConditionCallTypes(returnType));
         Assert.Equal(hasError, analysis.Issues.Count > 0);
         var condition = analysis.Nodes.Single(x => x.Key is ParenthesizedKoto);
@@ -69,7 +69,7 @@ public class ControlFlowAnalysisTest
         _ = hasError;
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
     [Theory]
@@ -275,14 +275,14 @@ public class ControlFlowAnalysisTest
     {
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
     private static ControlFlowAnalysis Analyze(string source)
     {
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         return compilation.AnalyzeControlFlow();
     }
 

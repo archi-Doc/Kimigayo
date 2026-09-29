@@ -87,7 +87,7 @@ public class DefaultInitializationTest
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         c.Ownership.ReportDiagnostics();
         var issue = c.Ownership.Issues.First(x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.Contains(issue.Source.CodeContext.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == issue.Source.Span);
+        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.UninitializedPlace_Kd) && x.Span == issue.Source.Span);
         Assert.False(c.Emission.Validate(out _));
     }
 

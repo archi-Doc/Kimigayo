@@ -110,9 +110,9 @@ public class SourceDocumentAndDiagnosticTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, sourceDocument);
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.NotEmpty(diagnostics);
-        Assert.All(diagnostics, x => Assert.Same(sourceDocument, x.SourceDocument));
+        Assert.All(diagnostics, x => Assert.Equal(sourceDocument.Path, x.Path));
     }
 
     [Fact]
@@ -207,9 +207,9 @@ public class SourceDocumentAndDiagnosticTest
         Assert.Contains(compilation.Binding.Issues, x => ReferenceEquals(x.Node, container) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
         compilation.Binding.ReportDiagnostics();
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.NotEmpty(diagnostics);
-        Assert.All(diagnostics, x => Assert.NotNull(x.SourceDocument));
-        Assert.Contains(diagnostics, x => ReferenceEquals(x.SourceDocument, first) && x.Span.Start == 0 && x.Entry.Name == nameof(DiagnosticCode.InvalidConstraint_Kd));
+        Assert.All(diagnostics, x => Assert.NotNull(x.Path));
+        Assert.Contains(diagnostics, x => x.Path == first.Path && x.Span.Start == 0 && x.Code == nameof(DiagnosticCode.InvalidConstraint_Kd));
     }
 }

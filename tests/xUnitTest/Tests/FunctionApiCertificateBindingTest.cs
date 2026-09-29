@@ -14,7 +14,7 @@ public class FunctionApiCertificateBindingTest
     public void InvalidProjectionSignatureCannotCertifyWitness(string input, string result)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\npublic struct S\n    Self is Export\n    public func identity(self: ref/Self, value: " + input + ") -> " + result + " => value");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
@@ -38,7 +38,7 @@ public class FunctionApiCertificateBindingTest
     public void ValidProjectionSignaturesStillCertify(string hiddenAccess, string typeAccess)
     {
         var c = MinimalEmissionTest.Analyze(Source(hiddenAccess, typeAccess));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Definition(c).IsVerified);
     }

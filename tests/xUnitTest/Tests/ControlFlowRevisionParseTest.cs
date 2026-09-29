@@ -202,7 +202,7 @@ public class ControlFlowRevisionParseTest
         var compilation = Compilation.CreateForTest();
         var tree = compilation.Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, "func run()\n    " + malformed + "\n    return ()");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.IsType<ReturnKoto>(Function(tree).Body!.Items[^1]);
     }
 
@@ -268,7 +268,7 @@ public class ControlFlowRevisionParseTest
     {
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        var diagnostics = tree.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(tree);
         Assert.True(diagnostics.Length == 0, source + "\n" + string.Join("\n", diagnostics.Select(x => x.Message)));
         return tree;
     }

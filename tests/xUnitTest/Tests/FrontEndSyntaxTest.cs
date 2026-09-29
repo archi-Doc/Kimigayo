@@ -42,8 +42,8 @@ public class FrontEndSyntaxTest
     public void UnavailableModifiersReportOneCauseAndRecover(string source, string modifier)
     {
         var tree = Parse(source + "\nstruct Following\n");
-        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
-        Assert.Equal("UnavailableFeature_Kd", diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(tree));
+        Assert.Equal("UnavailableFeature_Kd", diagnostic.Code);
         Assert.Equal(source.IndexOf(modifier, StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(modifier.Length, diagnostic.Span.Length);
         Assert.Contains(modifier, diagnostic.Message);
@@ -70,7 +70,7 @@ public class FrontEndSyntaxTest
     public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
     {
         var tree = Parse("struct S\n    virtual func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
-        Assert.Equal("UnavailableFeature_Kd", Assert.Single(tree.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(tree)).Code);
         var structure = tree.RootKoto.NestedContainers.Single(x => x.Name == "S");
         Assert.Equal("retained", Assert.IsType<FunctionKoto>(Assert.Single(structure.Members)).Name);
         Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
@@ -200,13 +200,13 @@ public class FrontEndSyntaxTest
     [InlineData("let a = 0o___")]
     [InlineData("let a = 0x_ + 1")]
     public void RejectsInvalidSyntax(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("#if false\nstatic func f() => ()\nlet a = 1")]
     [InlineData("#if false\nopen group G\nlet a = 1")]
     public void ExcludedDeclarationsDoNotReportModifierPlacement(string source)
-        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()

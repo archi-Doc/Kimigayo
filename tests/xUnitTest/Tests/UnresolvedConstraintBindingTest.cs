@@ -21,12 +21,12 @@ public class UnresolvedConstraintBindingTest
         Assert.False(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).BoundSymbol!.Property!.IsVerified);
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").BoundConstraint!, reading));
         c.Binding.ReportDiagnostics();
-        var diagnostic = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
-        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Entry.Name);
-        Assert.Equal("Missing", diagnostic.SourceDocument!.SourceText.Substring(diagnostic.Span.Start, diagnostic.Span.Length));
+        var diagnostic = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Code);
+        Assert.Equal("Missing", diagnostic.Text);
         Assert.False(c.Binding.CheckBound().IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
     }
 
     [Fact]
@@ -56,12 +56,12 @@ public class UnresolvedConstraintBindingTest
         var use = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "use");
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, use) || ReferenceEquals(x.Node, use.ExpressionBody));
         c.Binding.ReportDiagnostics();
-        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
-        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd" && x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length) == "Missing");
-        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd" && x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length) == "MissingField");
-        Assert.Contains(diagnostics, x => x.Entry.Name == "TypeMismatch_Kd");
-        Assert.Contains(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Contradiction").Span.Start);
-        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == reading.Span.Start);
+        var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
+        Assert.Contains(diagnostics, x => x.Code == "UnresolvedBinding_Kd" && x.Text == "Missing");
+        Assert.Contains(diagnostics, x => x.Code == "UnresolvedBinding_Kd" && x.Text == "MissingField");
+        Assert.Contains(diagnostics, x => x.Code == "TypeMismatch_Kd");
+        Assert.Contains(diagnostics, x => x.Code == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Contradiction").Span.Start);
+        Assert.DoesNotContain(diagnostics, x => x.Code == "InvalidConstraint_Kd" && x.Span.Start == reading.Span.Start);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class UnresolvedConstraintBindingTest
         Assert.True(c.Bind().IsComplete);
         Assert.Empty(c.Binding.Issues);
         c.Binding.ReportDiagnostics();
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -82,13 +82,13 @@ public class UnresolvedConstraintBindingTest
     {
         var c = Parse("public struct Reading {}\n    public let value: i32");
         c.Kotonoha.AddSource(new SourceDocument("Other.kimi", "public struct Reading {}\n    Self is Copy\n    Self is Missing\n    public let other: i32"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Other.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Other.kimi"));
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
-        var diagnostic = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Other.kimi").GetArray());
-        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Entry.Name);
-        Assert.Equal("Other.kimi", diagnostic.SourceDocument!.Path);
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
+        var diagnostic = Assert.Single(TestDiagnostics.Of(c, "Other.kimi"));
+        Assert.Equal("UnresolvedBinding_Kd", diagnostic.Code);
+        Assert.Equal("Other.kimi", diagnostic.Path);
     }
 
     [Fact]
@@ -97,10 +97,10 @@ public class UnresolvedConstraintBindingTest
         var c = Parse("public struct Reading {}\n    Self is Copy\n    Self is Missing and Other\n    public let value: i32");
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
-        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
+        var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
         Assert.Equal(2, diagnostics.Length);
-        Assert.All(diagnostics, x => Assert.Equal("UnresolvedBinding_Kd", x.Entry.Name));
-        Assert.Equal(new[] { "Missing", "Other" }, diagnostics.OrderBy(x => x.Span.Start).Select(x => x.SourceDocument!.SourceText.Substring(x.Span.Start, x.Span.Length)));
+        Assert.All(diagnostics, x => Assert.Equal("UnresolvedBinding_Kd", x.Code));
+        Assert.Equal(new[] { "Missing", "Other" }, diagnostics.OrderBy(x => x.Span.Start).Select(x => x.Text));
     }
 
     [Fact]
@@ -131,9 +131,9 @@ public class UnresolvedConstraintBindingTest
         var c = Parse("public struct Reading<T> {}\n" + (missingFirst ? Missing + Inputs : Inputs + Missing));
         Assert.False(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
-        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray();
-        Assert.Contains(diagnostics, x => x.Entry.Name == "UnresolvedBinding_Kd");
-        Assert.Contains(diagnostics, x => x.Entry.Name == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Reading").Span.Start);
+        var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
+        Assert.Contains(diagnostics, x => x.Code == "UnresolvedBinding_Kd");
+        Assert.Contains(diagnostics, x => x.Code == "InvalidConstraint_Kd" && x.Span.Start == Container(c, "Reading").Span.Start);
     }
 
     [Theory]
@@ -156,7 +156,7 @@ public class UnresolvedConstraintBindingTest
         Assert.Equal(0, provisional.InvalidCount);
         Assert.True(provisional.UnresolvedCount > 0);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", generated));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Generated.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Generated.kimi"));
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -242,7 +242,7 @@ public class UnresolvedConstraintBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "group G\n    func take<T>()\n        Future is Copy\n        ()"));
-        Assert.NotEmpty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
     }
@@ -273,7 +273,7 @@ public class UnresolvedConstraintBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         return c;
     }
 }

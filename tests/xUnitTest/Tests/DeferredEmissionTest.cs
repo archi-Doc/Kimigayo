@@ -239,7 +239,7 @@ public class DeferredEmissionTest
 
         c.Ownership.ReportDiagnostics();
         var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ExpansionLimit);
-        Assert.Contains(issue.Source.DiagnosticCollection!.GetArray(), x => x.Message.Contains("8192", StringComparison.Ordinal));
+        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Message.Contains("8192", StringComparison.Ordinal));
     }
 
     [Fact]

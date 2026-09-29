@@ -17,7 +17,7 @@ public class SignatureInputFormationBindingTest
     {
         var projected = "Source<" + argument + ">.Origin.Item";
         var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take(x: " + (result ? "i32" : projected) + ") -> " + (result ? projected : "i32") + " => x\n    func call() -> i32 => take(1)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Call(c).BoundCall is not null);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -36,7 +36,7 @@ public class SignatureInputFormationBindingTest
     public void NormalizedPropertyInputsControlCertificateValidity(string type, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: " + type);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Property(c).IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -53,7 +53,7 @@ public class SignatureInputFormationBindingTest
     public void AdditionalAccessorInputsAreChecked(string accessors, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "group S\n    computed value: i32\n        " + accessors);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Property(c).IsVerified);
     }

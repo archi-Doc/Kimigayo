@@ -24,7 +24,7 @@ public class DependentRequirementConstraintBindingTest
     public void BothPropositionOperandsDetermineInputDependence(string clause, string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -37,7 +37,7 @@ public class DependentRequirementConstraintBindingTest
     public void EnumConditionsAreCheckedAtUses(string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public enum Target<T>\n    i32 is T\n    A\npublic func use(value: Target<" + argument + ">)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -48,7 +48,7 @@ public class DependentRequirementConstraintBindingTest
     public void AssociatedRequirementsAreNormalizedAfterSubstitution(string item, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    i32 is T.Origin.Item\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -60,7 +60,7 @@ public class DependentRequirementConstraintBindingTest
     public void ForwardingRequiresTheExactProposition(bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    i32 is T\npublic struct Forward<U>\n    " + (valid ? "i32 is U" : "U is Copy") + "\n    var value: Target<U>");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
@@ -71,7 +71,7 @@ public class DependentRequirementConstraintBindingTest
     public void DependenceDoesNotHideContradictionsOrInvalidFormation(string clause)
     {
         var c = MinimalEmissionTest.Analyze("public struct Box<T>\n    T is Copy\npublic struct Target<T>\n    " + clause);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

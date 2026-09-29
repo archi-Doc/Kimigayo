@@ -14,7 +14,7 @@ public class SignatureProjectionCertificateBindingTest
     public void InvalidProjectionWitnessCannotCertifySignature(bool property)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + Consumer(property));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         if (property)
@@ -43,7 +43,7 @@ public class SignatureProjectionCertificateBindingTest
         var middle = Consumer(property).Replace("contract C\n", "contract C\n    associate Item\n", StringComparison.Ordinal).Replace("Self is C\n", "Self is C\n    associate C.Item is i32\n", StringComparison.Ordinal);
         const string last = "contract D\n    func end(x: i32) -> i32\nstruct Last\n    Self is D\n    public func end(x: S.C.Item) -> i32 => x\n";
         var c = MinimalEmissionTest.Analyze(reverse ? last + middle + Prefix(access) : Prefix(access) + middle + last);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
         CheckLast(c);

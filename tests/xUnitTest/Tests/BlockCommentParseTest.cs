@@ -16,7 +16,7 @@ public class BlockCommentParseTest
     [InlineData("loop\n    /* inline */ work()")]
     [InlineData("call(1, /* inline */ 2)")]
     public void AllowsSingleLineBlockCommentsBetweenTokens(string source)
-        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("\n")]
@@ -26,7 +26,7 @@ public class BlockCommentParseTest
     {
         var source = "loop\n    work() /* comment\n*/\n    next()\nfinish()".Replace("\n", newline);
         var tree = Parse(source);
-        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(tree));
         var items = tree.GeneratedFunction!.Body!.Items;
         Assert.Equal(2, items.Count);
         var loop = Assert.IsType<LoopKoto>(items[0]);
@@ -47,7 +47,7 @@ public class BlockCommentParseTest
     [InlineData("call(\n    1, /* comment\n*/\n    2\n)")]
     [InlineData("work() /* comment\n*/\n    .next()")]
     public void AllowsMultilineCommentsWithOrdinaryContinuation(string source)
-        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("/* comment\n*/ bad()\nnext()")]
@@ -58,9 +58,9 @@ public class BlockCommentParseTest
     public void ReportsTrailingCodeAndRecoversAtNextLine(string source)
     {
         var tree = Parse(source);
-        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.CodeAfterMultilineComment_Kd), diagnostic.Entry.Name);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Entry.Severity);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(tree));
+        Assert.Equal(nameof(DiagnosticCode.CodeAfterMultilineComment_Kd), diagnostic.Code);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
         Assert.Equal(source.IndexOf("bad()", StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal("next()", Assert.Single(tree.GeneratedFunction!.Body!.Items).ToString());
     }
@@ -71,8 +71,8 @@ public class BlockCommentParseTest
     public void DoesNotJoinTrailingCodeToThePrecedingStatement(string source)
     {
         var tree = Parse(source);
-        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.CodeAfterMultilineComment_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(tree));
+        Assert.Equal(nameof(DiagnosticCode.CodeAfterMultilineComment_Kd), diagnostic.Code);
         Assert.Equal(source.IndexOf("bad()", StringComparison.Ordinal), diagnostic.Span.Start);
         var items = tree.GeneratedFunction!.Body!.Items;
         Assert.Equal(2, items.Count);
@@ -86,7 +86,7 @@ public class BlockCommentParseTest
     [InlineData("/* comment\n*/ /* unterminated")]
     public void ReportsMissingTerminator(string source)
     {
-        var diagnostic = Assert.Single(Parse(source).DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.MissingBlockCommentEnd_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+        Assert.Equal(nameof(DiagnosticCode.MissingBlockCommentEnd_Kd), diagnostic.Code);
     }
 }

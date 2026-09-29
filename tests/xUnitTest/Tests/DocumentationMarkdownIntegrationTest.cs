@@ -142,7 +142,7 @@ public class DocumentationMarkdownIntegrationTest
         var comment = Selected(tree);
         Assert.Throws<DocumentationMarkdownLimitException>(() => DocumentationMarkdownDocument.Parse(comment));
         Assert.True(tree.Compilation.Bind().IsComplete);
-        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(tree));
         var retried = DocumentationMarkdownDocument.Parse(comment, maximumDepth: 400);
         DocumentationMarkdownParserTest.AssertRanges(retried);
         Assert.Empty(retried.GetItemCandidates().ToArray());

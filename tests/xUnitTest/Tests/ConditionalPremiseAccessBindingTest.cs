@@ -15,7 +15,7 @@ public class ConditionalPremiseAccessBindingTest
     public void PublicConformanceCannotExposeRestrictedPremise(string requirement)
     {
         var c = MinimalEmissionTest.Analyze(Source("public", "public", "internal", "public", requirement));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(Definition(c).IsVerified);
@@ -77,7 +77,7 @@ public class ConditionalPremiseAccessBindingTest
     {
         var source = Source("public", valid ? "internal" : "public", "internal", "public", "Source.Hidden.Item").Replace("struct S<T>", "enum S<T>\n    A", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
     }

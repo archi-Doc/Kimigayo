@@ -426,7 +426,7 @@ public class StartupBindingTest
             c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, new SourceDocument($"source{i}.kimi", sources[i]));
         }
 
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         return c;
     }
 

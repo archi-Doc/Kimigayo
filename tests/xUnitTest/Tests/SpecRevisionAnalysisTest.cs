@@ -50,7 +50,7 @@ public class SpecRevisionAnalysisTest
     {
         var source = "struct Example\n    " + member.Replace("\n", "\n    ") + "\n    var after: i32";
         var tree = Parse(source, valid: false);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.Equal("after", Assert.Single(tree.RootKoto.NestedDeclarationContainers).Members.OfType<PropertyKoto>().Last().NameKoto.IdentifierName);
     }
 
@@ -307,7 +307,7 @@ public class SpecRevisionAnalysisTest
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
         if (valid)
         {
-            Assert.True(tree.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", tree.DiagnosticCollection.GetArray().Select(x => x.ToString())));
+            Assert.True(TestDiagnostics.Of(tree).Length == 0, string.Join("\n", TestDiagnostics.Of(tree).Select(x => x.ToString())));
         }
 
         return tree;

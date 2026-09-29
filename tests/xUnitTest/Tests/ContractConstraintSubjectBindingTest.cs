@@ -23,7 +23,7 @@ public class ContractConstraintSubjectBindingTest
     public void ContractRootedProjectionConstrainsImplementations(string item, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Implementation("Origin.Item is Copy", item));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, Contract(c).BindingState);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -35,7 +35,7 @@ public class ContractConstraintSubjectBindingTest
     public void SelfRootedProjectionConstrainsImplementations(string item, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Implementation("Self.Origin.Item is Copy", item));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -47,7 +47,7 @@ public class ContractConstraintSubjectBindingTest
     public void RefutedConcreteRootedProjectionInvalidatesTheContract(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    " + clause);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
         Assert.Equal(BindingState.Invalid, Contract(c).BindingState);

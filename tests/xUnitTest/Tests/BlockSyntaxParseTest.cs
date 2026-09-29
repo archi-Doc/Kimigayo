@@ -77,7 +77,7 @@ public class BlockSyntaxParseTest
     [InlineData("return defer => work()")]
     [InlineData("let value = unsafe\n    work()")]
     public void RejectsStatementBlocksInValuePositions(string source)
-        => Assert.Contains(Parse(source).DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.BlockStatementInExpression_Kd));
+        => Assert.Contains(TestDiagnostics.Of(Parse(source)), x => x.Code == nameof(DiagnosticCode.BlockStatementInExpression_Kd));
 
     [Theory]
     [InlineData("defer => work(); other()")]
@@ -87,7 +87,7 @@ public class BlockSyntaxParseTest
     [InlineData("defer => if ready()\n    work()")]
     [InlineData("defer => ;")]
     public void RejectsInvalidInlineBodies(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("defer => ")]
@@ -104,7 +104,7 @@ public class BlockSyntaxParseTest
     [InlineData("match value\n    0 =>")]
     [InlineData("struct Example\n    func empty()")]
     public void RejectsEmptyExecutableBodies(string source)
-        => Assert.Contains(Parse(source).DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        => Assert.Contains(TestDiagnostics.Of(Parse(source)), x => x.Code == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
 
     [Theory]
     [InlineData("defer => ")]
@@ -116,7 +116,7 @@ public class BlockSyntaxParseTest
     public void MissingBodyDoesNotConsumeFollowingStatement(string header)
     {
         var tree = Parse($"func process()\n    {header}\n    nextProcess()\n");
-        Assert.Contains(tree.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));
         Assert.Equal(2, function.Body!.Items.Count);
         Assert.IsType<InvocationKoto>(function.Body.Items[1]);
@@ -143,7 +143,7 @@ public class BlockSyntaxParseTest
     [InlineData("#if false\n    if ready() => 1 else")]
     [InlineData("#if false\n    func missing()")]
     public void ExclusionDoesNotHideEmptyBodiesOrIncompleteDirectives(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("#LibraryImport(LibraryName) func imported()")]
@@ -162,7 +162,7 @@ public class BlockSyntaxParseTest
     public void InvalidInlineBodyDoesNotConsumeFollowingStatement(string source)
     {
         var tree = Parse(source + "\nnextProcess()");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.Equal("nextProcess()", Items(tree)[^1].ToString());
     }
 
@@ -183,7 +183,7 @@ public class BlockSyntaxParseTest
     [InlineData("group Example\n    defer => close()")]
     [InlineData("struct Example\n    unsafe\n        work()")]
     public void StatementBlocksAreNotDeclarationContainerMembers(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     private static IReadOnlyList<Koto> Items(Kotonoha tree) => tree.GeneratedFunction!.Body!.Items;
 }

@@ -23,7 +23,7 @@ public class FunctionParameterIdentityBindingTest
     public void ParameterListIdentityPreservesArityAndTupleElements(string left, string right, bool same)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target\n    " + left + " is " + right);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(same, c.Binding.Result.IsComplete);
         Assert.Equal(same, c.Bind().IsComplete);
         Assert.Equal(same, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -32,7 +32,7 @@ public class FunctionParameterIdentityBindingTest
         {
             c.Kotonoha.RootKoto.UnparseAll(ref builder);
             var written = MinimalEmissionTest.Analyze(builder.ToString());
-            Assert.Empty(written.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(written, "Hello.kimi"));
             Assert.Equal(same, written.Binding.Result.IsComplete);
         }
         finally
@@ -58,7 +58,7 @@ public class FunctionParameterIdentityBindingTest
     public void GenericRequirementsUseTheCanonicalParameterList(string parameters, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("group G\n    func take<T>()\n        T is (i32) -> bool\n        ()\n    func call() => take<" + parameters + " -> bool>()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
@@ -72,7 +72,7 @@ public class FunctionParameterIdentityBindingTest
     public void OverloadIdentityPreservesParameterArity(string left, string right, bool duplicate)
     {
         var c = MinimalEmissionTest.Analyze("func f(x: " + left + " -> bool) => ()\nfunc f(x: " + right + " -> bool) => ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(!duplicate, c.Binding.Result.IsComplete);
         Assert.Equal(duplicate, c.Binding.Issues.Any(x => x.Node.BindingFailure == BindingFailure.Duplicate));
     }
@@ -84,7 +84,7 @@ public class FunctionParameterIdentityBindingTest
     public void SubstitutionRetainsParameterListStructure(string parameters, string required, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + parameters + " -> bool is " + required + " -> bool\npublic func use(value: Target<i32>) => ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }

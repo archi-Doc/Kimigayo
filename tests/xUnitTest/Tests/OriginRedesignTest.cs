@@ -42,7 +42,7 @@ public class OriginRedesignTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         var prefix = source.StartsWith("struct V", StringComparison.Ordinal) ? string.Empty : "struct V<T> {source}\n    public let value: ref/T during source\n";
         c.Kotonoha.AddSource(new SourceDocument("redesign.kimi", prefix + source));
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Node.CodeContext.SourceDocument?.Path}: {x.Node}: {x.Node.BindingFailure}")));
@@ -72,7 +72,7 @@ public class OriginRedesignTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("invalid.kimi", "struct V<T> {source}\n    let value: ref/T during source\n" + source));
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.False(c.Bind().IsComplete);
     }
 
@@ -92,14 +92,14 @@ public class OriginRedesignTest
     public void DeclarationRelationsRoundTrip(string source)
     {
         var tree = ParseTestHelper.Parse(source);
-        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(tree));
         var builder = default(IndentedStringBuilder);
         try
         {
             tree.RootKoto.UnparseAll(ref builder);
             var written = builder.ToString();
             var reloaded = ParseTestHelper.Parse(written);
-            Assert.True(reloaded.DiagnosticCollection.GetArray().Length == 0, written + "\n" + string.Join("\n", reloaded.DiagnosticCollection.GetArray().Select(x => x.Message)));
+            Assert.True(TestDiagnostics.Of(reloaded).Length == 0, written + "\n" + string.Join("\n", TestDiagnostics.Of(reloaded).Select(x => x.Message)));
             if (source.Contains("origin ", StringComparison.Ordinal))
             {
                 Assert.Contains("origin ", written, StringComparison.Ordinal);
@@ -126,7 +126,7 @@ public class OriginRedesignTest
     [InlineData("func f(x: View<i32>{}) => ()")]
     [InlineData("func f(x: ref/i32)\n    ()\n    origin x == x")]
     public void RejectsRemovedOrMisplacedSyntax(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Theory]
     [InlineData("Implicit", "func read(x: ref/Cell during s) -> i32 => x.value\nlet value = Cell.init()\nif read(value@ref) != 21 => $abort(\"origin\")")]

@@ -18,7 +18,7 @@ public class EnumGenericConstraintBindingTest
     public void InvalidNestedArgumentCannotPublishConstruction(string argument, string expression)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<" + argument + "> => " + expression);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
@@ -33,7 +33,7 @@ public class EnumGenericConstraintBindingTest
     public void InvalidPayloadTypeCannotPublishConstruction()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E\n    Value(Box<string>)\ngroup Consumer\n    func make(value: Box<string>) -> E => .Value(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TryGetEnumConstruction(Use(c), out _));
     }

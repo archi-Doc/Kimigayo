@@ -191,9 +191,9 @@ public class PropertyParseTest
         var (_, structure, diagnostics) = ParseStruct(source);
 
         Assert.Equal(4, diagnostics.Length);
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.LetPropertyCannotHaveSetter_Kd));
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.DuplicatePropertyAccessor_Kd));
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.LetPropertyCannotHaveSetter_Kd));
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicatePropertyAccessor_Kd));
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd));
         Assert.Equal(
             ["Frozen", "Duplicate", "Mixed", "Continued"],
             structure.Members.Cast<PropertyKoto>().Select(x => x.NameKoto.IdentifierName));
@@ -238,13 +238,13 @@ public class PropertyParseTest
             $"{actual}{Environment.NewLine}{string.Join(Environment.NewLine, reparsed.Diagnostics.Select(x => x.ToString()))}");
     }
 
-    private static (Kotonoha Kotonoha, StructKoto Structure, Diagnostic[] Diagnostics) ParseStruct(string source)
+    private static (Kotonoha Kotonoha, StructKoto Structure, TestDiagnostic[] Diagnostics) ParseStruct(string source)
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
         var structure = Assert.IsType<StructKoto>(Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers));
-        return (kotonoha, structure, kotonoha.DiagnosticCollection.GetArray());
+        return (kotonoha, structure, TestDiagnostics.Of(kotonoha));
     }
 
     private static string Unparse(GroupKoto root)

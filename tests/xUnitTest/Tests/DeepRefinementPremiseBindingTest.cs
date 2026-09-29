@@ -17,7 +17,7 @@ public class DeepRefinementPremiseBindingTest
     public void DeepRefinementDoesNotReexpandFlattenedAncestors(int depth, bool diamond)
     {
         var c = MinimalEmissionTest.Analyze(Source(depth, diamond));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
@@ -45,7 +45,7 @@ public class DeepRefinementPremiseBindingTest
     public void FlattenedTraversalRetainsClosedObligationCycleGuards()
     {
         var c = MinimalEmissionTest.Analyze("public struct Source {}\n    Self is C32\n" + Source(32, true, "Source is C32"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
     }
 

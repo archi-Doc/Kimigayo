@@ -15,7 +15,7 @@ public class OriginSyntaxRevisionTest
     public void EmbeddedLibraryUsesCurrentOriginSyntax()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1");
-        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Library.Kotonoha.DiagnosticCollection.GetArray().Select(x => $"{x.SourceDocument?.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
     }
 
     [Theory]
@@ -66,7 +66,7 @@ public class OriginSyntaxRevisionTest
     [InlineData("func f {a, b}(value: View<i32>{a, b}) => ()")]
     [InlineData("func f {a}(value: View<i32>{a}{a}) => ()")]
     public void RejectsOldAndWrongRoleSyntax(string declaration)
-        => Assert.NotEmpty(ParseTestHelper.Parse(View + declaration).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(View + declaration)));
 
     [Theory]
     [InlineData("struct S\n    init(! value: ref/i32 during a) => ()")]

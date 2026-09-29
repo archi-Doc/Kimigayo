@@ -14,7 +14,7 @@ public class AssociatedSubjectConstraintBindingTest
     public void ConstructedTypeMustSatisfyAssociatedSubjectConstraint(bool enumeration)
     {
         var c = MinimalEmissionTest.Analyze(Source(enumeration, "string", "i32"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
         var restored = CompilationTestHelper.Reload(c);
@@ -35,7 +35,7 @@ public class AssociatedSubjectConstraintBindingTest
     public void SubstitutedSubjectUsesOrdinaryRequirementProofs(bool enumeration, string item, string requirement, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source(enumeration, item, requirement));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);

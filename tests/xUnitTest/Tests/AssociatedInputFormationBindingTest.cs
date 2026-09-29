@@ -15,7 +15,7 @@ public class AssociatedInputFormationBindingTest
     public void NormalizationCannotHideInvalidDefinitionInputs(string definition)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + definition);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
@@ -46,7 +46,7 @@ public class AssociatedInputFormationBindingTest
     public void FixedInheritedAndConditionalInputsAreChecked(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + declarations);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
     }

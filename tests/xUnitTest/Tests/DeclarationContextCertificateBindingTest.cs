@@ -14,7 +14,7 @@ public class DeclarationContextCertificateBindingTest
     public void InvalidGroupCannotCertifyNestedConformance(string attribute)
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + attribute + "\ngroup Invalid\n    struct S\n        Self is Marker");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Invalid").NestedContainers.Single();
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
@@ -38,7 +38,7 @@ public class DeclarationContextCertificateBindingTest
     public void InvalidGroupCannotSupplyNestedContract(string attribute)
     {
         var c = MinimalEmissionTest.Analyze(attribute + "\ngroup Invalid\n    public contract Marker\nstruct S\n    Self is Invalid.Marker");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Invalid").NestedContainers.Single();

@@ -16,7 +16,7 @@ public class BaseInputFormationBindingTest
         const string middle = "open struct Middle: Source<string>.Origin.Item\n";
         const string child = "struct S: Middle\n    Self is C\n";
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n" + (reverseOrder ? child + middle : middle + child));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Type(c).BindingState);
         Assert.False(Definition(c).IsVerified);
@@ -38,7 +38,7 @@ public class BaseInputFormationBindingTest
     public void NestedBaseProjectionArgumentsRetainValidity(string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "open struct Generic<T>\ncontract C\nstruct S: Generic<" + argument + ">\n    Self is C");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
     }

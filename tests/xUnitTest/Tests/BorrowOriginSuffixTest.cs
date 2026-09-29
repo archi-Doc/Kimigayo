@@ -75,7 +75,7 @@ public class BorrowOriginSuffixTest
     [InlineData("obj/T during a")]
     [InlineData("ref/T from a")]
     public void RejectsInvalidAnnotations(string type)
-        => Assert.NotEmpty(ParseTestHelper.Parse($"func f(x: {type}) => ()").DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse($"func f(x: {type}) => ()")));
 
     [Theory]
     [InlineData("x@(ref/T? during a)", true)]
@@ -89,7 +89,7 @@ public class BorrowOriginSuffixTest
     [InlineData("x@s{a}/T", true)]
     public void AdaptationBoundariesAreSyntactic(string expression, bool valid)
     {
-        var diagnostics = ParseTestHelper.Parse("let result = " + expression).DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(ParseTestHelper.Parse("let result = " + expression));
         Assert.True(valid == (diagnostics.Length == 0), string.Join("\n", diagnostics.Select(x => x.Message)));
     }
 
@@ -149,7 +149,7 @@ public class BorrowOriginSuffixTest
         Assert.False(c.Binding.Result.IsComplete);
         var failures = c.Binding.Issues.ToArray();
         c.Binding.ReportDiagnostics();
-        var messages = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.Message).ToArray();
+        var messages = TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message).ToArray();
         Assert.True(messages.Any(x => x.Contains(hint, StringComparison.Ordinal)), string.Join("\n", messages));
         Assert.Equal(failures, c.Binding.Issues);
     }
@@ -161,7 +161,7 @@ public class BorrowOriginSuffixTest
     [InlineData("func f<T>(x: ref/i32 during a)\n    T is Box<ref/i32 during a and b>\n    ()", "parentheses in Type arguments", "parentheses")]
     public void SyntaxErrorsSuggestLocalCorrections(string source, string description, string hint)
     {
-        var messages = ParseTestHelper.Parse(source).DiagnosticCollection.GetArray().Select(x => x.Message);
+        var messages = TestDiagnostics.Of(ParseTestHelper.Parse(source)).Select(x => x.Message);
         Assert.True(messages.Any(x => x.Contains(hint, StringComparison.Ordinal)), description);
     }
 
@@ -172,7 +172,7 @@ public class BorrowOriginSuffixTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         c.Binding.ReportDiagnostics();
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class BorrowOriginSuffixTest
         var functions = ParseTestHelper.GetChildren(tree.RootKoto).OfType<FunctionKoto>().ToArray();
         Assert.Equal(2, functions.Length);
         Assert.Equal("first", Assert.IsType<TypeSemanticsKoto>(functions[0].Parameters[0].Type).OriginName);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
     [Fact]
@@ -196,6 +196,6 @@ public class BorrowOriginSuffixTest
         var conversion = Assert.IsType<ConversionKoto>(division.Left);
         Assert.Equal(BindingSymbolKind.Type, conversion.Right.BoundSymbol?.Kind);
         c.Binding.ReportDiagnostics();
-        Assert.DoesNotContain(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), d => d.Message.Contains("brace borrow", StringComparison.Ordinal));
+        Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Message.Contains("brace borrow", StringComparison.Ordinal));
     }
 }

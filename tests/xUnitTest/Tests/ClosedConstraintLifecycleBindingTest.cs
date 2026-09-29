@@ -105,7 +105,7 @@ public class ClosedConstraintLifecycleBindingTest
         var property = Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!;
         Assert.True(property.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Target {}\n    string is Copy\n    Self is Marker"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Generated.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Generated.kimi"));
         Assert.False(c.Bind().IsComplete);
         Assert.False(property.IsVerified);
         Assert.False(Certificate(c));
@@ -134,7 +134,7 @@ public class ClosedConstraintLifecycleBindingTest
     private static void AppendSourceConformance(Compilation c)
     {
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source {}\n    Self is Origin"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Generated.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Generated.kimi"));
     }
 
     private static Compilation Parse(string source)
@@ -142,7 +142,7 @@ public class ClosedConstraintLifecycleBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         return c;
     }
 

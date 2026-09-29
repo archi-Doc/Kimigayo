@@ -32,7 +32,7 @@ public class AssociatedOriginSyntaxTest
     [InlineData("func f(x: T.Item(a,)) => ()")]
     [InlineData("func f(x: T.Item(a and b)) => ()")]
     public void RejectsInvalidLists(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Fact]
     public void ValueCallsKeepTheirOwnSyntax()

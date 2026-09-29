@@ -121,7 +121,7 @@ public class PatternBindingTest
         Assert.All(c.Binding.PatternWarnings, x => Assert.Equal(0, x.CoveringArm));
         c.Binding.ReportDiagnostics();
         c.Binding.ReportDiagnostics();
-        Assert.Equal(2, c.Kotonoha.DiagnosticCollection.GetArray().Count(x => x.Entry.Name == nameof(DiagnosticCode.UnreachablePattern_Kd)));
+        Assert.Equal(2, TestDiagnostics.Of(c).Count(x => x.Code == nameof(DiagnosticCode.UnreachablePattern_Kd)));
         Assert.True(c.Binding.CheckBound().IsComplete);
     }
 
@@ -234,11 +234,11 @@ public class PatternBindingTest
         var c = Parse("func f(x: i32) => match x\n    _ => ()\n    0 => ()");
         c.Binding.Bind(BindingMode.Provisional);
         c.Binding.ReportDiagnostics();
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
         c.Binding.ReportDiagnostics();
-        Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
 
@@ -405,7 +405,7 @@ public class PatternBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(target));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())));
         return c;
     }
 

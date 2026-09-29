@@ -194,9 +194,9 @@ public class ContainerNestingTest
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare(WindowsProfile.Target));
         restored.OnDeserialized(compilation);
-        Assert.Empty(restored.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(restored));
         Assert.Single(Assert.Single(restored.RootKoto.NestedContainers).NestedContainers);
     }
 
-    private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues) + "\n" + string.Join('\n', c.Kotonoha.DiagnosticCollection.GetArray());
+    private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues) + "\n" + string.Join('\n', TestDiagnostics.Of(c));
 }

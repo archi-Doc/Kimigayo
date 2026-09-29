@@ -251,7 +251,7 @@ public class RuntimeTypeTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, $"struct Dog\nfunc f(x: objref/Dog) -> bool => x is {target}");
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     [Fact]
@@ -306,7 +306,7 @@ public class RuntimeTypeTest
         var source = "struct Dog\nfunc " + name + "(x: objref/Dog)\n    x is Dog\n    ()";
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
         var parenthesized = CompilationTestHelper.ParseSuccess(source.Replace("    x is Dog", "    (x is Dog)", StringComparison.Ordinal));

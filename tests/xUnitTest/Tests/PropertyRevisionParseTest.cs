@@ -56,7 +56,7 @@ public class PropertyRevisionParseTest
     public void MoveIsNotASemanticsPrefix()
     {
         var tree = Parse("let value = source@move/i32\nlet after = 1");
-        Assert.Contains(tree.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd));
         Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
     }
 
@@ -67,7 +67,7 @@ public class PropertyRevisionParseTest
     public void RejectsUnavailableCaptureOperations(string capture)
     {
         var tree = Parse($"let f = func[{capture}]() => ()\nlet after = 1");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
     }
 
@@ -183,7 +183,7 @@ public class PropertyRevisionParseTest
     public void RejectsInvalidConcretePropertiesAndRecovers(string member)
     {
         var tree = Parse("struct S\n    " + member.Replace("\n", "\n    ") + "\n    var after: i32");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         var structure = Assert.Single(tree.RootKoto.NestedDeclarationContainers);
         Assert.Equal("after", Assert.IsType<PropertyKoto>(structure.Members.Last()).NameKoto.IdentifierName);
     }
@@ -212,7 +212,7 @@ public class PropertyRevisionParseTest
     public void RejectsInvalidRequirementsAndRecovers(string member)
     {
         var tree = Parse("contract C\n    " + member.Replace("\n", "\n    ") + "\n    property after: i32 has get");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         var contract = Assert.Single(tree.RootKoto.NestedDeclarationContainers);
         Assert.Equal("after", Assert.IsType<PropertyKoto>(contract.Members.Last()).NameKoto.IdentifierName);
     }
@@ -225,7 +225,7 @@ public class PropertyRevisionParseTest
     [InlineData("group G\n    static let p: T = value")]
     [InlineData("group G\n    computed p: T\n        get(self: ref/Self) -> T => value")]
     public void RejectsInvalidDeclarationContexts(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     private static void RoundTrip(Kotonoha tree)
     {

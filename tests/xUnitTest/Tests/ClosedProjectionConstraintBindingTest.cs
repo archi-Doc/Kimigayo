@@ -16,7 +16,7 @@ public class ClosedProjectionConstraintBindingTest
     public void ConcreteProjectionSubjectIsProvedAtTheDeclaration(string kind)
     {
         var c = MinimalEmissionTest.Analyze(Source(kind, "Source.Origin.Item is Copy"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Bind().IsComplete);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -35,7 +35,7 @@ public class ClosedProjectionConstraintBindingTest
     public void ClosedProjectionIdentityAndCapabilitiesAreJudged(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", clause));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -49,7 +49,7 @@ public class ClosedProjectionConstraintBindingTest
         var source = Source("struct", "Source<" + (valid ? "i32" : "string") + ">.Origin.Item is i32")
             .Replace("struct Source\n", "struct Source<T>\n    T is Copy\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -63,7 +63,7 @@ public class ClosedProjectionConstraintBindingTest
         const string source = "public struct Source\n    string is Copy\n    Self is Origin\n    associate Origin.Item is i32\n";
         const string target = "public struct Target\n    Source.Origin.Item is i32\n    public computed value: i32\n        get(self: ref/Self) -> i32 => 1\n";
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\n" + (reverse ? target + source : source + target));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
         Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);

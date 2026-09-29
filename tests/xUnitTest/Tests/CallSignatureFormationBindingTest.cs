@@ -17,7 +17,7 @@ public class CallSignatureFormationBindingTest
     public void InvalidSignatureCannotPublishCall(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
