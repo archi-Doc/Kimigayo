@@ -8,6 +8,11 @@
 #   ./scripts/verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
 #   ./scripts/verify.ps1 -Milestone 18
 #
+# Diagnostic snapshot (docs/dev/DIAGNOSTICS.md §9.1): checks the corpus through the check entry, writes
+# diagnostic-snapshot.json and, with a baseline, fails on differences of kinds not listed as allowed.
+#   ./scripts/verify.ps1 -DiagnosticSnapshot
+#   ./scripts/verify.ps1 -Class XunitTest.CheckServiceTest -DiagnosticSnapshot -DiagnosticBaseline artifacts/verify/<run>/diagnostic-snapshot.json -DiagnosticAllowed order,attribution
+#
 # Session mode (once at the end of a session): Release build and full suite, then
 # the selected native fixtures and milestone harnesses with the same compiler configuration.
 #   ./scripts/verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
@@ -32,6 +37,9 @@ param(
     # One or more fixture patterns; each runs as its own native step over the same fixture directory.
     [string[]] $Fixtures = @(),
     [int[]] $Milestone = @(),
+    [switch] $DiagnosticSnapshot,
+    [string] $DiagnosticBaseline = '',
+    [string[]] $DiagnosticAllowed = @(),
     [string] $Name = '',
     [switch] $VerifyToolchain,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
@@ -158,6 +166,25 @@ if (-not $failed -and (Invoke-Build $Configuration)) {
 if (-not $failed) {
     if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
     elseif ($filters.Count -gt 0) { Invoke-Tests $Configuration $filters 'focused' }
+}
+
+if (-not $failed -and $DiagnosticSnapshot) {
+    $timer = Start-Step "diagnostic snapshot $Configuration"
+    $log = Join-Path $evidence "diagnostic-snapshot-$Configuration.log"
+    $snapshot = Join-Path $evidence 'diagnostic-snapshot.json'
+    $dll = Join-Path $repo "tests/xUnitTest/bin/$Configuration/net10.0/xUnitTest.dll"
+    $saved = @($env:KIMI_DIAGNOSTIC_SNAPSHOT, $env:KIMI_DIAGNOSTIC_BASELINE, $env:KIMI_DIAGNOSTIC_ALLOWED)
+    try {
+        $env:KIMI_DIAGNOSTIC_SNAPSHOT = $snapshot
+        $env:KIMI_DIAGNOSTIC_BASELINE = if ($DiagnosticBaseline) { (Resolve-Path -LiteralPath $DiagnosticBaseline).Path } else { '' }
+        $env:KIMI_DIAGNOSTIC_ALLOWED = $DiagnosticAllowed -join ','
+        & dotnet $dll -method 'XunitTest.DiagnosticSnapshotTest.RequestedSnapshotMatchesTheBaseline' -failSkips *> $log
+        $code = $LASTEXITCODE
+    }
+    finally { $env:KIMI_DIAGNOSTIC_SNAPSHOT, $env:KIMI_DIAGNOSTIC_BASELINE, $env:KIMI_DIAGNOSTIC_ALLOWED = $saved }
+    $differences = [IO.Path]::ChangeExtension($snapshot, '.differences.txt')
+    $detail = if (Test-Path -LiteralPath $differences) { "$(@(Get-Content -LiteralPath $differences).Count) differences; $differences" } else { $snapshot }
+    Add-Step "diagnostic snapshot $Configuration" ($code -eq 0 -and (Test-Path -LiteralPath $snapshot)) "$detail; $log" $timer.Elapsed.TotalSeconds
 }
 
 $native = $Configuration

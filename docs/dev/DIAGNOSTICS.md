@@ -120,7 +120,7 @@ DiagnosticFact
 The stages and their completion conditions are in [PLAN.md](PLAN.md). These rules hold while the track runs.
 
 - **D1** changes no published diagnostic. Tests read diagnostics through one helper, so later stages change only that helper.
-- **D2a** keeps the old start-offset suppression as a transitional filter at record time: arrival order, per old collection unit (the `CodeContext` collection name), by start offset, with a rangeless location counted as 0. It is not improved. Contract checks that depend on problem keys (conflicting facts, unexplained rejection, undefined order) stay off; the others are on.
+- **D2a** keeps the old start-offset suppression as a transitional filter: per old collection unit (the `CodeContext` collection name), by start offset, with a rangeless location counted as 0, keeping the first fact in recording order (partitions in phase order, then arrival). It is not improved. Contract checks that depend on problem keys (conflicting facts, unexplained rejection, undefined order) stay off; the others are on.
 - **D2b** migrates recorders upstream first: lexing and parsing (with the recovery map), Binding, startup, control flow, ownership. The transitional filter drops only facts of recorders not yet migrated; facts of migrated recorders still occupy their offsets. Each recorder is rewritten once (rule 11). When the last recorder is migrated, the filter, `DiagnosticDependencyVisitor` and the `BorrowOriginHint` suppression are removed and every contract check is on.
 - A path never runs the old and new methods together, and no intermediate identity such as `(range, code)` is introduced.
 - Explanations are bounded from the start.
@@ -164,3 +164,22 @@ AGENTS.md lists the required steps. This section gives their detail.
 - **Repair and repeat.** Fix missing evidence, misleading explanations, wrong ranges or unwanted cascades at their source, rerun the affected checks and inspect the revised output. Never weaken expectations to match current output, and never count fewer diagnostics as an improvement. Keep the reproducer and its expectations as regression tests.
 - **Evidence.** Follow the repository verification workflow; measure (§9.4) when a changed path is hot or a milestone completes. Record the reviewed behavior, intended public-output changes, verification results and remaining uncertainty in commits and `artifacts/verify/`.
 - **Completion.** A unit is complete only when its problem is explained accurately and understandably at the right locations, the applicable interaction and output checks pass, and every quality defect observed in the unit is repaired and verified again. Passing tests alone does not establish clarity. Otherwise record the unresolved condition and the next action, without marking the unit complete or claiming support.
+
+## 11. Audit findings (D1)
+
+The D1 audit of the catalog and its reporting sites. Each item names the common rule it breaks and the stage that repairs it; remove an item when it is repaired.
+
+| Finding | Rule | Stage |
+| --- | --- | --- |
+| `TransferRequired_Kd`, `UnprovenConstraint_Kd` and `IncompatibleContractImplementation_Kd` are reported by both Binding and ownership analysis; start-offset suppression hides the second report today. | 1 | D2b (Binding, ownership) |
+| `ControlFlow_Kd` and `ControlFlowWarning_Kd` take about 26 free-text messages covering unrelated requirements (pointer operations, null literals, fallthrough, jump targets, labels, arithmetic operands). | 2 | D2b (control flow) |
+| 82 of the 99 `UnexpectedToken_Kd` reports pass a description of the syntax position or advice ("setter value parameter", "parenthesize a labeled expression") where the message expects the token. | 2 | D2b (parsing) |
+| `InvalidTry_Kd`, `NonExhaustiveMatch_Kd`, `PositionAlwaysFails_Kd`, `ProjectLoadFailed_Kd`, `ProjectPreparationFailed_Kd`, `InvalidDependencyConfiguration_Kd`, `GenerationFailed_Kd`, `GenerationResourceLimit_Kd` and `CheckFaulted_Kd` format prose into `{0}`. Environment-dependent text belongs in a bounded Note, facts in the Reason. | 2 | D2b, D3 |
+| `NonExhaustiveMatch_Kd` receives its argument only when the node is a `MatchKoto` with a plan; otherwise the report has no argument, which the contract check now rejects. `NotObjectPayload_Kd` formats an empty Type name when its cause is missing. | 2 | D2b (Binding) |
+| Implementation limits reported with `Language` codes: element writes and exclusive element borrows through `uniq` references (`InvalidAssignment_Kd`, `TransferRequired_Kd`, PLAN G35); unimplemented Property calls and flow refinement (`UnresolvedBinding_Kd`, Programs 24 and 33); undeclared rc/arc intrinsics (`UnresolvedBinding_Kd`, Program 34, G4); unformed `Weak<rc/T>` (`InvalidTypeFormation_Kd`, Programs 35 and 38). | 3 | D2b (Binding) |
+| Binding's fallback reports `UnresolvedBinding_Kd` at the first unresolved node when no Binding issue exists, even after syntax errors; a node failed as unresolved and later completed keeps its failure and can suppress others without being reported. | 8 | D2b (Binding) |
+| `hint` text is appended to the message: `BorrowOriginHint` (Binding) and the borrow-annotation advice of the parser. | 2 | D2b |
+| All embedded Kimi library sources share one collection, so start-offset suppression collides across library files. | 10 | D2a |
+| `UnsupportedCompileTimeConditionType_Kd` is categorized `Language`; confirm against SPEC §19 whether the rejected Types are a language rule or a limit. | 3 | D2b (parsing) |
+
+Repaired in D1: skip helpers reported `UnexpectedTrailingToken_Kd` with an unused argument and used `Template_Kd` as a "no diagnostic" sentinel; `DocumentDesynchronized_Kd` received exception text; source read failures were `GenerationFailed_Kd` (now `SourceReadFailed_Kd`); an incompatible serialized source unit was `UnexpectedToken_Kd` with prose (now `IncompatibleSerializedSource_Kd`).

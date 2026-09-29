@@ -6,6 +6,8 @@ namespace XunitTest;
 
 public class DiagnosticPrecisionTest
 {
+    public static TheoryData<string> MutationNames => [.. DiagnosticCorpus.Mutations.Select(static x => x.Name)];
+
     [Fact]
     public void IndependentErrorsRemainVisibleAfterAnUnknownIterationSubject()
     {
@@ -25,21 +27,14 @@ public class DiagnosticPrecisionTest
     }
 
     [Theory]
-    [InlineData(4, "var counter =", "let counter =", "InvalidAssignment_Kd")]
-    [InlineData(8, "public group Storage", "group Storage", "InaccessibleBinding_Kd")]
-    [InlineData(9, "func [target] (value: i32)", "func [target] (value: bool)", "NoApplicableOverload_Kd")]
-    [InlineData(9, "find<5, i32>", "find<4, i32>", "NoApplicableOverload_Kd")]
-    [InlineData(11, "result = result + forward<T>(values[index]@ref/T)", "let copied: T = values[index]\n            result = result + forward<T>(values[index]@ref/T)", "TransferRequired_Kd")]
-    [InlineData(12, "func [offset] ()", "func [] ()", "InvalidCaptureBinding_Kd")]
-    [InlineData(14, "accumulator@follow@uniq", "accumulator@follow@uniq/Pipeline.Job", "TypeMismatch_Kd")]
-    public void MilestoneFaultsHaveSpecificDiagnosticsWithoutDependentCascades(int number, string before, string after, string expected)
+    [MemberData(nameof(MutationNames))]
+    public void MilestoneFaultsHaveSpecificDiagnosticsWithoutDependentCascades(string name)
     {
-        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, $"../../../../../tests/milestones/Milestone{number}.kimi"));
-        Assert.Contains(before, source);
-        var c = MinimalEmissionTest.Analyze(source.Replace(before, after, StringComparison.Ordinal));
+        var mutation = DiagnosticCorpus.Mutation(name);
+        var c = MinimalEmissionTest.Analyze(DiagnosticCorpus.Apply(mutation));
         var codes = c.Binding.Issues.Select(x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(x => x.Code.ToString())).ToArray();
         var detail = string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)) + "\n" + string.Join("\n", c.Ownership.Issues);
-        Assert.True(codes.Length > 0 && codes.All(x => x == expected), detail);
+        Assert.True(codes.Length > 0 && codes.All(mutation.Expected.Contains), detail);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 }

@@ -14,6 +14,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--diagnostics")
+        {
+            DiagnosticMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--named-arguments")
         {
             NamedArgumentMeasurements.Run();
