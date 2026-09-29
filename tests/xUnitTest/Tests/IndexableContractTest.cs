@@ -123,6 +123,17 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableContractGenericTwoKeys", TwoKeys + GenericTwoKeys + Use, "generic keys\n");
     }
 
+    // Through UniqIndexable, updates select each conformance's indexUniq by the key Type in generic code.
+    [Fact]
+    public void GenericUpdatesSelectAmongSeveralUniqConformances()
+    {
+        const string Update = "func keySlot<S>(table: uniq/S, k: isize) -> place uniq/S.(Indexable<isize>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[k]\n" +
+            "func nameSlot<S>(table: uniq/S, n: Name) -> place uniq/S.(Indexable<Name>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[n]\n";
+        const string Use = "var table = Table.init(3, 4)\nkeySlot(table@uniq, 0) = 30\nnameSlot(table@uniq, Name.init(1)) = 40\nnameSlot(table@uniq, Name.init(1)) += 2\nlet k: isize = 0\nlet n = Name.init(1)\n" +
+            "let a: i32 = table[k]\nlet b: i64 = table[n]\nrequire a == 30 and b == 42 else => $abort(\"update\")\nConsole.writeLine(\"generic updates\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractGenericUpdates", TwoKeys + Update + Use, "generic updates\n");
+    }
+
     // The two Element projections are distinct Types in the generic body.
     [Fact]
     public void GenericElementsOfDistinctReferencesDoNotMix()
