@@ -477,7 +477,10 @@ public sealed partial class Binding
                         statement is FieldKoto local ? IsTransferOf(local.InitializerKoto, symbol) :
                         statement is BinaryKoto { Akind: KotoKind.Equals } moved && IsTransferOf(moved.Right, symbol))
                     {
-                        return this.TransferredLater(block.Items, i + 1, symbol);
+                        // SPEC 14.4: the end of a `loop` body continues at its start, where the Move transfers the value again.
+                        return this.TransferredLater(block.Items, i + 1, symbol) ||
+                            (block.Parent is LoopKoto loop && ReferenceEquals(loop.Body, block) && this.InertFrom(block.Items, i + 1, symbol) &&
+                            this.TransferredLater(block.Items, 0, symbol));
                     }
 
                     if (!this.inertScan.Check(statement, symbol, exits: false))
@@ -499,9 +502,10 @@ public sealed partial class Binding
             for (var i = start; i < statements.Count; i++)
             {
                 var statement = statements[i];
-                if (this.TransfersAtOnce(statement, symbol) || (statement is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match)))
+                if (this.TransfersAtOnce(statement, symbol) || (statement is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match)) ||
+                    (statement is LoopKoto loop && this.TransferredLater(loop.Body.Items, 0, symbol)))
                 {
-                    return true;
+                    return true; // A `loop` that transfers the value in its first iteration leaves it only through that transfer.
                 }
 
                 if (!this.inertScan.Check(statement, symbol))
@@ -511,6 +515,20 @@ public sealed partial class Binding
             }
 
             return false;
+        }
+
+        // Whether the statements from `start` on neither name `symbol` nor may leave their block.
+        private bool InertFrom(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol)
+        {
+            for (var i = start; i < statements.Count; i++)
+            {
+                if (!this.inertScan.Check(statements[i], symbol))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private bool Consumed(Koto node)

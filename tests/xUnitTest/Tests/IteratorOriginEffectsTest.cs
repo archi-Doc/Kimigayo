@@ -317,6 +317,39 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorReinitialized", source, "reused\n");
     }
 
+    // G28, SPEC 14.4: in a `loop`, the value declared before it is moved at the top of the first iteration, and a value
+    // reinitialized at the end of the body is moved again at the top of the next one.
+    private const string LoopRetry = "struct LoopRetry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        loop\n" +
+        "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            if self.retries > 3 => return .None\n";
+
+    [Fact]
+    public void ALoopMayReinitializeItsItemLocal()
+    {
+        var source = Counter + LoopRetry + "            attempt = self.inner.next()\n" +
+            "var retry = LoopRetry<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match retry.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and retry.retries == 4 else => $abort(\"loop retry\")\nConsole.writeLine(\"loop retried\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorLoopRetry", source, "loop retried\n");
+    }
+
+    // An exit after the reinitialization leaves the loop with the value, which the function then destroys.
+    [Fact]
+    public void ALoopThatMayLeaveWithItsItemIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 2 => exit\n        return .None\n");
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
+    [Fact]
+    public void AWhileLoopMayEndBeforeItsFirstMoveAndIsRejected()
+    {
+        const string Source = "struct WhileRetry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        while self.retries < 3\n" +
+            "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            attempt = self.inner.next()\n        return .None\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A reinitialized value left to its scope, or an assignment that replaces a value no statement moved out, destroys it.
     [Theory]
     [InlineData("        attempt = self.inner.next()\n        return .None\n")]
