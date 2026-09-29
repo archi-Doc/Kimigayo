@@ -354,6 +354,7 @@ The `vsce` 4.0.0 message that `extension.js` is **large** means that this one fi
 Run from the repository root:
 
 ```powershell
+npm --prefix src/kimi-ext ci
 npm --prefix src/kimi-ext test
 $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe).Path
 npm --prefix src/kimi-ext run test:integration
@@ -363,4 +364,4 @@ Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to
 
 The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 
-Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once, update `src/kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-srckimi-ext).
+Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once (updates the package and lockfile without a Git tag), update `src/kimi-ext/CHANGELOG.md`, test and package with `npm --prefix src/kimi-ext run package`. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](src/kimi-ext/AGENTS.md).
