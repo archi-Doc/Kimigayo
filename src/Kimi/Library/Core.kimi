@@ -318,6 +318,7 @@ public struct RangeIterator<T>
 public struct ResolvedRange
     Self is Copy
     Self is Equatable
+    Self is PositionRange
     Self is Iterable
     associate Iterable.IteratorType(source) is RangeIterator<isize>
     Self is UniqIterable
@@ -345,6 +346,25 @@ public struct ResolvedRange
     /// Compares both bounds.
     public func equals(self: ref/Self, other: ref/Self) -> bool
         return self.start == other.start and self.end == other.end
+
+    /// Returns this interval when its end does not exceed `length`, or None; its start needs no check (SPEC 4.6.4).
+    public func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
+        require self.end <= length else => return .None
+        return .Some(self)
+
+    /// Returns this interval when its end does not exceed `length`.
+    ///
+    /// - abort: The end exceeds `length`.
+    public func resolve(self: Self, length: isize) -> ResolvedRange
+        match self.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => $abort("Range out of range")
+
+    /// Writes `start..end`, as the Range<isize, isize> with the same boundaries is written.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        try writer.write(self.start)
+        try writer.write("..")
+        return writer.write(self.end)
 
     /// Returns an iterator over the positions `start` through `end - 1`; it keeps no borrow of the interval.
     public func iterate(self: ref/Self during source) -> RangeIterator<isize>

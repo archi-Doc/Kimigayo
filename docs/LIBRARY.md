@@ -162,6 +162,8 @@ Index, `Range<T>`, IndexRange and ResolvedRange are Copy, Owned and Equatable. N
 | | `resolve(self: ref/Self, length: isize) -> ResolvedRange` | Resolves and validates the interval; invalid length or bounds Abort. |
 | | `tryResolve(self: ref/Self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds. |
 | `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. Only `indices`, `resolve` and `tryResolve` produce it. |
+| | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`, `resolve(self: Self, length: isize) -> ResolvedRange` | Its `PositionRange` conformance: the interval itself when `end <= length`; otherwise None, or Abort for `resolve`. |
+| | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes `start..end`. |
 | | `iterate`, `iterateUniq`, `intoIterator` | Return `RangeIterator<isize>` over `start` through `end - 1`; they never Abort. |
 
 Range syntax is the only constructor of `Range<T>` and IndexRange. Two integer boundaries of one Type `T` construct `Range<T>` (`0..n`, `1..=3`; an all-literal range is `Range<i32>` unless its context fits another `T`). An omitted or Index boundary constructs IndexRange (`a..`, `..b`, `..=b`, `..`, `1..^1`); its integer boundaries, of any integer Type, are formed into Indexes in order after both are evaluated, and a negative or unrepresentable one Aborts. Neither checks boundary order at construction; ordering is checked on resolution or iteration. Omitted start and end normalize to `0` and `^0`.

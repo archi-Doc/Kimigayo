@@ -219,7 +219,7 @@ public sealed partial class Binding
 
         var type = this.BindNode(boundary, scope);
         failed = type is null;
-        return ScalarReferent(type) ?? this.GenericIntegerReferent(type, scope) ?? type;
+        return this.ReadTypeReferent(type, scope) ?? type;
     }
 
     // SPEC 4.6.3.1: both boundaries of Range<T> have one integer Type. An established Type fits a literal-only other
@@ -282,7 +282,7 @@ public sealed partial class Binding
             return boundary;
         }
 
-        var integer = ScalarReferent(type) ?? this.GenericIntegerReferent(type, scope) ?? type;
+        var integer = this.ReadTypeReferent(type, scope) ?? type;
         if (!this.IsIntegerOperand(integer, scope))
         {
             Fail(boundary, BindingFailure.TypeMismatch);

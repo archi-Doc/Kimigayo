@@ -51,12 +51,19 @@ public class PrimitiveIntegerTest
     [InlineData("func twice<T>(value: T) -> T\n    T is i8 or u8\n    return value + value")]
     [InlineData("func keep<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value\nlet x = keep(1.5)")]
     [InlineData("func keep<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value\nlet x = keep(true)")]
-    [InlineData("func keep<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value\nlet n = 1\nlet x = keep(n@ref)")]
     [InlineData("struct Number\n    Self is PrimitiveInteger\n    public let value: i32 = 0")]
     public void RejectsWhatTheRequirementDoesNotProve(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.2.1: a Type argument constrained to PrimitiveInteger is inferred as the referent, and the argument is read.
+    [Fact]
+    public void AReferenceArgumentInfersTheIntegerType()
+    {
+        var c = MinimalEmissionTest.Analyze("func keep<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value\nlet n = 1\nlet x: i32 = keep(n@ref)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

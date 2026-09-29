@@ -396,7 +396,7 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if ((ScalarReferent(actual) ?? this.GenericIntegerReferent(actual, this.ConstraintScope(node))) is { } referent && Compatible(referent, expected))
+        if (this.ReadTypeReferent(actual, node) is { } referent && Compatible(referent, expected))
         {
             return new(ExpectedAdaptationKind.ReferentRead, referent);
         }
@@ -503,8 +503,8 @@ public sealed partial class Binding
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
-    // SPEC 3.5.3 Scalar read: the safe value-reference layers of an operand are followed to their terminal Type, which
-    // is read only when it is a Scalar; a non-Scalar referent, Copy or not, is never read implicitly. The node keeps its
+    // SPEC 3.5.3 value read: the safe value-reference layers of an operand are followed to their terminal Type, which is
+    // read only when it is a read Type; any other referent, Copy or not, is never read implicitly. The node keeps its
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
@@ -513,10 +513,10 @@ public sealed partial class Binding
             // A qualifying pair layer is one of the followed layers (SPEC 3.4.1), also below another one (s/(t/U)): the read is
             // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
             var scope = this.ConstraintScope(node);
-            if (this.GenericIntegerReferent(type, scope) is { } integer)
+            if (this.ReadTypeReferent(type, scope) is { } read)
             {
-                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, integer); // SPEC 8.4.7.3: a proven integer is a Scalar.
-                return integer;
+                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.4.7.3: a read Type.
+                return read;
             }
 
             if (type is not null &&
@@ -535,11 +535,6 @@ public sealed partial class Binding
         this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, referent);
         return referent;
     }
-
-    // SPEC 3.5.3, 8.4.7.3: the terminal of safe reference layers ending in a Type parameter proven PrimitiveInteger.
-    private BoundType? GenericIntegerReferent(BoundType? type, BindingScope scope)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            ComparisonReferent(type) is var terminal && this.IsGenericInteger(terminal, scope) ? terminal : null;
 
     // The type an argument presents to adaptation: a node already read where its parameter Type was
     // expected adapts from its own reference Type, so the plan records the Copy read once.
@@ -680,7 +675,7 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source) && ScalarReferent(actual) is { } read && this.FitsTypeAt(read, pattern, source))
+            if (!this.FitsTypeAt(actual, pattern, source) && this.ReadTypeReferent(actual, scope) is { } read && this.FitsTypeAt(read, pattern, source))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;

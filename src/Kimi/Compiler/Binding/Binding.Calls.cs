@@ -1319,6 +1319,14 @@ public sealed partial class Binding
                 return false;
             }
 
+            // SPEC 10.2.1: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
+            // argument is then value-read.
+            if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, function))
+            {
+                actual = referent;
+            }
+
             if (arguments[slot] is { } previous)
             {
                 if (ReferenceEquals(previous, actual) || (inferOrigins && FitsType(actual, previous)))
