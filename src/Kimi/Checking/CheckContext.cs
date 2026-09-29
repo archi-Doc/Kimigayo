@@ -1,13 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
 /// <summary>Carries one check through the shared check entry (SPEC 23.3.2).</summary>
 /// <remarks>
-/// Commands pass no context: they read the disk and print preparation failures. A context supplies the inputs and
-/// collects what the language server publishes: preparation failures as text, and the compilation the entry created.
+/// Commands pass no context: they read the disk and render each result themselves. A context supplies the inputs and
+/// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation the entry created.
 /// </remarks>
 internal sealed class CheckContext
 {
@@ -21,8 +22,8 @@ internal sealed class CheckContext
     /// <summary>Gets the input source of the check.</summary>
     public CheckInputSource Inputs { get; }
 
-    /// <summary>Gets the preparation failures that commands print as text.</summary>
-    public List<string> Failures { get; } = [];
+    /// <summary>Gets the diagnostic owner of this check request (SPEC 23.3.6).</summary>
+    public DiagnosticOwner Diagnostics { get; } = new();
 
     /// <summary>Gets or sets the compilation the entry created, if preparation got that far.</summary>
     public Compilation? Compilation { get; set; }

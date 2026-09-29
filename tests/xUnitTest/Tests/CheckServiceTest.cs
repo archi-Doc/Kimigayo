@@ -33,7 +33,7 @@ public sealed class CheckServiceTest : IDisposable
 
         Assert.NotEmpty(TestDiagnostics.Of(first, "main.kimi"));
         Assert.Empty(TestDiagnostics.Of(second, "main.kimi"));
-        Assert.Empty(kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
+        Assert.NotSame(first.Diagnostics, second.Diagnostics);
     }
 
     [Fact]
@@ -43,8 +43,8 @@ public sealed class CheckServiceTest : IDisposable
         var compilation = new Compilation(kimigayo, new Project(kimigayo));
         compilation.Kotonoha.AddSource(new SourceDocument("main.kimi", Broken));
 
-        Assert.True(compilation.Kotonoha.HasSourceErrors);
-        Assert.True(compilation.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").HasErrors);
+        Assert.True(compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha));
+        Assert.True(compilation.Diagnostics.HasErrors);
     }
 
     [Fact]
@@ -60,8 +60,8 @@ public sealed class CheckServiceTest : IDisposable
         Assert.False(output.Accepted);
         var error = output.Diagnostics.First(static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Contains(error.Code, console.Output);
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), error.Location);
-        Assert.NotNull(error.Range);
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), Location(output, error));
+        Assert.NotNull(error.Span);
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class CheckServiceTest : IDisposable
         var failure = Assert.Single(output.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
         Assert.Contains("At least one compilation target", failure.Message);
-        Assert.Equal(SourceIdentity.FromPath(project), failure.Location);
+        Assert.Equal(SourceIdentity.FromPath(project), Location(output, failure));
     }
 
     [Fact]
@@ -101,9 +101,9 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var encoding = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidSourceEncoding_Kd));
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "b.kimi")), encoding.Location);
-        Assert.Null(encoding.Range);
-        var syntax = output.Diagnostics.First(x => x.Location == SourceIdentity.FromPath(this.PathOf("App", "a.kimi")));
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "b.kimi")), Location(output, encoding));
+        Assert.Null(encoding.Span);
+        var syntax = output.Diagnostics.First(x => Location(output, x) == SourceIdentity.FromPath(this.PathOf("App", "a.kimi")));
         Assert.Contains(syntax.Code, console.Output);
         Assert.True(console.Output.IndexOf(syntax.Code, StringComparison.Ordinal) < console.Output.IndexOf(encoding.Code, StringComparison.Ordinal));
     }
@@ -120,7 +120,7 @@ public sealed class CheckServiceTest : IDisposable
 
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var failure = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.SourceReadFailed_Kd));
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), failure.Location);
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), Location(output, failure));
         Assert.True(this.Run(project).Accepted);
     }
 
@@ -154,7 +154,7 @@ public sealed class CheckServiceTest : IDisposable
         var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "public func two() -> i32 => 2\n" });
         var output = this.Run(project, inputs: inputs);
 
-        Assert.Contains(output.Diagnostics, x => x.Location == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
+        Assert.Contains(output.Diagnostics, x => Location(output, x) == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
         Assert.Contains(added, inputs.Listed);
         Assert.True(this.Run(project).Accepted);
     }
@@ -168,8 +168,8 @@ public sealed class CheckServiceTest : IDisposable
 
         Assert.False(output.Accepted);
         var encoding = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidSourceEncoding_Kd));
-        Assert.Equal(SourceIdentity.FromPath(main), encoding.Location);
-        Assert.NotNull(encoding.Range);
+        Assert.Equal(SourceIdentity.FromPath(main), Location(output, encoding));
+        Assert.NotNull(encoding.Span);
     }
 
     [Theory]
@@ -192,7 +192,7 @@ public sealed class CheckServiceTest : IDisposable
 
         var output = this.Run(project, CheckMode.Test);
         Assert.Equal(CheckOutcome.Completed, output.Outcome);
-        Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Location}{x.Range}: {x.Message}")));
+        Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Source}{x.Span}: {x.Message}")));
     }
 
     [Fact]
@@ -204,6 +204,9 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Contains(output.Diagnostics, static x => x.Message.Contains("Windows x64", StringComparison.Ordinal));
     }
+
+    private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)
+        => diagnostic.Source < 0 ? default : SourceIdentity.FromPath(output.Sources[diagnostic.Source].Path);
 
     private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
     {

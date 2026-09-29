@@ -11,7 +11,8 @@ public sealed partial class KimiLibrary
     internal bool ValidateDeclarations()
     {
         this.InvalidDeclaration = null;
-        var valid = !this.Kotonoha.DiagnosticCollection.HasErrors && this.Kotonoha.GeneratedFunction is null &&
+        // Only the library's own syntax precedes this decision; later phases rest on it.
+        var valid = !this.Kotonoha.Compilation.Diagnostics.HasSyntaxErrors(this.Kotonoha) && this.Kotonoha.GeneratedFunction is null &&
             this.ValidCompilerGroup(this.Intrinsics, this.IntrinsicsSymbol, this.IntrinsicsScope) &&
             this.ValidCompilerGroup(this.Console, this.ConsoleSymbol, this.ConsoleScope) &&
             this.ValidCompilerGroup(this.Test, this.TestSymbol, this.TestScope) &&

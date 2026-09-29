@@ -83,7 +83,7 @@ public class OriginSyntaxRevisionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
 
@@ -111,7 +111,7 @@ public class OriginSyntaxRevisionTest
         var implementation = implementationStatic ? "\n        origin value.source == static" : string.Empty;
         var source = View + $"contract C\n    func inspect(self, value: View<i32>) -> (){required}\nstruct S\n    Self is C\n    public func inspect(self, value: View<i32>) -> (){implementation}\n        ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 

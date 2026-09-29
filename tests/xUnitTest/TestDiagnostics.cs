@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 
@@ -22,18 +21,18 @@ internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, 
 /// <summary>The one way tests read published diagnostics, so the compiler's diagnostic storage can change behind it.</summary>
 internal static class TestDiagnostics
 {
-    /// <summary>Gets every published diagnostic of a compilation, ordered by source and position.</summary>
+    /// <summary>Gets every published diagnostic of a compilation in result order, finalizing every partition.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <returns>The diagnostics.</returns>
     internal static TestDiagnostic[] Of(Compilation compilation)
-        => Collect(compilation.Kimigayo, null);
+        => Collect(compilation.Diagnostics, null);
 
     /// <summary>Gets the published diagnostics of one source of a compilation.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <param name="path">The source path as the compilation names it, such as <c>Hello.kimi</c>.</param>
     /// <returns>The diagnostics.</returns>
     internal static TestDiagnostic[] Of(Compilation compilation, string path)
-        => Collect(compilation.Kimigayo, path);
+        => Collect(compilation.Diagnostics, path);
 
     /// <summary>Gets every published diagnostic of the compilation that owns a source unit.</summary>
     /// <param name="kotonoha">The source unit.</param>
@@ -47,20 +46,21 @@ internal static class TestDiagnostics
     internal static TestDiagnostic[] Of(CodeContext context)
         => Of(context.Kotonoha.Compilation);
 
-    private static TestDiagnostic[] Collect(Kimigayo kimigayo, string? path)
+    private static TestDiagnostic[] Collect(DiagnosticOwner owner, string? path)
     {
-        var records = new List<TestDiagnostic>();
-        foreach (var collection in kimigayo.DiagnosticCollections.OrderBy(static x => x.Name, StringComparer.Ordinal))
+        var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
+        var records = new List<TestDiagnostic>(result.Diagnostics.Length);
+        foreach (var diagnostic in result.Diagnostics)
         {
-            if (path is null || collection.Name == path)
+            var source = diagnostic.Source < 0 ? null : result.Sources[diagnostic.Source].Path;
+            if (path is not null && source != path)
             {
-                foreach (var diagnostic in collection.GetArray())
-                {
-                    var document = diagnostic.SourceDocument;
-                    var text = document?.SourceText.Substring(diagnostic.Span.Start, diagnostic.Span.Length);
-                    records.Add(new(diagnostic.Entry.Name, diagnostic.Entry.Severity, diagnostic.Message, document?.Path ?? diagnostic.Location, diagnostic.Span, text));
-                }
+                continue;
             }
+
+            var span = diagnostic.Span ?? default;
+            var text = diagnostic.Span is { } primary && source is not null && owner.FindDocument(source) is { } document ? document.SourceText.Substring(primary.Start, primary.Length) : null;
+            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text));
         }
 
         return records.ToArray();

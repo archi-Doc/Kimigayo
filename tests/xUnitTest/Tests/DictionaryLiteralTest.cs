@@ -49,7 +49,7 @@ public class DictionaryLiteralTest
     public void StaticCheckingDoesNotExpandIntoOtherExpressions(string type, string first, string later)
     {
         var c = MinimalEmissionTest.Analyze("let entries: Dictionary<" + type + ", i32> = [" + first + ": 1, " + later + ": 2]");
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 

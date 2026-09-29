@@ -1,133 +1,87 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
 
 namespace Kimi.Diagnostics;
 
-public record class DiagnosticCollection
+/// <summary>
+/// A recording target of a <see cref="DiagnosticOwner"/>: facts reported through it belong to its module's syntax
+/// partition unless a phase names its own partition. Its name is the former collection name, which only the
+/// transitional start-offset filter of D2a uses (docs/dev/DIAGNOSTICS.md §8).
+/// </summary>
+public sealed class DiagnosticCollection
 {
-    private readonly Kimigayo kimigayo;
-    private readonly Diagnostic.GoshujinClass diagnostics = new();
+    private readonly int module;
 
-    public string Name { get; init; } = string.Empty;
-
-    private SourceDocument? sourceDocument;
-    private int errorCount;
-    private long errorVersion;
-
-    /// <summary>Gets a value indicating whether this collection contains errors without allocating a diagnostic snapshot.</summary>
-    public bool HasErrors => Volatile.Read(ref this.errorCount) != 0;
-
-    public SourceDocument? SourceDocument => Volatile.Read(ref this.sourceDocument);
-
-    public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
-
-    // Counts attempted error reports, even when location deduplication hides the
-    // message. Clearing displayed diagnostics does not erase source failure history.
-    internal long ErrorVersion => Volatile.Read(ref this.errorVersion);
-
-    internal DiagnosticCollection(Kimigayo kimigayo, string name)
+    internal DiagnosticCollection(DiagnosticOwner owner, string name, int unit, int module, SourceDocument? document = null)
     {
-        this.kimigayo = kimigayo;
+        this.Owner = owner;
         this.Name = name;
+        this.Unit = unit;
+        this.module = module;
+        this.Document = document;
     }
 
-    /// <summary>Adds a diagnostic unless one is already recorded at the same start offset.</summary>
-    /// <param name="range">The source span; ignored for placement when no source document applies.</param>
-    /// <param name="code">The diagnostic code.</param>
+    /// <summary>Gets the document a report without an explicit document belongs to, fixed when the target is created.</summary>
+    public SourceDocument? Document { get; }
+
+    /// <summary>Gets the owner.</summary>
+    public DiagnosticOwner Owner { get; }
+
+    /// <summary>Gets the name, which also names sources parsed from text through this target.</summary>
+    public string Name { get; }
+
+    internal int Unit { get; }
+
+    /// <summary>Gets a target bound to one document, registering the document in the source table in consumption order.</summary>
+    /// <param name="document">The document.</param>
+    /// <returns>The bound target.</returns>
+    public DiagnosticCollection For(SourceDocument document)
+    {
+        if (ReferenceEquals(document, this.Document))
+        {
+            return this;
+        }
+
+        var module = this.module >= 0 ? this.module : this.Owner.UnattributedModule();
+        this.Owner.DocumentSource(document, module);
+        return new(this.Owner, this.Name, this.Unit, module, document);
+    }
+
+    /// <summary>Reports a lexical or syntax problem of this target's module.</summary>
+    /// <param name="range">The span; it must be the default value when no source applies.</param>
+    /// <param name="code">The code.</param>
     /// <param name="obj">The first message argument.</param>
     /// <param name="obj2">The second message argument.</param>
-    /// <param name="sourceDocument">The source document; defaults to the collection's document.</param>
-    /// <param name="hint">An explanation appended to the message.</param>
-    /// <param name="location">The path of an input the diagnostic concerns when no source document exists, such as an unreadable file.</param>
-    public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null, string? location = null)
+    /// <param name="sourceDocument">The source the span belongs to.</param>
+    /// <param name="hint">Text appended to the message; removed in D2b.</param>
+    /// <returns><see langword="true"/> when the report is an Error.</returns>
+    public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
+        => this.Add(DiagnosticPartition.Syntax, range, code, obj, obj2, sourceDocument, hint);
+
+    /// <summary>Reports a problem of one phase.</summary>
+    /// <param name="partition">The phase's partition.</param>
+    /// <param name="range">The span; it must be the default value when no source applies.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="obj">The first message argument.</param>
+    /// <param name="obj2">The second message argument.</param>
+    /// <param name="sourceDocument">The source the span belongs to.</param>
+    /// <param name="hint">Text appended to the message; removed in D2b.</param>
+    /// <returns><see langword="true"/> when the report is an Error.</returns>
+    public bool Add(DiagnosticPartition partition, SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
     {
-        var entry = Validate(range, code, obj, obj2, sourceDocument ?? this.SourceDocument);
-
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (entry.Severity == DiagnosticSeverity.Error)
-            {
-                this.errorVersion++;
-            }
-
-            if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
-            {
-                return;
-            }
-
-            var message = entry.FormatMessage(obj, obj2);
-            if (hint is not null)
-            {
-                message = string.Concat(message, " ", hint);
-            }
-
-            var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message, Location = location };
-            diagnostic.Goshujin = this.diagnostics;
-            if (entry.Severity == DiagnosticSeverity.Error)
-            {
-                this.errorCount++;
-            }
-
-            if (this.kimigayo.RendersDiagnostics)
-            {
-                this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
-            }
-        }
-    }
-
-    public bool Remove(int startPosition)
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (this.diagnostics.StartPositionChain.TryGetValue(startPosition, out var diagnostic))
-            {
-                diagnostic.Goshujin = default;
-                if (diagnostic.Entry.Severity == DiagnosticSeverity.Error)
-                {
-                    this.errorCount--;
-                }
-
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-    }
-
-    public bool Remove(SourcePosition startPosition)
-    {
-        var sourceDocument = this.SourceDocument;
-        return sourceDocument is not null && this.Remove(sourceDocument.GetOffset(startPosition));
-    }
-
-    public Diagnostic[] GetArray()
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            return this.diagnostics.ToArray();
-        }
-    }
-
-    public void ClearDiagnostic()
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            this.diagnostics.ClearAll();
-            this.errorCount = 0;
-        }
-    }
-
-    internal void SetSourceDocument(SourceDocument sourceDocument)
-    {
-        // A reference store is atomic; the parse hot path must not pay for the lock.
-        Volatile.Write(ref this.sourceDocument, sourceDocument);
+        sourceDocument ??= this.Document;
+        var entry = Validate(range, code, obj, obj2, sourceDocument);
+        var module = this.module >= 0 ? this.module : this.Owner.UnattributedModule();
+        var source = sourceDocument is null ? -1 : this.Owner.DocumentSource(sourceDocument, module);
+        var isError = entry.Severity == DiagnosticSeverity.Error;
+        var length = sourceDocument is null ? -1 : range.Length;
+        this.Owner.Record(partition, module, new(code, source, range.Start, length, DiagnosticOwner.Capture(obj), DiagnosticOwner.Capture(obj2), hint, this.Unit), isError);
+        return isError;
     }
 
     // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
-    private static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document)
+    internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document)
     {
         if (DiagnosticEntries.Anomalies.Count != 0)
         {

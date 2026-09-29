@@ -200,7 +200,7 @@ public class OptionalTryDiscardTest
     public void PreservesInferenceOwnershipAndBindingRules(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
     }
 
     [Theory]

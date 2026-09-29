@@ -78,7 +78,7 @@ public class ContainerNestingTest
     public void RejectsInvalidPlacementAndUnboundEnvironment(string source)
     {
         var c = CompilationTestHelper.Parse(source);
-        Assert.False(c.Bind().IsComplete && !c.Kotonoha.HasSourceErrors, Describe(c));
+        Assert.False(c.Bind().IsComplete && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), Describe(c));
     }
 
     [Fact]

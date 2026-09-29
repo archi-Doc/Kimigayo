@@ -39,7 +39,7 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidConstruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -77,7 +77,7 @@ public class BorrowStructEmissionTest
     public void RejectsInvalidBorrow(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.HasSourceErrors, body);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha), body);
         Assert.False(c.Emission.Validate(out _));
     }
 

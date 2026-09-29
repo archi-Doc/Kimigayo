@@ -65,7 +65,7 @@ public class TestExecutionAnalysisTest
     public void VerificationRejectsInvalidSyntaxAndEscapingMessages(string body)
     {
         var c = Analyze("#Test\nfunc sample()\n    " + body);
-        Assert.True(c.Kotonoha.HasSourceErrors || !c.Binding.Result.IsComplete);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha) || !c.Binding.Result.IsComplete);
     }
 
     [Theory]

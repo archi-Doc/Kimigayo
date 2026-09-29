@@ -126,7 +126,7 @@ internal ref struct Tokenizer
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
-        this.diagnostics = diagnostics;
+        this.diagnostics = diagnostics.For(sourceDocument);
         this.sourceDocument = sourceDocument;
         this.sourceText = sourceDocument.AsSpan()[..range.End];
         this.position = range.Start;
@@ -140,8 +140,6 @@ internal ref struct Tokenizer
 
         // Typical source yields roughly one token per four characters; the array grows on demand.
         this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (range.Length >> 2) + 64));
-
-        diagnostics.SetSourceDocument(sourceDocument);
     }
 
     /// <summary>

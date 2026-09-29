@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -126,10 +127,11 @@ public sealed partial class Binding
     /// <summary>Publishes startup diagnostics only when the caller commits to an output kind.</summary>
     public void ReportStartupDiagnostics()
     {
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Startup);
         for (var i = 0; i < this.startupIssues.Count; i++)
         {
             var issue = this.startupIssues[i];
-            issue.Node.AddDiagnostic(issue.Code);
+            issue.Node.AddDiagnostic(DiagnosticPartition.Startup, issue.Code);
         }
     }
 

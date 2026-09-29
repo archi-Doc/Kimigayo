@@ -4072,7 +4072,7 @@ Loop:
                 break;
             }
 
-            var tokenizer = new Tokenizer(reader.Diagnostic, reader.Diagnostic.SourceDocument!, SourceSpan.FromBounds(token.Span.Start + open, token.Span.Start + close + 1))
+            var tokenizer = new Tokenizer(reader.Diagnostic, reader.CodeContext.SourceDocument!, SourceSpan.FromBounds(token.Span.Start + open, token.Span.Start + close + 1))
             {
                 CollectDocumentation = reader.CodeContext.Compilation.CollectDocumentation,
             };

@@ -72,8 +72,8 @@ coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
 
 This table is the source/native status record. `MilestoneSourcesTest` checks the exact
 authored source set against it, checks the explicit Binding column, requires complete Binding for passed programs, and
-checks each pending program's stage, first diagnostic and source anchor against
-[stage-baselines.json](stage-baselines.json). It also binds the recorded supported
+checks each pending program's stage, its first published Error in result order (SPEC 23.3.6.6) and that
+Error's underlined source text against [stage-baselines.json](stage-baselines.json). It also binds the recorded supported
 declaration prefix independently. A changed failure or a newly successful stage requires
 review and fresh evidence; neither is accepted as an arbitrary pending failure. These
 checks supplement the focused feature tests and native harnesses; they do not certify

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -228,16 +229,24 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Fact]
-    public void DiagnosticErrorStateTracksRemovalAndClear()
+    public void DiagnosticErrorStateFollowsPartitionsNotDisplay()
     {
-        var diagnostics = Compilation.CreateForTest().Kotonoha.DiagnosticCollection;
+        var c = Compilation.CreateForTest();
+        var diagnostics = c.Diagnostics;
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Add(default, DiagnosticCode.GenerationFailed_Kd, "test");
-        Assert.True(diagnostics.HasErrors);
-        Assert.True(diagnostics.Remove(0));
+        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, null, "test");
+        Assert.True(diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        Assert.False(diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership));
+        diagnostics.Invalidate(DiagnosticPartition.Emission);
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Add(default, DiagnosticCode.GenerationFailed_Kd, "test");
-        diagnostics.ClearDiagnostic();
+
+        // Two Errors at one offset: the transitional filter publishes one, and the error state keeps both.
+        var document = new SourceDocument("main.kimi", "x");
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: document);
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
+        Assert.Single(TestDiagnostics.Of(c));
+        Assert.True(diagnostics.HasSyntaxErrors(c.Kotonoha));
+        diagnostics.InvalidateSyntax(c.Kotonoha);
         Assert.False(diagnostics.HasErrors);
     }
 

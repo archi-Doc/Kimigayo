@@ -16,6 +16,12 @@ public enum DiagnosticFault : byte
 
     /// <summary>A report's arguments do not match its code's definition.</summary>
     InvalidArgument,
+
+    /// <summary>An exception ended the analysis while diagnostic collection stayed intact.</summary>
+    Exception,
+
+    /// <summary>Collecting or finalizing diagnostics failed.</summary>
+    Collection,
 }
 
 /// <summary>Signals a violation of the diagnostic contract (SPEC 23.3.6.7). It is a compiler defect, never a property of the checked source.</summary>

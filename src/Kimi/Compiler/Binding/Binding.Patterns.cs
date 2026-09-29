@@ -19,7 +19,6 @@ public sealed partial class Binding
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private PatternMarker? unsupportedMarker;
-    private int reportedPatternWarnings;
 
     /// <summary>Gets warnings without changing Binding validity.</summary>
     public IReadOnlyList<PatternWarning> PatternWarnings => this.patternWarnings;
@@ -119,7 +118,6 @@ public sealed partial class Binding
 
         this.patternNodes.Clear();
         this.patternWarnings.Clear();
-        this.reportedPatternWarnings = 0;
     }
 
     private void PruneCandidateScopes()

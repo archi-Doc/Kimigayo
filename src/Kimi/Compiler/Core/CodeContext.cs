@@ -51,7 +51,8 @@ public sealed class CodeContext
         ArgumentNullException.ThrowIfNull(kotonoha);
 
         this.Kotonoha = kotonoha;
-        this.DiagnosticCollection = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
+        var diagnostics = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
+        this.DiagnosticCollection = sourceDocument is null ? diagnostics : diagnostics.For(sourceDocument);
         this.SourceDocument = sourceDocument;
     }
 
@@ -119,7 +120,6 @@ public sealed class CodeContext
         }
 
         this.Compilation.BeginSourceParsing();
-        var errorVersion = this.DiagnosticCollection.ErrorVersion;
         var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         try
         {
@@ -129,9 +129,8 @@ public sealed class CodeContext
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
             sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);
-            sourceContext.Documentation?.Finish(this.DiagnosticCollection.ErrorVersion != errorVersion);
+            sourceContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.Kotonoha.RecordDocumentation(sourceContext.Documentation);
-            this.Kotonoha.RecordSourceErrors(this.DiagnosticCollection, errorVersion);
         }
         finally
         {

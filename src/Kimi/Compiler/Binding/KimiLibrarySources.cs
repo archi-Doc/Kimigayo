@@ -69,9 +69,7 @@ public sealed partial class KimiLibrary
                 return cached;
             }
 
-            var diagnostics = context.DiagnosticCollection;
-            var errorVersion = diagnostics.ErrorVersion;
-            var tokenizer = new Tokenizer(diagnostics, context.SourceDocument!);
+            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!);
             try
             {
                 tokenizer.ReadAll();
@@ -79,7 +77,7 @@ public sealed partial class KimiLibrary
                 // Tokens contain only immutable kinds and source offsets, never ASTs,
                 // source documents or compilation state. Invalid lexing is not cached:
                 // each compilation must receive its own source diagnostics.
-                return diagnostics.ErrorVersion != errorVersion ? parsed :
+                return context.Compilation.Diagnostics.HasSyntaxErrors(context.SourceDocument!) ? parsed :
                     Interlocked.CompareExchange(ref this.tokens, parsed, null) ?? parsed;
             }
             finally
@@ -124,7 +122,6 @@ public sealed partial class KimiLibrary
     {
         var document = new SourceDocument(source.Path, source.Text);
         var context = new CodeContext(this.Kotonoha, sourceDocument: document);
-        context.DiagnosticCollection.SetSourceDocument(document);
         var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
         if (!source.Signatures)
         {

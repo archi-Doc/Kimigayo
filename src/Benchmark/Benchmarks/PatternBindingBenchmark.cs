@@ -34,7 +34,7 @@ public class PatternBindingBenchmark
         }
 
         this.compilation.Kotonoha.CreateCodeContext().Parse(this.compilation.Kotonoha.RootKoto, source.ToString());
-        if (this.compilation.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !this.compilation.Bind().IsComplete)
+        if (this.compilation.Diagnostics.HasErrors || !this.compilation.Bind().IsComplete)
         {
             throw new InvalidOperationException("Benchmark source must bind successfully.");
         }

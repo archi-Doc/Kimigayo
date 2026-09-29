@@ -2,9 +2,11 @@
 
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
+using System.Text;
 using Kimi.Checking;
 using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 #pragma warning disable SA1402 // The worker protocol is one vocabulary.
 
@@ -115,7 +117,7 @@ internal sealed class WorkspaceCheck
     /// <summary>Gets the host target for implicit projects, or empty when the host has none.</summary>
     public static string HostTarget { get; } = OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 ? WindowsProfile.Target : string.Empty;
 
-    /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4.7) and sorts each URI's list.</summary>
+    /// <summary>Places a check's diagnostics at their report URIs (SPEC 23.4.7), each URI's list in display-range and result order.</summary>
     /// <param name="output">The check output.</param>
     /// <param name="sources">The source files the check read.</param>
     /// <param name="display">The project file or implicit source.</param>
@@ -136,69 +138,108 @@ internal sealed class WorkspaceCheck
             return reports;
         }
 
+        // Whether a source entry is a recorded input is decided once per entry, never by the current editor contents.
+        var identities = new SourceIdentity?[output.Sources.Length];
+        for (var i = 0; i < identities.Length; i++)
+        {
+            var entry = output.Sources[i];
+            identities[i] = entry.IsInput && !entry.Path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) && Path.IsPathFullyQualified(entry.Path)
+                ? SourceIdentity.FromPath(entry.Path) : null;
+        }
+
         var lists = new Dictionary<SourceIdentity, List<LspDiagnostic>>();
         foreach (var diagnostic in output.Diagnostics)
         {
-            var (uri, range) = diagnostic.Location.IsEmpty || diagnostic.Location.IsBuiltIn ? (display, default) : (diagnostic.Location, diagnostic.Range ?? default);
+            var entry = diagnostic.Source < 0 ? null : output.Sources[diagnostic.Source];
+            var identity = diagnostic.Source < 0 ? null : identities[diagnostic.Source];
+            var (uri, range, moved) = identity is { } input ? (input, diagnostic.Display?.Range ?? default, false) : (display, default(SourceRange), entry is not null);
             if (!lists.TryGetValue(uri, out var list))
             {
                 list = [];
                 lists.Add(uri, list);
             }
 
-            list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", diagnostic.Message));
+            list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", Text(diagnostic, moved ? entry : null)));
         }
 
         foreach (var (uri, list) in lists)
         {
-            list.Sort(Compare);
-            reports[uri] = Deduplicate(list);
+            reports[uri] = Order(list);
         }
 
         return reports;
     }
 
-    /// <summary>Orders published diagnostics by range, code, severity and message.</summary>
-    /// <param name="left">The first diagnostic.</param>
-    /// <param name="right">The second diagnostic.</param>
-    /// <returns>The ordering.</returns>
-    public static int Compare(LspDiagnostic left, LspDiagnostic right)
+    /// <summary>Orders one contributor's diagnostics by display range, keeping result order among equal ranges.</summary>
+    /// <param name="diagnostics">The diagnostics in result order.</param>
+    /// <returns>The ordered diagnostics; distinct problems of one result never merge.</returns>
+    public static LspDiagnostic[] Order(List<LspDiagnostic> diagnostics)
     {
-        var order = left.Range.CompareTo(right.Range);
-        if (order == 0)
+        var ordered = diagnostics.ToArray();
+        var indices = new int[ordered.Length];
+        for (var i = 0; i < indices.Length; i++)
         {
-            order = string.CompareOrdinal(left.Code, right.Code);
+            indices[i] = i;
         }
 
-        if (order == 0)
+        Array.Sort(indices, (x, y) => ordered[x].Range.CompareTo(ordered[y].Range) is var order && order != 0 ? order : x.CompareTo(y));
+        var result = new LspDiagnostic[ordered.Length];
+        for (var i = 0; i < result.Length; i++)
         {
-            order = left.Severity.CompareTo(right.Severity);
+            result[i] = ordered[indices[i]];
         }
 
-        return order == 0 ? string.CompareOrdinal(left.Message, right.Message) : order;
+        return result;
     }
 
-    /// <summary>Removes adjacent duplicates of a sorted list.</summary>
-    /// <param name="sorted">The sorted diagnostics.</param>
-    /// <returns>The distinct diagnostics.</returns>
-    public static LspDiagnostic[] Deduplicate(List<LspDiagnostic> sorted)
+    /// <summary>Merges the ordered payloads of several contributors (SPEC 23.4.7): display range, then contributor, then result order;
+    /// equal sent values from different contributors keep the largest count that one contributor sends.</summary>
+    /// <param name="contributions">The contributors' payloads in contributor order.</param>
+    /// <returns>The merged payload.</returns>
+    public static LspDiagnostic[] Merge(List<LspDiagnostic[]> contributions)
     {
-        if (sorted.Count == 0)
+        var entries = new List<(LspDiagnostic Diagnostic, int Contributor, int Index)>();
+        var largest = new Dictionary<LspDiagnostic, int>();
+        var counts = new Dictionary<LspDiagnostic, int>();
+        for (var contributor = 0; contributor < contributions.Count; contributor++)
         {
-            return [];
-        }
-
-        var values = CollectionsMarshal.AsSpan(sorted);
-        var count = 1;
-        for (var i = 1; i < values.Length; i++)
-        {
-            if (!values[i].Equals(values[count - 1]))
+            counts.Clear();
+            var payload = contributions[contributor];
+            for (var i = 0; i < payload.Length; i++)
             {
-                values[count++] = values[i];
+                entries.Add((payload[i], contributor, i));
+                var count = counts[payload[i]] = counts.GetValueOrDefault(payload[i]) + 1;
+                if (count > largest.GetValueOrDefault(payload[i]))
+                {
+                    largest[payload[i]] = count;
+                }
             }
         }
 
-        return values[..count].ToArray();
+        entries.Sort(static (x, y) =>
+        {
+            var order = x.Diagnostic.Range.CompareTo(y.Diagnostic.Range);
+            if (order == 0)
+            {
+                order = x.Contributor.CompareTo(y.Contributor);
+            }
+
+            return order == 0 ? x.Index.CompareTo(y.Index) : order;
+        });
+
+        var merged = new List<LspDiagnostic>(entries.Count);
+        counts.Clear();
+        foreach (var (diagnostic, _, _) in entries)
+        {
+            var emitted = counts.GetValueOrDefault(diagnostic);
+            if (emitted < largest[diagnostic])
+            {
+                counts[diagnostic] = emitted + 1;
+                merged.Add(diagnostic);
+            }
+        }
+
+        return merged.ToArray();
     }
 
     /// <summary>Checks one unit through the shared check entry.</summary>
@@ -254,8 +295,44 @@ internal sealed class WorkspaceCheck
         this.start.Post(new CheckDone(failure));
     }
 
+    // SPEC 23.4.7: the message, then the label, Note, Advice and, for a moved record, its original location, on separate lines.
+    private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved)
+    {
+        if (diagnostic.Label is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
+        {
+            return diagnostic.Message;
+        }
+
+        var builder = new StringBuilder(diagnostic.Message);
+        if (diagnostic.Label is { } label)
+        {
+            builder.Append('\n').Append(label);
+        }
+
+        if (diagnostic.Note is { } note)
+        {
+            builder.Append("\nnote: ").Append(note);
+        }
+
+        if (diagnostic.Advice is { } advice)
+        {
+            builder.Append("\nadvice: ").Append(advice);
+        }
+
+        if (moved is not null)
+        {
+            builder.Append("\nat ").Append(moved.Path);
+            if (diagnostic.Display?.Range is { } range)
+            {
+                builder.Append(':').Append(range.Start.Line + 1).Append(':').Append(range.Start.Character + 1);
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, object? argument = null)
-        => new(CheckOutcome.Blocked, false, TestPresence.Unknown, [CheckService.Create(code, location, argument)]);
+        => new(CheckOutcome.Blocked, false, TestPresence.Unknown, CheckService.Create(code, location, argument));
 
     private static LoadedProject CreateLoaded(SourceIdentity path, Project project, SnapshotInputSource source)
     {

@@ -86,7 +86,7 @@ public class OriginFragmentBindingTest
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(Reload(c).Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("third.kimi", "struct S {a, b}\n    origin a outlives b"));
-        Assert.True(c.Kotonoha.HasSourceErrors);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
     }
 
     [Fact]

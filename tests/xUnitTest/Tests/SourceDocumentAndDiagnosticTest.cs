@@ -121,14 +121,14 @@ public class SourceDocumentAndDiagnosticTest
         var console = new TestConsoleService();
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "let x = 1\r\nvar value = bad\n");
-        var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad token");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(1, 12), new(1, 15)));
-        var diagnostic = new Diagnostic(range, entry, sourceDocument);
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IdentifierExpected_Kd);
 
-        kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);
+        kimigayo.Render(owner.Finalize(), string.Empty);
 
         Assert.Equal(
-            "Bad token : Test_Kd\n" +
+            "Identifier expected : IdentifierExpected_Kd\n" +
             " --> test.kimi:2:13\n" +
             "  |\n" +
             "2 | var value = bad\n" +
@@ -144,15 +144,48 @@ public class SourceDocumentAndDiagnosticTest
         var console = new TestConsoleService();
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "abc\ndefg\nhij");
-        var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad range");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(0, 1), new(2, 2)));
-        var diagnostic = new Diagnostic(range, entry, sourceDocument);
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IdentifierExpected_Kd);
 
-        kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);
+        kimigayo.Render(owner.Finalize(), string.Empty);
 
         Assert.Contains("1 | abc\n  |  ^^\n", console.Output);
         Assert.Contains("2 | defg\n  | ^^^^\n", console.Output);
         Assert.Contains("3 | hij\n  | ^^\n", console.Output);
+    }
+
+    [Fact]
+    public void RendersTheLabelAfterTheLastUnderlineAndThenAdvice()
+    {
+        var console = new TestConsoleService();
+        var kimigayo = new Kimigayo(console);
+        var sourceDocument = new SourceDocument("test.kimi", "let ok = a < b < c\n");
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(new(9, 9), DiagnosticCode.ChainedComparison_Kd);
+
+        kimigayo.Render(owner.Finalize(), string.Empty);
+
+        Assert.Equal(
+            "Comparison operators cannot be chained without parentheses : ChainedComparison_Kd\n" +
+            " --> test.kimi:1:10\n" +
+            "  |\n" +
+            "1 | let ok = a < b < c\n" +
+            "  |          ^^^^^^^^^ This comparison requires explicit grouping\n" +
+            "  |\n" +
+            "\n" +
+            "Advice: Use parentheses for a nested comparison, or combine separate comparisons with and\n" +
+            "\n",
+            console.Output);
+    }
+
+    [Fact]
+    public void ASilentServiceRendersNothing()
+    {
+        var owner = new DiagnosticOwner();
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", "failure");
+        Kimigayo.CreateSilent().Render(owner.Finalize(), string.Empty);
+        Assert.Single(owner.Finalize().Diagnostics);
     }
 
     private sealed class TestConsoleService : IConsoleService

@@ -131,7 +131,7 @@ public class RequirementTypeParsingTest
     {
         var source = $"func use<T>(value: T)\n    T is {requirement}\n    ()";
         var tree = ParseTestHelper.Parse(source);
-        Assert.True(tree.DiagnosticCollection.HasErrors);
+        Assert.True(tree.Compilation.Diagnostics.HasErrors);
         Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
         Assert.False(MinimalEmissionTest.Analyze(source).Emission.Validate(out _));
     }

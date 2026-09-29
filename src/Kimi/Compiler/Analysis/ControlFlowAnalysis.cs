@@ -135,17 +135,17 @@ public sealed class ControlFlowAnalysis
         this.Visit(root, true);
     }
 
-    /// <summary>Copies definite errors into their source diagnostic collections.</summary>
+    /// <summary>Records the definite errors and warnings; ownership analysis discards earlier ones when it analyzes again.</summary>
     public void ReportDiagnostics()
     {
         foreach (var issue in this.issues)
         {
-            issue.Node.AddDiagnostic(DiagnosticCode.ControlFlow_Kd, issue.Message);
+            issue.Node.AddDiagnostic(DiagnosticPartition.ControlFlow, DiagnosticCode.ControlFlow_Kd, issue.Message);
         }
 
         foreach (var warning in this.warnings)
         {
-            warning.Node.AddDiagnostic(DiagnosticCode.ControlFlowWarning_Kd, warning.Message);
+            warning.Node.AddDiagnostic(DiagnosticPartition.ControlFlow, DiagnosticCode.ControlFlowWarning_Kd, warning.Message);
         }
     }
 

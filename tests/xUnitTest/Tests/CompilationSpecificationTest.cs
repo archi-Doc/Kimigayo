@@ -5,6 +5,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -263,7 +264,6 @@ public class CompilationSpecificationTest
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Empty(project.BuildMetadata);
         project.ProjectFile.LangVersion = Compilation.CurrentLanguageVersion;
-        compilation.Kimigayo.GetOrAddDiagnosticCollection(project.Name).ClearDiagnostic();
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Equal(Compilation.CurrentLanguageVersion, Assert.Single(project.BuildMetadata).LanguageVersion);
     }
@@ -409,7 +409,7 @@ public class CompilationSpecificationTest
         Assert.Null(c.BuildMetadata);
         Assert.Same(TargetTriple.Invalid, c.TargetTriple);
         settings.Remove("windows");
-        c.Kotonoha.DiagnosticCollection.ClearDiagnostic();
+        c.Diagnostics.Invalidate(DiagnosticPartition.Input);
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         Assert.False(c.Variables["Feature"].Bool);
         Assert.Empty(TestDiagnostics.Of(c));

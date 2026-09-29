@@ -267,12 +267,26 @@ public partial class Project
     // is synchronous; do not build another async state machine around every compilation.
     private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null, CheckContext? context = null)
     {
+        // A check request's caller finalizes its own diagnostics; a command renders the preparation result here.
+        var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
+        try
+        {
+            return this.BuildTargets(emit, cancellationToken, paths, context, diagnostics);
+        }
+        finally
+        {
+            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+        }
+    }
+
+    private bool BuildTargets(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context, DiagnosticOwner diagnostics)
+    {
         this.buildMetadata.Clear();
         cancellationToken.ThrowIfCancellationRequested();
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
         if (DependencyConfiguration.Validate(this.ProjectFile) is { } configurationFailure)
         {
-            this.Fail(context, configurationFailure);
+            this.Fail(diagnostics, configurationFailure);
             return false;
         }
 
@@ -285,7 +299,7 @@ public partial class Project
             var failure = DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs);
             if (failure is not null)
             {
-                this.Fail(context, failure);
+                this.Fail(diagnostics, failure);
                 return false;
             }
         }
@@ -301,14 +315,14 @@ public partial class Project
                 {
                     if (!testSources.Add(Path.GetFullPath(source, baseDirectory)))
                     {
-                        this.Fail(context, $"Duplicate resolved TestSources path: {source}");
+                        this.Fail(diagnostics, $"Duplicate resolved TestSources path: {source}");
                         return false;
                     }
                 }
             }
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
             {
-                this.Fail(context, $"Invalid TestSources path: {ex.Message}");
+                this.Fail(diagnostics, $"Invalid TestSources path: {ex.Message}");
                 return false;
             }
         }
@@ -316,7 +330,7 @@ public partial class Project
         var targets = this.ProjectFile.Targets;
         if (targets.Length == 0)
         {
-            this.Fail(context, "At least one compilation target must be configured.");
+            this.Fail(diagnostics, "At least one compilation target must be configured.");
             return false;
         }
 
@@ -324,7 +338,7 @@ public partial class Project
         {
             if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
             {
-                this.Fail(context, "The selected target is not configured in this project.");
+                this.Fail(diagnostics, "The selected target is not configured in this project.");
                 return false;
             }
 
@@ -333,7 +347,7 @@ public partial class Project
 
         if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
         {
-            this.Fail(context, "Emission currently requires exactly one configured Windows x64 target.");
+            this.Fail(diagnostics, "Emission currently requires exactly one configured Windows x64 target.");
             return false;
         }
 
@@ -349,7 +363,7 @@ public partial class Project
                 var failure = DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs);
                 if (failure is not null)
                 {
-                    this.Fail(context, failure);
+                    this.Fail(diagnostics, failure);
                     success = false;
                     continue;
                 }
@@ -375,13 +389,30 @@ public partial class Project
             FilePath = this.FilePath,
         };
 
-        // Each compilation owns its diagnostic scope, so no earlier target's diagnostics can leak into it.
-        var compilation = new Compilation(this.kimigayo, project) { IsTestBuild = prepared is not null };
+        // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
+        // a check request shares its caller's owner.
+        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics) { IsTestBuild = prepared is not null };
         if (context is not null)
         {
             context.Compilation = compilation;
         }
 
+        bool accepted;
+        try
+        {
+            accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
+        }
+        finally
+        {
+            // The one finalization point of the front-end result (SPEC 23.3.6.8).
+            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context);
+        }
+
+        return accepted && emit ? this.Emit(compilation, paths, context) : accepted;
+    }
+
+    private bool CheckFrontEnd(Compilation compilation, string target, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared, CheckContext? context)
+    {
         if (!(graph is null ? compilation.Prepare(target) : compilation.Prepare(target, graph)))
         {
             return false;
@@ -407,11 +438,13 @@ public partial class Project
                     var path = Path.Combine(Path.GetDirectoryName(input.Path)!, source.LogicalPath);
                     try
                     {
-                        compilation.SourceModules[i].AddSource(source.Content.CreateDocument(path));
+                        var document = source.Content.CreateDocument(path);
+                        compilation.Diagnostics.AddInput(document, compilation.SourceModules[i]);
+                        compilation.SourceModules[i].AddSource(document);
                     }
                     catch (DecoderFallbackException)
                     {
-                        compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd, location: path);
+                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidSourceEncoding_Kd, path);
                         return false;
                     }
                 }
@@ -423,14 +456,13 @@ public partial class Project
             {
                 if (exception is not null)
                 {
-                    var collection = compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
                     if (exception is DesynchronizedInputException)
                     {
-                        collection.Add(default, DiagnosticCode.DocumentDesynchronized_Kd, location: path);
+                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.DocumentDesynchronized_Kd, path);
                     }
                     else
                     {
-                        collection.Add(default, DiagnosticCode.SourceReadFailed_Kd, exception.Message, location: path);
+                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, path, exception.Message);
                     }
 
                     return false;
@@ -438,11 +470,13 @@ public partial class Project
 
                 try
                 {
-                    projectKotonoha.AddSource(content!.CreateDocument(path));
+                    var document = content!.CreateDocument(path);
+                    compilation.Diagnostics.AddInput(document, projectKotonoha);
+                    projectKotonoha.AddSource(document);
                 }
                 catch (DecoderFallbackException)
                 {
-                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd, location: path);
+                    compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidSourceEncoding_Kd, path);
                     return false;
                 }
             }
@@ -457,7 +491,9 @@ public partial class Project
                     ExceptionDispatchInfo.Throw(exception);
                 }
 
-                projectKotonoha.AddSource(content!.CreateDocument(path, isTestOnly: true));
+                var document = content!.CreateDocument(path, isTestOnly: true);
+                compilation.Diagnostics.AddInput(document, projectKotonoha);
+                projectKotonoha.AddSource(document);
             }
         }
 
@@ -480,28 +516,25 @@ public partial class Project
         controlFlow.ReportDiagnostics();
         compilation.Ownership.ReportDiagnostics();
 
-        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !projectKotonoha.HasSourceErrors &&
-            !projectKotonoha.DiagnosticCollection.HasErrors;
-        for (var i = 1; i < compilation.SourceModules.Length; i++)
-        {
-            accepted &= !compilation.SourceModules[i].HasSourceErrors && !compilation.SourceModules[i].DiagnosticCollection.HasErrors;
-        }
-
+        // SPEC 23.3.3: acceptance reads the error state of every front-end partition, never the displayed list.
+        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
         if (accepted && prepared is not null)
         {
             compilation.Tests.Discover(compilation);
             prepared(compilation);
         }
 
-        if (!accepted || !emit)
-        {
-            return accepted;
-        }
+        return accepted;
+    }
 
+    // Emission is a later phase with its own result, rendered after the front-end result.
+    private bool Emit(Compilation compilation, ArtifactPaths? paths, CheckContext? context)
+    {
         if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
             // SPEC 21.3.5: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
-            projectKotonoha.DiagnosticCollection.Add(default, compilation.Emission.FailureIsResourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, failure);
+            compilation.Diagnostics.Report(DiagnosticPartition.Emission, compilation.Emission.FailureIsResourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, this.FilePath, failure);
+            this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
             return false;
         }
 
@@ -533,9 +566,15 @@ public partial class Project
         return reads;
     }
 
-    private void Fail(CheckContext? context, string message)
+    private void Fail(DiagnosticOwner diagnostics, string message)
+        => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, message);
+
+    // SPEC 23.3.6.8: a command renders each result once it is finalized; a check request's caller finalizes its own.
+    private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context)
     {
-        this.kimigayo.WriteLine(DiagnosticSeverity.Error, message);
-        context?.Failures.Add(message);
+        if (context is null && this.kimigayo.RendersDiagnostics)
+        {
+            this.kimigayo.Render(diagnostics.Finalize(first, last), this.Directory);
+        }
     }
 }

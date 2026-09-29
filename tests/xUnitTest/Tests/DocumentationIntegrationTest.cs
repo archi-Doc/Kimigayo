@@ -5,6 +5,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -237,7 +238,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         c.Kotonoha.AddSource(new SourceDocument("broken.kimi", "/// broken\nfunc f(\n/// following\nfunc g() => ()"));
-        Assert.True(c.Kotonoha.HasSourceErrors);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         var source = Assert.Single(c.Kotonoha.DocumentationSources);
         Assert.All(source.Comments, x => Assert.Null(x.Declaration));
         Assert.Empty(source.GetDiagnostics());
@@ -268,12 +269,12 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         (Token[] Tokens, string[] Errors) Lex(bool collect)
         {
-            var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection(collect.ToString());
-            var tokenizer = new Tokenizer(diagnostics, source) { CollectDocumentation = collect };
+            var owner = new DiagnosticOwner();
+            var tokenizer = new Tokenizer(owner.GetOrAddCollection(collect.ToString()), source) { CollectDocumentation = collect };
             try
             {
                 tokenizer.ReadAll();
-                return (tokenizer.Tokens.ToArray(), diagnostics.GetArray().Select(x => x.ToString()).ToArray());
+                return (tokenizer.Tokens.ToArray(), owner.Finalize().Diagnostics.Select(x => $"{x.Code}{x.Span}: {x.Message}").ToArray());
             }
             finally
             {
@@ -296,7 +297,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             Lex(ordinary, false);
         }
 
-        Assert.Empty(diagnostics.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         var start = Stopwatch.GetTimestamp();

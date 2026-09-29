@@ -221,7 +221,7 @@ public class WholeValueTest
     public void PayloadProjectionDoesNotConvertInternalTypesOrAcceptTargetOrigin(string function)
     {
         var c = CompilationTestHelper.Parse("struct Cell<T>\n    let item: T\n" + function);
-        Assert.False(c.Bind().IsComplete && !c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Bind().IsComplete && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
     }
 
     [Fact]

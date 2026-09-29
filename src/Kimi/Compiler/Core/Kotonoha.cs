@@ -81,10 +81,6 @@ public sealed partial class Kotonoha
         }
     }
 
-    // Source parsing uses a separate diagnostic collection for each file.
-    [IgnoreMember]
-    internal bool HasSourceErrors { get; private set; }
-
     [Key(3)]
     private List<SourceDocument> sourceDocuments = new();
 
@@ -113,7 +109,7 @@ public sealed partial class Kotonoha
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(url);
 
-        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(name);
+        this.DiagnosticCollection = compilation.Diagnostics.GetOrAddCollection(name, this);
         this.Compilation = compilation;
         this.sourceFormat = 1;
         this.sourceLanguageVersion = Compilation.CurrentLanguageVersion;
@@ -141,12 +137,12 @@ public sealed partial class Kotonoha
     /// <param name="compilation">The compilation that will own the restored source unit.</param>
     public void OnDeserialized(Compilation compilation)
     {
-        this.HasSourceErrors = false;
         ArgumentNullException.ThrowIfNull(compilation);
         // Even an empty snapshot replaces the tree that earlier analyses certified.
         compilation.InvalidateSourceAnalysis();
 
-        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
+        this.DiagnosticCollection = compilation.Diagnostics.GetOrAddCollection(this.Name, this);
+        compilation.Diagnostics.InvalidateSyntax(this);
         this.Compilation = compilation;
         this.RootKoto = new(new CodeContext(this), default, default);
         this.GeneratedFunction = null;
@@ -155,8 +151,7 @@ public sealed partial class Kotonoha
         if (this.sourceFormat != 1 || this.sourceLanguageVersion != Compilation.CurrentLanguageVersion ||
             this.sourceCompilerVersion != Compilation.CompilerVersion)
         {
-            this.HasSourceErrors = true;
-            this.DiagnosticCollection.Add(default, DiagnosticCode.IncompatibleSerializedSource_Kd);
+            compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.IncompatibleSerializedSource_Kd, null);
             return;
         }
 
@@ -215,9 +210,6 @@ public sealed partial class Kotonoha
         this.sourceDocuments.Add(sourceDocument);
     }
 
-    internal void RecordSourceErrors(DiagnosticCollection diagnostics, long previousErrorVersion)
-        => this.HasSourceErrors |= diagnostics.ErrorVersion != previousErrorVersion;
-
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>
     /// <param name="item">The syntax node to add.</param>
@@ -256,9 +248,7 @@ public sealed partial class Kotonoha
             path = Path.GetRelativePath(directory, path);
         }
 
-        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
-        diagnosticCollection.ClearDiagnostic();
-        var errorVersion = diagnosticCollection.ErrorVersion;
+        var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this);
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
@@ -270,9 +260,8 @@ public sealed partial class Kotonoha
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
             codeContext.Documentation?.SetLocation(this.Compilation.Project.Directory, modId, additionOrder);
-            codeContext.Documentation?.Finish(diagnosticCollection.ErrorVersion != errorVersion);
+            codeContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.RecordDocumentation(codeContext.Documentation);
-            this.RecordSourceErrors(diagnosticCollection, errorVersion);
         }
         finally
         {

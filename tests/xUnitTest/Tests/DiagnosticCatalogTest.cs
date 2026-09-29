@@ -108,10 +108,10 @@ public sealed class DiagnosticCatalogTest
     public void AReportMustMatchItsDefinition(DiagnosticCode code, string? first, string? second, DiagnosticFault fault)
     {
         var compilation = Compilation.CreateForTest();
-        var collection = compilation.Kimigayo.GetOrAddDiagnosticCollection("main.kimi");
-        var exception = Assert.Throws<DiagnosticContractException>(() => collection.Add(default, code, first, second));
+        var collection = compilation.Diagnostics.GetOrAddCollection("main.kimi");
+        var exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(default, code, first, second); });
         Assert.Equal(fault, exception.Fault);
-        Assert.Empty(collection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
     }
 
     [Theory]
@@ -122,12 +122,12 @@ public sealed class DiagnosticCatalogTest
     public void ALocationMustLieInItsSource(int start, int length)
     {
         var compilation = Compilation.CreateForTest();
-        var collection = compilation.Kimigayo.GetOrAddDiagnosticCollection("main.kimi");
+        var collection = compilation.Diagnostics.GetOrAddCollection("main.kimi");
         var document = new SourceDocument("main.kimi", "abc");
-        var exception = Assert.Throws<DiagnosticContractException>(() => collection.Add(new(start, length), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document));
+        var exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(new(start, length), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document); });
         Assert.Equal(DiagnosticFault.InvalidLocation, exception.Fault);
 
-        exception = Assert.Throws<DiagnosticContractException>(() => collection.Add(new(0, 1), DiagnosticCode.ProjectLoadFailed_Kd, "failure", location: "main.kimiproj"));
+        exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(new(0, 1), DiagnosticCode.ProjectLoadFailed_Kd, "failure"); });
         Assert.Equal(DiagnosticFault.InvalidLocation, exception.Fault);
     }
 
@@ -135,8 +135,8 @@ public sealed class DiagnosticCatalogTest
     public void AnInsertionPointAtTheEndIsValid()
     {
         var compilation = Compilation.CreateForTest();
-        var collection = compilation.Kimigayo.GetOrAddDiagnosticCollection("main.kimi");
+        var collection = compilation.Diagnostics.GetOrAddCollection("main.kimi");
         collection.Add(new(3, 0), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: new SourceDocument("main.kimi", "abc"));
-        Assert.Single(collection.GetArray());
+        Assert.Single(TestDiagnostics.Of(compilation));
     }
 }

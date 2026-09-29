@@ -63,7 +63,7 @@ public sealed class LspInputTest
     }
 
     [Fact]
-    public void PlacementSortsDeduplicatesAndKeepsCheckedSourcesWithoutDiagnostics()
+    public void PlacementOrdersByRangeAndKeepsCheckedSourcesWithoutDiagnostics()
     {
         var directory = Path.Combine(Path.GetTempPath(), "kimi-place");
         var clean = SourceIdentity.FromPath(Path.Combine(directory, "Clean.kimi"));
@@ -71,23 +71,38 @@ public sealed class LspInputTest
         var project = SourceIdentity.FromPath(Path.Combine(directory, "App.kimiproj"));
         var builtIn = SourceIdentity.FromPath(SourceIdentity.BuiltInPrefix + "src/Kimi/Core.kimi");
         var later = new SourceRange(new(2, 0), new(2, 1));
+        DiagnosticSource[] sources = [new(broken.Value, true), new(builtIn.Value, false)];
         CheckDiagnostic[] diagnostics =
         [
-            new("B_Kd", DiagnosticSeverity.Error, "second", broken, later),
-            new("A_Kd", DiagnosticSeverity.Error, "first", broken, new SourceRange(new(0, 0), new(0, 1))),
-            new("B_Kd", DiagnosticSeverity.Error, "second", broken, later),
-            new("D_Kd", DiagnosticSeverity.Warning, "built-in", builtIn, later),
-            new("C_Kd", DiagnosticSeverity.Error, "unlocated", default, null),
+            Record("B_Kd", "second", 0, later),
+            Record("A_Kd", "first", 0, new SourceRange(new(0, 0), new(0, 1))),
+            Record("B_Kd", "second", 0, later),
+            Record("D_Kd", "built-in", 1, later),
+            Record("C_Kd", "unlocated", -1, null),
         ];
-        var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, diagnostics);
+        var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, diagnostics, sources);
 
+        // SPEC 23.4.7: distinct problems of one result never merge; a record outside a recorded input moves to the project file.
         var reports = WorkspaceCheck.Place(output, [clean, broken, clean, builtIn], project);
         Assert.Equal(3, reports.Count);
         Assert.Empty(reports[clean]);
-        Assert.Equal(["first", "second"], reports[broken].Select(static x => x.Message));
-        Assert.Equal(["unlocated", "built-in"], reports[project].Select(static x => x.Message));
+        Assert.Equal(["first", "second", "second"], reports[broken].Select(static x => x.Message));
+        Assert.Equal(["built-in\nat compiler://src/Kimi/Core.kimi:3:1", "unlocated"], reports[project].Select(static x => x.Message));
         Assert.All(reports[project], static x => Assert.Equal(default, x.Range));
-        Assert.Same(reports[clean], WorkspaceCheck.Place(new(CheckOutcome.Completed, true, TestPresence.No, []), [clean], project)[clean]);
+        Assert.Same(reports[clean], WorkspaceCheck.Place(new(CheckOutcome.Completed, true, TestPresence.No, DiagnosticResult.Empty), [clean], project)[clean]);
+
+        static CheckDiagnostic Record(string code, string message, int source, SourceRange? range)
+            => new(code, DiagnosticSeverity.Error, DiagnosticCategory.Language, message, source, range is null ? null : new SourceSpan(0, 1)) { Display = range is null ? null : new(range, []) };
+    }
+
+    [Fact]
+    public void ContributorsMergeByRangeContributorAndLargestCount()
+    {
+        LspDiagnostic At(int line, string message) => new(new(new(line, 0), new(line, 1)), 1, "A_Kd", "kimigayo", message);
+
+        // The product unit sends one "shared" and the test unit two: two remain, in range and contributor order.
+        var merged = WorkspaceCheck.Merge([[At(0, "shared"), At(1, "product")], [At(0, "shared"), At(0, "shared"), At(1, "test")]]);
+        Assert.Equal(["shared", "shared", "product", "test"], merged.Select(static x => x.Message));
     }
 
     [Fact]

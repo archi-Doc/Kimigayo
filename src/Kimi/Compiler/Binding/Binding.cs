@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -84,6 +85,8 @@ public sealed partial class Binding
         this.running = true;
         try
         {
+            // Every later phase rests on Binding, so its facts are discarded with Binding's.
+            this.compilation.Diagnostics.InvalidateSemantics();
             this.storageVersion++;
             this.issues.Clear();
             this.libraryImports.Clear();
@@ -303,9 +306,10 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Publishes final diagnostics to the source contexts. Invoke after final analysis, not between Mods.</summary>
+    /// <summary>Records Binding's facts, replacing any it recorded before. Invoke after final analysis, not between Mods.</summary>
     public void ReportDiagnostics()
     {
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Binding);
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
@@ -318,39 +322,37 @@ public sealed partial class Binding
 
             if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
             {
-                issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
+                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, plan.Coverage.Describe());
             }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
-                issue.Node.AddDiagnostic(issue.Code, this.DescribeTryFailure(issue.Node));
+                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, this.DescribeTryFailure(issue.Node));
             }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
-                issue.Node.AddDiagnostic(issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
+                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
             }
             else
             {
-                issue.Node.AddDiagnostic(issue.Code, hint: this.BorrowOriginHint(issue.Node));
+                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, hint: this.BorrowOriginHint(issue.Node));
             }
         }
 
         if (this.Result.Mode == BindingMode.Final)
         {
-            for (; this.reportedAliasWarnings < this.aliasWarnings.Count; this.reportedAliasWarnings++)
+            foreach (var alias in this.aliasWarnings)
             {
-                this.aliasWarnings[this.reportedAliasWarnings].AddDiagnostic(DiagnosticCode.HiddenNamedAlias_Kd);
+                alias.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.HiddenNamedAlias_Kd);
             }
 
-            for (; this.reportedPatternWarnings < this.patternWarnings.Count; this.reportedPatternWarnings++)
+            foreach (var warning in this.patternWarnings)
             {
-                var warning = this.patternWarnings[this.reportedPatternWarnings];
-                warning.Pattern.AddDiagnostic(DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
+                warning.Pattern.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
             }
 
-            for (; this.reportedPositionWarnings < this.positionWarnings.Count; this.reportedPositionWarnings++)
+            foreach (var warning in this.positionWarnings)
             {
-                var warning = this.positionWarnings[this.reportedPositionWarnings];
-                warning.Node.AddDiagnostic(DiagnosticCode.PositionAlwaysFails_Kd, warning.Message);
+                warning.Node.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.PositionAlwaysFails_Kd, warning.Message);
             }
         }
     }

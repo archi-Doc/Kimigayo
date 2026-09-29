@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -394,13 +395,14 @@ public sealed class LlvmEmitter
             return "Emission requires resolved source-module inputs and a supported Application or Library startup plan.";
         }
 
+        // Emission reads every front-end partition: an Error anywhere blocks it.
+        if (c.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership))
+        {
+            return "Emission requires a front end without errors.";
+        }
+
         foreach (var sourceModule in c.SourceModules)
         {
-            if (sourceModule.HasSourceErrors || sourceModule.DiagnosticCollection.HasErrors)
-            {
-                return "Emission requires every source module to be free of source and module errors.";
-            }
-
             if (!this.SupportedContainers(sourceModule.RootKoto))
             {
                 return "A selected declaration container requires unsupported implementation lowering.";

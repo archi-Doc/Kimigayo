@@ -137,7 +137,6 @@ public sealed partial class Binding
         this.resolvedSlices.Clear();
         this.exclusiveIndexers.Clear();
         this.positionWarnings.Clear();
-        this.reportedPositionWarnings = 0;
     }
 
     // SPEC 4.6.1, 4.6.9: the key of a fixed-array, Slice or Array selection. An integer key of any PrimitiveInteger Type and

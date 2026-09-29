@@ -171,8 +171,8 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     private static string Serialize(SnapshotCase[] snapshot)
         => JsonSerializer.Serialize(snapshot, Options);
 
-    private static string Relative(string root, SourceIdentity location)
-        => location.IsEmpty ? string.Empty : location.IsBuiltIn ? location.Value : Path.GetRelativePath(root, location.Value).Replace('\\', '/');
+    private static string Relative(string root, string? path)
+        => path is null ? string.Empty : !Path.IsPathFullyQualified(path) ? path : Path.GetRelativePath(root, path).Replace('\\', '/');
 
     private static string Format(SourceRange? range)
         => range is { } value ? $"{value.Start.Line + 1}:{value.Start.Character + 1}-{value.End.Line + 1}:{value.End.Character + 1}" : string.Empty;
@@ -202,7 +202,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         var root = Path.GetDirectoryName(project)!;
-        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Location), Format(x.Range))).ToArray();
+        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range))).ToArray();
         return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
     }
 

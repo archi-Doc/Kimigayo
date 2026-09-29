@@ -40,7 +40,7 @@ public class KotonohaSerializationTest
         var originalFunction = Descendants(original.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         var restoredFunction = Descendants(restored.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         Assert.Equal(originalFunction.Span, restoredFunction.Span);
-        Assert.Same(restored.SourceDocuments[0], restoredFunction.DiagnosticCollection!.SourceDocument);
+        Assert.Same(restored.SourceDocuments[0], restoredFunction.DiagnosticCollection!.Document);
         Assert.All(Descendants(restored.RootKoto), node =>
         {
             Assert.Same(restored, node.Kotonoha);

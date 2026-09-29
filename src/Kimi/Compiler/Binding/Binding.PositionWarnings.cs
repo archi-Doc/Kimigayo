@@ -12,7 +12,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<(Koto Node, string Message)> positionWarnings = new();
-    private int reportedPositionWarnings;
 
     private static long FixedLength(BoundType? core) => core is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } ? core.Length : -1;
 

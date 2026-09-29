@@ -37,12 +37,12 @@ public class StructEmissionTest
     public void ExecutesConstructionAndDestruction(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(!c.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", TestDiagnostics.Of(c)));
+        Assert.True(!c.Diagnostics.HasErrors, string.Join("\n", TestDiagnostics.Of(c)));
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(
-            c.Library.IsValid && !c.Kotonoha.HasSourceErrors && c.Ownership.Result.IsVerified &&
+            c.Library.IsValid && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha) && c.Ownership.Result.IsVerified &&
                 !c.Binding.Obligations.Any(x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha)),
-            $"Core={c.Library.IsValid}; SourceErrors={c.Kotonoha.HasSourceErrors}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
+            $"Core={c.Library.IsValid}; SourceErrors={c.Diagnostics.HasSyntaxErrors(c.Kotonoha)}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
         ScalarEmissionTest.EmitFixture("Struct" + name, source, stdout);
     }
 
@@ -68,7 +68,7 @@ public class StructEmissionTest
     public void RejectsInvalidStructOperations(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
@@ -82,7 +82,7 @@ public class StructEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    var value: i32\n    public init()\n        " + body + "\nlet s = S.init()");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
     }
 

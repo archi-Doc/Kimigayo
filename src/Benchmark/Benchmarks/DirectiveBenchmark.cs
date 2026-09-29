@@ -52,7 +52,7 @@ public class DirectiveBenchmark
         var validation = Compilation.CreateForTest();
         validation.Prepare("x86_64-pc-windows-msvc");
         validation.Kotonoha.CreateCodeContext().Parse(validation.Kotonoha.RootKoto, this.source);
-        if (validation.Kotonoha.DiagnosticCollection.GetArray().Length != 0)
+        if (validation.Diagnostics.HasErrors)
         {
             throw new InvalidOperationException("Benchmark source must parse without diagnostics.");
         }

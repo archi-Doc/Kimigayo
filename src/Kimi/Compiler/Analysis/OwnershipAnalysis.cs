@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -60,6 +61,9 @@ public sealed partial class OwnershipAnalysis
         {
             throw new InvalidOperationException("Ownership analysis requires final Binding.");
         }
+
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
 
         this.Invalidate();
         this.supportedTypes.Clear();
@@ -128,10 +132,11 @@ public sealed partial class OwnershipAnalysis
 
     public void ReportDiagnostics()
     {
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Source.AddDiagnostic(issue.Code);
+            issue.Source.AddDiagnostic(DiagnosticPartition.Ownership, issue.Code);
         }
     }
 

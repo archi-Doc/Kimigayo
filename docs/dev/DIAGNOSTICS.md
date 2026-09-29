@@ -179,7 +179,8 @@ The D1 audit of the catalog and its reporting sites. Each item names the common 
 | Implementation limits reported with `Language` codes: element writes and exclusive element borrows through `uniq` references (`InvalidAssignment_Kd`, `TransferRequired_Kd`, PLAN G35); unimplemented Property calls and flow refinement (`UnresolvedBinding_Kd`, Programs 24 and 33); undeclared rc/arc intrinsics (`UnresolvedBinding_Kd`, Program 34, G4); unformed `Weak<rc/T>` (`InvalidTypeFormation_Kd`, Programs 35 and 38). | 3 | D2b (Binding) |
 | Binding's fallback reports `UnresolvedBinding_Kd` at the first unresolved node when no Binding issue exists, even after syntax errors; a node failed as unresolved and later completed keeps its failure and can suppress others without being reported. | 8 | D2b (Binding) |
 | `hint` text is appended to the message: `BorrowOriginHint` (Binding) and the borrow-annotation advice of the parser. | 2 | D2b |
-| All embedded Kimi library sources share one collection, so start-offset suppression collides across library files. | 10 | D2a |
+| All embedded Kimi library sources share one former collection, so the transitional start-offset filter collides across library files until it is removed. | 10 | D2b |
+| The primary span of an unsupported closure (Program 26) starts after `func [captures]`, so the underline omits the construct's head. | Primary location rule | D3 |
 | `UnsupportedCompileTimeConditionType_Kd` is categorized `Language`; confirm against SPEC §19 whether the rejected Types are a language rule or a limit. | 3 | D2b (parsing) |
 
 Repaired in D1: skip helpers reported `UnexpectedTrailingToken_Kd` with an unused argument and used `Template_Kd` as a "no diagnostic" sentinel; `DocumentDesynchronized_Kd` received exception text; source read failures were `GenerationFailed_Kd` (now `SourceReadFailed_Kd`); an incompatible serialized source unit was `UnexpectedToken_Kd` with prose (now `IncompatibleSerializedSource_Kd`).

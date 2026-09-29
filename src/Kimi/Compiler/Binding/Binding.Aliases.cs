@@ -11,7 +11,6 @@ public sealed partial class Binding
     private readonly Dictionary<(SourceDocument Document, string Name), AliasKoto> namedAliases = new();
     private readonly List<AliasKoto> aliasWarnings = new();
     private readonly Dictionary<Koto, BoundType> importedContainerEnvironments = new(ReferenceEqualityComparer.Instance);
-    private int reportedAliasWarnings;
     private int aliasResolutionDepth;
 
     private void ResetAliases()
@@ -26,7 +25,6 @@ public sealed partial class Binding
         this.defaultAliasTargets.Clear();
         this.namedAliases.Clear();
         this.aliasWarnings.Clear();
-        this.reportedAliasWarnings = 0;
     }
 
     private void PrepareAliases()

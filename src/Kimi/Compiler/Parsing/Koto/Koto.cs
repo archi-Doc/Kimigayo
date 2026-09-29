@@ -540,6 +540,15 @@ public abstract class Koto
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
         => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
 
+    /// <summary>Reports a problem of one analysis phase at this node.</summary>
+    /// <param name="partition">The phase's partition.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="obj">The first message argument.</param>
+    /// <param name="obj2">The second message argument.</param>
+    /// <param name="hint">Text appended to the message; removed in D2b.</param>
+    public void AddDiagnostic(DiagnosticPartition partition, DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
+        => this.DiagnosticCollection?.Add(partition, this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
+
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
     /// <returns><see langword="true"/> when the attribute was removed.</returns>

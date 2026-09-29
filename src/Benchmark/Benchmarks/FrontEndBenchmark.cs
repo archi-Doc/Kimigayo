@@ -67,7 +67,7 @@ public class FrontEndBenchmark
         var validation = Compilation.CreateForTest().Kotonoha;
         var context = validation.CreateCodeContext();
         context.Parse(validation.RootKoto, this.source);
-        if (context.DiagnosticCollection.GetArray().Length != 0)
+        if (context.Compilation.Diagnostics.HasErrors)
         {
             throw new InvalidOperationException("Benchmark source must parse without diagnostics.");
         }

@@ -135,19 +135,18 @@ public class MinimalEmissionTest
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public void DirectParseErrorsRemainFatalAfterDiagnosticClearing(bool customDestination, bool existingDiagnostic)
+    public void DirectParseErrorsRemainFatal(bool customDestination, bool existingDiagnostic)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        var diagnostics = customDestination ? c.Diagnostics.GetOrAddCollection("Added.kimi", c.Kotonoha) : c.Kotonoha.DiagnosticCollection;
         if (existingDiagnostic)
         {
-            // The parser error will have the same offset as an already displayed error.
+            // The parser error has the same offset as an earlier error; the error state still records it.
             diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: new SourceDocument("Earlier.kimi", "x"));
         }
 
         c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual func unavailable() => ()"));
-        Assert.True(diagnostics.HasErrors);
-        diagnostics.ClearDiagnostic();
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Ownership.Analyze();
@@ -159,16 +158,19 @@ public class MinimalEmissionTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void DirectValidParseDoesNotLatchPreexistingDiagnosticsAsSourceErrors(bool customDestination)
+    public void DirectValidParseKeepsItsOwnSyntaxStateAndEveryErrorBlocksEmission(bool customDestination)
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
+        var diagnostics = customDestination ? c.Diagnostics.GetOrAddCollection("Added.kimi", c.Kotonoha) : c.Kotonoha.DiagnosticCollection;
         diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: new SourceDocument("Earlier.kimi", "x"));
-        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "func added() => ()"));
-        diagnostics.ClearDiagnostic();
+        var added = new SourceDocument("Added.kimi", "func added() => ()");
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, added);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(added));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Ownership.Analyze();
+        Assert.False(c.Emission.Validate(out _));
+        c.Diagnostics.InvalidateSyntax(c.Kotonoha);
         Assert.True(c.Emission.Validate(out var error), Describe(c, error));
     }
 
@@ -176,7 +178,7 @@ public class MinimalEmissionTest
     public void DirectParseWarningsDoNotPreventEmission()
     {
         var c = Analyze("Console.writeLine(\"original\")");
-        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi");
+        var diagnostics = c.Diagnostics.GetOrAddCollection("Added.kimi", c.Kotonoha);
         c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "struct S\n    public func read(self: ref/Self) -> i32 => self.value\n    public let value: i32"));
         Assert.Equal(DiagnosticSeverity.Warning, Assert.Single(TestDiagnostics.Of(c, "Added.kimi")).Severity);
         Assert.True(c.Bind().IsComplete);
