@@ -361,6 +361,9 @@ internal enum ArrayHelperKind : byte
     // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     OwnStorage,
+
+    // PLAN G33: a consumed fixed array moves into the inline storage of its owning remainder.
+    OwnFixedStorage,
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>

@@ -618,6 +618,13 @@ public sealed partial class Binding
 
             if (source is MemberAccessKoto access)
             {
+                // SPEC 16.3.1: the destruction receiver has access equivalent to uniq/Self, so its initialized fields
+                // may be borrowed exclusively although the receiver itself is not an assignable binding.
+                if (IsSpecialField(access, out var special) && special.IsDestructor)
+                {
+                    return true;
+                }
+
                 return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
                     ? !exclusive || receiver.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
                     : this.BorrowablePlace(access.Left, scope, exclusive);

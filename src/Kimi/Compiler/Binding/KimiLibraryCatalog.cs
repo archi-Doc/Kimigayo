@@ -142,6 +142,10 @@ internal static class KimiLibraryCatalog
         // SPEC 22.1.2.5: the fixed-array overloads of the contiguous borrowing remainders.
         new(KimiDeclarationId.StorageBorrowFixedShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedShared, Overload: 4),
         new(KimiDeclarationId.StorageBorrowFixedExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedExclusive, Overload: 5),
+        // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
+        new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),
+        new(KimiDeclarationId.StorageInlineBase, "inlineBase", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageInlineBase),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -152,7 +156,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageBorrowFixedExclusive;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageInlineBase;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

@@ -155,7 +155,7 @@ internal static partial class LlvmModuleWriter
         foreach (var helper in module.ArrayHelpers)
         {
             output.Write(helper.Abi.GetDefinition(false));
-            output.Write(helper.Kind == ArrayHelperKind.OwnStorage ? "entry:\n" : ArrayHelperPrologue);
+            output.Write(helper.Kind is ArrayHelperKind.OwnStorage or ArrayHelperKind.OwnFixedStorage ? "entry:\n" : ArrayHelperPrologue);
             if (helper.Kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex)
             {
                 output.Write("  %index_offset = load i64, ptr %index_value, align 8\n  %direction_ptr = getelementptr i8, ptr %index_value, i64 8\n  %direction = load i8, ptr %direction_ptr, align 1\n  %from_end = icmp ne i8 %direction, 0\n  br i1 %from_end, label %resolve_end, label %resolve_start\nresolve_end:\n  %backward = sub i64 %length, %index_offset\n  br label %resolved\nresolve_start:\n  br label %resolved\nresolved:\n  %index = phi i64 [ %backward, %resolve_end ], [ %index_offset, %resolve_start ]\n");
@@ -188,6 +188,9 @@ internal static partial class LlvmModuleWriter
                     break;
                 case ArrayHelperKind.OwnStorage:
                     WriteArrayOwn(output);
+                    break;
+                case ArrayHelperKind.OwnFixedStorage:
+                    WriteFixedOwn(output, helper);
                     break;
                 default:
                     WriteArrayClear(output, helper, helper.Kind == ArrayHelperKind.Drop);
@@ -332,6 +335,27 @@ internal static partial class LlvmModuleWriter
     {
         output.Write("  %buffer = load ptr, ptr %value, align 8\n  %length_ptr = getelementptr i8, ptr %value, i64 8\n  %length = load i64, ptr %length_ptr, align 8\n  %capacity_ptr = getelementptr i8, ptr %value, i64 16\n  %capacity = load i64, ptr %capacity_ptr, align 8\n" +
             "  store ptr %buffer, ptr %result, align 8\n  %position_slot = getelementptr i8, ptr %result, i64 8\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 16\n  store i64 %length, ptr %count_slot, align 8\n  %capacity_slot = getelementptr i8, ptr %result, i64 24\n  store i64 %capacity, ptr %capacity_slot, align 8\n  ret void\n");
+    }
+
+    // Moves the consumed fixed array into the remainder's inline storage and opens its whole range (SPEC 22.1.2.5).
+    private static void WriteFixedOwn(TextWriter output, ArrayHelper helper)
+    {
+        var remainder = helper.Remainder ?? throw new InvalidOperationException("Fixed-array ownStorage needs its remainder layout.");
+        var size = remainder.Fields[0].Layout.Size;
+        if (size != 0)
+        {
+            output.Write("  %storage_slot = getelementptr i8, ptr %result, i64 ");
+            WriteNumber(output, remainder.Offset(0));
+            output.Write("\n  call void @llvm.memcpy.p0.p0.i64(ptr %storage_slot, ptr %value, i64 ");
+            WriteNumber(output, size);
+            output.Write(", i1 false)\n");
+        }
+
+        output.Write("  %position_slot = getelementptr i8, ptr %result, i64 ");
+        WriteNumber(output, remainder.Offset(1));
+        output.Write("\n  store i64 0, ptr %position_slot, align 8\n  %count_slot = getelementptr i8, ptr %result, i64 ");
+        WriteNumber(output, remainder.Offset(2));
+        output.Write("\n  store i64 %count, ptr %count_slot, align 8\n  ret void\n");
     }
 
     // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).

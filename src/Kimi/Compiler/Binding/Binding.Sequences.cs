@@ -65,15 +65,11 @@ public sealed partial class Binding
             iterable = iterable.Components[0];
         }
 
-        // Dynamic Array, Dictionary and the shared and exclusive fixed-array loops use their Kimigayo entries and iterators
-        // (SPEC 14.6.2, 22.1.2.5, PLAN G32); an owning fixed-array loop keeps the sequence boundary until its inline
-        // owning remainder exists (PLAN G33).
-        var fixedOwning = iterable?.Kind == BoundTypeKind.FixedArray && source.Mode == SubjectMode.ByValue;
-
-        // SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries directly; a
-        // validated interval never Aborts, so no iterator value is formed.
+        // Dynamic Array, Dictionary and fixed-array loops use their Kimigayo entries and iterators (SPEC 14.6.2, 22.1.2.5,
+        // PLAN G32, G33). SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
+        // directly; a validated interval never Aborts, so no iterator value is formed.
         var view = iterable;
-        var element = view is null ? null : fixedOwning ? view.Components[0] : view.Kind == BoundTypeKind.Slice
+        var element = view is null ? null : view.Kind == BoundTypeKind.Slice
             ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
 
         var userEntry = element is null && iterable is not null &&
@@ -131,7 +127,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not BoundTypeKind.Slice && !fixedOwning)
+        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not BoundTypeKind.Slice)
         {
             return this.FailIterationSubject(source, scope, iterable);
         }

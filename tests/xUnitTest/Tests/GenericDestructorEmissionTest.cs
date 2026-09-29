@@ -39,6 +39,46 @@ public class GenericDestructorEmissionTest
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
     }
 
+    // SPEC 16.3.1: the destruction receiver has access equivalent to uniq/Self, so its initialized fields may be borrowed
+    // exclusively or shared; the whole receiver still cannot be passed as an ordinary borrow.
+    [Fact]
+    public void DestructorBorrowsItsFields()
+    {
+        var source = """
+            struct Counter
+                public var n: i32
+                public init() => self.n = 0
+            group Support
+                public func bump(counter: uniq/Counter) => counter.n += 1
+                public func show(counter: ref/Counter) => Console.writeLine("count \(counter.n)")
+            struct Owner
+                var counter: Counter
+                public init() => self.counter = Counter.init()
+                deinit
+                    Support.bump(self.counter@uniq)
+                    Support.show(self.counter@ref)
+            let owner = Owner.init()
+            """;
+        ScalarEmissionTest.EmitFixture("DestructorFieldBorrows", source, "count 1\n");
+    }
+
+    [Theory]
+    [InlineData("Support.take(self@uniq)")]
+    [InlineData("Support.take(self)")]
+    public void DestructorReceiverIsNotAnOrdinaryBorrow(string use)
+    {
+        var c = MinimalEmissionTest.Analyze($$"""
+            struct Owner
+                var n: i32
+                public init() => self.n = 0
+                deinit => {{use}}
+            group Support
+                public func take(owner: uniq/Owner) => ()
+            ()
+            """);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Fact]
     public void InstantiatedBodyRunsBeforeInstantiatedFieldCleanup()
         => ScalarEmissionTest.EmitFixture(

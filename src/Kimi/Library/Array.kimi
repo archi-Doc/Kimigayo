@@ -165,3 +165,14 @@ public struct ArrayOwningIterator<T>
     internal init(state: Storage.OwnedRemainder<T>) => self.state = state@move
     public func next(self: uniq/Self) -> Option<T>
         return Storage.takeFirst(self.state@uniq)
+
+/// The standard owning fixed-array iterator: each `next` transfers the next unreturned element out, and the unreturned
+/// elements are destroyed with the iterator in reverse index order (SPEC 22.1.2.3, 22.1.2.5). `A` is the array Type
+/// `[N of E]`, since only functions have length slots (SPEC 4.4).
+public struct FixedArrayOwningIterator<E, A>
+    Self is Iterator
+    associate Iterator.Item is E
+    var state: Storage.FixedOwnedRemainder<E, A>
+    internal init(state: Storage.FixedOwnedRemainder<E, A>) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<E>
+        return Storage.takeFirst(self.state@uniq)

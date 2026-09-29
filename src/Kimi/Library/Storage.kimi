@@ -121,6 +121,35 @@ internal group Storage
             state.link = (slot@unsafe/isize)[1]
             return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))
 
+    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, whose contents the compiler never destroys
+    /// (PLAN G33): its owner destroys what remains of `value` through unsafe element addressing. It takes the stored Type,
+    /// not `<E, length N>`, because only functions have length slots (SPEC 4.4).
+    internal struct InlineStorage<A>
+        internal var value: A
+
+    /// The inline elements and destruction responsibility transferred from a fixed array for its unreturned elements
+    /// `[position, position + count)` (SPEC 22.1.2.5).
+    internal struct FixedOwnedRemainder<E, A>
+        internal var storage: InlineStorage<A>
+        internal var position: isize
+        internal var count: isize
+
+        // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
+        deinit
+            var elements: unsafe/E = null
+            unsafe => elements = inlineBase<E, A>(self.storage@uniq)
+            while self.count > 0
+                self.count -= 1
+                unsafe => _ = elements[self.position + self.count]
+
+    /// Transfers the first unreturned element out of a fixed array's inline storage and advances the owning remainder.
+    internal func takeFirst<E, A>(state: uniq/FixedOwnedRemainder<E, A>) -> Option<E>
+        require state.count > 0 else => return .None
+        let position = state.position
+        state.position += 1
+        state.count -= 1
+        unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position])
+
     // SPEC 22.1, 22.1.2.2 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
     // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
@@ -133,3 +162,8 @@ internal group Storage
         /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
         public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
             return ArrayUniqIterator<E>.init(borrowStorage(self))
+
+        /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
+        /// with the iterator in reverse index order (SPEC 4.7.6).
+        public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
+            return FixedArrayOwningIterator<E, [N of E]>.init(ownStorage(self@move))

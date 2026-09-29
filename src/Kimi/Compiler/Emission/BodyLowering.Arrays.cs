@@ -108,6 +108,7 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => "__kimi_array_swap_",
             ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
             ArrayHelperKind.OwnStorage => "__kimi_array_own_",
+            ArrayHelperKind.OwnFixedStorage => "__kimi_fixed_own_",
             _ => "__kimi_array_drop_",
         };
         var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
@@ -135,6 +136,8 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage when remainder!.Fields[0].Layout.Size == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
@@ -319,6 +322,16 @@ internal sealed partial class BodyLowering
         if (kind == CompilerFunctionKind.StorageRelease)
         {
             return this.LowerStorageRelease(body, function, constants, directory, id, call, plan, out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StorageOwnFixed)
+        {
+            return this.LowerFixedStorageOwn(body, function, id, call, plan, out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StorageInlineBase)
+        {
+            return this.LowerStorageInlineBase(body, function, id, call, plan, out failure);
         }
 
         if (kind is >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageSplitValue)

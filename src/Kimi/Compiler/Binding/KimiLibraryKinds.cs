@@ -91,4 +91,6 @@ public enum CompilerFunctionKind : byte
     StorageValueAt,
     StorageBorrowFixedShared,
     StorageBorrowFixedExclusive,
+    StorageOwnFixed,
+    StorageInlineBase,
 }

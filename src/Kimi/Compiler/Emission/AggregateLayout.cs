@@ -214,9 +214,17 @@ internal sealed class AggregateLayoutPool
                 this.children.Add(child);
             }
 
+            // PLAN G33: the compiler never destroys an InlineStorage; its owner destroys the contents it still holds.
+            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true;
+            for (var i = 0; i < fieldCount; i++)
+            {
+                destroy |= ReferenceEquals(this.fields[start + i], WindowsLowering.String) || this.children[start + i]?.NeedsDestruction == true;
+            }
+
+            destroy &= (!array || count != 0) && !(structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage);
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout))
+                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
                 {
                     continue;
                 }
@@ -235,11 +243,9 @@ internal sealed class AggregateLayoutPool
             }
 
             var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
-            var destroy = destructor >= 0 || genericDestructor is not null || baseLayout?.NeedsDestruction == true;
             for (var i = 0; i < fieldCount; i++)
             {
                 alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
-                destroy |= ReferenceEquals(this.fields[start + i], WindowsLowering.String) || this.children[start + i]?.NeedsDestruction == true;
             }
 
             // The existing physical plan uses signed 32-bit byte offsets. Reject its
@@ -251,7 +257,6 @@ internal sealed class AggregateLayoutPool
             if (array)
             {
                 size = (long)count * this.fields[start].Layout.Stride;
-                destroy &= count != 0;
             }
             else if (cLayout)
             {

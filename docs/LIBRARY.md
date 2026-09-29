@@ -240,9 +240,19 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison. |
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once, so earlier items stay valid across later steps. |
-| `intoIterator(self: Self) -> ArrayOwningIterator<T>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in index order and frees the buffer. |
+| `intoIterator(self: Self) -> ArrayOwningIterator<T>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and frees the buffer. |
 
 `ArrayIterator<T> {source}`, `ArrayUniqIterator<T> {source}` and `ArrayOwningIterator<T>` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source`, `uniq/T during source` or `T`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+
+A fixed array `[N of T]` has no source declaration. Its members are receiver functions of the internal group `Kimi.Storage.FixedArray`, public on any `[N of T]` receiver, and the compiler records the entry conformances they implement (SPEC §22.1).
+
+| Member | Guarantee |
+| --- | --- |
+| `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
+| `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
+| `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
+
+`FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline in its private storage-boundary Field. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 

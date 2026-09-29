@@ -55,6 +55,8 @@ public sealed partial class KimiLibrary
                             >= KimiDeclarationId.StorageBorrowDictionaryExclusive and <= KimiDeclarationId.StorageSplitValue or
                             >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt => this.ValidDictionaryStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive => this.ValidFixedStorageOperation(symbol, entry.Id),
+                        KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
+                        KimiDeclarationId.StorageOwnFixed or KimiDeclarationId.StorageInlineBase => this.ValidFixedOwningOperation(symbol, entry.Id),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -550,6 +552,14 @@ public sealed partial class KimiLibrary
         ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E", true) && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize", true) && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize", true) &&
         (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize", true));
 
+    // PLAN G33: InlineStorage<A> is an internal Storage struct with exactly one Field `value: A` and no destructor; the
+    // compiler never destroys it, so its owner destroys the contents it still holds.
+    private bool ValidInlineStorage(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None &&
+        symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "A", SemanticsParameter: null, AttributeChain: null }] } declaration &&
+        declaration.Name == "InlineStorage" && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) && declaration.OriginNames.Count == 0 &&
+        StorageFields(declaration) == 1 && ValidStorageField(declaration, 0, VariableKind.Var, "value", "A", true);
+
     // SPEC 22.1.2.5: a Dictionary remainder follows the slot links from `link` for `count` live entries.
     // The owning remainder also keeps the last unreturned entry's link and destroys the unreturned entries itself.
     private bool ValidDictionaryRemainder(BindingSymbol symbol, KimiDeclarationId id)
@@ -637,6 +647,34 @@ public sealed partial class KimiLibrary
             input.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && BareName(array.ElementType, "E") && BareName(array.Length, "N") &&
             function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, OriginName: "a", Type: GenericsKoto { TypeArguments: [var element] } result } &&
             BareName(result.Identifier, exclusive ? "UniqRemainder" : "RefRemainder") && BareName(element, "E");
+    }
+
+    // PLAN G33: ownStorage over a consumed [N of E] returns FixedOwnedRemainder<E, [N of E]>, and the unsafe inlineBase
+    // publishes the element address of an exclusively borrowed InlineStorage<A> as unsafe/E; the compiler implements both.
+    private bool ValidFixedOwningOperation(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function ||
+            symbol.Declaration is not FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0 } function ||
+            !ReferenceEquals(function.Parent, this.StorageScope.Owner))
+        {
+            return false;
+        }
+
+        if (id == KimiDeclarationId.StorageOwnFixed)
+        {
+            return function is { Name: "ownStorage", Modifier: ModifierKind.Internal } &&
+                function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
+                function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } parameter] &&
+                BareType(parameter.Type) is FixedArrayTypeKoto input && BareName(input.ElementType, "E") && BareName(input.Length, "N") &&
+                BareType(function.ReturnType) is GenericsKoto { TypeArguments: [var element, var storedType] } result && BareType(storedType) is FixedArrayTypeKoto owned && BareName(result.Identifier, "FixedOwnedRemainder") &&
+                BareName(element, "E") && BareName(owned.ElementType, "E") && BareName(owned.Length, "N");
+        }
+
+        return function is { Name: "inlineBase", Modifier: ModifierKind.Internal | ModifierKind.Unsafe } &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "A", SemanticsParameter: null, AttributeChain: null }] &&
+            function.Parameters is [{ InternalName: "storage", ExternalName: "storage", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, OriginName: null, OriginExpression: null, Type: GenericsKoto { TypeArguments: [var stored] } storage } }] &&
+            BareName(storage.Identifier, "InlineStorage") && BareName(stored, "A") &&
+            function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, "E");
     }
 
     // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing

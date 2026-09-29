@@ -15,6 +15,7 @@ public sealed partial class Binding
     {
         Add(this.FixedArrayWitness(this.Library.Iterable));
         Add(this.FixedArrayWitness(this.Library.UniqIterable));
+        Add(this.FixedArrayWitness(this.Library.IntoIterable));
 
         void Add(BindingSymbol? witness)
         {
@@ -26,7 +27,7 @@ public sealed partial class Binding
     }
 
     private static bool IsFixedArrayEntry(BoundType? type, BindingSymbol contract)
-        => type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable;
+        => type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable or KimiDeclarationId.IntoIterable;
 
     // The witness of the fixed array's conformance to the entry Contract, or null when the Kimi group lacks it.
     private BindingSymbol? FixedArrayWitness(BindingSymbol contract)
@@ -35,6 +36,7 @@ public sealed partial class Binding
         {
             KimiDeclarationId.Iterable => "iterate",
             KimiDeclarationId.UniqIterable => "iterateUniq",
+            KimiDeclarationId.IntoIterable => "intoIterator",
             _ => null,
         };
         return name is not null && this.Library.FixedArrayMembers is { } members && this.scopes.TryGetValue(members, out var scope) &&

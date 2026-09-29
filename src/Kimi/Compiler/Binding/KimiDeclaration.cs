@@ -126,6 +126,9 @@ public enum KimiDeclarationId : byte
     StorageValueAt,
     StorageBorrowFixedShared,
     StorageBorrowFixedExclusive,
+    InlineStorage,
+    StorageOwnFixed,
+    StorageInlineBase,
 }
 
 public enum KimiDeclarationState : byte
