@@ -417,9 +417,14 @@ public sealed class ControlFlowAnalysis
                 flow = this.Visit(rangeValue, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
             case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:
-                // SPEC 4.6.4: an Index or Range key is resolved by a synthesized call that reads the receiver's length
-                // and the key; the selection completes as that call does.
-                flow = this.Visit(resolvedKey, reachable) with { Type = this.types.GetExpressionType(node) };
+                // SPEC 4.6.4: the receiver is evaluated, then a synthesized call resolves the key against the length of that
+                // evaluated receiver; the selection completes as both do.
+                var selectedFlow = this.Visit(keyed.Left, reachable);
+                var keyFlow = this.Visit(resolvedKey, reachable && selectedFlow.Normal);
+                flow = new(selectedFlow.Normal && keyFlow.Normal, this.types.GetExpressionType(node), Union(selectedFlow.Transfers, selectedFlow.Normal ? keyFlow.Transfers : null), selectedFlow.Pending || keyFlow.Pending);
+                break;
+            case EvaluatedKoto:
+                flow = new(true, this.types.GetExpressionType(node)); // Its desugaring evaluated the source already.
                 break;
             case IdentifierNameKoto when node.CodeContext.Compilation.Binding.StorageProjection(node) is { } storage:
                 flow = this.Visit(storage, reachable);

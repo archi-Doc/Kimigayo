@@ -17,8 +17,8 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, InvocationKoto> boundaryCalls = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 4.6.1, 4.6.4: an Index, IndexRange or Range<I> key of a built-in selection is resolved against the receiver's
-    // length by a synthesized key.resolve(receiver.length) call whose length argument shares the receiver Place, so the
-    // receiver is restricted to a Place written as a path; a ResolvedRange key is applied as written and rechecked.
+    // length by a synthesized key.resolve(receiver.length) call whose length argument reads the receiver the selection
+    // evaluated (an EvaluatedKoto), so any receiver is evaluated once; a ResolvedRange key is applied as written and rechecked.
     private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
 
@@ -49,16 +49,6 @@ public sealed partial class Binding
         node.BoundSymbol = null;
         node.BindingFailure = BindingFailure.None;
     }
-
-    // A receiver written as a path: its shared use by the synthesized length read and the selection evaluates no call twice.
-    private static bool IsPlaceSyntax(Koto node) => KotoHelper.UnwrapParentheses(node) switch
-    {
-        IdentifierNameKoto => true,
-        MemberAccessKoto member => IsPlaceSyntax(member.Left),
-        IndexKoto index => IsPlaceSyntax(index.Left),
-        ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } followed => IsPlaceSyntax(followed.Left),
-        _ => false,
-    };
 
     // The element Type T of a Range<T>, or null for any other Type.
     private BoundType? RangeElement(BoundType? type)
@@ -148,12 +138,6 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!IsPlaceSyntax(source.Left))
-        {
-            result = Fail(source, BindingFailure.Unsupported);
-            return true;
-        }
-
         if ((index || unresolved) && this.ResolveKeyCall(source, scope) is null)
         {
             result = Complete(source, null);
@@ -185,7 +169,10 @@ public sealed partial class Binding
     {
         if (!this.resolvedKeys.TryGetValue(source, out var call))
         {
-            var length = new MemberAccessKoto(source, source.Left, new IdentifierNameKoto(source, "length"));
+            // The length is read from the receiver the selection evaluates, never from a second evaluation of its syntax.
+            var receiver = new EvaluatedKoto(source.Left);
+            var length = new MemberAccessKoto(source, receiver, new IdentifierNameKoto(source, "length"));
+            receiver.Parent = length;
             call = new InvocationKoto(source, new MemberAccessKoto(source, source.Right, new IdentifierNameKoto(source, "resolve")), [length]);
             this.resolvedKeys[source] = call;
         }
@@ -196,6 +183,7 @@ public sealed partial class Binding
         ResetSynthetic(callee);
         ResetSynthetic(callee.Right);
         ResetSynthetic(lengthArgument);
+        ResetSynthetic(lengthArgument.Left);
         ResetSynthetic(lengthArgument.Right);
         return this.BindCall(call, scope, null) is null ? null : call;
     }

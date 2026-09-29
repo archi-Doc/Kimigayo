@@ -97,6 +97,9 @@ internal static class ElementAccess
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity } conversion:
                     source = conversion.Left;
                     break;
+                case EvaluatedKoto evaluated:
+                    source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
+                    break;
                 default:
                     return source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }

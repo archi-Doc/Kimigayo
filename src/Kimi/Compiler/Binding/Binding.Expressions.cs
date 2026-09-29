@@ -400,6 +400,9 @@ public sealed partial class Binding
 
         switch (node)
         {
+            case EvaluatedKoto evaluated:
+                // A desugaring's evaluated operand has its source's Type; binding it evaluates nothing.
+                return Complete(evaluated, evaluated.Source.BoundType);
             case SyntaxFormKoto { Akind: KotoKind.EnumCase } enumeration when TryEnumPayload(enumeration, out var payload):
                 enumeration.Operands[0].BoundSymbol = enumeration.BoundSymbol;
                 Complete(enumeration.Operands[0], BoundType.Unit);

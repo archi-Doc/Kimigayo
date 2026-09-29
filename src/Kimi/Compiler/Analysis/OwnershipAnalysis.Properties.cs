@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private readonly Dictionary<Koto, int> propertyReceivers = new(ReferenceEqualityComparer.Instance);
-
     private int UpdateProperty(Koto source, Koto target, MemberAccessKoto storage)
     {
         var binding = this.compilation.Binding;
@@ -38,7 +36,8 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        this.propertyReceivers[storage.Left] = receiver;
+        var located = ((EvaluatedKoto)storage.Left).Source;
+        this.evaluatedOperands[located] = (receiver, -1);
         try
         {
             var previous = getter is null ? this.Value(this.ReadBorrowedField(storage))
@@ -68,7 +67,7 @@ public sealed partial class OwnershipAnalysis
         }
         finally
         {
-            this.propertyReceivers.Remove(storage.Left);
+            this.evaluatedOperands.Remove(located);
         }
     }
 

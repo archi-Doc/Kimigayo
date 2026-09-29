@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
         if (ElementAccess.IsResolvedSlice(source))
         {
             // SPEC 4.6.4: a ResolvedRange key, written or resolved from an Index-bounded or inclusive range, is one value.
-            var key = receiver < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(source)));
+            var key = receiver < 0 ? -1 : this.Value(this.SelectionKey(source, receiver, projection));
             result = receiver < 0 || key < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, key);
         }
         else
@@ -48,7 +48,7 @@ public sealed partial class OwnershipAnalysis
             this.BeginSharedLoan(receiver, access: true);
         }
 
-        var index = this.Value(this.Expression(ElementAccess.KeySyntax(source)));
+        var index = this.Value(this.SelectionKey(source, receiver));
         if (receiver < 0 || index < 0)
         {
             this.EndComparisonLoans(depth, source);
@@ -108,6 +108,11 @@ public sealed partial class OwnershipAnalysis
     {
         projection = -1;
         var receiver = KotoHelper.UnwrapParentheses(source);
+        if (receiver is EvaluatedKoto evaluated)
+        {
+            return this.EvaluatedOperand(evaluated, out projection); // The selection already located its receiver.
+        }
+
         if (this.compilation.Binding.ImplicitPairAdmitted(receiver) != SemanticsMask.None)
         {
             var mode = receiver.Parent is ForKoto { Mode: SubjectMode.Exclusive } ? SemanticsKind.Uniq : SemanticsKind.Ref;

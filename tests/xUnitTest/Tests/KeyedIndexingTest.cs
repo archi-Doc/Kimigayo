@@ -42,11 +42,21 @@ public class KeyedIndexingTest
         "let saved: IndexRange = 1..^1\nlet keyed = rows[0][saved]\nrequire keyed.length == 2 and keyed[0] == 20 else => $abort(\"keyed\")\n" +
         "func head(table: ref/[3 of [4 of i32]]) -> i32 => table[2][..][0]\nrequire head(grid) == 5 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 4.6.4: a key resolves against the length of the receiver the selection evaluated, so a call receiver runs once.
+    private const string CallReceivers =
+        "func make(count: uniq/i32) -> [3 of i32]\n    count@follow += 1\n    return [1, 2, 3]\n" +
+        "func makeArray(count: uniq/i32) -> Array<i32>\n    count@follow += 1\n    return [4, 5, 6]\n" +
+        "var calls: i32 = 0\nlet last: Index = ^1\n" +
+        "require make(calls@uniq)[^1] == 3 and make(calls@uniq)[last] == 3 and calls == 2 else => $abort(\"fixed\")\n" +
+        "require makeArray(calls@uniq)[^2] == 5 and calls == 3 else => $abort(\"array\")\n" +
+        "let middle = make(calls@uniq)[1..^1].length\nrequire middle == 1 and calls == 4 else => $abort(\"range\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "IndexKeys", IndexKeys, "Last text.\nFirst text.\nFirst text.\nok\n" },
         { "RangeKeys", RangeKeys, "ok\n" },
         { "NestedViews", NestedViews, "ok\n" },
+        { "CallReceivers", CallReceivers, "ok\n" },
     };
 
     [Theory]
@@ -56,7 +66,6 @@ public class KeyedIndexingTest
 
     [Theory]
     [InlineData("let values: [3 of i32] = [1, 2, 3]\nlet i: i32 = 1\nlet v = values[i]", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("func make() -> [3 of i32] => [1, 2, 3]\nlet last: Index = ^1\nlet v = make()[last]", DiagnosticCode.UnsupportedBinding_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

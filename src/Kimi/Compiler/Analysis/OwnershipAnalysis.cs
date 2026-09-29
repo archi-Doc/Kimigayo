@@ -611,9 +611,16 @@ public sealed partial class OwnershipAnalysis
                 : this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
         }
 
-        if (this.propertyReceivers.TryGetValue(node, out var preparedReceiver))
+        if (node is EvaluatedKoto evaluated)
         {
-            return preparedReceiver;
+            var operand = this.EvaluatedOperand(evaluated, out var projection);
+            if (projection >= 0)
+            {
+                this.Unsupported(node); // An element projection is read only where the selection reads its receiver.
+                return -1;
+            }
+
+            return operand;
         }
 
         if (this.compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter)

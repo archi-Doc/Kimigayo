@@ -89,7 +89,10 @@ public sealed partial class Binding
         this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
         if (!this.propertyUpdateStorage.TryGetValue(node, out var storage))
         {
-            storage = new(node, new IdentifierNameKoto(node.Left, "self"), node.Right) { IsDirectStorage = true };
+            // The stored field is reached through the receiver the update locates once; it takes that borrow's Type.
+            var receiver = new EvaluatedKoto(node.Left);
+            storage = new(node, receiver, node.Right) { IsDirectStorage = true };
+            receiver.Parent = storage;
             this.propertyUpdateStorage.Add(node, storage);
         }
 
