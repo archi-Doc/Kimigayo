@@ -21,7 +21,11 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 | Documents | PLAN: position, milestone states and next actions at session end. PLAN_HISTORY: a few lines per session. STATUS: only when support boundaries change. Evidence lives in commits and `artifacts/verify/`. |
 | Failures | Fix root causes; never weaken tests or diagnostics to pass. Record a blocker with the exact next step. |
 
+Toolchain identity is checked during setup/update or with `kimi toolchain verify`; `verify.ps1 -VerifyToolchain` performs it once before tests. Ordinary runs record it as not performed. CLI tests use `run --no-build` except when checking automatic builds.
+
 ## 3. Current position
+
+- **Verification performance (2026-09-30):** toolchain checks are explicit, kernel32 is shared, and 32 original-source milestone runners pass O0/O2. Session `20260929-195754-059-session-verification-performance-retry` passes a warning-free Release build, 13,461 tests and 58 related native fixture executions. CLI, module and installation-failure checks pass separately. Milestone 1 takes 2.54s versus 22.13s before workload simplification (single samples; not compiler throughput). Failed initial runs remain recorded; see PLAN_HISTORY.
 
 - **Repository layout and outputs (2026-09-28):** `426563d2` separates disposable `temp/` work from retained `artifacts/` evidence/packages and reorganizes the English README. Projects remain under `src/` and `tests/`; verification starts at `scripts/verify.ps1`. Session `20260928-123203-403-session-temp-artifacts` passes warning-free Debug/Release builds, all 13,038 tests in each configuration, 2 native O0/O2 executions and 25 Release Milestone 1 checks. Milestone 28 and its retry are blocked by Windows application control at native process startup. Evidence is under `artifacts/verify/`; language milestone position is unchanged.
 
@@ -91,9 +95,9 @@ The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency def
 
 ## 5. Completion conditions (every program milestone)
 
-1. The spec-derived program source builds unchanged with the Debug and Release compilers and runs at O0 and O2 with the expected stdout, exit code and stderr.
-2. `src/backend/windows-x64/test-milestone<N>.ps1` exists and passes: target, listed variants and required rejections with their specified diagnostic codes.
-3. Session verification passes: zero warnings, full Debug and Release suites, and the harnesses of all earlier completed programs.
+1. The spec-derived program source builds unchanged with the selected compiler configuration (Release by default; Debug explicitly) and runs at O0 and O2 with the expected stdout, exit code and stderr.
+2. `src/backend/windows-x64/test-milestone<N>.ps1` exists and passes: original source only, one build/direct run per O0/O2; dedicated feature tests cover behavior and required rejection diagnostics.
+3. Session verification passes: zero warnings, the full suite for the selected compiler configuration, and the harnesses of all earlier completed programs.
 4. The owning SPEC sections exercised by the program have focused positive and negative tests; unsupported neighboring forms fail with a diagnostic, never with wrong code.
 5. STATUS.md describes the new support boundary, and the milestone is marked DONE here and in `tests/milestones/README.md`.
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using SimpleCommandLine;
 
@@ -20,9 +20,6 @@ public class KimiOptions
 
     [SimpleOption("ToolchainRoot")]
     public string? ToolchainRoot { get; set; }
-
-    [SimpleOption("AllowUnpinnedToolchain")]
-    public bool AllowUnpinnedToolchain { get; set; }
 
     // SimpleCommandLine requires values for Boolean options. Preserve the specified
     // bare --locked and --no-build spellings while retaining explicit Boolean values and other options.

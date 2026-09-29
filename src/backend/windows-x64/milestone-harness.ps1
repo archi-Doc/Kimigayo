@@ -1,5 +1,5 @@
-# Shared native milestone execution: fresh directories, exact outputs and causal rejection codes.
-param([int] $Milestone, [string] $ToolchainRoot, [string] $Configuration, [string] $Cases)
+# Original milestone sources only: one build and one direct execution per optimization level.
+param([int] $Milestone, [string] $ToolchainRoot, [string] $Configuration, [string] $Expected)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
@@ -15,17 +15,6 @@ $report = Join-Path $work 'verification.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
 $dotnet = (Get-Command dotnet).Source
 $results = [Collections.Generic.List[object]]::new()
-
-# The location of the only occurrence of $Anchor in an embedded Kimi library source, for an Abort that library code initiates.
-function Get-KimiLibraryLocation([string] $File, [string] $Anchor) {
-    $text = [IO.File]::ReadAllText((Join-Path $repo "src/Kimi/Library/$File")).Replace("`r`n", "`n")
-    $offset = $text.IndexOf($Anchor, [StringComparison]::Ordinal)
-    if ($offset -lt 0 -or $offset -ne $text.LastIndexOf($Anchor, [StringComparison]::Ordinal)) { throw "Library anchor '$Anchor' is not unique in $File." }
-    $line = $text.Substring(0, $offset).Split("`n").Count
-    $column = $offset - $text.LastIndexOf("`n", $offset)
-    $version = [regex]::Match([IO.File]::ReadAllText((Join-Path $repo 'src/Kimi/Compiler/Core/Compilation.cs')), 'CurrentLanguageVersion = "([^"]+)"').Groups[1].Value
-    return "compiler://Kimi/$version/$($File):$($line):$($column)"
-}
 
 function Invoke-Captured([string] $File, [string[]] $Arguments, [int] $ExpectedExit = 0) {
     $start = [Diagnostics.ProcessStartInfo]::new($File)
@@ -56,87 +45,53 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExpectedExit = 0) {
     return Invoke-Captured $dotnet (@($compiler) + $Arguments) $ExpectedExit
 }
 
-function Build-And-Run([string] $InputPath, [string] $Directory, [string] $Name, [string] $Level, [string] $Stdout, [string] $Stderr = '', [int] $ExitCode = 0) {
-    $null = Invoke-Kimi @('build', $InputPath, '--ToolchainRoot', $ToolchainRoot)
-    $stem = Join-Path $Directory "bin/x86_64-pc-windows-msvc/$Name"
-    $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-    if ($record.status -cne 'linked' -or $record.optimization -cne $Level -or
-        -not $record.reportedVersionsMatched -or $record.unverifiedToolchain) { throw "Unverified build: $InputPath" }
-    # The normal build verifies input IR and optimized O2 IR before object generation.
-    foreach ($mode in @('native', 'run-exe', 'run-input')) {
-        $actual = switch ($mode) {
-            'native' { Invoke-Captured "$stem.$Level.exe" @() $ExitCode }
-            'run-exe' { Invoke-Kimi @('run', "$stem.$Level.exe") $ExitCode }
-            'run-input' { Invoke-Kimi @('run', $InputPath) $ExitCode }
-        }
+$totalTimer = [Diagnostics.Stopwatch]::StartNew()
+$status = 'incomplete'
+$failure = $null
+try {
+    foreach ($level in @('O0', 'O2')) {
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $directory = Join-Path $work $level
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $name = "Milestone$Milestone"
+        $copy = Join-Path $directory "$name.kimi"
+        Copy-Item -LiteralPath $source -Destination $copy
+        if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
+        $project = Join-Path $directory "$name.kimiproj"
+        [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"`n", $utf8)
+        $preparationSeconds = $timer.Elapsed.TotalSeconds
+        $timer.Restart()
+        $build = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
+        [IO.File]::WriteAllBytes((Join-Path $directory 'build.stdout'), $build.stdout)
+        [IO.File]::WriteAllText((Join-Path $directory 'build.stderr'), $build.stderr, $utf8)
+        $buildSeconds = $timer.Elapsed.TotalSeconds
+        $stem = Join-Path $directory "bin/x86_64-pc-windows-msvc/$name"
+        $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
+        if ($record.status -cne 'linked' -or $record.optimization -cne $level -or
+            $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw "Invalid build record: $project" }
+        $timer.Restart()
+        $actual = Invoke-Captured "$stem.$level.exe" @()
+        $runSeconds = $timer.Elapsed.TotalSeconds
+        [IO.File]::WriteAllBytes((Join-Path $directory 'run.stdout'), $actual.stdout)
+        [IO.File]::WriteAllText((Join-Path $directory 'run.stderr'), $actual.stderr, $utf8)
         $hex = [Convert]::ToHexString($actual.stdout)
-        # Source/project run prepends its project and build summary lines; direct execution must be exact.
-        $outputMatches = if ($mode -eq 'run-input') {
-            $text = $utf8.GetString($actual.stdout)
-            $text.EndsWith($Stdout, [StringComparison]::Ordinal) -and ($text.Length -eq $Stdout.Length -or $text[$text.Length - $Stdout.Length - 1] -eq "`n")
-        } else { $hex -ceq [Convert]::ToHexString($utf8.GetBytes($Stdout)) }
-        if (-not $outputMatches -or $actual.stderr -cne $Stderr) { throw "Output mismatch: $Name.$Level.$mode; stdout=$hex; stderr=$($actual.stderr)" }
-        $results.Add(@{ name = "$Name.$Level.$mode"; stdoutHex = $hex; stderr = $actual.stderr; exitCode = $actual.exitCode })
-    }
-    Copy-Item -LiteralPath "$stem.link.build.json" -Destination (Join-Path $work "$Name.$Level.build.json")
-}
-
-$original = [IO.File]::ReadAllText($source).Replace("`r`n", "`n")
-
-function Invoke-MilestoneVariants([Collections.IDictionary] $Variants, [string] $Expected) {
-    if ($Cases -eq 'All') { Build-And-Run $source (Split-Path $source) "Milestone$Milestone" 'O2' $Expected }
-    foreach ($level in @('O0', 'O2')) {
-        foreach ($entry in $variants.GetEnumerator()) {
-            if ($Cases -ne 'All') { continue }
-            $name = $entry.Key
-            $variant = $entry.Value
-            $directory = Join-Path $work "$level/$name"
-            New-Item -ItemType Directory -Path $directory -Force | Out-Null
-            $copy = Join-Path $directory "$name.kimi"
-            if ($name -eq 'Renamed') {
-                Copy-Item -LiteralPath $source -Destination $copy
-                if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -cne $sourceHash) { throw 'Source copy differs' }
-            } else {
-                if ($variant.source -ceq $original) { throw "Variant mutation did not change the input: $name" }
-                [IO.File]::WriteAllText($copy, $variant.source, $utf8)
-            }
-            $project = Join-Path $directory "$name.kimiproj"
-            [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"`n", $utf8)
-            $stderr = if ($variant.stderr) { $variant.stderr.Replace('{name}', $name) } else { '' }
-            Build-And-Run $project $directory $name $level $variant.stdout $stderr ([int]$variant.exit)
-        }
-    }
-}
-
-function Complete-Milestone([Collections.IDictionary] $Invalid) {
-    foreach ($level in @('O0', 'O2')) {
-        foreach ($entry in $invalid.GetEnumerator()) {
-            if ($entry.Value.source -ceq $original) { throw "Rejection mutation did not change the input: $($entry.Key)" }
-            $name = $entry.Key
-            $directory = Join-Path $work "$level/$name"
-            New-Item -ItemType Directory -Path $directory -Force | Out-Null
-            $path = Join-Path $directory "$name.kimi"
-            [IO.File]::WriteAllText($path, $entry.Value.source, $utf8)
-            $project = Join-Path $directory "$name.kimiproj"
-            [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"`n", $utf8)
-            $failure = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot) 1
-            $diagnostic = $utf8.GetString($failure.stdout) + $failure.stderr
-            [IO.File]::WriteAllText((Join-Path $directory 'diagnostics.txt'), $diagnostic, $utf8)
-            $stem = Join-Path $directory "bin/x86_64-pc-windows-msvc/$name"
-            $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
-            $required = $entry.Value.diagnostic
-            $plainDiagnostic = [regex]::Replace($diagnostic, '\x1b\[[0-9;]*m', '')
-            if ($plainDiagnostic -notmatch ('\b(?:' + $required + ')\b') -or $plainDiagnostic -match '\bGenerationFailed_Kd\b' -or $record.status -cne 'incomplete' -or
-                (Test-Path "$stem.ll") -or (Test-Path "$stem.$level.exe")) { throw "Invalid input was not diagnosed before emission: $name.$level" }
-            $results.Add(@{ name = "$name.$level"; rejected = $true; exitCode = $failure.exitCode; diagnostic = $required })
-        }
+        if ($hex -cne [Convert]::ToHexString($utf8.GetBytes($Expected)) -or $actual.stderr -cne '') { throw "Output mismatch: $name.$level; stdout=$hex; stderr=$($actual.stderr)" }
+        $results.Add(@{ name = "$name.$level"; optimization = $level; execution = 'native'; stdoutHex = $hex; stderr = $actual.stderr; exitCode = $actual.exitCode
+            preparationSeconds = $preparationSeconds; buildSeconds = $buildSeconds; runSeconds = $runSeconds })
     }
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or
         (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash -cne $compilerHash) { throw 'Source/compiler changed during verification' }
-    @{
-        status = 'passed'; compilerConfiguration = $Configuration; compilerSha256 = $compilerHash; cases = $Cases
-        sourceSha256 = $sourceHash; tests = $results
-    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $report -Encoding utf8
-    Write-Output "Passed $($results.Count) Milestone $Milestone checks ($Configuration, $Cases): $report"
+    $status = 'passed'
 }
-
+catch {
+    $failure = $_.Exception.Message
+    throw
+}
+finally {
+    @{
+        status = $status; error = $failure
+        compilerConfiguration = $Configuration; compilerSha256 = $compilerHash; source = "tests/milestones/Milestone$Milestone.kimi"
+        sourceSha256 = $sourceHash; toolchainVerification = 'not-performed'; seconds = $totalTimer.Elapsed.TotalSeconds; tests = $results
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $report -Encoding utf8
+}
+Write-Output "Passed $($results.Count) Milestone $Milestone checks ($Configuration, original O0/O2): $report"

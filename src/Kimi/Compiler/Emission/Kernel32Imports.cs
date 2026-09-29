@@ -46,6 +46,16 @@ internal static partial class Kernel32Imports
         }
     }
 
+    internal static void ValidateInstallation(JsonElement entry, string actualHash)
+    {
+        if (entry.GetProperty("generator").GetString() != Generator || entry.GetProperty("generatorSha256").GetString() != DlltoolSha256 ||
+            entry.GetProperty("target").GetString() != WindowsProfile.Target || entry.GetProperty("dll").GetString() != Dll ||
+            entry.GetProperty("definitionSha256").GetString() != DefinitionSha256 || entry.GetProperty("sha256").GetString() != actualHash)
+        {
+            throw new InvalidDataException("Installed kernel32 generation conditions or SHA-256 mismatch. Run setup.ps1 again.");
+        }
+    }
+
     internal static void ValidateLibrary(string dll, string inspection)
     {
         var expected = new HashSet<string>(Symbols.Length * 2, StringComparer.Ordinal);

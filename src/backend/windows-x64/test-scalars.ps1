@@ -19,11 +19,10 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $tools = @{}
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'llvm-nm')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
 $profile = Read-KimiWindowsProfile
-foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-readobj', 'llvm-nm')) { $null = Get-KimiLlvmToolIdentity $tools[$name] $profile.llvmVersion }
-$null = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
-$kernel = New-KimiKernel32Library $tools (Join-Path $out 'kernel32.lib')
+$kernel = Get-KimiInstalledKernel32 $ToolchainRoot
 $archive = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
-if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Installed backend SHA-256 mismatch' }
+if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Installed backend is missing. Run setup.ps1.' }
+Write-Output 'Toolchain verification: not-performed'
 $allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }
 foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Skip 2)) {

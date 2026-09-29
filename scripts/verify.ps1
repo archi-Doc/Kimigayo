@@ -33,6 +33,7 @@ param(
     [string[]] $Fixtures = @(),
     [int[]] $Milestone = @(),
     [string] $Name = '',
+    [switch] $VerifyToolchain,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
@@ -143,7 +144,18 @@ foreach ($pattern in $classPatterns) {
 }
 if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
+$toolchainVerification = 'not-performed'
 if (-not $failed -and (Invoke-Build $Configuration)) {
+    if ($VerifyToolchain) {
+        $timer = Start-Step 'toolchain verify'
+        $log = Join-Path $evidence 'toolchain.log'
+        & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
+        $ok = $LASTEXITCODE -eq 0
+        $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
+        Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
+    }
+}
+if (-not $failed) {
     if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
     elseif ($filters.Count -gt 0) { Invoke-Tests $Configuration $filters 'focused' }
 }
@@ -196,7 +208,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; configuration = $Configuration; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+[ordered]@{ mode = $Mode; configuration = $Configuration; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

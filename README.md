@@ -33,7 +33,7 @@ Kimigayo is a pre-alpha programming language for AI, with a C# compiler, a core 
 | `draft/` | Proposals. Integrated proposals remain frozen. |
 | `.github/` | CI and package publishing workflows. |
 | `.vscode/` | Shared VS Code tasks and extension debugging configuration. |
-| `toolchain/` | Locally installed LLVM tools and the verified native backend library. |
+| `toolchain/` | Locally installed LLVM tools, backend and shared kernel32 import library. |
 | `temp/` | Disposable scripts, shared fixtures and intermediate build or test files. |
 | `artifacts/` | Retained verification evidence, measurements and distribution packages. |
 
@@ -189,19 +189,26 @@ For building Kimi applications (`kimi build`), include:
 
 ```text
 toolchain/
+  clang.exe
   opt.exe
   llc.exe
   lld-link.exe
   llvm-nm.exe
   llvm-readobj.exe
   llvm-dlltool.exe
+  llvm-lib.exe
+  llvm-objdump.exe
   <supporting LLVM DLLs, if required>
+  installation.json
   windows_x64/
     kimi_backend_windows_x64_v1.lib
+    kernel32.def
+    kernel32.lib
+    kernel32.json
 ```
 
-To also build the native backend library, add `clang.exe`, `llvm-lib.exe`, and
-`llvm-objdump.exe` to `toolchain/`. No Windows SDK or extra Clang headers are required.
+Setup and explicit verification use the complete tool set above. Ordinary builds
+need only the build tools and installed libraries. No Windows SDK or extra Clang headers are required.
 The backend archive and `llvm-dlltool.exe` must match the hashes in `profile.json`.
 
 From the repository root, copy the tools and supporting DLLs from an existing LLVM
@@ -212,6 +219,8 @@ installation, then build, test, and install the backend library with:
 ```
 
 To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
+Setup also installs `windows_x64/kernel32.lib` and its generation metadata. Ordinary builds reuse it without tool identity probes or regeneration; a missing library requires setup. To recheck an installation, run `kimi toolchain verify`.
+
 Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain.
 
 ### Toolchain path resolution
@@ -269,6 +278,8 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 ./scripts/verify.ps1 -Configuration Debug -Class XunitTest.ToolchainResolverTest
 ./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
+
+Milestones use only original checked-in programs, building and directly executing each once at O0 and O2. Dedicated feature tests cover variants/rejections; CLI tests cover `run` and `--no-build`. Toolchain identity is checked at setup/update or by `kimi toolchain verify` (`--Report <path>` saves evidence). Add `-VerifyToolchain` to run it once before tests; ordinary verification records it as not performed.
 
 Both modes default to Release and use one compiler configuration for the build, tests, fixtures and milestone harnesses. Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain and retain O0/O2 coverage regardless of the compiler configuration. NativeAOT tests are separate and are not run by these commands.
 

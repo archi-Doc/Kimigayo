@@ -51,62 +51,20 @@ internal static partial class NativeToolchain
         var bin = configuredBin is null ? toolchainRoot : ResolvePath(configuredBin, project.KimiOptions.LlvmBin is null && project.Directory.Length != 0 ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
         var tools = new Dictionary<string, string>(StringComparer.Ordinal);
         var identities = new JsonObject();
-        var matched = true;
         var record = new JsonObject
         {
             ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = WindowsProfile.LlvmVersion,
+            ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
             ["tools"] = identities, ["irSha256"] = irHash, ["optimization"] = project.ProjectFile.Optimization,
         };
+        WriteRecord(paths.Record, record);
         foreach (var name in ToolNames)
         {
-            var tool = Path.Combine(bin, name + ".exe");
-            string version;
-            string actual;
-            try
-            {
-                version = await ExecuteTool(tool, ["--version"], outputDirectory, report, cancellationToken, showErrors: false);
-                actual = ParseVersion(version);
-            }
-            catch (Exception ex) when (IsToolchainFailure(ex))
-            {
-                throw new InvalidDataException($"Cannot obtain LLVM version: tool={tool}; expected={WindowsProfile.LlvmVersion}; {ex.Message} Configure --ToolchainRoot or KIMI_TOOLCHAIN_ROOT, or prepare the compiler's toolchain directory.", ex);
-            }
-
-            var same = actual == WindowsProfile.LlvmVersion;
-            if (!same)
-            {
-                var message = $"LLVM version mismatch: tool={tool}; expected={WindowsProfile.LlvmVersion}; actual={actual}.";
-                if (!project.KimiOptions.AllowUnpinnedToolchain)
-                {
-                    throw new InvalidDataException(message + " Use --AllowUnpinnedToolchain true only for exploratory builds.");
-                }
-
-                report(DiagnosticSeverity.Warning, message + " Continuing with an unverified toolchain.");
-            }
-
-            matched &= same;
+            var tool = RequireInstalledFile(Path.Combine(bin, name + ".exe"));
             tools.Add(name, tool);
-            identities.Add(name, new JsonObject { ["path"] = Redact(tool, project.Directory), ["version"] = Redact(version, project.Directory), ["actualVersion"] = actual, ["expectedVersion"] = WindowsProfile.LlvmVersion, ["versionMatched"] = same, ["sha256"] = Hash(tool) });
+            identities.Add(name, new JsonObject { ["path"] = Redact(tool, project.Directory) });
         }
 
-        record["reportedVersionsMatched"] = matched;
-        var dlltool = Path.Combine(bin, "llvm-dlltool.exe");
-        var dlltoolHash = Hash(dlltool);
-        var dlltoolMatched = dlltoolHash == Kernel32Imports.DlltoolSha256;
-        if (!dlltoolMatched && !project.KimiOptions.AllowUnpinnedToolchain)
-        {
-            throw new InvalidDataException("llvm-dlltool SHA-256 mismatch. Use --AllowUnpinnedToolchain true only for exploratory builds.");
-        }
-
-        if (!dlltoolMatched)
-        {
-            report(DiagnosticSeverity.Warning, "llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.");
-        }
-
-        tools.Add(Kernel32Imports.Generator, dlltool);
-        identities.Add(Kernel32Imports.Generator, new JsonObject { ["path"] = Redact(dlltool, project.Directory), ["sha256"] = dlltoolHash, ["expectedSha256"] = Kernel32Imports.DlltoolSha256, ["hashMatched"] = dlltoolMatched });
-        record["unverifiedToolchain"] = !matched || !dlltoolMatched;
-        WriteRecord(paths.Record, record);
         var libraries = new List<string>();
         var libraryIdentities = new JsonArray();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -124,8 +82,8 @@ internal static partial class NativeToolchain
             if (name == Kernel32Imports.LibraryName)
             {
                 Kernel32Imports.ValidateManifest(item);
-                path = await GenerateKernel32(tools, paths.Stem, report, cancellationToken);
-                record["kernel32"] = new JsonObject { ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["sha256"] = Hash(path) };
+                path = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
+                record["kernel32"] = new JsonObject { ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["path"] = Redact(path, project.Directory) };
             }
             else if (name == WindowsProfile.BackendLibrary)
             {
@@ -134,16 +92,25 @@ internal static partial class NativeToolchain
                 {
                     throw new InvalidDataException($"Backend archive not found: {path}. Run src/backend/windows-x64/build.ps1 for this toolchain, or install the matching compiler toolchain package.");
                 }
+
+                if (item.TryGetProperty("input", out _))
+                {
+                    path = StageInput(path, paths.Stem, out stagedHash);
+                    if (stagedHash != WindowsProfile.BackendSha256)
+                    {
+                        throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
+                    }
+                }
             }
             else
             {
                 path = StageInput(ResolvePath(item.GetProperty("input").GetString()!, outputDirectory), paths.Stem, out stagedHash);
             }
 
-            var hash = stagedHash ?? Hash(path);
-            if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && (kind != "static" || hash != WindowsProfile.BackendSha256)))
+            var hash = stagedHash;
+            if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
             {
-                throw new InvalidDataException("Native library kind or backend SHA-256 mismatch.");
+                throw new InvalidDataException("Native library kind mismatch.");
             }
 
             // SPEC 20.8.2.1-2: another supply must be this project's own, with its expanded Kind and the
@@ -441,31 +408,6 @@ internal static partial class NativeToolchain
         }
 
         return allowed;
-    }
-
-    private static async Task<string> GenerateKernel32(Dictionary<string, string> tools, string stem, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-    {
-        var staging = stem + ".kernel32-" + Guid.NewGuid().ToString("N");
-        Directory.CreateDirectory(staging);
-        try
-        {
-            await File.WriteAllTextAsync(Path.Combine(staging, "kernel32.def"), Kernel32Imports.Definition, new UTF8Encoding(false), cancellationToken);
-            await ExecuteTool(tools[Kernel32Imports.Generator], ["-m", "i386:x86-64", "-d", "kernel32.def", "-l", "kernel32.lib"], staging, report, cancellationToken);
-            var dll = await ExecuteTool(tools[Kernel32Imports.Generator], ["-I", "kernel32.lib"], staging, report, cancellationToken);
-            var inspection = await ExecuteTool(tools["llvm-readobj"], ["--file-headers", "kernel32.lib"], staging, report, cancellationToken);
-            Kernel32Imports.ValidateLibrary(dll, inspection);
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Move(Path.Combine(staging, "kernel32.def"), stem + ".kernel32.def", true);
-            File.Move(Path.Combine(staging, "kernel32.lib"), stem + ".kernel32.lib", true);
-            return stem + ".kernel32.lib";
-        }
-        finally
-        {
-            // Exact generated files in a fresh staging directory, never a recursive user-directory cleanup.
-            File.Delete(Path.Combine(staging, "kernel32.def"));
-            File.Delete(Path.Combine(staging, "kernel32.lib"));
-            Directory.Delete(staging);
-        }
     }
 
     private static async Task<string> ExecuteTool(string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)

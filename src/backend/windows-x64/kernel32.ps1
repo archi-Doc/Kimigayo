@@ -1,4 +1,10 @@
 # Shared import definition, identity checks and generation for all PowerShell builders.
+function Get-KimiInstalledKernel32([string] $ToolchainRoot) {
+    $path = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 for the selected toolchain." }
+    return @{ path = $path; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
+}
+
 function Get-KimiKernel32Definition {
     $definition = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'kernel32.def')).Replace("`r`n", "`n").TrimEnd() + "`n"
     $hash = [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($definition)))

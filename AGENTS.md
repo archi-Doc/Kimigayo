@@ -50,6 +50,7 @@ The specification and implementation are not set in stone. The specification gui
 - Work in coherent units: reproducer, implementation, focused tests. Commit each verified unit with a descriptive message.
 - Unit verification: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` (non-incremental Release build with warnings as errors, related tests, related native O0/O2 fixtures and milestone harnesses). A direct `dotnet build` may leave analyzer warnings unreported to later incremental builds, so only the script's build counts as evidence.
 - Session verification, once at the end of a session: `./scripts/verify.ps1 -Mode Session [...]` (Release build and full suite). Both modes use Release by default; pass `-Configuration Debug` explicitly for Debug verification. Builds, tests, fixture selection and milestone harnesses use the selected compiler configuration; native O0/O2 coverage is unchanged. Never edit sources while a build or verification run is in progress.
+- Toolchain identity is checked by setup/update or `kimi toolchain verify`; add `-VerifyToolchain` to verify.ps1 to run it once before tests. Normal verification records it as not performed. Milestones build original sources once at O0 and O2 and execute each binary directly once; feature/rejection and CLI tests are separate. Use `run --no-build` for already-built CLI artifacts.
 - Measure allocations only on hot paths and at milestone completion.
 
 # VS Code Extension (`src/kimi-ext/`)

@@ -6,7 +6,7 @@
 ::Kimi.Console.writeLine("Hello, world!")
 ```
 
-The current emitter supports this literal-output slice of SPEC, including empty strings and UTF-8/NUL contents. Other selected implementation bodies and executable operations receive unsupported diagnostics. It is a partial compiler, not a complete Kimi library or the broader first-executable subset.
+This example checks literal UTF-8 output. See [STATUS](../../STATUS.md) for the broader supported language and remaining limitations.
 
 ## Configure
 
@@ -20,7 +20,7 @@ It validates the existing LLVM **22.1.8** installation, copies the required exec
 
 `Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. Source builds find the checkout's toolchain; standalone compiler distributions use toolchain beside Kimi.exe/Kimi.dll. Use `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT` to select another root. Legacy LlvmBin and explicit kimi_backend entries remain supported as overrides.
 
-`kernel32.lib` is generated for each project/optimization from the embedded `.def`; no Windows SDK import library is needed. Remove old kernel32 entries and re-emit schema 1/2 manifests. Tool versions, dlltool identity, backend ABI/release and archive SHA-256 are checked before linking. See [SPEC §20.8.8](../../impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for the complete lifecycle.
+`kernel32.lib` is generated and validated during setup/update, then shared from `toolchain/windows_x64`. No Windows SDK is required. Ordinary builds skip tool identity checks; `kimi toolchain verify` explicitly checks LLVM versions, installed hashes, adopted backend and import generation conditions. See [§20.8.8](../../impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle).
 
 ## Build and run
 
@@ -29,12 +29,12 @@ Run from the repository root with the .NET dependencies restored and toolchain s
 ```powershell
 dotnet build src/Kimi/Kimi.csproj -c Release
 dotnet src/Kimi/bin/Release/net10.0/Kimi.dll build docs/examples/Hello/Hello.kimiproj
-dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimiproj
+dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimiproj --no-build
 ```
 
-`build` publishes `Hello.ll` and schema 3 `Hello.link.json`, generates `Hello.O2.kernel32.def`/`.lib`, verifies tool versions, hashes and native dependencies, and invokes LLVM and the linker directly from C#. No PowerShell runtime is needed by the compiler. It writes tool/definition/library identities to `Hello.link.build.json` and publishes the executable only after a successful link. Simple external native library filenames resolve in the manifest directory; configure explicit paths for libraries elsewhere. Failed generation never links a previous import library.
+`build` publishes `Hello.ll` and schema 3 `Hello.link.json`, verifies IR and native build inputs, and invokes LLVM directly from C#. It links the installed backend/kernel32 libraries and publishes the executable after a successful link. `Hello.link.build.json` records compilation success separately from toolchain verification, which is not performed in ordinary builds.
 
-`run` executes the existing binary without reading or recompiling source contents and without requiring LLVM. A missing executable, incomplete build record, or changed binary hash fails with a diagnostic. After editing sources, run `build` explicitly. You can also execute a binary directly with `kimi run path/to/program.exe`; no project or record is required in that form. The child's stdout/stderr and exit code are forwarded.
+`run --no-build` executes an existing binary without source compilation or LLVM, requiring a successful build record and matching executable hash. Ordinary `run` builds current sources first and never runs an old binary after failure. `kimi run path/to/program.exe` directly executes the selected binary. Each form forwards stdout/stderr and exit status.
 
 For debugging the compiler's pre-optimization IR, use:
 
@@ -53,13 +53,10 @@ The executable is `docs/examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe` 
 ## Verify
 
 ```powershell
-dotnet test tests/xUnitTest/xUnitTest.csproj -c Debug
-dotnet test tests/xUnitTest/xUnitTest.csproj -c Release
-./src/backend/windows-x64/test-kernel32.ps1
-./src/backend/windows-x64/test-emission.ps1 -Configuration Debug
-./src/backend/windows-x64/test-emission.ps1 -Configuration Release
-./src/backend/windows-x64/test-manual-build.ps1 -Manifest docs/examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json -MismatchedLlvmBin 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin'
-./src/backend/windows-x64/test-cli.ps1 -MismatchedLlvmBin 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin'
+./scripts/verify.ps1 -Class XunitTest.NativeToolchainTest,XunitTest.Kernel32ImportsTest -Milestone 1 -VerifyToolchain
+./src/backend/windows-x64/test-cli.ps1
+./src/backend/windows-x64/test-toolchain-verification.ps1
+./src/backend/windows-x64/test-manual-build.ps1 -Manifest docs/examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json
 ```
 
 Unit tests export inspection fixtures under ignored `temp/emission-fixtures`. The native harness separately verifies/links/runs O0/O2 fixtures and tests fault-injecting adapters without changing the production Windows imports. Reports under `artifacts/verify/emission-native` start incomplete and become passed only when every native case succeeds.
