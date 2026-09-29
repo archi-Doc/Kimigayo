@@ -84,9 +84,15 @@ public sealed partial class KimiLibrary
             FormattingOwnOrigin(type.Origin, function, input);
     }
 
-    // Self of a member or requirement is its owner applied to the owner's own Origin parameters.
+    // Self of a member is its owner applied to the owner's own Origin parameters; Self of a requirement is its Contract's
+    // dedicated Self parameter (SPEC 8.4).
     private static bool FormattingSelf(BoundType type, BindingSymbol? owner)
     {
+        if (owner?.Declaration is ContractKoto)
+        {
+            return BoundContractSelf(owner, out var self) && ReferenceEquals(type, self);
+        }
+
         if (owner is null || type is not { Kind: BoundTypeKind.Nominal, Semantics: SemanticsKind.Owner, Origin: null, Components.Count: 0 } || !ReferenceEquals(type.Symbol, owner))
         {
             return false;

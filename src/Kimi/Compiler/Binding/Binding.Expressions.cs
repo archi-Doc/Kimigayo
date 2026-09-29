@@ -657,7 +657,7 @@ public sealed partial class Binding
         // including its Type parameters and Origins, just as an explicit receiver does.
         if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)
         {
-            receiver.Type = this.SelfType(owner);
+            receiver.Type = this.DeclarationSelf(owner);
         }
 
         for (var i = 0; i < function.GenericArguments.Count; i++)

@@ -48,7 +48,7 @@ public sealed partial class Binding
     }
 
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
-        => type is not null && SameType(EffectiveCore(type), this.SelfType(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+        => type is not null && SameType(EffectiveCore(type), this.DeclarationSelf(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
 
     private void ValidateConstraintProjectionAccess()
     {

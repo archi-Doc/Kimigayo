@@ -12,8 +12,7 @@ public sealed partial class KimiLibrary
     {
         var ordering = id == KimiDeclarationId.Comparable;
         if (symbol.Declaration is not ContractKoto { Members: [FunctionKoto function] } declaration || function.BoundSymbol is not { Type: { } result } requirement ||
-            symbol.Type is not { Kind: BoundTypeKind.Nominal, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components.Count: 0 } self ||
-            !ReferenceEquals(self.Symbol, symbol) || !ReferenceEquals(result, ordering ? BoundType.Primitives["i32"] : BoundType.Boolean))
+            !BoundContractSelf(symbol, out var self) || !ReferenceEquals(result, ordering ? BoundType.Primitives["i32"] : BoundType.Boolean))
         {
             return false;
         }
@@ -69,11 +68,10 @@ public sealed partial class KimiLibrary
             }
         }
 
-        return self is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var argument] } &&
-            ReferenceEquals(self.Symbol, symbol) && ReferenceEquals(argument, key) && ReferenceEquals(keyReferent, key) &&
+        return BoundContractSelf(symbol, out var contractSelf) && ReferenceEquals(self, contractSelf) && ReferenceEquals(keyReferent, key) &&
             result is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var place] } && result.Semantics == semantics &&
             ReferenceEquals(result.Origin, receiver.Origin) &&
-            place is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var subject] } &&
-            ReferenceEquals(place.Symbol, element) && ReferenceEquals(subject.Symbol, symbol);
+            place is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var subject, { Symbol.Declaration: var declaring, Components: [var declaredKey] }] } &&
+            ReferenceEquals(place.Symbol, element) && ReferenceEquals(subject, contractSelf) && ReferenceEquals(declaring, element.Scope.Owner) && ReferenceEquals(declaredKey, key);
     }
 }

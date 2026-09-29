@@ -896,7 +896,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return payload is { Kind: BoundTypeKind.AssociatedProjection, Components: [var root] } && item is { Kind: BoundTypeKind.AssociatedProjection, Components: [var own] } &&
+            return payload is { Kind: BoundTypeKind.AssociatedProjection, Components: [var root, _] } && item is { Kind: BoundTypeKind.AssociatedProjection, Components: [var own, _] } &&
                 ReferenceEquals(root, own) && ReferenceEquals(root, iterator) && this.IsItemFamily(payload.Symbol) && this.IsItemFamily(item.Symbol);
         }
 
@@ -1311,7 +1311,7 @@ public sealed partial class Binding
         }
 
         private bool IsIteratorItem(BoundType type)
-            => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 1 } && ReferenceEquals(type.Symbol?.Declaration?.Parent, binding.Library.Iterator.Declaration);
+            => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 } && ReferenceEquals(type.Symbol?.Declaration?.Parent, binding.Library.Iterator.Declaration);
 
         // Whether `origin` is the Loan of the Storage of the Iterator whose Item `type` is.
         private bool IsIteratorStorage(BoundType type, BoundOrigin origin)

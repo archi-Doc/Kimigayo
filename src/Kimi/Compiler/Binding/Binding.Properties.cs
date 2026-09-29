@@ -130,7 +130,7 @@ public sealed partial class Binding
         }
         else if (property.Symbol.Scope.Owner is StructKoto or ContractKoto)
         {
-            var self = this.SelfType(property.Symbol.Scope.Owner.BoundSymbol!);
+            var self = this.DeclarationSelf(property.Symbol.Scope.Owner.BoundSymbol!);
             accessor.Receiver = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));
         }
 

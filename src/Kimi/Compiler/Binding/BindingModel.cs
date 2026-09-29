@@ -177,6 +177,12 @@ public sealed class BindingSymbol
 
     internal BoundType? WholeType { get; set; }
 
+    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    internal BindingSymbol? SelfOf { get; set; }
+
+    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
+    internal BoundType? ContractSelf { get; set; }
+
     internal BindingSymbol? Pair { get; set; }
 
     internal BindingScope Scope { get; set; }

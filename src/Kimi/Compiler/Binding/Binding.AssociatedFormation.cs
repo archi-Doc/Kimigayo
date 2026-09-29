@@ -105,7 +105,7 @@ public sealed partial class Binding
 
     private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection || type.Symbol?.Declaration is ContractKoto)
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection)
         {
             return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use);
         }

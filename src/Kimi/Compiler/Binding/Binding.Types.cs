@@ -440,7 +440,7 @@ public sealed partial class Binding
                 scope.Owner is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol: { ReceiverIndex: >= 0 } functionSymbol } function &&
                 ReferenceEquals(function.Parameters[functionSymbol.ReceiverIndex].Type, syntax):
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
-                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.SelfType(functionSymbol.Scope.Owner.BoundSymbol!)]);
+                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
                 var rootDefinition = this.RootTypeName(rootedGeneric, true);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
@@ -544,7 +544,7 @@ public sealed partial class Binding
                     {
                         // SPEC 8.4.7.2: the target must be an Object Target. Generic targets and a Contract's
                         // Self are proven from their premises at the definition deadline.
-                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection || inner.Symbol?.Declaration is ContractKoto)
+                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }
@@ -602,7 +602,7 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol is null && EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
+        if (symbol is null && this.EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
         {
             var name = syntax is IdentifierNameKoto identifier ? identifier.IdentifierName : ((TypeSemanticsKoto)syntax).Identifier;
             symbol = this.FindAssociated(contractSelf, scope, name, null, syntax);
@@ -627,13 +627,13 @@ public sealed partial class Binding
                 return Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
-            var self = EnclosingContractSelf(scope);
+            var self = this.EnclosingContractSelf(scope);
             if (self is null)
             {
                 return Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
-            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax);
+            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax, out var reference);
             if (symbol is null)
             {
                 return null;
@@ -641,7 +641,7 @@ public sealed partial class Binding
 
             syntax.BoundSymbol = symbol;
 
-            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self]);
+            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self, this.ProjectionContract(symbol, reference)]);
             return this.NormalizedProjection(projected, scope, applyingOrigins);
         }
 
@@ -654,7 +654,7 @@ public sealed partial class Binding
 
         if (isSelf)
         {
-            return this.SelfType(symbol);
+            return this.DeclarationSelf(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto

@@ -116,7 +116,7 @@ public sealed partial class Binding
             Add(ordering);
         }
 
-        if (type.Symbol?.Contract is { } own)
+        if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
         {
             Add(own);
         }

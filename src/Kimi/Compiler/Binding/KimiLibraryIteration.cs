@@ -10,18 +10,19 @@ public sealed partial class KimiLibrary
         => type is { Kind: BoundTypeKind.Semantics, Symbol: null, Components: [var target], OriginArguments.Count: 0 } && type.Semantics == semantics &&
             ReferenceEquals(target, self) && ReferenceEquals(type.Origin, origin);
 
+    // A Contract's Self is its dedicated Type parameter (SPEC 8.4).
     private static bool BoundContractSelf(BindingSymbol symbol, out BoundType self)
     {
-        self = symbol.Type!;
-        return self is { Kind: BoundTypeKind.Nominal, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components.Count: 0 } && ReferenceEquals(self.Symbol, symbol);
+        self = symbol.ContractSelf!;
+        return self is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components.Count: 0, Symbol.SelfOf: { } owner } && ReferenceEquals(owner, symbol);
     }
 
     private static bool BoundParameterOrigin(BoundOrigin? origin, Koto binder)
         => origin is { Kind: OriginKind.Parameter, Slot: 0 } && ReferenceEquals(origin.Binder, binder);
 
     private static bool BoundFamilyProjection(BoundType? type, BindingSymbol family, BoundType self, BoundOrigin? step)
-        => type is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, Components: [var subject] } &&
-            ReferenceEquals(type.Symbol, family) && ReferenceEquals(subject, self) &&
+        => type is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, Components: [var subject, { Symbol.Declaration: var declaring }] } &&
+            ReferenceEquals(type.Symbol, family) && ReferenceEquals(subject, self) && ReferenceEquals(declaring, family.Scope.Owner) &&
             (step is null ? type.OriginArguments.Count == 0 : type.OriginArguments is [var argument] && ReferenceEquals(argument, step));
 
     // SPEC 22.1.2.2-3: the entry borrows (or takes) Self and returns the declared IteratorType family at
@@ -75,8 +76,7 @@ public sealed partial class KimiLibrary
     private bool ValidBoundLendingIterator(BindingSymbol symbol)
     {
         if (symbol.Declaration is not ContractKoto { Members: [SyntaxFormKoto family, FunctionKoto next] } ||
-            symbol.Type is not { Kind: BoundTypeKind.Nominal, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components.Count: 0 } self ||
-            !ReferenceEquals(self.Symbol, symbol) || family.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } familySymbol ||
+            !BoundContractSelf(symbol, out var self) || family.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } familySymbol ||
             !ReferenceEquals(familySymbol.Declaration, family) || family.Operands[1].BoundType?.Origin is not { } formation ||
             next.BoundSymbol is not { Schema.Origins: [var stepParameter], Type: { } result } requirement ||
             next.Parameters.Count != 1 || !ReferenceEquals(next.ReturnType?.BoundType, result) ||
@@ -92,7 +92,7 @@ public sealed partial class KimiLibrary
             BoundFamilyReceiver(family.Operands[1].BoundType, self, formation) && BoundFamilyReceiver(next.Parameters[0].Type.BoundType, self, step) &&
             result is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var item] } &&
             ReferenceEquals(result.Symbol, this.Option) &&
-            item is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, Components: [var subject], OriginArguments: [var itemStep] } &&
-            ReferenceEquals(item.Symbol, familySymbol) && ReferenceEquals(subject, self) && ReferenceEquals(itemStep, step);
+            item is { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, Components: [var subject, { Symbol.Declaration: var declaring }], OriginArguments: [var itemStep] } &&
+            ReferenceEquals(item.Symbol, familySymbol) && ReferenceEquals(subject, self) && ReferenceEquals(declaring, familySymbol.Scope.Owner) && ReferenceEquals(itemStep, step);
     }
 }

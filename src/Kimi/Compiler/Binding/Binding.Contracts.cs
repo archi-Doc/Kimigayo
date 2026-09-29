@@ -268,7 +268,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
-        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [contract.BoundSymbol!.Type!], originArguments: this.AssociatedParameters(declaration));
+        symbol.Type = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
         Complete(name, symbol.Type);
         if (head is OriginApplicationKoto)
@@ -612,7 +612,7 @@ public sealed partial class Binding
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
         // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = type.Symbol?.Declaration is ContractKoto own && this.AvailableContractPremise(own.BoundSymbol!) && IsRefinement(own.BoundSymbol!, contract);
+        var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
         // SPEC 8.4.7.3: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve Types.
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericInteger(type, scope);

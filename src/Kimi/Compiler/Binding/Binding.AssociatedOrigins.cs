@@ -49,8 +49,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice ||
-                type.Components[0].Symbol?.Declaration is ContractKoto) &&
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
         }
 
@@ -147,14 +146,14 @@ public sealed partial class Binding
             return Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
-        var self = this.SelfType(owner);
-        var associated = this.FindAssociated(self, scope, name, qualifier, clause);
+        var self = this.ContractSelfType(owner);
+        var associated = this.FindAssociated(self, scope, name, qualifier, clause, out var reference);
         if (associated is null || this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count)
         {
             return Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self], originArguments: this.AssociatedParameters(associated.Declaration));
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
         clause.BoundSymbol = member.BoundSymbol = member.Right.BoundSymbol = application.BoundSymbol = associated;
         member.Left.BoundSymbol = qualifier;
         Complete(member.Left, BoundType.Unit);

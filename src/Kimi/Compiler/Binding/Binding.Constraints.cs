@@ -45,9 +45,11 @@ public sealed partial class Binding
         return left == decisive || right == decisive ? decisive : left == both && right == both ? both : ConstraintProof.Unknown;
     }
 
+    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
+    // Self is an obligation of every conformer rather than a closed proposition.
     private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || (contractSelf && type.Symbol?.Declaration is ContractKoto) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
+        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
         {
             return true;
         }
@@ -428,7 +430,7 @@ public sealed partial class Binding
         // SPEC 8.4.7.2: inside a Contract, `Self is [not] ObjectPayload` is a Self-dependent implementation
         // requirement: a premise for the Contract's own signatures and an obligation of every conformer.
         var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsObjectPayloadRequirement(requirement);
-        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || (scope.Owner is ContractKoto && root?.Symbol?.Declaration is ContractKoto)));
+        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
         input |= contractSelfClause;
         var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null && !DependentType(subject, unresolvedProjection: false);

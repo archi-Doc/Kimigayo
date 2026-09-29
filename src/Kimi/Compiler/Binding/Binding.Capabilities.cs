@@ -65,9 +65,8 @@ public sealed partial class Binding
                 return true;
             }
 
-            // SPEC 8.4.7.2: symbolic targets and a Contract's Self are decided by their premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
-                type.Symbol?.Declaration is ContractKoto)
+            // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
             {
                 return false;
             }
@@ -92,7 +91,6 @@ public sealed partial class Binding
             }
 
             result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) ||
-                type.Symbol?.Declaration is ContractKoto ||
                 (type.Symbol?.Declaration is StructKoto structure && (structure.Modifier & ModifierKind.Open) != 0)
                 ? ConstraintProof.Refuted : ConstraintProof.Proven;
             return true;
@@ -313,10 +311,10 @@ public sealed partial class Binding
             return leaf;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
-            (work.Intrinsic.Intrinsic == IntrinsicKind.ObjectPayload && type.Symbol?.Declaration is ContractKoto))
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
         {
-            // A Contract's Self has no structure of its own; its ObjectPayload evidence is the Contract's clause (SPEC 8.4.7.2).
+            // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
+            // (SPEC 8.4.7.2).
             return this.SymbolicCapability(work);
         }
 
