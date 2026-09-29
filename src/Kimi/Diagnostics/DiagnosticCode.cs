@@ -169,6 +169,7 @@ public enum DiagnosticCode
     TestTargetUnavailable_Kd,
     DocumentDesynchronized_Kd,
     CheckFaulted_Kd,
+    PositionAlwaysFails_Kd,
 
     Count, // Last sentinel
 }

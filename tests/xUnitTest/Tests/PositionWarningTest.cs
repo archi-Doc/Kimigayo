@@ -1,0 +1,69 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi;
+using Xunit;
+
+namespace XunitTest;
+
+/// <summary>SPEC 17.4.4: a position or range key built only from literal-only expressions, `^` applied to one and omitted
+/// boundaries is warned about when it fails to resolve for every length, or for the length of the fixed array it indexes;
+/// the warning changes neither Binding nor execution.</summary>
+public class PositionWarningTest
+{
+    private const string Prelude = "let values: Array<i32> = [1, 2, 3]\nlet fixed: [3 of i32] = [1, 2, 3]\n";
+
+    [Theory]
+    [InlineData("let a = values[-1]", "The element position -1 fails to resolve for every length")]
+    [InlineData("let a = values[^0]", "The element position ^0 fails to resolve for every length")]
+    [InlineData("let a = values[(^(-2))]", "fails to resolve for every length")]
+    [InlineData("let a = values[..=^0]", "The range ..=^0 fails to resolve for every length")]
+    [InlineData("let a = values[2..=1]", "The range 2..=1 fails to resolve for every length")]
+    [InlineData("let a = values[^3..^5]", "The range ^3..^5 fails to resolve for every length")]
+    [InlineData("let a = values[(2 * 3 - 7)..]", "fails to resolve for every length")]
+    [InlineData("let a = fixed[3]", "The element position 3 fails to resolve for the fixed array's length 3")]
+    [InlineData("let a = fixed[^4]", "The element position ^4 fails to resolve for the fixed array's length 3")]
+    [InlineData("let a = fixed[1..5]", "The range 1..5 fails to resolve for the fixed array's length 3")]
+    [InlineData("let a = fixed[5..2]", "The range 5..2 fails to resolve for every length")]
+    [InlineData("let a = fixed[..=3]", "The range ..=3 fails to resolve for the fixed array's length 3")]
+    [InlineData("let s = values[..]\nlet a = s[^0..=^0]", "fails to resolve for every length")]
+    public void CertainFailuresAreWarned(string statement, string message)
+    {
+        var c = MinimalEmissionTest.Analyze(Prelude + statement);
+        c.Binding.ReportDiagnostics();
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var warning = Assert.Single(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+        Assert.Contains(message, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("let a = values[0]")]
+    [InlineData("let a = values[^1]")]
+    [InlineData("let a = values[3..]")]
+    [InlineData("let a = values[1..^1]")]
+    [InlineData("let a = values[^0..]")]
+    [InlineData("let a = values[5..=5]")]
+    [InlineData("let a = fixed[2]")]
+    [InlineData("let a = fixed[^3]")]
+    [InlineData("let a = fixed[3..]")]
+    [InlineData("let n = -1\nlet a = values[n]")]
+    [InlineData("let a = values[(-1)@isize]")]
+    [InlineData("let r = 2..=1\nlet a = values[r]")]
+    [InlineData("let n: i32 = 5\nlet a = values[n..2]")]
+    [InlineData("let a = values[(1 << 40)..]")]
+    public void ResolvableOrNonLiteralKeysAreNotWarned(string statement)
+    {
+        var c = MinimalEmissionTest.Analyze(Prelude + statement);
+        c.Binding.ReportDiagnostics();
+        Assert.DoesNotContain(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+    }
+
+    // SPEC 17.4.4: the warned access still compiles and Aborts only when executed.
+    [Fact]
+    public void WarnedAccessAbortsOnlyWhenExecuted()
+        => ScalarEmissionTest.EmitFixture(
+            "PositionWarningExecution",
+            "let values: [3 of i32] = [1, 2, 3]\nlet run = false\nif run => Console.writeLine(\"\\(values[3])\")\nConsole.writeLine(\"skipped\")\nlet a = values[^0]\nConsole.writeLine(\"after\")",
+            "skipped\n",
+            1,
+            "Hello.kimi:5:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+}

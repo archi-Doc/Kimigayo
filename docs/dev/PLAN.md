@@ -103,14 +103,15 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P41 implementation units** (SPEC integrated 2026-09-29; U1–U6 done). Each unit is verified with `verify.ps1` and committed:
+1. **P41 implementation units** (SPEC integrated 2026-09-29; U1–U9 done). Each unit is verified with `verify.ps1` and committed:
    - U1 Type identity: an identity premise substitutes one Type parameter for the other in its scope (`FitsTypeCore`, member lookup, conditional-conformance blocks); no equation solver.
    - U2 Closed Contracts: `Position`/`PositionRange` refine Equatable and Utf8Format with `Self is Copy`/`Owned`; user conformance rejected; integers conform through a Kimi internal function bound by declaration id (as the built-in Equatable path); `PrimitiveInteger` implies `Position`.
    - U3 Value read: read Types in the adaptation table, operators and §7.3 owning receivers; the §10.2.1 inference exception.
    - U4/U5 (done 2026-09-30, one unit because the syntax switch is atomic): `FromEnd<T>`, `Start`, `End`, `Range<S, E>`/`ClosedRange<S, E>` with conditional iteration, boundary-wise literals, generic thin entries over internal `isize` operations, fixed-array read members, and removal of `Index`/`IndexRange`/`Range<T>` and the compiler Index operations. Integer, `^x` and directly written range keys use one merged bounds check. The range form of `tryGet` is `trySlice` (SPEC §4.6.6 corrected: Constraints alone never distinguish overloads, §9.1).
    - U6 (done 2026-09-30): the closed iterator iterates a half-open state unless its end is the maximum (2.15× faster than an exhausted flag, `artifacts/benchmarks/p41-closed-range-iterator`); the ResolvedRange cursor loop is checked against its entry by a property fixture.
-   - U7 Indexing and lowering: whole-range inequality checks for saved ranges without a materialized `ResolvedRange`, receiver restriction removal.
-   - U8 §17.4.4 warning and constant folding; U9 formatting; U10 LIBRARY, STATUS, examples, milestone re-spelling and Session verification.
+   - U7 (done 2026-09-30): receivers of any form take saved keys (native fixture); a saved range equals the direct form at O2 (`artifacts/benchmarks/p41-saved-range-slicing`), so no fused lowering is added.
+   - U8 (done 2026-09-30): the §17.4.4 warning for built-in selections (`PositionAlwaysFails_Kd`); literal positions on fixed arrays are left to LLVM folding. U9 formatting was done with U4/U5.
+   - U10: author and verify Program 41 (positions and ranges), milestone README re-spelling notes, PLAN_HISTORY and Session verification.
 
 Follow §4 with P31, P40 and P26. Independent P31 source work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
 

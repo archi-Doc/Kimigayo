@@ -457,3 +457,8 @@
 
   + Name="CheckFaulted_Kd"
     Message="The compiler failed internally while checking: {0}"
+
+  + Name="PositionAlwaysFails_Kd"
+    Severity="Warning"
+    Message="{0}"
+    Fix="Correct the literal position or range; an out-of-range access Aborts when executed"

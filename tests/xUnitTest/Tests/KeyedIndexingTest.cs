@@ -53,8 +53,24 @@ public class KeyedIndexingTest
         "require makeArray(calls@uniq)[^2] == 5 and calls == 3 else => $abort(\"array\")\n" +
         "let middle = make(calls@uniq)[1..^1].length\nrequire middle == 1 and calls == 4 else => $abort(\"range\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 4.6.4, 4.6.9: saved positions and ranges apply to a receiver of any form, which is located once, and a key read
+    // from the receiver itself keeps no borrow of it.
+    private const string ReceiverForms =
+        "func make() -> [4 of i32] => [1, 2, 3, 4]\nfunc makeArray() -> Array<i32> => [5, 6, 7, 8]\n" +
+        "struct Holder\n    public var values: [4 of i32]\n    public init() => self.values = [1, 2, 3, 4]\n" +
+        "let saved = 1..^1\nlet closed = 0..=2\nlet last = ^1\nlet whole = ..\nlet flag = true\nlet a: [4 of i32] = [1, 2, 3, 4]\nlet b: [4 of i32] = [5, 6, 7, 8]\nvar holder = Holder.init()\n" +
+        "require make()[saved].length == 2 and make()[closed].length == 3 else => $abort(\"call\")\n" +
+        "require makeArray()[saved][0] == 6 and makeArray()[last] == 8 else => $abort(\"array call\")\n" +
+        "require (if flag => a else => b)[saved][0] == 2 and (if flag => a else => b)[last] == 4 else => $abort(\"selection\")\n" +
+        "require holder.values[saved].length == 2 and holder.values[whole].length == 4 else => $abort(\"field\")\n" +
+        "holder.values[last] = 9\nrequire holder.values[3] == 9 else => $abort(\"field write\")\n" +
+        "var keys: [3 of i32] = [2, 0, 1]\nkeys[keys[0]] = 7\nrequire keys[2] == 7 else => $abort(\"own key\")\n" +
+        "var items: Array<i32> = [1, 0, 5]\nlet removed = items.remove(items[0])\nrequire removed == 0 and items.length == 2 and items[1] == 5 else => $abort(\"own position\")\n" +
+        "Console.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "ReceiverForms", ReceiverForms, "ok\n" },
         { "IndexKeys", IndexKeys, "Last text.\nFirst text.\nFirst text.\nok\n" },
         { "RangeKeys", RangeKeys, "ok\n" },
         { "NestedViews", NestedViews, "ok\n" },

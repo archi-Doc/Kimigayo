@@ -136,6 +136,8 @@ public sealed partial class Binding
 
         this.resolvedSlices.Clear();
         this.exclusiveIndexers.Clear();
+        this.positionWarnings.Clear();
+        this.reportedPositionWarnings = 0;
     }
 
     // SPEC 4.6.1, 4.6.9: the key of a fixed-array, Slice or Array selection. An integer key of any PrimitiveInteger Type and
@@ -163,6 +165,7 @@ public sealed partial class Binding
                 return true;
             }
 
+            this.CheckLiteralKey(source, core);
             if (direct)
             {
                 this.SharedElementView(source.Left);
@@ -184,6 +187,7 @@ public sealed partial class Binding
             }
 
             Complete(fromEnd, ReferenceEquals(offset, BoundType.Never) ? BoundType.Never : this.FromEndType(offset));
+            this.CheckLiteralKey(source, core);
             return false;
         }
         else
@@ -191,6 +195,7 @@ public sealed partial class Binding
             key = this.BindPositionKey(source.Right, scope);
             if (key is not null && (ReferenceEquals(key, BoundType.Never) || this.IsIntegerOperand(key, scope)))
             {
+                this.CheckLiteralKey(source, core);
                 return false; // SPEC 4.6.9: an integer key is converted to an isize position by the element access.
             }
         }
@@ -199,6 +204,11 @@ public sealed partial class Binding
         {
             result = Complete(source, null);
             return true;
+        }
+
+        if (source.Right is not RangeKoto)
+        {
+            this.CheckLiteralKey(source, core); // A parenthesized `^a` resolves through a call.
         }
 
         var resolved = ReferenceTypes.IsResolvedRange(key);

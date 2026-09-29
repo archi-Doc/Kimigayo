@@ -346,6 +346,12 @@ public sealed partial class Binding
                 var warning = this.patternWarnings[this.reportedPatternWarnings];
                 warning.Pattern.AddDiagnostic(DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
             }
+
+            for (; this.reportedPositionWarnings < this.positionWarnings.Count; this.reportedPositionWarnings++)
+            {
+                var warning = this.positionWarnings[this.reportedPositionWarnings];
+                warning.Node.AddDiagnostic(DiagnosticCode.PositionAlwaysFails_Kd, warning.Message);
+            }
         }
     }
 
