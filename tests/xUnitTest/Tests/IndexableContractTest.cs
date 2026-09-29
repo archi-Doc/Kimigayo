@@ -123,9 +123,9 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableContractGenericTwoKeys", TwoKeys + GenericTwoKeys + Use, "generic keys\n");
     }
 
-    // Qualified projections, per-reference requirement candidates and reference dispatch add no warm allocation: the generic
-    // two-key program binds with exactly the bytes of its concrete counterpart, and warm ownership analysis and IR writing
-    // of both allocate nothing.
+    // Qualified projections, per-reference requirement candidates and reference dispatch add no warm allocation: warm
+    // Binding, ownership analysis and IR writing of the generic two-key program and its concrete counterpart allocate
+    // nothing. Checking whether two conformances to one Contract declaration may collide reuses its scratch map.
     [Fact]
     public void WarmGenericTwoKeyCompilationAddsNoAllocation()
     {
@@ -133,9 +133,8 @@ public class IndexableContractTest
         const string Concrete = "let table = Table.init(3, 4)\nlet n = Name.init(1)\nlet b: i64 = table[n]\nrequire b == 4 else => $abort(\"pick\")";
         var generic = Measure(TwoKeys + GenericTwoKeys + Generic);
         var concrete = Measure(TwoKeys + Concrete);
-        Assert.Equal(concrete.Binding, generic.Binding);
-        Assert.Equal((0L, 0L), (generic.Ownership, generic.Generation));
-        Assert.Equal((0L, 0L), (concrete.Ownership, concrete.Generation));
+        Assert.Equal((0L, 0L, 0L), generic);
+        Assert.Equal((0L, 0L, 0L), concrete);
 
         static (long Binding, long Ownership, long Generation) Measure(string source)
         {

@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, BoundType> collisionSubstitutions = new(ReferenceEqualityComparer.Instance);
 
     private BindingSymbol? BindContractReference(Koto syntax, BindingSymbol declaration, BindingScope scope)
     {
@@ -179,8 +180,13 @@ public sealed partial class Binding
             return false;
         }
 
-        var substitutions = new Dictionary<BoundType, BoundType>(ReferenceEqualityComparer.Instance);
-        return Unify(this.ContractType(a.Type!, scope), this.ContractType(b.Type!, scope));
+        var left = this.ContractType(a.Type!, scope);
+        var right = this.ContractType(b.Type!, scope);
+
+        // Unification calls back into nothing, so one scratch map serves every check (a warm bind allocates none).
+        var substitutions = this.collisionSubstitutions;
+        substitutions.Clear();
+        return Unify(left, right);
 
         BoundType Resolve(BoundType type)
         {
@@ -200,9 +206,9 @@ public sealed partial class Binding
                 return true;
             }
 
-            foreach (var component in value.Components)
+            for (var i = 0; i < value.Components.Count; i++)
             {
-                if (Contains(component, variable))
+                if (Contains(value.Components[i], variable))
                 {
                     return true;
                 }
@@ -219,9 +225,9 @@ public sealed partial class Binding
                 return false;
             }
 
-            foreach (var component in value.Components)
+            for (var i = 0; i < value.Components.Count; i++)
             {
-                if (!IsFree(component))
+                if (!IsFree(value.Components[i]))
                 {
                     return false;
                 }
