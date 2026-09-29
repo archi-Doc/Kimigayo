@@ -394,7 +394,7 @@ The outer Semantics determines Copy: `ref/uniq/T` is Copy, while `uniq/ref/T` is
 
 **Selecting and reading a referent.** A reference value is not read as its referent by default. The Place that a `ref/T` or `uniq/T` value points to is selected explicitly with the postfix [follow operation `@follow`](13-operators-and-assignment.md#13551-follow), or implicitly by the [reference-path selection](#341-reference-path-selection) of member, index and receiver positions and of structural Patterns. A referent is read implicitly in only two cases:
 
-- the [Scalar read](#353-scalar-read), at a position that requires a Scalar, follows every safe reference layer to the terminal Scalar;
+- the [value read](#353-value-read), at a position that requires a read Type (a Scalar, position or range Type), follows every safe reference layer to the terminal value;
 - at a fixed expected `ref/U`, the [one shared reference through layers](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) reads the stored references to yield one `ref/U`; it never reads `U` itself.
 
 A Non-Copy referent is never extracted through a reference ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)); it is inspected through the reference by selecting a part, by [comparison](13-operators-and-assignment.md#134-comparison-and-logical-operators) or by borrowing the selected Place.
@@ -482,7 +482,7 @@ func update(node: uniq/Node)
     node.validate()       // Borrows the receiver as the selected declaration requires.
 ```
 
-The same selection applies to the receiver of a borrowing `for` entry (§14.6.2) and to structural Patterns, which stop at the first layer that has the required structure (§14.8.1). A Scalar read and a comparison instead select the terminal of the reference chain (§3.5.3, §13.4). Each selected layer keeps its own capabilities, Origins and Loans; exclusive capability is never recovered through a shared layer.
+The same selection applies to the receiver of a borrowing `for` entry (§14.6.2) and to structural Patterns, which stop at the first layer that has the required structure (§14.8.1). A value read and a comparison instead select the terminal of the reference chain (§3.5.3, §13.4). Each selected layer keeps its own capabilities, Origins and Loans; exclusive capability is never recovered through a shared layer.
 
 In a generic body, a Type parameter or associated Type whose shape the public Constraints and Type equalities do not determine, after normalization, is the terminal of the path. Only its published capabilities are used there, and instantiation never selects a different layer, member or comparison. A reference shape proven by a declared equality may be followed at definition time. A qualifying pair layer is not a terminal: it is followed to its direct target unless its complete Type publishes the requirement. For example, when an associated Type is identical to `s/T` and a Contract conformance of that associated Type is required, its members are selected on the complete `s/T`, not on `T`.
 
@@ -532,7 +532,7 @@ let gone = a@move         // Transfer of a Copy value; a becomes Moved.
 
 ### 3.5.1. Copy capability and explicit duplication
 
-`Copy` is a [compiler-intrinsic Contract](08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees). A user-defined Contract with the same shape does not grant Copy acquisition semantics.
+`Copy` is a [compiler-intrinsic Contract](08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts). A user-defined Contract with the same shape does not grant Copy acquisition semantics.
 
 Complete Types are classified by Core, Semantics and stored components:
 
@@ -543,7 +543,7 @@ Complete Types are classified by Core, Semantics and stored components:
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
 | `Slice<T>{source}` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |
-| `Index`, `Range<T>`, `IndexRange`, `ResolvedRange` | Copy |
+| `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange` | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
 | Common Function Type under `owner` Semantics | Non-Copy regardless of its hidden environment |
@@ -595,9 +595,9 @@ Derivation must hold for every generic binding admitted by the Type Constraints 
 
 Proof may depend on declared constraints, but successful individual instantiations do not validate an otherwise unproven declaration. [Generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects) may defer exact effect determination only after legality is proven for every admitted case; unknown Copy is never treated as Non-Copy.
 
-### 3.5.3. Scalar read
+### 3.5.3. Value read
 
-At a position that requires a Scalar Type `T` (§3.1), a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **Scalar read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that Scalar (§14.9.1), to built-in operator operands and to `bool` conditions. An operator selects its operation from the terminal Scalar Type of each operand. A generic Type is a Scalar only when its [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger) requirement is proven.
+A **read Type** is a Scalar Type (§3.1) or a Type satisfying `Position` or `PositionRange`, that is, a [position or range Type](04-arrays-indexing-and-slices.md#462-positions). At a position that requires a read Type `T`, a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **value read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that read Type (§14.9.1), to built-in operator operands, including range boundaries and the operand of prefix `^`, to `bool` conditions and to an owning receiver of a read Type (§7.3). An operator selects its operation from the terminal Type of each operand. A generic Type is a read Type only when its [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger), `Position` or `PositionRange` requirement is proven. Every read Type is Copy and Owned.
 
 ```kimi
 for number in numbers        // numbers: Array<i32>; number: ref/i32.
@@ -607,18 +607,24 @@ for number in numbers        // numbers: Array<i32>; number: ref/i32.
     total += number
 
 for number in numbers@uniq   // number: uniq/i32.
-    number@follow = number + 1 // The target is selected explicitly; the right side is a Scalar read.
+    number@follow = number + 1 // The target is selected explicitly; the right side is a value read.
 
 for number in references     // references: Array<ref/i32>; number: ref/(ref/i32).
     total += number          // Reads the terminal i32.
+
+for i in picks               // picks: Array<isize>; i: ref/isize.
+    indexes.remove(i)        // The position is read; remove infers P = isize (§10.2.1).
+let t: ref/FromEnd<i32> = last@ref
+let p: FromEnd<i32> = t      // Read at a typed initialization.
+let q = t                    // No expected Type: q keeps ref/FromEnd<i32>.
 ```
 
 - Only safe value-reference layers, including qualifying pair layers (§3.4.1), are followed. Object Semantics, raw pointers and Fields are not followed, and every layer is checked for initialization, capability and Loans. For `factor: s/i32` under `s is value or valueborrow`, `factor * 2` reads the `i32` in every admitted case.
-- No numeric conversion is added; an unresolved literal or literal-only expression (§12.3.1) is fitted to the terminal Scalar Type. Overflow, operator availability and short-circuit evaluation are unchanged.
+- No numeric conversion is added; an unresolved literal or literal-only expression (§12.3.1) is fitted to the terminal Type. Overflow, operator availability and short-circuit evaluation are unchanged.
 - Every read takes the value at that evaluation; nothing is snapshotted at binding time.
 - The target of an assignment, compound assignment, increment or decrement is never redirected to a referent: `number += 1` on `number: ref/i32` is an error, and `number@follow += 1` updates the referent.
 - The original reference keeps its Loan, and the read result carries no new borrow.
-- A non-Scalar Copy referent is copied only through an explicit `@follow` selection; comparisons follow the shared inspection rule of §13.4.
+- A Copy referent that is not of a read Type is copied only through an explicit `@follow` selection; comparisons follow the shared inspection rule of §13.4.
 
 ## 3.6. Temporary values, places, and lifetimes
 
@@ -707,7 +713,7 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility): equal arity, `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It inserts no argument or result operations and does not itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
 | Expected-result compatibility | An instantiated candidate result Type and an independently established expected Type, under [expected-result filtering](10-overload-resolution-and-inference.md#103-expected-results). Requires that the use position admit an acquisition or common adaptation of the known result. | Excludes candidates whose result the position cannot admit; candidates are never ranked by result adaptation. Result acquisition and declared Loan propagation still apply. |
 | Never fitting | Never has no normally produced value and fits any otherwise valid expected value Type without a value conversion. | No outer value operation executes on a non-completing path. Target, Unsafe and local correctness checks remain, and transfer operands are validated against their own result boundary under [result validation](14-control-flow.md#149-result-validation). The Target Result Type stays separate from inferred Never; every syntactic result source is checked under §14.9. |
-| Implicit expression adaptation | An expression, a fixed expected Type and use-site context. Exactly one operation of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) or the fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is selected. | May require acquisition, Borrow/Reborrow, a Scalar read or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. Adaptations are never chained, and no universal implicit-conversion search exists. |
+| Implicit expression adaptation | An expression, a fixed expected Type and use-site context. Exactly one operation of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) or the fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is selected. | May require acquisition, Borrow/Reborrow, a value read or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. Adaptations are never chained, and no universal implicit-conversion search exists. |
 | Explicit expression adaptation | An expression and a resolved Adaptation Target in context, `@move`, `@copy`, or the postfix `@follow`. Select one [defined `@` operation](13-operators-and-assignment.md#1353-defined-adaptations), then enforce its requirements and static result fitting. | May select a Place, change value representation, view or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
 | Object upcast | An expression and a different object View Target, with proof of `Supports(S, V)` and a matching [explicit upcast row](13-operators-and-assignment.md#1357-object-upcasts). | One explicit view/acquisition operation. Inheritance or conformance alone establishes neither an implicit complete-value adaptation nor a callable argument/result conversion. |
 | Base subobject receiver projection | An instance member selected in a base layer by [inherited lookup](09-names-signatures-and-access.md#951-base-subobject-receiver-projection). | Locates the receiver subobject and applies the permitted receiver access; no standalone conversion or owning base value. |

@@ -117,7 +117,11 @@ across fragments for style: logical order controls initializer effects and rever
   capacities or two similar inputs: `init(! start: isize, end: isize)`.
 - `[Advice]` Use `external => internal` when it improves the call:
   `of => value: ref/T` permits `firstIndex(of: target)`.
-- `[Kimi]` Overloads describe the same operation with different input forms, such as `isize` and `Index`.
+- `[Kimi]` Overloads describe the same operation with different input forms. Take a position or a range as
+  one generic parameter, `P is Position` or `R is PositionRange`, instead of an overload per Type; the
+  generic entry only resolves it and delegates to a common `isize` or `ResolvedRange` body.
+- `[Kimi]` A try-prefixed operation is the try form of the operation with the same inputs: `tryGet(k)` is
+  the try form of `x[k]` for a position and a range alike, as Dictionary's `tryGet` is for a key.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
 
 ### 3.3. Properties and comparisons
@@ -143,7 +147,7 @@ across fragments for style: logical order controls initializer effects and rever
 | Mutate the caller's value | `uniq/T` | `f(value@uniq)` |
 | Store, return or consume a value | `T` | `f(value@move)`; a Copy value may be passed bare |
 
-`[Kimi]` Pass integers, `bool`, `Index`, range values and `Slice` by value; borrow large Copy aggregates.
+`[Kimi]` Pass integers, `bool`, positions, ranges and `Slice` by value; borrow large Copy aggregates.
 Do not consume a Non-Copy input merely to inspect it. Temporaries and existing references follow ordinary
 acquisition and Reborrow rules.
 
@@ -275,8 +279,9 @@ This hypothetical removal example omits its enclosing Type and body:
 /// Runs in O(1), allocates no storage and does not preserve order.
 ///
 /// - return: The removed element; the caller takes ownership.
-/// - abort: `index < 0` or `index >= self.length`.
-public func swapRemove(self: uniq/Self, index: isize) -> T
+/// - abort: `index` does not resolve to an element position.
+public func swapRemove<P>(self: uniq/Self, index: P) -> T
+    P is Position
 ```
 
 `[Advice]` Put explanations that span several declarations on a group or in a separate Markdown document.

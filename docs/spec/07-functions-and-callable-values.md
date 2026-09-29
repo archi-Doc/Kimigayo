@@ -164,7 +164,7 @@ struct Counter
 
 struct Buffer
     func insert(self: uniq/Self, index: isize, value: i32)
-    func insert(self: uniq/Self, index: Index, value: i32)   // OK: the same shape.
+    func insert(self: uniq/Self, index: string, value: i32)  // OK: the same shape.
 ```
 
 **Method calls.** In `receiver.method(arguments)`, the receiver is evaluated and acquired first, wherever `self` is declared, and is passed at the declared position of `self`. The receiver is a Receiver Expression ([§3.4](03-types-and-values.md#34-values-places-and-storage)) and is acquired implicitly, exactly as if the operation in the following table were written on it; the row depends on the receiver requirement and on whether the input is value-kind or object-kind. The explicit positional and named arguments are matched against the remaining parameters in written order, and no argument label can supply `self`. Defaults follow in the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee uses the full written parameter order.
@@ -174,9 +174,9 @@ struct Buffer
 | `ref/Self`, `uniq/Self` | An owned Place or temporary is borrowed as `p@ref`, `p@uniq`; a borrow value is Reborrowed in the required mode as `p@follow@ref`, `p@follow@uniq`, after the [reference-path selection](03-types-and-values.md#341-reference-path-selection) that located the member | The complete payload `p@follow@ref`, `p@follow@uniq` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
 | `objref/Self`, `objuniq/Self` | Not applicable | `p@objref`, `p@objuniq` |
 | Declaration in a base `B` | The projection of §9.5.1 | The same |
-| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a Scalar `Self` by the Scalar read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
+| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a `Self` of a read Type (§3.5.3) by the value read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
 
-A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the Scalar read of a Scalar `Self`, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
+A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the value read of a `Self` of a read Type, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
 
 **Checks.** The acquisition is checked in the following order, and the call is an error if any check fails:
 
@@ -186,7 +186,7 @@ A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path 
 
 **Consequences.**
 
-- *No fallback.* When a check fails, the call does not switch to a Scalar read, a materialized temporary or any other acquisition; in particular, it never modifies a Copy and discards the update.
+- *No fallback.* When a check fails, the call does not switch to a value read, a materialized temporary or any other acquisition; in particular, it never modifies a Copy and discards the update.
 - *Explicit spellings.* Writing the table's operation explicitly means the same: for a value-kind input and an exclusive receiver, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and the redundant spelling is accepted. A different explicit operation means what it says: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access, and `r@ref.m()` on a reference `r` borrows the slot of `r` rather than Reborrowing its referent.
 - *Chains.* Each call acquires the previous call's result as its receiver by this table. Acquisition never reaches back through an earlier call, and each call has its own reservations (§15.6.7).
 

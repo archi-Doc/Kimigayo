@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; invalid indices, Index formation or range resolution; the start of iteration over a reversed range; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 
@@ -309,6 +309,23 @@ Use existing Value/Discard Context propagation, including parentheses and branch
 | _ = try save() | Explicit Unit discard | None; discard marker optional |
 
 A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. Fixes target the actual discard site, preserve Body form/Context/ownership, and are not applied automatically.
+
+### 17.4.4. Positions and ranges that always fail
+
+A warning is issued for a position or range built only from literal-only expressions (§12.3.1), `^` applied to one, and omitted boundaries, when its use is certain to fail resolution (§4.6.2, §4.6.4):
+
+- for every length `L`, as for an element position `-1` or `^0`, a closed end `^0` (`..=^0`), or the reversed ranges `2..=1` and `^3..^5`;
+- or, when it indexes a fixed array or is passed to a fixed-array operation, for that array's length `N`, as for `fixed[5..2]`, or `fixed[3]` when `N = 3`.
+
+The judgment evaluates linear inequalities over the literal values and `L` exactly, so every implementation reports the same occurrences independently of optimization. A literal position or range that resolves for some length is not reported, and neither is a value whose Type or boundaries come from other expressions. The warning changes neither Type fitting, execution nor overload choice: the operation still Aborts only when executed (§17.3.4). The diagnostic should state the failing condition and, for a fixed array, its length.
+
+```kimi
+let fixed: [3 of i32] = [1, 2, 3]
+let a = fixed[3]          // Warning: the element position 3 fails for length 3.
+let b = values[^0]        // Warning: ^0 is never an element position.
+let c = values[2..=1]     // Warning: reversed for every length.
+let d = values[1..^1]     // No warning: resolves when the length is at least 2.
+```
 
 ## 17.5. Test verification operations
 

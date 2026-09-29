@@ -152,7 +152,7 @@ func reordered<length N>(value: [(N + 4) of u8]) -> [(4 + N) of u8] => value
 
 ## 4.5. Operations and ownership
 
-Fixed arrays and Array expose the [length metadata](#461-access-and-length-metadata) `length` and `indices`. Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
+Fixed arrays and Array expose the [length metadata](#461-access-and-length-metadata) `length` and `indices`, and the read operations `tryGet`, `splitAt` and `trySplitAt` of §4.6.6. Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
 
 A fixed array is Copy exactly when its complete element Type is Copy (§3.5.1). Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
 
@@ -173,17 +173,16 @@ let middle: Slice<i32> = values[1..3] // Infer the borrow of values' storage.
 
 ### 4.6.1. Access and length metadata
 
-The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`. Element indexing accepts `isize` or `Index`; range indexing accepts `Range<I>`, `IndexRange` or `ResolvedRange` (§4.6.3). Dictionary indexing takes keys instead. Every single-element index expression, including one on a user Type, resolves through the [Indexable Contracts](#469-indexable-contracts). [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept neither `Index` nor a range Type. String indexing units are not introduced.
+The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`. Element indexing accepts a position of any Type satisfying `Position`, and range indexing a range of any Type satisfying `PositionRange` (§4.6.2–§4.6.4). Dictionary indexing takes keys instead. Every single-element index expression, including one on a user Type, resolves through the [Indexable Contracts](#469-indexable-contracts); on the three sequence Types a position is first resolved to an `isize` element position. [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept no other position or range Type. String indexing units are not introduced.
 
 | Core | Meaning |
 | --- | --- |
-| `Index` | Copy, Owned position measured from the start or the end; retains no target |
-| `Range<T>` | Copy, Owned interval of integers of `T is PrimitiveInteger`; Iterable |
-| `IndexRange` | Copy, Owned interval of unresolved positions; not Iterable |
-| `ResolvedRange` | Copy, Owned half-open interval of positions validated against a length; Iterable |
+| Integers, `FromEnd<T>`, `Start`, `End` | Copy, Owned positions: from the start, from the end, the start boundary and the end boundary; retain no target |
+| `Range<S, E>`, `ClosedRange<S, E>` | Copy, Owned half-open and closed intervals of positions; iterable when both boundaries have one integer Type |
+| `ResolvedRange` | Copy, Owned half-open interval of positions validated against a length; iterable |
 | `Slice<T>{source}` | Copy shared view, independent of `T`'s Copy capability; retains the backing Origin and shared Loan |
 
-These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
+These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
 **Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Array and Slice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
@@ -193,7 +192,7 @@ These names are not keywords; `::Kimi.Index`, for example, disambiguates a hidde
 | Array | Share access during the operation and read its current length |
 | Slice | Copy the handle and read its stored length, without reading backing elements |
 
-The returned integers, Booleans and `ResolvedRange` values acquire no receiver or source Origin or Loan; this does not release existing Loans. `indices` is a snapshot of `[0, L)` at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the length current at that time.
+The returned integers, Booleans and `ResolvedRange` values acquire no receiver or source Origin or Loan; this does not release existing Loans. `x.indices` means `(..).resolve(x.length)`: a snapshot of `[0, L)` at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the length current at that time.
 
 **Element Places.** Binding the receiver and index Types, resolving bounds and checking access produce an element Place. It carries the complete stored Type `T`, its source location and its capabilities: `place ref/T` for reads and `place uniq/T` for updates (§4.6.9, §7.1.1). Forming the Place performs no element Copy or Move. Chained access such as `matrix[1][2] = 10` keeps Places without copying an intermediate inner array.
 
@@ -204,7 +203,7 @@ The returned integers, Booleans and `ResolvedRange` values acquire no receiver o
 | `values[i]@move` | Transfer, only through an eligible static Move Path of an owned fixed array |
 | Bare value read | Copy for a proven-Copy element; a Non-Copy element is an error without an expected borrow Type. A bare read never Moves |
 
-Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, `Index` values and paths through borrows never become movable. `@ref` borrows the element Place whatever the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2). An exclusive borrow of an owned element needs `@uniq`. An element that stores a reference or handle is instead adapted under the same table, for example Reborrowed; its slot is not borrowed implicitly. Slice element Places are shared-only (§4.6.6).
+Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, positions other than integer literals and paths through borrows never become movable. `@ref` borrows the element Place whatever the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2). An exclusive borrow of an owned element needs `@uniq`. An element that stores a reference or handle is instead adapted under the same table, for example Reborrowed; its slot is not borrowed implicitly. Slice element Places are shared-only (§4.6.6).
 
 ```kimi
 // resources is an owned fixed array of Non-Copy value Type Resource.
@@ -220,156 +219,180 @@ numbers[0] = 30             // Replace the initialized element.
 let alsoCopied = numbers[i] // Copy does not require a static Move Path.
 ```
 
-### 4.6.2. Index
+### 4.6.2. Positions
 
-`Index` exposes public read-only `offset: isize` and `isFromEnd: bool`. Its constructor is `init(offset: isize, fromEnd: bool = false)`.
-
-| Construction | Meaning |
-| --- | --- |
-| `Index.init(n)` | Offset `n` from the start; the first element is zero |
-| `Index.init(n, fromEnd: true)` / `^n` | Offset `n` backward from the end boundary |
-
-Prefix `^` produces a storable, passable `Index` outside indexing expressions too; infix `^` remains integer exclusive-or. Write `^(n + 1)` for a compound from-end distance.
-
-**Index formation.** Prefix `^x` and each integer boundary of an `IndexRange` (§4.6.3) form an `Index` from a value of any Type satisfying [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger). The value must be nonnegative and representable as `isize`; otherwise formation initiates Abort. A literal-only operand (§12.3.1) has expected Type `isize`. `^x` forms its Index when it is evaluated; range boundaries are formed after both boundaries are evaluated (§4.6.4).
-
-Single-element integer indices, `Index.init` and position APIs such as `splitAt` and `tryGet` keep their `isize` and `Index` parameters, so other integer Types need an explicit conversion there. Single-element key Types are selected by the Indexable Contracts (§4.6.9), not by Index formation. There is no general implicit conversion between integers and `Index`.
-
-Construction with a negative offset initiates Abort without consulting a target length. At length `L`, start-relative `n` resolves to `n` and end-relative `n` to `L - n`. Thus `^1` selects the last element and `^0` denotes the one-past-end boundary.
-
-`Index` implements Equatable by direction and offset, not by coincidental resolution to the same position. It provides neither Comparable nor arithmetic.
+A **position** denotes a boundary of a target of length `L` and resolves to an integer in `[0, L]`. An **element position** is a position whose resolved value `q` also satisfies `q < L`; it selects one element. The Types satisfying the closed Contract `Kimi.Position` are exactly the twelve integer Types and the Kimi Types `FromEnd<T>`, `Start` and `End` (§22.1).
 
 ```kimi
-let first: Index = Index.init(0)
-let last: Index = ^1
+public contract Position: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
+    func tryResolve(self: Self, length: isize) -> Option<isize>
+```
+
+`Position` is a [closed Contract](08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts): no other Type can declare conformance. `T is Position` supplies Equatable and Utf8Format by refinement and Copy and Owned through the Contract's Constraints, and `T is PrimitiveInteger` implies `T is Position` (§8.4.7.3). The integer implementation of `tryResolve` is a Kimi internal function; integers gain no members, and the requirement is called through `P is Position`.
+
+**Resolution.** When `L < 0`, every position fails to resolve. Otherwise:
+
+| Type | Written as | Resolves when | Result |
+| --- | --- | --- | --- |
+| Integer `n` | An integer value | `0 <= n <= L` | `n` |
+| `FromEnd<T>` | `^x`, for `x` of any `T is PrimitiveInteger` | `0 <= offset <= L` | `L - offset` |
+| `Start` | An omitted range start | Always | `0` |
+| `End` | An omitted range end | Always | `L` |
+
+The conditions compare mathematical values: a wide integer is never truncated before its bound is checked, so a `u64` offset beyond `isize.MaxValue` fails.
+
+```kimi
+public struct FromEnd<T>
+    T is PrimitiveInteger
+    Self is Copy
+    Self is Equatable
+    Self is Position
+    public let offset: T
+
+public struct Start      // End has the same form.
+    Self is Copy
+    Self is Equatable
+    Self is Position
+```
+
+- **Meaning.** `^0` and `End` denote the end boundary, and `^1` the last element.
+- **Members.** `FromEnd<T>` exposes `offset`. The three Types provide `tryResolve` and `resolve(self: Self, length: isize) -> isize`, and have no public constructor: `^x` constructs a `FromEnd<T>`, and omitted range boundaries construct `Start` and `End`.
+- **Construction checks nothing.** `^x` stores `x`; `^(-1)` is a valid value that fails to resolve. Only the evaluation of the operand itself can fail, as an overflow in `^(a - b)`.
+- **Equality.** `FromEnd<T>` compares offsets; all `Start` values are equal, and so are all `End` values. `0`, `^0` and `End` have different Types and cannot be compared.
+- **No other operations.** Positions provide neither Comparable, arithmetic nor implicit conversion; `^n + 1` is `(^n) + 1`, a Type error. Prefix `^` produces a storable, passable value outside indexing expressions too; infix `^` remains integer exclusive-or. Write `^(n + 1)` for a compound from-end distance.
+
+A position is a read Type: a reference to a position is read as its value wherever a position is expected (§3.5.3), and a Type argument constrained to `Position` is inferred as the referent Type (§10.2.1). Element positions of every integer Type are accepted, so `values[n]` with `n: u8` needs no conversion.
+
+```kimi
 let values: [4 of i32] = [10, 20, 30, 40]
-let a = values[first] // 10
-let b = values[last]  // 40
-let end = ^0         // Valid Index; values[end] is out of bounds.
-let two: i32 = 2
-let c = values[^two]  // 30; two is formed into an isize offset.
-let d = values[two]   // Error: element indices are isize or Index.
+let last = ^1          // FromEnd<i32>
+let a = values[last]   // 40
+let b = values[2]      // 30; the literal is i32.
+let n: u8 = 1
+let c = values[n]      // 20
+let d = values[^0]     // Aborts if executed: ^0 is the end boundary, not an element.
+let e = ^(-1)          // Valid FromEnd<i32>; values[e] Aborts if executed.
 ```
 
 ### 4.6.3. Ranges
 
-Three Kimi Types describe intervals. Range syntax constructs `Range<T>` and `IndexRange`; resolution against a length produces `ResolvedRange`.
+A **range** is an interval of positions. Range syntax constructs `Range<S, E>` and `ClosedRange<S, E>`, and resolution against a length produces a `ResolvedRange`. The Types satisfying the closed Contract `Kimi.PositionRange` are exactly these three (§4.6.4).
 
-| Type | Meaning | Construction | Iteration | `length`, `isEmpty` |
-| --- | --- | --- | --- | --- |
-| `Range<T>` | Integers of `T is PrimitiveInteger`, including negative values | Range syntax only | Yields `T` | None |
-| `IndexRange` | Positions measured from the start or the end, resolved against a target length | Range syntax only | None | None |
-| `ResolvedRange` | Half-open positions validated against a length | `indices`, `resolve`, `tryResolve` only | Yields `isize` | Provided |
+#### 4.6.3.1. Syntax and Types
 
-The three Types share these rules:
+| Syntax | Type | Interval |
+| --- | --- | --- |
+| `a..b` | `Range<S, E>` | From `a`, excluding `b` |
+| `a..=b` | `ClosedRange<S, E>` | From `a`, including `b` |
+| `a..` | `Range<S, End>` | From `a` to the target's end |
+| `..b` | `Range<Start, E>` | From the target's start, excluding `b` |
+| `..=b` | `ClosedRange<Start, E>` | From the target's start, including `b` |
+| `..` | `Range<Start, End>` | The entire target |
 
-1. **Construction checks no order.** Iteration, resolution and slicing check boundary order and target length when they use a range.
-2. **Slicing applies a resolved interval.** A range is resolved against the current target length, and the resulting interval is applied (§4.6.4).
-3. **Index formation accepts every integer Type.** Integer `IndexRange` boundaries and prefix `^` form Indexes from any `PrimitiveInteger` value (§4.6.2); position APIs keep `isize` and `Index`.
+- **Shape.** The syntax alone fixes the shape: `..` is half-open and `..=` closed. Runtime values, expected Types and use as an index never change it. An omitted boundary is a `Start` or `End` value, and `a..=` is a syntax error.
+- **Construction checks nothing.** A range stores its boundaries; a reversed range can be constructed.
+- **Boundaries.** Each boundary is a value of a Type satisfying `Position`, read through references by the [value read](03-types-and-values.md#353-value-read). The two boundary Types are independent and need not be equal; one integer Type for both is required only for iteration (§4.6.3.4).
+- **Independent boundary Types.** A boundary that is not literal-only (§12.3.1) needs an independently known Type, and the expected Type does not re-infer it. A generic or overloaded call that depends on its context requires an annotation, explicit Type arguments or a typed intermediate Binding (§10.5).
 
-A range value means the same whether it is stored, passed, iterated or used as an index; `for` and indexing add no special cases. None of the three Types retains a storage Origin or Loan, implements Comparable or arithmetic, or converts implicitly to another range Type.
+**Literal-only boundaries.** Each literal-only boundary takes its Type from the first applicable rule below; a mismatch is an error and never retries a later rule. `^a` is literal-only when `a` is, and its operand receives the `T` of the `FromEnd<T>` so determined.
 
-#### 4.6.3.1. Syntax and kind
+1. **Its expected Type:** the `S` or `E` of the range's expected Type.
+2. **The other boundary:** the integer Type of the other boundary when that Type is established: the Type itself, or `T` for `FromEnd<T>`.
+3. **Default:** `i32`, as for every integer literal. Positions have no separate default, so `0..10`, `^1` and `values[3]` are all `i32`.
 
-| Syntax | Interval |
-| --- | --- |
-| `start..end` | Includes start, excludes end |
-| `start..=end` | Includes both boundaries |
-| `start..` | From start through the target's end |
-| `..end` / `..=end` | From the target's start, excluding / including end |
-| `..` | The entire target |
-
-The kind of a range expression depends only on its omitted boundaries and on boundary Types known independently of the context:
-
-| Form | Result |
-| --- | --- |
-| `a..b` or `a..=b` with two integer boundaries | `Range<T>` |
-| At least one `Index` boundary | `IndexRange`; integer boundaries are formed into Indexes (§4.6.2) |
-| `a..`, `..b`, `..=b`, `..` | `IndexRange`; an omitted start is start-relative zero and an omitted end `^0`; an inclusive end cannot be omitted |
-
-- A boundary is a `PrimitiveInteger` value, read through references by the [Scalar read](03-types-and-values.md#353-scalar-read), or an `Index`.
-- Expected Types, runtime values and use as an index never change the kind, and a literal-only boundary (§12.3.1) is not defaulted to decide it. `let r: IndexRange = 1..3` is a Type error.
-- A boundary that is not literal-only needs an independently known Type. A generic or overloaded call that depends on its context requires an annotation, explicit Type arguments or a typed intermediate Binding (§10.5); the expected Type does not re-infer the boundary.
-
-**Range<T> Type.** Both boundaries have the same `T`. An established boundary Type is propagated to a literal-only other boundary; different established integer Types are an error and are never converted. A range whose boundaries are both literal-only is itself literal-only and defaults to `Range<i32>`.
+A literal position that does not fit `i32` needs an explicit Type, as in `values[3_000_000_000@isize]`.
 
 ```kimi
-let a = 0..10              // Range<i32>
-let b = 0@i64..10          // Range<i64>
-let c: Range<u8> = 0..200  // Range<u8>
-let n = 10
-let d = 0..n@ref           // Scalar read; Range<i32>
-let e = [0..3, 5..8@i64]   // Array<Range<i64>>
-let f = ..3                // IndexRange; a different Type from 0..3
-let g = 1..^1              // IndexRange
-let h: IndexRange = Index.init(1)..Index.init(3)
-let i = 0@i32..1@i64       // Error: different boundary Types.
+let a = 1..^1                 // Range<i32, FromEnd<i32>>
+let b = 2..                   // Range<i32, End>
+let c = 0@i32..2@i64          // Range<i32, i64>; resolvable but not iterable.
+let n: i64 = 2
+let d: Range<i64, u8> = n..10 // 10 is u8 from the expected Type.
+let e = ..                    // Range<Start, End>
+let f = 0..n@ref              // Value read; Range<i64, i64>.
+let g = [0..3, 5..8]          // Array<Range<i32, i32>>
 ```
 
-**Precedence.** Range operators are non-associative and bind below logical and arithmetic operators but above assignment. Prefix `^` has ordinary prefix precedence. `a..b..c` is rejected syntactically, and `(a..b)..c` by its boundary Type. Range syntax always constructs the Kimi Types, never same-named user Types.
+**Precedence.** Range operators are non-associative and bind below logical and arithmetic operators but above assignment. Prefix `^` has ordinary prefix precedence. `a..b..c` is rejected syntactically, and `(a..b)..c` by its boundary Type.
 
 | Expression | Interpretation |
 | --- | --- |
 | `a + 1..b * 2` | `(a + 1)..(b * 2)` |
-| `^n + 1` | `(^n) + 1`; a Type error because `Index` has no addition |
+| `^n + 1` | `(^n) + 1`; a Type error because `FromEnd<T>` has no addition |
 | `^(n + 1)` | From-end distance `n + 1` |
 | `0..^1` | `0..(^1)` |
 | `a ^ b..c` | `(a ^ b)..c`; integer exclusive-or first |
 
-#### 4.6.3.2. `Range<T>`
-
-- Owned, Copy and Equatable over `T is PrimitiveInteger`.
-- Public read-only `start: T`, `end: T` and `isInclusive: bool`, `resolve` and `tryResolve` (§4.6.4), and the three iteration entries (§4.6.3.5).
-- Constructed only by range syntax, with no public `init`, factory or `tryCreate`. A reversed value (`start > end`) can be constructed.
-- Equality compares `start`, `end` and `isInclusive`: `0..3` differs from `0..=2`.
-- There is no `length` or `isEmpty`: the element count may fit neither `T` nor `usize`, and a value may be reversed.
-
-#### 4.6.3.3. `IndexRange`
-
-- Owned, Copy and Equatable.
-- Public read-only `start: Index`, `end: Index` and `isInclusive: bool`, and `resolve` and `tryResolve` (§4.6.4).
-- Constructed only by range syntax. Construction forms integer boundaries into Indexes and neither borrows a target nor checks boundary order.
-- Never Iterable, even with absolute boundaries. A saved IndexRange can apply to different targets, so it has no target-independent `length` or `isEmpty`.
-- Equality compares the normalized Indexes, by direction and offset, and `isInclusive`: `..` equals `0..^0`.
-
-#### 4.6.3.4. `ResolvedRange`
-
-- Owned, Copy and Equatable by `start` and `end`; always `0 <= start <= end`.
-- Public read-only `start: isize`, `end: isize`, `length: isize = end - start` and `isEmpty: bool`, and the three iteration entries (§4.6.3.5).
-- Produced only by sequence `indices` (§4.6.1) and by `resolve` and `tryResolve`. No public constructor or setter bypasses validation.
-- Applying it to an array or Slice checks the current length (§4.6.4).
-
-#### 4.6.3.5. Iteration
-
-`Range<T>` and `ResolvedRange` conform to `Iterable`, `UniqIterable` and `IntoIterable`:
-
-| Range | Result of every entry | Values |
-| --- | --- | --- |
-| `Range<T>` | `RangeIterator<T>` | From `start` upward in unit steps |
-| `ResolvedRange` | `RangeIterator<isize>` | Those of the half-open `Range<isize>` with the same boundaries |
-
-- An entry copies the boundaries and keeps no Storage, Origin or Loan of the source. The borrowing entries' `IteratorType(source)` is the same Type for every `source`.
-- An entry initiates Abort when `start > end`; a reversed range is neither empty nor descending.
-- `RangeIterator<T>` is an Owned, Non-Copy Iterator whose `Item` is `T`; `next(self: uniq/Self)` returns `Option<T>`. It never computes past its last value, including at the maximum of `T`, stays exhausted after `None`, and satisfies the [Iterator effect bound](22-core-execution-and-foreign-functions.md#22124-iterator-independence).
-- `RangeIterator<T>` has no public constructor and no entry conformance; enumerate an iterator value through `Kimi.Iteration.owning` or `borrowing` (§22.1.2.3).
-- Reassigning a `for var` binding does not change the sequence. Acquisition, borrowing and cleanup follow §14.6.2.
-- `IndexRange` is never enumerable; iterate `values.indices` or a resolved interval. Infinite, descending and stepped ranges are unavailable.
+#### 4.6.3.2. `Range<S, E>` and `ClosedRange<S, E>`
 
 ```kimi
-let values: [4 of i32] = [10, 20, 30, 40]
-for var number in -3..3        // Range<i32>: -3 through 2.
-    number += 10               // Changes only the binding.
-for i in values.indices        // ResolvedRange; i: isize.
-    let value = values[i]
-let inner = 1..^1              // IndexRange
-for i in inner.resolve(values.length)
-    let value = values[i]      // Indices 1 and 2.
-for i in inner                 // Error: IndexRange is not Iterable.
+public struct Range<S, E>     // ClosedRange<S, E> has the same form.
+    S is Position
+    E is Position
+    Self is Copy
+    Self is Equatable
+    Self is PositionRange
+    public let start: S
+    public let end: E
+```
+
+- Owned, Copy and Equatable, and they satisfy `PositionRange`.
+- They store only the public read-only `start: S` and `end: E`; `Start` and `End` are zero-sized.
+- Public members are `start`, `end`, `tryResolve` and `resolve` (§4.6.4), and the iteration entries (§4.6.3.4).
+- Constructed only by range syntax, with no public `init`, factory or `tryCreate`.
+- Equality compares boundaries of the same Types. Ranges of different shapes have different Types and cannot be compared: `(0..3) == (0..=2)` is a Type error.
+- There is no `length` or `isEmpty`: boundaries may be relative, the element count may fit no integer Type, and a value may be reversed.
+
+#### 4.6.3.3. `ResolvedRange`
+
+`ResolvedRange` is `Range<isize, isize>` with the invariant `0 <= start <= end`, as a distinct Type.
+
+- **Same meaning.** Resolution, iteration, formatting and equality are those of the `Range<isize, isize>` with the same boundaries. No implicit conversion exists in either direction.
+- **Consequences of the invariant.** Its resolution checks only `end <= L`, and its iteration entries check no order.
+- **Members.** Owned, Copy and Equatable by `start` and `end`, with public read-only `start: isize`, `end: isize`, `length: isize = end - start` and `isEmpty: bool`, `tryResolve` and `resolve` (§4.6.4) and the iteration entries (§4.6.3.4).
+- **Production.** Only sequence `indices` (§4.6.1) and the `resolve` and `tryResolve` of the range Types produce it. No public constructor or setter bypasses validation.
+- **Application.** It is a numeric interval that names no target, so it applies to any target that is long enough; applying it checks the current length (§4.6.4).
+
+#### 4.6.3.4. Iteration
+
+| Range | Iteration condition | Iterator | Values |
+| --- | --- | --- | --- |
+| `Range<S, E>` | `S is PrimitiveInteger` and `E is S` | `RangeIterator<S>` | `[start, end)` |
+| `ClosedRange<S, E>` | `S is PrimitiveInteger` and `E is S` | `ClosedRangeIterator<S>` | `[start, end]` |
+| `ResolvedRange` | None | `RangeIterator<isize>` | Those of the `Range<isize, isize>` with the same boundaries |
+
+- **Conformance.** Each range conforms to `Iterable`, `UniqIterable` and `IntoIterable` under its condition by conditional conformance (§8.4.8); `E is S` is a Type-identity requirement (§8.3). A range with an omitted boundary or a `FromEnd<T>` boundary, or with two different integer Types, does not satisfy the condition and is not iterable.
+- **Entries.** An entry copies the boundaries and keeps no Storage, Origin or Loan of the source. The borrowing entries' `IteratorType(source)` is the same Type for every `source`. An entry initiates Abort when `start > end`; a reversed range is neither empty nor descending.
+- **Values.** Values are produced from `start` upward in unit steps. `ClosedRangeIterator<T>` produces `end` last and never computes past it, including at the maximum of `T`. Reassigning a `for var` binding does not change the sequence. Acquisition, borrowing and cleanup follow §14.6.2.
+- **Iterators.** `RangeIterator<T>` and `ClosedRangeIterator<T>` are Owned, Non-Copy Iterators whose `Item` is `T`; `next(self: uniq/Self)` returns `Option<T>`. They stay exhausted after `None` and satisfy the [Iterator effect bound](22-core-execution-and-foreign-functions.md#22124-iterator-independence). They have no public constructor and no entry conformance; enumerate an iterator value through `Kimi.Iteration.owning` or `borrowing` (§22.1.2.3). Their representation is unspecified.
+- Infinite, descending and stepped ranges are unavailable (Appendix D).
+
+```kimi
+let values: [5 of i32] = [10, 20, 30, 40, 50]
+let inner = 1..^1
+for i in 0..values.length             // Range<isize, isize>
+    Console.writeLine("\(values[i])")
+for var number in -3..3               // Range<i32, i32>: -3 through 2.
+    number += 10                      // Changes only the binding.
+for x in 0..=255@u8                   // ClosedRangeIterator<u8>; no addition after 255.
     ()
+for i in inner.resolve(values.length) // ResolvedRange: 1, 2, 3.
+    ()
+for i in inner                        // Error: a range with a FromEnd boundary is not iterable.
+    ()
+
+func sum<T>(values: Range<T, T>) -> T
+    T is PrimitiveInteger
+    var total: T = 0
+    for value in values               // T is T holds, so the range is iterable.
+        total += value
+    return total
 
 func makeNumbers() -> RangeIterator<i32>
     let numbers = 0..3
-    return numbers.iterate()   // Keeps no borrow of numbers.
+    return numbers.iterate()          // Keeps no borrow of numbers.
 
 for number in Kimi.Iteration.owning(makeNumbers())
     Console.writeLine("Count \(number)")
@@ -377,77 +400,81 @@ for number in Kimi.Iteration.owning(makeNumbers())
 
 ### 4.6.4. Resolution, evaluation, and failure
 
-The target length `L` is a nonnegative `isize`. Resolution never clamps and never turns a reversed interval into an empty one.
-
-**Index resolution.** An Index resolves at `L` when `0 <= n <= L` for its offset `n`: start-relative `n` resolves to `n` and end-relative `n` to `L - n`, with `n <= L` checked before the subtraction. An element access requires `0 <= p < L` for the resolved position `p`.
-
-| Operation | Result Type | Invalid length or bounds |
-| --- | --- | --- |
-| `index.resolve(length)` | `isize` boundary | Abort |
-| `index.tryResolve(length)` | `Option<isize>` | `None` |
-
-Successful Index resolution validates a boundary, not an element: `(^0).resolve(L)` returns `L`.
-
-**Range resolution.** `Range<I>` and `IndexRange` provide the following operations; a negative `length` fails.
-
-| Operation | Result Type | Failure |
-| --- | --- | --- |
-| `resolve(length: isize)` | `ResolvedRange` | Abort |
-| `tryResolve(length: isize)` | `Option<ResolvedRange>` | `None` |
-
-Resolution maps the boundaries to mathematical integers `s` and `e`: the values themselves for `Range<I>`, and the resolved Indexes for `IndexRange`, failing when an Index does not resolve. It then requires:
-
-| Form | Condition | Result |
-| --- | --- | --- |
-| Half-open | `0 <= s <= e <= L` | `[s, e)` |
-| Inclusive | `0 <= s <= e < L` | `[s, e + 1)` |
-
-Successful boundaries are exact `isize` values, and the inclusive `e + 1` cannot overflow. The number and order of comparisons are unspecified, but a truncated value never passes and `tryResolve` never Aborts on a conversion of its own. These operations take small Copy values and access no target storage.
-
-**Slicing.** For a target of current length `L`, `x[r]` means `x[r.resolve(L)]`, and `s.trySlice(r)` applies the result of `r.tryResolve(L)`. A `ResolvedRange` is already resolved, so only `end <= L` is checked; a valid ResolvedRange may still fail on a shorter target. An implementation may fuse resolution and application without materializing a ResolvedRange.
-
 ```kimi
-let r: Range<isize> = 2..5
-let shortArray: [3 of i32] = [1, 2, 3]
-let checked = shortArray[..].trySlice(r) // None.
-let failed = shortArray[r]              // Abort if executed.
+public contract PositionRange: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
+    func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
 ```
 
-`values[..]` and `values[L..]` also apply to empty arrays. `values[L..L]` and `values[^0..]` are empty; element index `L` or `^0`, and an inclusive end of `^0`, are invalid.
+`PositionRange` is a closed Contract satisfied exactly by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange`, with the same implications as `Position` (§4.6.2). Resolution reads only the boundaries and the length, so an implementation may fuse or remove its calls and checks.
 
-**Failure.** Ordinary element and range indexing initiates Abort on invalid bounds; use `Slice.tryGet`/`trySlice` for expected input failures. A try-prefixed API converts only its own length or bounds failure to `None`, not failures in argument evaluation, including Index formation, or in other operations. A successful try-prefixed API returns `Some`. With `n < 0`:
+**Range resolution.** Let `s` and `e` be the resolved start and end positions (§4.6.2), and `q` the end resolved as an element position.
+
+| Type | Check | Result |
+| --- | --- | --- |
+| `Range<S, E>` | `s <= e` | `[s, e)` |
+| `ClosedRange<S, E>` | `s <= q` | `[s, q + 1)` |
+| `ResolvedRange` | `end <= L` | The same interval |
+
+- **Failure.** Resolution fails when `L < 0` or when any position fails to resolve.
+- **Order.** The resolved boundaries are compared once. Resolution never clamps and never turns a reversed interval into an empty one. A half-open range whose start is `Start` or whose end is `End` always passes the order check.
+- **No overflow.** `q < L <= isize.MaxValue`, so `q + 1` cannot overflow.
+
+```kimi
+(1..^1).tryResolve(5)   // Some(1..4)
+(1..=3).tryResolve(5)   // Some(1..4)
+(2..).tryResolve(5)     // Some(2..5); End resolves to 5.
+(2..=1).tryResolve(5)   // None: reversed.
+(..=^0).tryResolve(5)   // None: ^0 is not an element position.
+(^7..).tryResolve(5)    // None: 7 > 5.
+let r = (1..^1).resolve(5)
+r.tryResolve(3)         // None: the end 4 exceeds the length 3.
+```
+
+**Aborting operations.** The Contracts require only `tryResolve`. Every aborting operation that takes a position or range, such as indexing, `insert`, `remove` and `resolve`, performs the same resolution and initiates Abort when it yields `None`. The position and range Types other than the integers publish `resolve(self: Self, length: isize)` as the naming pair of `tryResolve` (§4.7.1).
+
+**Slicing.** For a target of current length `L`, `x[r]` applies the interval of `r.tryResolve(L)` and Aborts when there is none, and `x.tryGet(r)` returns `None` instead (§4.6.6). An implementation may fuse resolution and application without materializing a `ResolvedRange`. `values[..]` and `values[L..]` also apply to empty arrays; `values[L..L]` and `values[^0..]` are empty; element position `L` or `^0`, and a closed end of `^0`, are invalid.
+
+```kimi
+let r = 2..5
+let shortArray: [3 of i32] = [1, 2, 3]
+let checked = shortArray.tryGet(r) // None.
+let failed = shortArray[r]         // Abort if executed.
+```
+
+**Failure.** Ordinary element and range indexing initiates Abort on invalid bounds; use the `tryGet` and `trySplitAt` operations for expected input failures. A try-prefixed API converts only its own length or bounds failure to `None`, not failures in argument evaluation or in other operations; a successful try-prefixed API returns `Some`. Because construction checks nothing, a negative position fails at its use. With `n < 0` and a Slice `s`:
 
 | Operation | Result |
 | --- | --- |
-| `values[-3..3]`, `values[3..1]` | Abort in slicing |
-| `s.trySlice(-3..3)`, `s.trySlice(3..1)`, `s.trySlice(0..n)`, `s.tryGet(-1)` | `None` |
-| `s.trySlice(Index.init(3)..Index.init(1))` | `None` |
-| `s.trySlice(n..)`, `s.trySlice(..n)`, `s.trySlice(^n..)`, `s.tryGet(^n)` | Abort in Index formation; the try API is not called |
+| `let p = ^n`, `let r = n..` | Succeeds; construction checks nothing |
+| `values[n..]`, `values[^n..]`, `values[^n]`, `values[2..=1]` | Abort in resolution |
+| `s.tryGet(n..)`, `s.tryGet(^n)`, `s.tryGet(2..=1)`, `s.trySplitAt(^n)` | `None` |
 
 Integers from external input are passed in their own Type:
 
 ```kimi
 func tryWindow<T, I>(values: Slice<T> ! start: I, end: I) -> Option<Slice<T> during values.source>
     I is PrimitiveInteger
-    return values.trySlice(start..end) // None for negative, reversed or out-of-range boundaries.
+    return values.tryGet(start..end) // None for negative, reversed or out-of-range boundaries.
 ```
 
-**Evaluation order.** The receiver and index are each evaluated once under the [evaluation order](12-expressions.md#122-evaluation-order). A range expression evaluates its start and then its end; a failure inside a boundary expression stops subsequent evaluation. `Range<T>` construction then checks nothing, and `IndexRange` construction forms its integer boundaries into Indexes from left to right. Prefix `^` forms its Index while it is evaluated, before later boundaries. Three independent examples:
+**Evaluation order.** The receiver and index are each evaluated once under the [evaluation order](12-expressions.md#122-evaluation-order). A range expression evaluates its written boundaries, start before end; an omitted boundary evaluates nothing. A failure inside a boundary expression stops subsequent evaluation, and neither `^x` nor range construction checks anything afterwards. Three independent examples:
 
 ```kimi
 func sideEffect() -> isize
     return 2 // Represents an observable effect.
 
-let a = (-1)..sideEffect()  // Range<isize>; construction succeeds.
-let b = (-1)..^sideEffect() // Evaluate sideEffect, then Abort forming the Index of -1.
-let c = ^(-1)..sideEffect() // Abort forming the Index; sideEffect is not called.
+let a = (-1)..sideEffect()   // Range<isize, isize>; construction succeeds.
+let b = ^(-1)..sideEffect()  // Range<FromEnd<isize>, isize>; construction succeeds too.
+let c = values[(-1)..]       // Evaluates the receiver and the boundary, then Aborts in resolution.
 ```
 
-The built-in access receiver is located first. While its index is evaluated, modification, destruction, Move and reallocation of that storage are prohibited; shared reads remain allowed, as in `values[values.length - 1]`. For a chained element Copy, the located root is protected through all index evaluations and the final element Copy, and that Copy is acquired before later surrounding operands are evaluated; intermediate arrays are not copied. A temporary receiver keeps its ordinary enclosing-expression lifetime. A write establishes its exclusive Loan after resolving bounds and checks existing Loans. The receiver and boundaries are never reevaluated. For a Slice, the handle is copied first; reassigning the original handle does not change the acquired view.
+**Receivers.** The built-in access receiver is located once, whatever its form and whether the range is written directly or saved: an existing Place is used where it is, and only an owned temporary is materialized in a Temporary Place. The receiver is neither copied into a temporary nor borrowed as a whole for the operation, so a large array is not copied and the remaining elements after a Partial Move stay directly accessible. While its index is evaluated, modification, destruction, Move and reallocation of that storage are prohibited; shared reads remain allowed, as in `values[values.length - 1]`. For a chained element Copy, the located root is protected through all index evaluations and the final element Copy, and that Copy is acquired before later surrounding operands are evaluated; intermediate arrays are not copied. A temporary receiver keeps its ordinary enclosing-expression lifetime. A write establishes its exclusive Loan after resolving bounds and checks existing Loans. The receiver and boundaries are never reevaluated. For a Slice, the handle is copied first; reassigning the original handle does not change the acquired view.
 
 **Writes and updates.** [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) and [compound assignment](13-operators-and-assignment.md#1372-compound-assignment) secure their right-hand side before locating the indexed target; compound assignment then checks bounds, reads the old value, computes and writes back, once each. Increment and decrement use the same target and Loan rules. An arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting access from the right-hand side. The exclusive Loan of an element write lasts from bounds resolution through old-value destruction and placement. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) evaluate their arguments left to right and reserve each target under §15.6.7 before activating all targets at entry; `Kimi.Intrinsics.swap` requires static non-overlap, not merely a runtime `i != j`.
 
-The common [Abort and constant-evaluation rules](17-failure-handling.md#1734-checks-builds-and-constant-evaluation) apply. Syntax, Type, literal-fitting and required constant-evaluation violations are compile-time errors. An ordinary out-of-bounds `a[10]` on a three-element array instead aborts if executed; a compiler may warn, but optimization must not turn such a runtime failure into language-level rejection. Rejection of an ineligible static Move Path is a separate rule.
+The common [Abort and constant-evaluation rules](17-failure-handling.md#1734-checks-builds-and-constant-evaluation) apply. Syntax, Type, literal-fitting and required constant-evaluation violations are compile-time errors. An ordinary out-of-bounds `a[10]` on a three-element array instead aborts if executed; a position or range that fails for every length, or for a fixed array's length, is warned about (§17.4), but optimization must not turn such a runtime failure into language-level rejection. Rejection of an ineligible static Move Path is a separate rule.
 
 ### 4.6.5. Slice storage, lifetime, and permissions
 
@@ -487,17 +514,19 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | --- | --- |
 | `s.length: isize` / `s.isEmpty: bool` | Read-only count / whether the count is zero |
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
-| `s[index]` | The element Place `place ref/T during s.source`; accepts `isize` or `Index` |
-| `s[range]` | `Slice<T>` retaining `s.source`; accepts `Range<I>`, `IndexRange` or `ResolvedRange`, resolved against the current length (§4.6.4) |
-| `s.tryGet(index)` | `Option<ref/T during s.source>`; separate `isize` and `Index` overloads |
-| `s.trySlice(range)` | `Option<Slice<T>>` retaining `s.source`; separate `IndexRange` and `ResolvedRange` overloads and one generic overload `trySlice<I>(self: Self, range: Range<I>)` with `I is PrimitiveInteger` |
-| `s.splitAt(index)` | `(Slice<T>, Slice<T>)`, both retaining `s.source`, covering `[0, p)` and `[p, length)` |
-| `s.trySplitAt(index)` | `Option` of that Tuple |
+| `s[index]` | The element Place `place ref/T during s.source`; `index` is a position of any Type (§4.6.9) |
+| `s[range]` | `Slice<T>` retaining `s.source`; `range` is a range of any Type, resolved against the current length (§4.6.4) |
+| `s.tryGet(index)` | `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>` with `P is Position`; `None` unless `index` resolves to an element position |
+| `s.tryGet(range)` | `tryGet<R>(self: Self, range: R) -> Option<Slice<T> during source>` with `R is PositionRange`; `None` when `range` does not resolve |
+| `s.splitAt(index)` | `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)` with `P is Position`; resolves `index` once to `p` and returns `(s[..p], s[p..])` |
+| `s.trySplitAt(index)` | `Option` of that Tuple; `None` when `index` does not resolve |
 | `s.contains(value)`, `T is Equatable` | `bool`; whether some element equals `value: ref/T` |
 | `s.firstIndex(of: value)`, `T is Equatable` | `Option<isize>`; the first index whose element equals `value: ref/T` |
 | `s.firstIndex(matching: f)` | `Option<isize>`; the first index for which `f`, with `F is Callable<(ref/T) -> bool>`, returns `true` |
 
-The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Both split operations have `isize` and `Index` overloads and accept the boundaries zero and length. Invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`; `tryGet` and `trySlice` likewise return `None` on their own invalid bounds. `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
+The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Positions and ranges are passed by value and read from references (§3.5.3). Both split operations accept the boundaries zero and length; invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`. `tryGet` is the try-prefixed form of `s[k]`: no Type satisfies both `Position` and `PositionRange`, so exactly one of its two declarations applies to any argument, including a literal-only expression. It deliberately has a fixed reference result for a position, independent of `T`'s Copy capability.
+
+Fixed arrays and Array provide `tryGet`, `splitAt` and `trySplitAt` with the meaning of the same operation on their whole-range Slice `x[..]`; their results depend on the receiver's shared borrow (`during self`) instead of a Slice source.
 
 A Slice element Place follows the element Place rules of §4.6.1 but is shared-only: writes, Moves and exclusive borrows through a Slice are rejected. No result Type depends on Copy: for an unknown `T`, a by-value `s[0]` needs `T is Copy`, while `s[0]@ref` works for every `T`.
 
@@ -524,7 +553,7 @@ match s.tryGet(10)
     .None => ()
 
 func tryTail<T>(values: Slice<T>) -> Option<Slice<T> during values.source>
-    return values.trySlice(1..) // None for an empty Slice; no static length condition.
+    return values.tryGet(1..) // None for an empty Slice; no static length condition.
 ```
 
 ```kimi
@@ -555,14 +584,14 @@ The outer references from `tryGet` and iteration borrow the slots of `refs`, whi
 
 ### 4.6.8. Representation and performance
 
-Construction, Index formation, resolution and Copy of `Index` and the range Types, and creation, Copy, reslicing, splitting and address calculation of Slices, take O(1) time in the element count and require no additional element storage, heap allocation or reference-count update. Forming or forwarding an element Place is O(1) and requires no heap allocation, element Copy, temporary element storage or reference-count update of its own. Searches, projection arithmetic, the actual acquisition, including any element Copy, and user code are charged separately.
+Construction, resolution and Copy of positions and ranges, and creation, Copy, reslicing, splitting and address calculation of Slices, take O(1) time in the element count and require no additional element storage, heap allocation or reference-count update. Forming or forwarding an element Place is O(1) and requires no heap allocation, element Copy, temporary element storage or reference-count update of its own. Searches, projection arithmetic, the actual acquisition, including any element Copy, and user code are charged separately.
 
-For a fixed Type binding, let `n` be the number of live elements or entries at the start of an enumeration. The standard iterators of borrowed Array, fixed arrays and Dictionary, of Slice and `RangeIterator<T>` satisfy:
+For a fixed Type binding, let `n` be the number of live elements or entries at the start of an enumeration. The standard iterators of borrowed Array, fixed arrays and Dictionary, of Slice and of the ranges satisfy:
 
 | Operation or resource | Bound |
 | --- | --- |
 | Creation, destruction, and `next` on an empty or exhausted iterator | O(1) |
-| `next` of Array, fixed array, Slice and `RangeIterator<T>` | O(1) each |
+| `next` of Array, fixed array, Slice, `RangeIterator<T>` and `ClosedRangeIterator<T>` | O(1) each |
 | `next` of Dictionary | Amortized O(1) |
 | Enumeration up to the first `None` | O(1 + n) |
 | Additional iterator storage | O(1), with no heap allocation or reference-count update |
@@ -571,7 +600,9 @@ For a Dictionary, `n` is the number of live entries, not the capacity: no capaci
 
 A Slice's semantic representation keeps the backing-element location or equivalent provenance, a nonnegative `isize` length, and static Origins and Loans. Element spacing is `stride(T)`. Empty Slices and zero-sized elements keep source provenance. No universal pointer-plus-length ABI, runtime lifetime tag or pointer to a disappearing handle variable is required. Implementations use logical counts and positions rather than subtracting element pointers to recover a length, and never form invalid pointers before checking.
 
-Checks may be eliminated, shared or hoisted out of loops only when safety is proven without changing effects, Abort behavior or borrow legality; the range information established by a successful `next` may be reused within a region whose length and storage are proven unchanged. Constant-folding `Index` and range operations does not extend the literal-only static Move Path rule. Standard `iterate`, `next` and adapter calls may be inlined, an Option payload may be delivered directly into its binding (§14.6.2), and a materialized `ref/Key` temporary may be elided only under the address-observation, escape and ABI conditions of §21.5.5; none of these is a language acceptance condition, and a user iterator's `next`, `None` test and cleanup are never omitted merely because the Type is an Iterator.
+Positions and ranges store only their boundaries: `Start` and `End` are zero-sized, and the direction of a position and the shape of a range are static, so resolution branches on neither. The half-open range iterator keeps no end flag.
+
+Checks may be eliminated, shared or hoisted out of loops only when safety is proven without changing effects, Abort behavior or borrow legality; the range information established by a successful `next` may be reused within a region whose length and storage are proven unchanged. Eliminating a bounds check needs only a proof that the interval's end does not exceed the current length, as for `indices` and `resolve` results. Reusing an address or element reference also needs a separate proof that the Storage, borrow and address remain valid; an address from before a reallocation is never used. These proofs are internal to the implementation, and the public Types carry no owner information. Constant-folding position and range operations does not extend the literal-only static Move Path rule. Standard `iterate`, `next` and adapter calls may be inlined, an Option payload may be delivered directly into its binding (§14.6.2), and a materialized `ref/Key` temporary may be elided only under the address-observation, escape and ABI conditions of §21.5.5; none of these is a language acceptance condition, and a user iterator's `next`, `None` test and cleanup are never omitted merely because the Type is an Iterator.
 
 ### 4.6.9. Indexable contracts
 
@@ -605,13 +636,15 @@ A shared path cannot satisfy an exclusive requirement. Ordinary functions and ge
 
 | Target and operation | Input | Result | Depends on |
 | --- | --- | --- | --- |
-| `Array<E>`, `[N of E]` element | `isize` or `Index`, shared-borrowed | `place ref/E` for reads, `place uniq/E` for updates | `a` |
+| `Array<E>`, `[N of E]` element | A position, resolved to an element position `q: isize` | `place ref/E` for reads, `place uniq/E` for updates | `a` |
 | `Dictionary<K, V>` element | `K` as `ref/K` | `place ref/V` for reads, `place uniq/V` for updates; absence Aborts | `a`, never the key |
-| `Slice<E>` element | `isize` or `Index`, shared-borrowed | `place ref/E during s.source` | `s` |
-| `Array<E>`, `[N of E]` range | `Range<I>`, `IndexRange` or `ResolvedRange` by value | An ordinary `Slice<E>` | The element storage |
-| `Slice<E>` range | `Range<I>`, `IndexRange` or `ResolvedRange` by value | An ordinary `Slice<E>` | `s` |
+| `Slice<E>` element | A position, resolved to an element position `q: isize` | `place ref/E during s.source` | `s` |
+| `Array<E>`, `[N of E]` range | A range, by value | An ordinary `Slice<E>` | The element storage |
+| `Slice<E>` range | A range, by value | An ordinary `Slice<E>` | `s` |
 
-Array and fixed arrays conform to `UniqIndexable<isize>` and `UniqIndexable<Index>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>` and `Indexable<Index>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range indices (§4.6.4) and absent keys (§4.7.3) Abort; the try-prefixed operations return `Option` values instead. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment exists (§4.6.5).
+Array and fixed arrays conform to `UniqIndexable<isize>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range indices (§4.6.4) and absent keys (§4.7.3) Abort; the try-prefixed operations return `Option` values instead. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment exists (§4.6.5).
+
+**Position normalization.** On the concrete sequence Types, `x[k]` with `k` of a Type satisfying `Position` resolves `k` to an element position `q` and performs the `Indexable<isize>` indexing `x[q]`; a failed resolution Aborts. The element Place, its capabilities and the choice of `index` or `indexUniq` follow the rules above, and the normalization check and the `Indexable<isize>` bounds check are one check. The key is read as its value (§3.5.3) and resolved before the element access, so it keeps no borrow: `indexes[indexes[0]] = x` and `indexes.remove(indexes[0])` are valid. Normalization applies only to concrete sequence Types: a generic `S is Indexable<Key>` and every other Type select `Indexable<Key>` by the key's own Type, so `s[^1]` or an `i32` key is unavailable through `S is Indexable<isize>`.
 
 A direct fixed-array element is a built-in projection selected with the same inputs and rules, not a call that borrows the whole array. With an in-range integer literal index it keeps its Take capability (§15.1.5), so a Partial Move, later use of the remaining elements and reinitialization of the missing element are possible. Abstract Indexable conformances and ordinary Place results publish neither Take nor Uninitialized Storage. Field access keeps the standard `get`/`set` permissions of §11.1.
 
@@ -649,16 +682,14 @@ These postconditions do not roll back external effects of arguments, equality or
 | Operation | Behavior |
 | --- | --- |
 | `append(value: T) -> ()` | Add at the end |
-| `insert(index: isize, value: T) -> ()` | Insert before the resolved position |
-| `insert(index: Index, value: T) -> ()` | Same, with a directional `Index` |
+| `insert<P>(index: P, value: T) -> ()`, `P is Position` | Insert before the resolved boundary |
 | `pop() -> Option<T>` | Remove and return the last element, or `None` when empty |
-| `remove(index: isize) -> T` | Remove and return the selected element |
-| `remove(index: Index) -> T` | Same, with a directional `Index` |
+| `remove<P>(index: P) -> T`, `P is Position` | Remove and return the element at the resolved element position |
 | `clear() -> ()` | Destroy all elements in the order of §4.7.6 |
 
-The index is resolved once in the body against the entry length `L`. For a from-end `Index`, `offset <= L` is required before `p = L - offset`. Insert requires `0 <= p <= L` and remove requires `0 <= p < L`; invalid indices Abort. There is no implicit `isize`/`Index` conversion and no range overload.
+The position is passed by value and resolved once in the body against the entry length `L` (§4.6.2): `insert` requires a boundary and `remove` an element position; invalid positions Abort. There is no range overload.
 
-`insert(^0, value)` appends, including to an empty Array. On a nonempty Array, `insert(^1, value)` inserts before the last element and `remove(^1)` removes it; `remove(^0)` is always invalid. A failure constructing an `Index` prevents later argument evaluation. Unlike `remove`, indexed reading never Moves a dynamic element (§4.6.1), and indexed assignment destroys the old value.
+`insert(^0, value)` appends, including to an empty Array. On a nonempty Array, `insert(^1, value)` inserts before the last element and `remove(^1)` removes it; `remove(^0)` is always invalid. A failure evaluating an argument prevents later argument evaluation. Unlike `remove`, indexed reading never Moves a dynamic element (§4.6.1), and indexed assignment destroys the old value.
 
 ```kimi
 var values: Array<i32> = []
@@ -680,10 +711,10 @@ values.append(values[0])       // The element Copy finishes before receiver acti
 | `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts |
 | `isEmpty: bool` | Read-only; whether `length` is zero |
 | `first`, `last: Option<ref/T>` | Read-only, `get(self: ref/Self) -> Option<ref/T during self>`; the first or last element, or `None` when empty |
-| `tryGet(index: isize)`, `tryGet(index: Index)` | `Option<ref/T during self>`; `None` for an invalid index |
-| `tryGetUniq(index: isize)`, `tryGetUniq(index: Index)` | `Option<uniq/T during self>` with an exclusive receiver; `None` for an invalid index |
-| `swap(first: isize, second: isize) -> ()` | Exchanges two elements; equal indices change nothing; an invalid index Aborts |
-| `swapRemove(index: isize) -> T` | Removes and returns the element; the last element takes its position, so order is not preserved |
+| `tryGet(index)`, `tryGet(range)`, `splitAt(index)`, `trySplitAt(index)` | The read operations of §4.6.6 on `self[..]`, with results `during self` |
+| `tryGetUniq<P>(index: P)`, `P is Position` | `Option<uniq/T during self>` with an exclusive receiver; `None` unless `index` resolves to an element position |
+| `swap<P, Q>(first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements; positions resolving to the same element change nothing; an invalid position Aborts |
+| `swapRemove<P>(index: P) -> T`, `P is Position` | Removes and returns the element; the last element takes its position, so order is not preserved |
 | `truncate(length: isize) -> ()` | Destroys the elements from `length` to the end in decreasing index order; a length at or above the current length changes nothing, and a negative one Aborts |
 | `appendAll(other: Array<T>) -> ()` | Moves every element of `other` to the end in order; `other` is consumed and its storage released |
 | `appendCopies(values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order |

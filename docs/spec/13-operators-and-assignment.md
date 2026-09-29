@@ -41,6 +41,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | `1 << n + 1` | `1 << (n + 1)` |
 | `a + b << count` | `(a + b) << count` |
 | `a + b@i64 * c` | `a + ((b@i64) * c)` |
+| `^n + 1` | `(^n) + 1`; a Type error, because `FromEnd<T>` has no addition |
 | `value@i64@f64` | `(value@i64)@f64` |
 | `builder@move.add(1).add(2)` | `((builder@move).add(1)).add(2)` |
 | `try pending@move * 2` | `(try (pending@move)) * 2` |
@@ -57,7 +58,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | `-value` | Negated signed integer or floating-point value. |
 | `not value` | Negated `bool`. |
 | `*pointer` | Raw-pointer Place under the [unsafe dereference rules](05-raw-pointers-and-unsafe-memory.md#52-dereference-and-ownership). |
-| `^value` | From-end `Index` formed from a nonnegative integer of any `PrimitiveInteger` Type that is representable as `isize` (§4.6.2). |
+| `^value` | The from-end position `FromEnd<T>` storing `value` of any `T is PrimitiveInteger`, unchecked until resolution (§4.6.2). |
 | `++target` / `--target` | Increments or decrements an integer and returns the updated value. |
 | `target++` / `target--` | Increments or decrements an integer and returns the old value. |
 
@@ -298,7 +299,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [Scalar read](03-types-and-values.md#353-scalar-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 

@@ -84,7 +84,7 @@ A valid Type argument is not permission to use it in every role: the constraints
 
 A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses of a declaration's Constraints must hold, and they establish capabilities that the implementation may use. Subjects include complete Types, Semantics, valid target projections and `Self` (the enclosing Type), according to each requirement's role; each declaration kind restricts the permitted subjects (see [function Constraints](07-functions-and-callable-values.md#74-function-constraints)). In a struct or enum declaration, `Self is C` declares conformance (§8.4.4). `Self is not C` is permitted there only as the opt-out of an intrinsic requirement that defines one, currently [ObjectPayload](#8472-objectpayload); any other negated `Self` clause in a Type declaration is an error.
 
-A Type requirement may name a capability declared with `contract` or another compile-time Type capability. A Semantics requirement may name a concrete Semantics, such as `ref` or `obj`, or a Semantics category. Requirements combine with `and`, `or`, `not` and parentheses under the [requirement-expression rules](#83-requirement-expressions).
+A Type requirement may name a capability declared with `contract` or another compile-time Type capability, or a complete Type for [Type identity](#83-requirement-expressions). A Semantics requirement may name a concrete Semantics, such as `ref` or `obj`, or a Semantics category. Requirements combine with `and`, `or`, `not` and parentheses under the [requirement-expression rules](#83-requirement-expressions).
 
 A `struct` header may contain generic parameters and an Origin list. Its ordinary Constraints precede the members, and conditional conformances may appear at member positions (§8.4.8).
 
@@ -121,6 +121,8 @@ struct ComparableContainer<T>
 | `T is not A or B` | `T` does not satisfy `(A or B)`. |
 | `T is A and not B` | `T` satisfies `A` and does not satisfy `B`. |
 
+**Type identity.** A requirement that names a complete Type instead of a capability, `X is U`, requires `X` and `U` to be the same Type. It is Proven when both normalize to the same Type, including the same binders, Refuted when both are fully bound and differ, and Unknown otherwise (§8.7). An available identity premise makes `X` and `U` one Type in its scope: Type checking there, including fitting, member lookup, overload resolution and associated-Type normalization, substitutes one for the other. The scope is the constrained declaration, or the conformance scope and implementation block of a conditional conformance (§8.4.8.1). Identity implies no conversion between different Types.
+
 Write `T is (not A) or B` to limit the negation to `A`. A complete Requirement Test cannot be embedded in an ordinary Boolean expression such as `(T is A) and enabled`; no source syntax provides such a mixed context. Use separate Constraint Clauses for requirements and environment directives for independently configured source selection. Value equality uses `==`.
 
 ## 8.4. Static contracts
@@ -139,7 +141,7 @@ contract SizedSource: Source, Sized
     func reset(self: uniq/Self) -> ()
 ```
 
-This revision defines static conformance checking and generic use; runtime Contract Views remain a [future extension](#85-runtime-contracts). A Contract may declare its own **Type parameters** with the ordinary generic-parameter syntax, but no Origin or length parameters. It also inherits the enclosing environment under §6.1.3, including unused Type/Semantics and Origin bindings. The same Type-argument syntax is used at the declaration, at references, in parent lists and in conformance declarations, and it binds complete Types under the ordinary generic rules. `Indexable<isize>` and `Indexable<Index>` are therefore distinct bound Contract references with independent requirements and associated Types (§8.4.9). Separately specified built-in requirements such as `Callable<...>` keep their own grammar.
+This revision defines static conformance checking and generic use; runtime Contract Views remain a [future extension](#85-runtime-contracts). A Contract may declare its own **Type parameters** with the ordinary generic-parameter syntax, but no Origin or length parameters. It also inherits the enclosing environment under §6.1.3, including unused Type/Semantics and Origin bindings. The same Type-argument syntax is used at the declaration, at references, in parent lists and in conformance declarations, and it binds complete Types under the ordinary generic rules. `Indexable<isize>` and `Indexable<string>` are therefore distinct bound Contract references with independent requirements and associated Types (§8.4.9). Separately specified built-in requirements such as `Callable<...>` keep their own grammar.
 
 ```kimi
 contract Indexable<Key>
@@ -383,11 +385,13 @@ B.reset --+                         |
 
 Only the defined proof rules are used, not enumeration of instantiations or arbitrary theorem proving. If equivalence cannot be proven, the candidates remain separate and ordinary call selection applies; a non-unique result is ambiguous. A coincidental match in one instantiation cannot make an otherwise invalid generic call valid. There is no qualified-call syntax such as `value@A.reset()`; `@` keeps its adaptation meaning.
 
-### 8.4.7. Intrinsic contracts and guarantees
+### 8.4.7. Intrinsic and closed contracts
 
 `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` are **compiler-intrinsic** Contracts. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
 The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration Contracts and the Indexable Contracts. Their source conformance follows the ordinary static Contract rules, with the effect upper bounds of §8.4.5; their special behavior is otherwise limited to the specified formatting, comparison, iteration and indexing mappings.
+
+**Closed Contracts.** `Kimi.Position` and `Kimi.PositionRange` are **closed** Contracts: ordinary Contracts declared in the Kimi Kotonoha whose conforming Types are fixed by §22.1. `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`, and `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.2, §4.6.4). A conformance declaration to a closed Contract in any other Type is an error, and a same-spelled user declaration grants nothing. Their capabilities follow the ordinary refinement and Contract Constraint rules; the one special proof rule is that `T is PrimitiveInteger` implies `T is Position` (§8.4.7.3). The integer conformance to `Position` is built in: its implementation is a Kimi internal function, and integers gain no members. Every implementation of a closed Contract reads only its boundaries and the length and has no other effect, so a generic API over them needs no published effect bound of its own.
 
 Conformance proves only statically specified requirements. The type system does not enforce documented laws such as the symmetry or transitivity of equality. Conformance does not prove current initialization, absence of conflicting Loans, storage representation or direct Field access; ordinary usage checks and documented unsafe obligations still apply.
 
@@ -451,7 +455,7 @@ contract Shape
 
 A proven `T is PrimitiveInteger` supplies every built-in capability common to the twelve Types:
 
-- **Capabilities:** Scalar, Copy and Owned, and the built-in Equatable, Comparable and Utf8Format conformances. A reference to `T` is read by the [Scalar read](03-types-and-values.md#353-scalar-read).
+- **Capabilities:** Scalar, Copy and Owned, `Position` (§4.6.2), and the built-in Equatable, Comparable and Utf8Format conformances. A reference to `T` is read by the [value read](03-types-and-values.md#353-value-read).
 - **Operators:** the built-in integer arithmetic, bitwise, shift and comparison operators, compound assignment, increment and decrement, with their ordinary operand, result and failure rules (§13.2–13.4). Unary `-` requires a signed integer and is unavailable.
 - **Conversions:** checked numeric conversion `value@U` between Types that satisfy PrimitiveInteger (§13.5.4).
 - **Literals:** an untyped literal fits an unbound `T` only when it fits all twelve Types, that is, 0 through 127. A literal-only expression fits `T` under the same condition (§12.3.1).
@@ -459,7 +463,7 @@ A proven `T is PrimitiveInteger` supplies every built-in capability common to th
 A generic body is checked once against these capabilities, and each instantiation uses the operations of its concrete Type. This is a dedicated proof rule: a choice such as `T is i8 or u8 or …` supplies none of these capabilities, because §8.7 has no case analysis, and there is no user-extensible numeric Contract. An implementation profile that restricts an operation for some Types, such as 128-bit division (§21.5.3), diagnoses the concrete instantiation; the restriction does not weaken this requirement.
 
 ```kimi
-func sum<T>(values: Range<T>) -> T
+func sum<T>(values: Range<T, T>) -> T
     T is PrimitiveInteger
     var total: T = 0
     for value in values
@@ -487,7 +491,7 @@ enum Option<T>
 
 The declaration targets one Contract and appears at a Type member position; ordinary Type Constraint Clauses still precede the members. `when` is contextual only here. Conditions are comma-separated `subject is requirement` clauses, all of which must hold. Subjects are the enclosing generic parameters, their Semantics and target projections, and associated-Type projections valid under the existing rules. Requirements must accept their subject's role, and no new parameters are introduced.
 
-Conditions allow positive requirement atoms joined by `and` and parentheses, with the existing Requirement Test interpretations. `or`, `not`, value tests and arbitrary Boolean expressions are rejected, even inside parentheses. This restricted grammar does not change the ordinary PositiveRequirement.
+Conditions allow positive requirement atoms joined by `and` and parentheses, with the existing Requirement Test interpretations. A Type-identity atom `E is S` between the enclosing parameters (§8.3) makes `E` and `S` one Type in the conformance scope and the implementation block, so a block member may use a value of `E` where `S` is required. `or`, `not`, value tests and arbitrary Boolean expressions are rejected, even inside parentheses. This restricted grammar does not change the ordinary PositiveRequirement.
 
 ```kimi
 Self is C when T is A and B, U is D
@@ -712,6 +716,8 @@ Evidence comes from the current declaration's validated input Constraints, the d
 | Verified conformance | A verified explicit or inherited mapping, after its prerequisites are proven, including inheritance matching (§8.4.4) and conditional premises (§8.4.8). Legitimate unresolved prerequisites are retained; cyclic declarations alone prove nothing. |
 | Contract refinement | From an available `T is C`, each ancestor conformance and inherited requirement Constraint, substituting `T` for `Self`. This does not discharge an unverified declaration's implementation obligations. |
 | Associated-Type identity | Substitute and normalize explicit associated-Type specifications and available Type-identity Constraints under the [associated-Type rules](#843-associated-types). Bindings are not inferred from members, and no satisfying Type is searched for. |
+| Type identity | `X is U` is Proven when both normalize to the same Type after substituting available identity premises, including the same binders, and Refuted when both are fully bound and differ. No equation is solved beyond this substitution. |
+| Closed implication | `T is PrimitiveInteger` supplies `T is Position` (§8.4.7.3). |
 | Other cases | Unknown, unless validation requires Error. |
 
 All proof operands are validated, and Error absorbs even a determined truth result. Otherwise, a Refuted operand can refute a conjunction and a Proven operand can prove a disjunction despite Unknown operands. Exact compound assumptions are usable directly, but only conjunction elimination exposes their parts. `P or Q` together with `not P` cannot prove `Q`: there is no case analysis, contraposition, proof by contradiction or inference from contradiction. These limits govern symbolic proof, not the Boolean evaluation of determined concrete judgments.

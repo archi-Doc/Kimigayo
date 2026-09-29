@@ -222,10 +222,14 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 | Unit | `()`. |
 | `string`, `Utf8Slice` | Their bytes, including NUL. |
 | Floating point | The rules below, independent of locale. |
+| `FromEnd<T>` | `^` followed by the offset as an integer, as written: `^1`. |
+| `Start`, `End` | The empty string: the boundary that range syntax omits. |
+| `Range<S, E>`, `ClosedRange<S, E>` | The start, then `..` or `..=`, then the end, each boundary in its own representation: `1..^1`, `..=3`, `2..`. |
+| `ResolvedRange` | That of the `Range<isize, isize>` with the same boundaries: `1..4`. |
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
+Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance. The position and range Types conform through their Kimi implementations (§4.6.2–§4.6.4), so `"\(1..^1)"` produces `1..^1`.
 
 ## 5. Interpolation and internal adapters
 

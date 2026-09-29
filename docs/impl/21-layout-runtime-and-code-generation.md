@@ -872,7 +872,7 @@ Existing arithmetic, conversion, indexing and failure order are preserved; `nsw`
 | Integer conversion | Check the destination range before extension or truncation |
 | Float to integer | The ordered range checks below, then `fptosi`/`fptoui` only on success |
 | Integer to float / float width conversion | The required rounding; detect finite-to-infinity failure |
-| Array/index/range | Index formation and the required bounds checks before a successful address calculation |
+| Array/index/range | Position and range resolution and the required bounds checks before a successful address calculation. Resolution checks `L >= 0` once and then one inequality chain over the whole range: `0 <= a <= b <= L` for `a..b`, `0 <= a <= b < L` for `a..=b` and `0 <= b <= a <= L` for `^a..^b`; a from-end position always resolves against the original `L`. An element position check and the `Indexable<isize>` bounds check are one check, and a same-width `0 <= n <= L` is one unsigned comparison. Constant positions and ranges on fixed arrays fold under §17.3.4. |
 
 Constant evaluation follows §17.3.4. A check is removed only after its success is proven; folding a failing path to Abort, or removing an unreachable path, is allowed.
 

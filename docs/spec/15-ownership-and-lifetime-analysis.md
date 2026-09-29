@@ -149,7 +149,7 @@ At every position other than a Receiver Expression, including arguments, annotat
 
 | Value kind | Acquisition at other positions |
 | --- | --- |
-| Borrow value | Reborrow, or one shared reference through its layers at an expected `ref/U` (§10.2), or a Scalar read at a Scalar; without an expected Type, Copy only for `ref`/`objref` |
+| Borrow value | Reborrow, or one shared reference through its layers at an expected `ref/U` (§10.2), or a value read at a read Type; without an expected Type, Copy only for `ref`/`objref` |
 | Owned Place | Shared borrow without a spelling at an expected shared borrow Type; exclusive borrow requires `@uniq`/`@objuniq` whatever the access path; by value, Copy when Copy and otherwise `@move` |
 | Owned temporary | By value, passed as is; shared borrow materializes it; exclusive borrow requires `@uniq` |
 

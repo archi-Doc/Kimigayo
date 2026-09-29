@@ -335,10 +335,10 @@ The **item Type** is `LendingIterator.LentItem(step)` of the selected iterator T
 | `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
 | `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
-| `Range<T>` | `T` | `T` | `T` |
+| `Range<T, T>`, `ClosedRange<T, T>` with `T is PrimitiveInteger` | `T` | `T` | `T` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
-Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. Ranges enumerate through `RangeIterator<T>`; `IndexRange` is not enumerable (§4.6.3.5).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. Integer ranges enumerate through `RangeIterator<T>` and `ClosedRangeIterator<T>`; a range with an omitted, from-end or mixed-Type boundary is not enumerable (§4.6.3.4).
 
 ```kimi
 for item in items            // Shared iteration; items remains usable.
@@ -523,7 +523,7 @@ Each Binding position has an internal **Candidate Place** that designates initia
 | `ref/T` | `ref/(ref/T)` | `ref/T` | `ref/(ref/T)` |
 | `uniq/T` | `ref/(uniq/T)` | `uniq/T` | `ref/(uniq/T)` |
 
-On an exclusive path, the body binding is `uniq/T` (§15.1.6). The table omits Origins; complete Types preserve them and their Loans. Scalar reads and comparisons follow the reference layers (§3.5.3, §13.4), so `n > 0` on a candidate `n: ref/i32` compares the integer. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
+On an exclusive path, the body binding is `uniq/T` (§15.1.6). The table omits Origins; complete Types preserve them and their Loans. Value reads and comparisons follow the reference layers (§3.5.3, §13.4), so `n > 0` on a candidate `n: ref/i32` compares the integer. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
 
 A guarded arm proceeds as follows:
 
@@ -558,7 +558,7 @@ The literal is a temporary, so the Subject is owned: `text` is `ref/string` in t
 
 | Value obtained in the guard | Escape from the guard |
 | --- | --- |
-| Scalar read, or a Copy of the referent such as `candidate@follow@copy`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
+| Value read, or a Copy of the referent such as `candidate@follow@copy`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
 | Copy of a stored reference, `candidate@follow@copy` when the candidate is `ref/(ref/U)` | Permitted when the existing Origins and Loans and the destination allow |
 | The candidate reference, a new Borrow/Reborrow of the candidate Place, or any value depending on it | Forbidden; its Loan must end inside the guard |
 | Copy aggregate with an existing Subject dependency | Its Origins and Loans are checked; it cannot outlive the Subject |
@@ -690,13 +690,13 @@ Syntax, Names, target and operand restrictions, local Types and match coverage a
 The **Target Result Type** constrains the results supplied to a target. It is determined independently of source traversal order:
 
 1. Use the declaration or the fixed Type from §14.2; otherwise use a fixed outer expectation.
-2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one Scalar Type, or are unfitted literals or literal-only expressions of it (§12.3.1), that Scalar Type is the common Type and each reference source is Scalar-read (§3.5.3).
+2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one read Type, or are unfitted literals or literal-only expressions of it (§12.3.1), that Type is the common Type and each reference source is value-read (§3.5.3).
 3. Propagate the fixed Type to sources checkable against it, including literal-only sources such as `0..3` beside a typed `0..n`; apply literal defaults only after all other available evidence.
 4. Check every source for fitting. If an unresolved call, anonymous function or empty literal still needs a Type, require an annotation or explicit Type arguments.
 
 ```kimi
 let count = match maybe          // maybe: Option<i32>, a bare Place.
-    .Some(let n) => n            // n: ref/i32; Scalar-read.
+    .Some(let n) => n            // n: ref/i32; value-read.
     .None => 0                   // count: i32
 ```
 

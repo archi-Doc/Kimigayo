@@ -92,7 +92,7 @@ unsafe
     let next = pointer + 1
     let prev = pointer[-1]
     pointer[10] = 123
-    pointer[^1]   // Error: no from-end indexing.
+    pointer[^1]   // Error: an offset is an isize value, not a position.
     pointer[0..4] // Error: no range indexing.
 ```
 
