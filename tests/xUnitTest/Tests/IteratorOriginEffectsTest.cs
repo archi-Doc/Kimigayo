@@ -333,6 +333,25 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorLoopRetry", source, "loop retried\n");
     }
 
+    // A `continue` to the loop restarts its body, whose first use transfers the reinitialized value.
+    [Fact]
+    public void ALoopMayContinueWithItsReinitializedItem()
+    {
+        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A `continue` that leaves a match arm drops the payload bound there.
+    [Fact]
+    public void AContinueThatDropsAPayloadIsRejected()
+    {
+        const string Source = "struct Skip<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        loop\n            match self.inner.next()\n                .Some(let item)\n" +
+            "                    self.skipped += 1\n                    if self.skipped < 2 => continue\n                    return .Some(item@move)\n                .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // An exit after the reinitialization leaves the loop with the value, which the function then destroys.
     [Fact]
     public void ALoopThatMayLeaveWithItsItemIsRejected()

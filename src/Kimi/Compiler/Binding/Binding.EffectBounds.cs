@@ -509,8 +509,8 @@ public sealed partial class Binding
                     {
                         // SPEC 14.4: the end of a `loop` body continues at its start, where the Move transfers the value again.
                         return this.TransferredLater(block.Items, i + 1, symbol) ||
-                            (block.Parent is LoopKoto loop && ReferenceEquals(loop.Body, block) && this.InertFrom(block.Items, i + 1, symbol) &&
-                            this.TransferredLater(block.Items, 0, symbol));
+                            (block.Parent is LoopKoto loop && ReferenceEquals(loop.Body, block) && this.InertFrom(block.Items, i + 1, symbol, loop) &&
+                            this.TransferredLater(block.Items, 0, symbol, loop));
                     }
 
                     if (!this.inertScan.Check(statement, symbol, exits: false))
@@ -559,13 +559,13 @@ public sealed partial class Binding
 
         // Whether statement `start` onward transfers `symbol` before anything could destroy it. Abort destroys nothing
         // (SPEC 17.3); the effects of the statements in between are summarized as usual.
-        private bool TransferredLater(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol)
+        private bool TransferredLater(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol, LoopKoto? restart = null)
         {
             for (var i = start; i < statements.Count; i++)
             {
                 var statement = statements[i];
                 if (this.TransfersAtOnce(statement, symbol) || (statement is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match)) ||
-                    (statement is LoopKoto loop && this.TransferredLater(loop.Body.Items, 0, symbol)))
+                    (statement is LoopKoto loop && this.TransferredLater(loop.Body.Items, 0, symbol, loop)))
                 {
                     return true; // A `loop` that transfers the value in its first iteration leaves it only through that transfer.
                 }
@@ -583,14 +583,14 @@ public sealed partial class Binding
                             break;
                         }
 
-                        if (b < branching.Branches.Count && !this.inertScan.Check(branching.Branches[b].Condition, symbol))
+                        if (b < branching.Branches.Count && !this.inertScan.Check(branching.Branches[b].Condition, symbol, restart: restart))
                         {
                             return false;
                         }
 
-                        if (!this.TransferredLater(body.Items, 0, symbol))
+                        if (!this.TransferredLater(body.Items, 0, symbol, restart))
                         {
-                            if (!this.InertFrom(body.Items, 0, symbol))
+                            if (!this.InertFrom(body.Items, 0, symbol, restart))
                             {
                                 return false;
                             }
@@ -607,7 +607,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (statement is MatchKoto selection and not TryKoto && this.inertScan.Check(selection.Expression, symbol))
+                if (statement is MatchKoto selection and not TryKoto && this.inertScan.Check(selection.Expression, symbol, restart: restart))
                 {
                     // A match on another value is judged as an `if`: patterns and guards are inert, and each arm transfers
                     // the value or falls through holding it.
@@ -615,14 +615,14 @@ public sealed partial class Binding
                     for (var a = 0; a < selection.Arms.Count; a++)
                     {
                         var arm = selection.Arms[a];
-                        if (!this.inertScan.Check(arm.Pattern, symbol) || (arm.Guard is { } guard && !this.inertScan.Check(guard, symbol)))
+                        if (!this.inertScan.Check(arm.Pattern, symbol, restart: restart) || (arm.Guard is { } guard && !this.inertScan.Check(guard, symbol, restart: restart)))
                         {
                             return false;
                         }
 
-                        if (!(arm.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, symbol) : this.TransfersAtOnce(arm.Body, symbol)))
+                        if (!(arm.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, symbol, restart) : this.TransfersAtOnce(arm.Body, symbol)))
                         {
-                            if (!(arm.Body is CodeBlockKoto kept ? this.InertFrom(kept.Items, 0, symbol) : this.inertScan.Check(arm.Body, symbol)))
+                            if (!(arm.Body is CodeBlockKoto kept ? this.InertFrom(kept.Items, 0, symbol, restart) : this.inertScan.Check(arm.Body, symbol, restart: restart)))
                             {
                                 return false;
                             }
@@ -639,7 +639,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.inertScan.Check(statement, symbol))
+                if (!this.inertScan.Check(statement, symbol, restart: restart))
                 {
                     return false;
                 }
@@ -649,11 +649,11 @@ public sealed partial class Binding
         }
 
         // Whether the statements from `start` on neither name `symbol` nor may leave their block.
-        private bool InertFrom(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol)
+        private bool InertFrom(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol, LoopKoto? restart = null)
         {
             for (var i = start; i < statements.Count; i++)
             {
-                if (!this.inertScan.Check(statements[i], symbol))
+                if (!this.inertScan.Check(statements[i], symbol, restart: restart))
                 {
                     return false;
                 }
@@ -1609,6 +1609,7 @@ public sealed partial class Binding
     private sealed class InertScan : KotoVisitor
     {
         private readonly List<string> labels = new();
+        private LoopKoto? restart;
         private BindingSymbol? symbol;
         private int iterations;
         private int boundaries;
@@ -1639,7 +1640,7 @@ public sealed partial class Binding
             {
                 // An exit or continue stays inside when it targets an iteration whose body it is in: the nearest one, or
                 // one whose Label it names.
-                if (node is TryKoto || (node is JumpKoto jump &&
+                if (node is TryKoto || (node is JumpKoto jump && !this.Restarts(jump) &&
                     (jump.Akind is not (KotoKind.Exit or KotoKind.Continue) || (jump.Label is null ? this.iterations == 0 : !this.labels.Contains(jump.Label)))))
                 {
                     this.inert = false;
@@ -1669,9 +1670,11 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        // A null symbol checks only that the statement cannot leave its block; `exits: false` checks only the mention.
-        internal bool Check(Koto statement, BindingSymbol? symbol, bool exits = true)
+        // A null symbol checks only that the statement cannot leave its block; `exits: false` checks only the mention. A
+        // `continue` to `restart`, the `loop` whose body holds the statement, restarts a body that transfers the value first.
+        internal bool Check(Koto statement, BindingSymbol? symbol, bool exits = true, LoopKoto? restart = null)
         {
+            this.restart = restart;
             this.symbol = symbol;
             this.labels.Clear();
             this.iterations = 0;
@@ -1679,8 +1682,13 @@ public sealed partial class Binding
             this.inert = true;
             this.Visit(statement);
             this.symbol = null;
+            this.restart = null;
             return this.inert;
         }
+
+        private bool Restarts(JumpKoto jump)
+            => jump.Akind == KotoKind.Continue && this.restart is { } loop &&
+                (jump.Label is null ? this.iterations == 0 : loop.Parent is LabeledKoto labeled && labeled.Label == jump.Label && !this.labels.Contains(jump.Label));
     }
 
     // Two calls read the callee's Types identically when they agree on target, declaring Type and every substitution.
