@@ -382,6 +382,29 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: a match on another value is judged as an `if`: each arm transfers the item or falls through holding it.
+    private const string Select = "struct Select<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        match self.skipped\n";
+
+    [Fact]
+    public void AMatchArmMayTransferTheItemBeforeALaterTransfer()
+    {
+        var source = Counter + Select + "            0 => self.skipped += 1\n            _ => return first@move\n        return first@move\n" +
+            "var select = Select<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match select.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and select.skipped == 1 else => $abort(\"select\")\nConsole.writeLine(\"selected\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorSelectTransfer", source, "selected\n");
+    }
+
+    // An arm that leaves while holding the item, or a later path left without a transfer, destroys it.
+    [Theory]
+    [InlineData("            0 => return .None\n            _ => ()\n        return first@move\n")]
+    [InlineData("            0 => return first@move\n            _ => ()\n        return .None\n")]
+    public void AMatchArmThatMayDestroyTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Select + tail);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // G28: a constructor's first assignment of a field without a default initializes it, so an Iterator may build a
     // struct item around a value it hands out.
     private const string Entries = "struct Entries<T>\n    Self is Iterator\n    associate Iterator.Item is Entry<T>\n    var value: Option<T>\n" +

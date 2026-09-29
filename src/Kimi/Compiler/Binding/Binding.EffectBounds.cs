@@ -607,6 +607,38 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (statement is MatchKoto selection and not TryKoto && this.inertScan.Check(selection.Expression, symbol))
+                {
+                    // A match on another value is judged as an `if`: patterns and guards are inert, and each arm transfers
+                    // the value or falls through holding it.
+                    var transferred = true;
+                    for (var a = 0; a < selection.Arms.Count; a++)
+                    {
+                        var arm = selection.Arms[a];
+                        if (!this.inertScan.Check(arm.Pattern, symbol) || (arm.Guard is { } guard && !this.inertScan.Check(guard, symbol)))
+                        {
+                            return false;
+                        }
+
+                        if (!(arm.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, symbol) : this.TransfersAtOnce(arm.Body, symbol)))
+                        {
+                            if (!(arm.Body is CodeBlockKoto kept ? this.InertFrom(kept.Items, 0, symbol) : this.inertScan.Check(arm.Body, symbol)))
+                            {
+                                return false;
+                            }
+
+                            transferred = false;
+                        }
+                    }
+
+                    if (transferred)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 if (!this.inertScan.Check(statement, symbol))
                 {
                     return false;
