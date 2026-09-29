@@ -36,6 +36,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.LendingIterator => this.ValidLendingIterator(symbol),
                         KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable => this.ValidBorrowingIterable(symbol, entry.Id == KimiDeclarationId.UniqIterable),
                         KimiDeclarationId.IntoIterable => this.ValidIntoIterable(symbol),
+                        KimiDeclarationId.Position or KimiDeclarationId.PositionRange => this.ValidPositionContract(symbol, entry.Id),
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable => this.ValidIndexableContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
@@ -473,6 +474,27 @@ public sealed partial class KimiLibrary
         declaration.Members[0] is FunctionKoto { Name: "intoIterator", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
         function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null } receiver && BareName(receiver.Type, "Self") &&
         BareType(function.ReturnType) is MemberAccessKoto result && BareName(result.Left, "Self") && BareName(result.Right, "IteratorType");
+
+    // SPEC 4.6.2, 4.6.4, 8.4.7: a closed Contract refining Equatable and Utf8Format, with Self is Copy and Self is Owned,
+    // whose one requirement resolves the value against a length.
+    private bool ValidPositionContract(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var range = id == KimiDeclarationId.PositionRange;
+        return symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+            symbol.Declaration is ContractKoto { HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 2, Bases.Count: 2, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+            declaration.Name == (range ? "PositionRange" : "Position") && ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+            BareName(declaration.Bases[0], "Equatable") && BareName(declaration.Bases[1], "Utf8Format") &&
+            SelfRequirement(declaration.ConstraintNodes[0], "Copy") && SelfRequirement(declaration.ConstraintNodes[1], "Owned") &&
+            declaration.Members[0] is FunctionKoto { Name: "tryResolve", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function &&
+            function.NameBoundaryIndex < 0 &&
+            function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null } receiver && BareName(receiver.Type, "Self") &&
+            function.Parameters[1] is { InternalName: "length", ExternalName: "length", DefaultValue: null, AttributeChain: null } length && BareName(length.Type, "isize") &&
+            BareType(function.ReturnType) is GenericsKoto { TypeArguments: [var resolved] } result && BareName(result.Identifier, "Option") &&
+            BareName(resolved, range ? "ResolvedRange" : "isize");
+
+        static bool SelfRequirement(IsKoto clause, string requirement)
+            => clause is { IsAssociatedConstraint: false, IsNegated: false, FormationType: null, AttributeChain: null } && BareName(clause.Left, "Self") && BareName(clause.Right, requirement);
+    }
 
     private bool ValidSlice(BindingSymbol symbol)
     {

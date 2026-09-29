@@ -193,7 +193,11 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
+                if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
+                {
+                    Fail(target, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                }
+                else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
                     if (IsRefinement(contract, this.Library.Copy))
@@ -279,6 +283,12 @@ public sealed partial class Binding
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
+        }
+
+        // SPEC 4.6.2, 8.4.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
+        if (this.contractHeadersReady && IsIntegerPosition(type, contract))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         // SPEC 22.1 (PLAN G32): the compiler records the fixed array's borrowing entry conformances; their witnesses are the

@@ -58,6 +58,7 @@ public sealed partial class KimiLibrary
         this.DictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new(dictionary) { Parent = this.Scope } : this.Scope;
         this.StorageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new(storage) { Parent = this.Scope } : this.Scope;
         this.FixedArrayMembers = (this.StorageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
+        this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
@@ -108,6 +109,8 @@ public sealed partial class KimiLibrary
         this.Iterable = this.GetSymbol(KimiDeclarationId.Iterable)!;
         this.UniqIterable = this.GetSymbol(KimiDeclarationId.UniqIterable)!;
         this.IntoIterable = this.GetSymbol(KimiDeclarationId.IntoIterable)!;
+        this.Position = this.GetSymbol(KimiDeclarationId.Position)!;
+        this.PositionRange = this.GetSymbol(KimiDeclarationId.PositionRange)!;
         this.Indexable = this.GetSymbol(KimiDeclarationId.Indexable)!;
         this.UniqIndexable = this.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
@@ -201,6 +204,12 @@ public sealed partial class KimiLibrary
     /// <summary>Gets the recognized owning iteration entry, IntoIterable (SPEC 22.1.2.2).</summary>
     public BindingSymbol IntoIterable { get; }
 
+    /// <summary>Gets the closed position Contract, Position (SPEC 4.6.2, 8.4.7).</summary>
+    public BindingSymbol Position { get; }
+
+    /// <summary>Gets the closed range Contract, PositionRange (SPEC 4.6.4, 8.4.7).</summary>
+    public BindingSymbol PositionRange { get; }
+
     /// <summary>Gets the recognized borrowed Slice Type declaration.</summary>
     public BindingSymbol Slice { get; }
 
@@ -232,6 +241,16 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; }
+
+    /// <summary>Gets the internal Kimi group whose receiver function implements the built-in integer conformance to
+    /// Position (SPEC 4.6.2); integers gain no members from it.</summary>
+    internal DeclarationContainerKoto? IntegerPositionMembers { get; }
+
+    /// <summary>Gets a value indicating whether <paramref name="owner"/> is an internal group of receiver functions for a
+    /// built-in Type: the fixed-array members (PLAN G32) or the integer Position witness.</summary>
+    /// <param name="owner">A declaration container.</param>
+    /// <returns>Whether its functions receive a built-in Type through <c>self</c>.</returns>
+    internal bool IsBuiltinMemberGroup(Koto owner) => ReferenceEquals(owner, this.FixedArrayMembers) || ReferenceEquals(owner, this.IntegerPositionMembers);
 
     internal FunctionKoto DictionaryUnlink { get; }
 

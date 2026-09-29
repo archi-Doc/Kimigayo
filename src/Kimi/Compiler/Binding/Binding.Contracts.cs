@@ -484,6 +484,10 @@ public sealed partial class Binding
                 Register(constraint.Left!, type, use, false);
                 Register(constraint.Right!, type, use, false);
             }
+            else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
+            {
+                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+            }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
                 this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
@@ -614,8 +618,9 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations.
         var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
 
-        // SPEC 8.4.7.3: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve Types.
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericInteger(type, scope);
+        // SPEC 8.4.7.3: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
+        // Types and their conformance to the closed Contract Position.
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
         for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)

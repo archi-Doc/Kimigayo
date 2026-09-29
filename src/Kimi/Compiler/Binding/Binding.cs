@@ -1145,8 +1145,9 @@ public sealed partial class Binding
 
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
                         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-                        // The fixed array's members are receiver functions of one internal Kimi group (SPEC 22.1, PLAN G32).
-                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || ReferenceEquals(memberScope.Owner, binding.Library.FixedArrayMembers))
+                        // The members of the fixed array and the integer Position witness are receiver functions of internal
+                        // Kimi groups (SPEC 22.1, 4.6.2, PLAN G32).
+                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
                         {
                             for (var p = 0; p < function.Parameters.Count; p++)
                             {

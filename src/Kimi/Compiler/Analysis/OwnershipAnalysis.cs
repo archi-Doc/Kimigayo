@@ -25,6 +25,7 @@ public sealed partial class OwnershipAnalysis
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
     private bool fixedArrayWitnesses;
+    private bool integerPositionWitness;
     private int current;
     private int resultPlace;
     private int normalExit;
@@ -148,6 +149,7 @@ public sealed partial class OwnershipAnalysis
         this.templateBodies.Clear();
         this.witnessTypes.Clear();
         this.fixedArrayWitnesses = false;
+        this.integerPositionWitness = false;
         if (this.defaultBody is { } declaration)
         {
             declaration.IsVerified = false;
@@ -1301,6 +1303,13 @@ public sealed partial class OwnershipAnalysis
         {
             this.fixedArrayWitnesses = true;
             this.compilation.Binding.CollectFixedArrayWitnesses(this.witnessScratch);
+        }
+
+        // SPEC 4.6.2: an integer Type argument reaches the Kimi integer Position witness through its built-in conformance.
+        if (type.IsInteger && !this.integerPositionWitness)
+        {
+            this.integerPositionWitness = true;
+            this.compilation.Binding.CollectIntegerPositionWitness(this.witnessScratch);
         }
 
         // Dispatch through an associated Type reaches that Type's witnesses too (an entry's iterator and its `next`), so each

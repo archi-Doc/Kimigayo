@@ -129,6 +129,8 @@ public enum KimiDeclarationId : byte
     InlineStorage,
     StorageOwnFixed,
     StorageInlineBase,
+    Position,
+    PositionRange,
 }
 
 public enum KimiDeclarationState : byte

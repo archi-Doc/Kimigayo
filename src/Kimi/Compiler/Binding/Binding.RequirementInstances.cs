@@ -24,6 +24,11 @@ public sealed partial class Binding
             return this.InstantiateFixedArrayEntry(call, fixedSelf, fixedContract, destination); // PLAN G32.
         }
 
+        if (call.ConformingType is { } integer && call.RequirementContract is { } positionContract && IsIntegerPosition(integer, positionContract))
+        {
+            return this.InstantiateIntegerPosition(call, integer, destination); // SPEC 4.6.2.
+        }
+
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||

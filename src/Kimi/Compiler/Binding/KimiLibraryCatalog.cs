@@ -146,6 +146,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),
         new(KimiDeclarationId.StorageInlineBase, "inlineBase", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageInlineBase),
+        new(KimiDeclarationId.Position, "Position"),
+        new(KimiDeclarationId.PositionRange, "PositionRange"),
     ];
 
     private static readonly int[] Indices = CreateIndices();

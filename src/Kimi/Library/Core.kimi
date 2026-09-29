@@ -5,6 +5,51 @@ public contract Sealed
 public contract ObjectPayload
 public contract PrimitiveInteger
 
+/// A boundary of a target of length `L` that resolves to an integer in `[0, L]` (SPEC 4.6.2).
+///
+/// A closed Contract: the twelve integer Types, `FromEnd<T>`, `Start` and `End` conform, and no other Type can.
+public contract Position: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
+
+    /// Resolves this position against `length`, or returns `None` when `length < 0` or the position lies outside
+    /// `[0, length]`.
+    func tryResolve(self: Self, length: isize) -> Option<isize>
+
+/// An interval of positions that resolves against a length to a validated half-open interval (SPEC 4.6.4).
+///
+/// A closed Contract: `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform, and no other Type can.
+public contract PositionRange: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
+
+    /// Resolves this range against `length`, or returns `None` when `length < 0`, a boundary does not resolve or the
+    /// resolved boundaries are reversed.
+    func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
+
+// SPEC 4.6.2, 8.4.7: the built-in integer conformance to Position. The compiler binds an integer's `tryResolve`
+// requirement to this receiver function; integers gain no members.
+internal group IntegerPosition
+    /// Returns `self` as an isize boundary when `0 <= self <= length`, or None; no wide value is truncated first.
+    public func tryResolve<I>(self: I, length: isize) -> Option<isize>
+        I is PrimitiveInteger
+        require self >= 0 and length >= 0 else => return .None
+        require self@u128 <= length@u128 else => return .None
+        return .Some(self@isize)
+
+    specialize func tryResolve<isize>(self: isize, length: isize) -> Option<isize>
+        require self >= 0 and self <= length else => return .None
+        return .Some(self)
+
+    specialize func tryResolve<i32>(self: i32, length: isize) -> Option<isize>
+        let wide = self@isize
+        require wide >= 0 and wide <= length else => return .None
+        return .Some(wide)
+
+    specialize func tryResolve<usize>(self: usize, length: isize) -> Option<isize>
+        require length >= 0 and self <= length@usize else => return .None
+        return .Some(self@isize)
+
 public enum Option<T>
     Self is Copy when T is Copy
     Some(T)

@@ -26,7 +26,7 @@ These are compiler identities, not user-implementable replacements.
 | `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#86-callable-constraints) |
 | `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#8471-sealed) |
 | `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#8472-objectpayload) |
-| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, Scalar read, Copy, Owned, Equatable, Comparable, Utf8Format and literals 0 through 127; unary `-` is unavailable. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
+| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
 
 ### 1.2. Comparison
 
@@ -137,6 +137,13 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 ### 3.1. Index and Ranges
 
 [Specification: positions](spec/04-arrays-indexing-and-slices.md#462-positions), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
+
+The closed Contracts `Position` and `PositionRange` fix the position and range Types; no other Type can conform, and integers conform to `Position` without gaining members.
+
+| Contract | Member | Guarantee |
+| --- | --- | --- |
+| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
+| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. |
 
 Index, `Range<T>`, IndexRange and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
 

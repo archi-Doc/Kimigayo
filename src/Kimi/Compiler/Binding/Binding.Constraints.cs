@@ -427,9 +427,10 @@ public sealed partial class Binding
 
         // Only propositions dependent on generic inputs or the conforming Self are premises.
         // Closed propositions are independently checked declaration obligations.
-        // SPEC 8.4.7.2: inside a Contract, `Self is [not] ObjectPayload` is a Self-dependent implementation
-        // requirement: a premise for the Contract's own signatures and an obligation of every conformer.
-        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsObjectPayloadRequirement(requirement);
+        // SPEC 8.4.7.2, 8.4.7: inside a Contract, `Self is [not] ObjectPayload`, `Self is Copy` and `Self is Owned` are
+        // Self-dependent implementation requirements: premises for the Contract's own signatures, derived for every Type
+        // that the Contract is available for, and obligations of every conformer.
+        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && (IsObjectPayloadRequirement(requirement) || requirement.Contract?.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned);
         var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
         input |= contractSelfClause;
