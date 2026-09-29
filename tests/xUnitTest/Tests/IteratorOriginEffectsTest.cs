@@ -202,9 +202,14 @@ public class IteratorOriginEffectsTest
     [Theory]
     [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        self.steps += 1\n        return first@move")] // G28: effects that cannot leave the block
+    [InlineData("var first = self.inner.next()\n        self.steps += 1\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
+        "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
     public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
     {
-        var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+        var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
             "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
         var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
             "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
@@ -212,12 +217,33 @@ public class IteratorOriginEffectsTest
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
+    // G28: an item held across effects executes, and the effects run once per step.
     [Fact]
-    public void ADroppedLocalItemIsRejected()
+    public void AnItemHeldAcrossEffectsIsTransferredAtRunTime()
     {
-        const string Source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
-            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        return self.inner.next()\n";
-        var c = MinimalEmissionTest.Analyze(Source);
+        const string Hold = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var first = self.inner.next()\n" +
+            "        self.steps += 1\n        return first@move\n";
+        var source = Counter + Hold + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and hold.steps == 4 else => $abort(\"hold\")\nConsole.writeLine(\"held across\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorHoldAcross", source, "held across\n");
+    }
+
+    // A statement between the item's initialization and its transfer that names the item, or that may leave the block
+    // normally (a return, or an exit to an iteration outside it), may destroy it inside next.
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        if self.steps == 3 => return .None\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        let copy = first@move\n        self.steps += 1\n        return .None")]
+    [InlineData("var first = self.inner.next()\n        first = self.inner.next()\n        return first@move")]
+    [InlineData("outer: loop\n            let first = self.inner.next()\n            loop\n                if self.steps == 3 => exit to outer\n                exit\n            return first@move\n        return .None")]
+    [InlineData("loop\n            let first = self.inner.next()\n            if self.steps == 3 => exit\n            return first@move\n        return .None")]
+    [InlineData("match self.inner.next()\n            .Some(let item)\n                if self.steps == 3 => return .None\n                return .Some(item@move)\n            .None => return .None")]
+    public void ALocalItemThatMayBeDestroyedIsRejected(string body)
+    {
+        var source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 

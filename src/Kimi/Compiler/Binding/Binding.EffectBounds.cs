@@ -65,6 +65,7 @@ public sealed partial class Binding
         private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<BoundCall> calls = new();
         private readonly List<(BoundType Iterator, BoundOrigin Storage)> storedIterators = new();
+        private readonly InertScan inertScan = new();
         private IReadOnlyList<BoundOrigin> selfOrigins = [];
         private BindingScope? scope;
         private BoundType item = BoundType.Unit;
@@ -87,7 +88,7 @@ public sealed partial class Binding
             if (node is FieldKoto local)
             {
                 this.Queue(local.InitializerKoto);
-                if (!this.TransferredNext(local))
+                if (!this.TransferredLater(local))
                 {
                     this.Destruction(local.BoundSymbol?.Type is { } type ? this.Type(type) : null, local);
                 }
@@ -355,7 +356,8 @@ public sealed partial class Binding
 
                 if (matched.Payload.Length != 1 || root.End != arm.Pattern + 2 ||
                     plan.Positions[arm.Pattern + 1] is not { Kind: BoundPatternKind.Binding, AccessMode: PatternAccessMode.Owned, ImplicitFollows: 0, BodySymbol: { } item } payload ||
-                    payload.Parent != arm.Pattern || !this.TransfersAtOnce(arm.Syntax.Body, item))
+                    payload.Parent != arm.Pattern ||
+                    !(arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) : this.TransfersAtOnce(arm.Syntax.Body, item)))
                 {
                     return false;
                 }
@@ -381,21 +383,42 @@ public sealed partial class Binding
             return IsTransferOf(value, item);
         }
 
-        // G28: an immutable local is not destroyed when the very next statement transfers it at once, directly or as the
-        // Subject of a match that transfers its payload; nothing runs in between.
-        private bool TransferredNext(FieldKoto local)
+        // G28: a local is not destroyed when a later statement of its block transfers it at once, directly or as the Subject
+        // of a match that transfers its payload, and no statement before that one names it or may leave the block normally.
+        // A later assignment to a `var` local counts its own destruction.
+        private bool TransferredLater(FieldKoto local)
         {
-            if (local.VariableKind != VariableKind.Let || local.BoundSymbol is not { } symbol || local.Parent is not CodeBlockKoto block)
+            if (local.BoundSymbol is not { } symbol || local.Parent is not CodeBlockKoto block)
             {
                 return false;
             }
 
-            for (var i = 0; i + 1 < block.Items.Count; i++)
+            for (var i = 0; i < block.Items.Count; i++)
             {
                 if (ReferenceEquals(block.Items[i], local))
                 {
-                    var next = block.Items[i + 1];
-                    return this.TransfersAtOnce(next, symbol) || (next is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match));
+                    return this.TransferredLater(block.Items, i + 1, symbol);
+                }
+            }
+
+            return false;
+        }
+
+        // Whether statement `start` onward transfers `symbol` before anything could destroy it. Abort destroys nothing
+        // (SPEC 17.3); the effects of the statements in between are summarized as usual.
+        private bool TransferredLater(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol)
+        {
+            for (var i = start; i < statements.Count; i++)
+            {
+                var statement = statements[i];
+                if (this.TransfersAtOnce(statement, symbol) || (statement is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match)))
+                {
+                    return true;
+                }
+
+                if (!this.inertScan.Check(statement, symbol))
+                {
+                    return false;
                 }
             }
 
@@ -1331,6 +1354,70 @@ public sealed partial class Binding
             this.contexts.Add(call);
             this.contextIndex.Add(call, this.contexts.Count - 1);
             return this.contexts.Count - 1;
+        }
+    }
+
+    // Whether a statement neither names a symbol nor may leave its block normally (SPEC 14.5.2): no return, try, yield or
+    // labeled transfer, and no unlabeled exit or continue outside an iteration body it contains. Transfers inside a
+    // function or deferred body cannot cross that boundary; a capture there still names the symbol.
+    private sealed class InertScan : KotoVisitor
+    {
+        private BindingSymbol? symbol;
+        private int iterations;
+        private int boundaries;
+        private bool inert;
+
+        public override void Visit(Koto node)
+        {
+            if (!this.inert)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto)
+            {
+                this.inert = false;
+                return;
+            }
+
+            if (node is FunctionKoto or DeferredBlockKoto)
+            {
+                this.boundaries++;
+                node.VisitChildren(this);
+                this.boundaries--;
+                return;
+            }
+
+            if (this.boundaries == 0)
+            {
+                if (node is TryKoto or JumpKoto { Label: not null } or JumpKoto { Akind: not (KotoKind.Exit or KotoKind.Continue) } ||
+                    (node is JumpKoto && this.iterations == 0))
+                {
+                    this.inert = false;
+                    return;
+                }
+
+                if (node is CodeBlockKoto && ReferenceEquals(node, node.Parent switch { ForKoto loop => loop.Body, WhileKoto loop => loop.Body, LoopKoto loop => loop.Body, _ => null }))
+                {
+                    this.iterations++;
+                    node.VisitChildren(this);
+                    this.iterations--;
+                    return;
+                }
+            }
+
+            node.VisitChildren(this);
+        }
+
+        internal bool Check(Koto statement, BindingSymbol symbol)
+        {
+            this.symbol = symbol;
+            this.iterations = 0;
+            this.boundaries = 0;
+            this.inert = true;
+            this.Visit(statement);
+            this.symbol = null;
+            return this.inert;
         }
     }
 
