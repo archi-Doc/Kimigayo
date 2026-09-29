@@ -230,7 +230,7 @@ DiagnosticFact
 | 2a. 共通の確定境界 | 診断所有者・区画・局所結果、位置型とソース表、CheckDiagnostic と退避処理、CLI・LSP の変換の順に移す。独立したエラー状態を廃止する。旧来の開始位置抑制は、移行用の入口で再現する（旧収集単位＋開始位置、範囲なしは0とし、改良しない） | 出力と終了状態を基準と比べ、差が意図したもの（表示時期、順序、帰属、エラー状態の修正）だけである |
 | 2b. 同一性と明示依存 | 全記録元（字句・構文・Binding・起動条件・ControlFlow・Ownership）に検査キーと原因をそろえる。集約、原因の引き継ぎ、構文回復の対応を実装し、共通の抑制規則に切り替える。旧来の開始位置抑制、BorrowOriginHint による抑制、DiagnosticDependencyVisitor を撤去する | 同じ位置の独立した問題が残る。構文誤りからの連鎖が抑制される。Milestone と変異テストで、説明のない不受理と、原因不明の PrerequisiteUnavailable_Kd が0件。順序が決定的 |
 | 3. 説明の改善 | 有界な整形・引用・補足を仕上げる。型不一致と不正な代入の理由と下線範囲を改善する。Move・借用・オーバーロードの詳細は、取得費用を確認してから広げる | 対象ケースで位置・理由・補足が期待どおりになる |
-| 4. 総合評価 | §6 の評価を完了し、§7 の反映を行う | CLI・LSP の結果、性能、検証済みの範囲と残る制限を記録する |
+| 4. 総合評価 | §6 の評価を完了し、§7 の反映を行う | CLI・LSP の結果、性能、検証済みの範囲と残る制限を記録する。Completion also requires the ongoing workflow of §6.5 to be documented in AGENTS.md under §7. |
 
 - 問題キーに基づく契約検査（Primary・Args の不一致、説明のない不受理、意味順の定義不足）は 2b で有効にする。2a では、旧来の抑制による欠落を契約違反としない。
 - 経路ごとに旧方式と新方式を併存させない。`(範囲, Code)` のような中間の同一性は作らない。
@@ -266,6 +266,18 @@ DiagnosticFact
 - 各実装単位は `scripts/verify.ps1 -Class ...` と、関連するネイティブ実行用テスト・Milestone ハーネスで検証し、検証済みの単位ごとにコミットする。実装セッションの末尾に Session 検証を一度行う。ビルド中はソースを編集せず、NativeAOT は実行しない。拡張機能を変更した場合は、その検証手順にも従う。
 - 失敗を含む証拠は artifacts/verify/、測定は artifacts/benchmarks/、使い捨ての出力は temp/ に置く。
 
+### 6.5. Ongoing diagnostic improvement
+
+This workflow applies during implementation of this plan and remains required after its completion. Apply it whenever a change adds or modifies a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication and presentation. Reusing an existing diagnostic code does not exempt a new reporting path. Reported confusing, missing or misleading diagnostics also start this cycle.
+
+1. **Capture the intended problem.** Add a minimal reproducer or a mutation of a known-valid program under §6.1. Record the intended failure and independently specified public diagnostic expectations. Confirm that the case reaches the intended check; an unrelated earlier error is not evidence. Include a valid counterpart to detect false positives.
+2. **Review the explanation.** Check the code, severity and category, the primary range and label, the factual reason, related locations and any Note or Advice. The message must explain the problem on its own; required facts must survive display limits. Distinguish established facts from suggested intent, and state any conditions on advice. Inspect representative CLI and LSP output, including the correspondence between underlines and explanations, for changed user-visible behavior; retain the human review required by §6.1.
+3. **Exercise interactions.** Add focused cases for relevant dependencies and recovery, independent errors, and the input relationships of §6.2. Verify that the cause remains explained, independent problems remain visible, and acceptance does not depend on suppression or presentation. Cover affected output adapters; a future CSP adapter must preserve the same public diagnostic contract. Select cases by the change's impact rather than repeating every test for each diagnostic.
+4. **Repair and repeat.** Correct missing evidence, misleading explanations, wrong ranges or unwanted cascades at their source, then rerun the affected checks and inspect the revised output. Do not weaken expectations to match current output or treat a lower diagnostic count as improvement. Keep the reproducer and independent expectations as regression tests.
+5. **Verify and retain evidence.** Follow §6.4 and the repository verification workflow. Measure under §6.3 when a changed path is hot or at milestone completion. Record the reviewed behavior, intentional public-output changes, verification results and any remaining uncertainty in commits and the existing evidence locations.
+
+A unit is complete only when its intended problem is explained accurately and understandably at the appropriate locations, the applicable interaction and output checks pass, and any observed quality defect within that unit has been repaired and reverified. Test success alone does not establish clarity. If these conditions cannot be met, record the unresolved condition and next action without marking the unit complete or claiming verified support.
+
 ## 7. 仕様・記録への反映
 
 - 実装に合わせて SPEC を更新する。
@@ -274,6 +286,7 @@ DiagnosticFact
   - §23.4.7：範囲の対応判定、代替配置、結果間の集約と並び順
   - Fix を参照する箇所を Advice に改めること
 - Deferred は §23.5 と Appendix D に反映する。正式仕様は本書に依存させない。
+- Before completing this plan, add an English **Diagnostic development workflow** section to [AGENTS.md](../../AGENTS.md). It must require §6.5's triggers, improvement cycle and completion conditions for subsequent implementation work, including new reporting paths that reuse existing codes. Keep the actionable steps in AGENTS.md; move any supporting detail to a permanent document under docs/dev/ and link it there. Neither the permanent workflow nor the specification may depend on this draft. Update [implementation-execution.md](../../docs/dev/prompts/implementation-execution.md) to explicitly apply that workflow when diagnostics are affected. Verify that these permanent instructions cover reproduction, independent expectations, explanation and location review, interactions and output adapters, repair and re-verification, regression retention and evidence before freezing this plan. This handoff is a completion requirement, not a claim that the planned infrastructure already exists.
 - STATUS は検証済みの範囲、PLAN は現在の作業、PLAN_HISTORY は短い実施記録に限って更新する。正式仕様へ取り込んだら [INTEGRATED.md](../INTEGRATED.md) に記録して本書を凍結する。他の draft は自動更新しない。
 
 ## 8. Deferred
