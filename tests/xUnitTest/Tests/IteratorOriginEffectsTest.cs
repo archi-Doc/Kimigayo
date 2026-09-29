@@ -403,6 +403,37 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: an arm that yields or evaluates to a value storing the payload hands it to the match result, which the local
+    // then owns and returns.
+    private const string Pick = "struct Pick<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let result: Option<I.(Iterator).Item> = match self.inner.next()\n";
+
+    [Fact]
+    public void AnArmYieldingThePayloadIsAccepted()
+    {
+        var source = Counter + Pick + "            .Some(let item)\n                self.steps += 1\n                yield .Some(item@move)\n            .None => .None\n        return result@move\n" +
+            "var pick = Pick<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match pick.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and pick.steps == 3 else => $abort(\"pick\")\nConsole.writeLine(\"picked\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorYieldedPayload", source, "picked\n");
+    }
+
+    [Fact]
+    public void AnArmValueStoringThePayloadIsAccepted()
+    {
+        var c = MinimalEmissionTest.Analyze(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // An arm that yields another value, or a match result left to its scope, destroys the payload.
+    [Theory]
+    [InlineData("            .Some(let item)\n                yield .None\n            .None => .None\n        return result@move\n")]
+    [InlineData("            .Some(let item) => .Some(item@move)\n            .None => .None\n        return .None\n")]
+    public void AnArmThatDropsThePayloadIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Pick + tail);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // G28: a match on another value is judged as an `if`: each arm transfers the item or falls through holding it.
     private const string Select = "struct Select<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
         "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        match self.skipped\n";

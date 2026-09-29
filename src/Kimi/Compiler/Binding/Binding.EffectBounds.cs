@@ -364,7 +364,8 @@ public sealed partial class Binding
                         case BoundPatternKind.Case or BoundPatternKind.Tuple:
                             break; // Its parts are its child positions.
                         case BoundPatternKind.Binding when position.BodySymbol is { } item &&
-                            (arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) : this.TransfersAtOnce(arm.Syntax.Body, item)):
+                            (arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) :
+                            this.TransfersAtOnce(arm.Syntax.Body, item) || this.Stores(arm.Syntax.Body, item)): // An arm value is judged where the match is used.
                             break;
                         case BoundPatternKind.Binding or BoundPatternKind.Wildcard or BoundPatternKind.Literal or BoundPatternKind.Unit:
                             this.Destruction(this.Type(position.MatchedType), match);
@@ -389,7 +390,7 @@ public sealed partial class Binding
 
             return body switch
             {
-                ReturnKoto { Expression: { } returned } => this.Stores(returned, item),
+                JumpKoto { Expression: { } returned } => this.Stores(returned, item), // return, or exit/yield into a result.
                 BinaryKoto { Akind: KotoKind.Equals } assignment => this.inertScan.Check(assignment.Left, item) && this.Stores(assignment.Right, item),
                 FieldKoto { InitializerKoto: { } initializer } => this.Stores(initializer, item), // The new local's own destruction is counted there.
                 _ => false,
@@ -679,6 +680,21 @@ public sealed partial class Binding
                         return this.PayloadsTransferred(match);
                     case IfKoto when node is CodeBlockKoto:
                         node = parent;
+                        continue;
+                    case JumpKoto { Akind: KotoKind.Yield, Label: null } yielded when ReferenceEquals(yielded.Expression, node):
+                        // SPEC 14.5.2: the value becomes the result of the nearest `if` or `match`, used where it is.
+                        var target = yielded.Parent;
+                        while (target is not null and not (IfKoto or MatchKoto or FunctionKoto))
+                        {
+                            target = target.Parent;
+                        }
+
+                        if (target is not (IfKoto or MatchKoto))
+                        {
+                            return false;
+                        }
+
+                        node = target;
                         continue;
                     case ReturnKoto or TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto or ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity }:
                         return true;
