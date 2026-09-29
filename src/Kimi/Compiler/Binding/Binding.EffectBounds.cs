@@ -422,6 +422,30 @@ public sealed partial class Binding
                 case TupleLiteralKoto tuple:
                     parts = tuple.Elements;
                     break;
+                case IfKoto { ElseBody: { } otherwise } branching:
+                    // A value-producing `if` stores the item when every branch delivers it and no condition names it.
+                    for (var b = 0; b < branching.Branches.Count; b++)
+                    {
+                        if (!this.inertScan.Check(branching.Branches[b].Condition, item) || !this.Delivers(branching.Branches[b].Body, item))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return this.Delivers(otherwise, item);
+                case MatchKoto moved when IsTransferOf(moved.Expression, item):
+                    return this.PayloadsTransferred(moved); // The Subject is moved in; its arms account for its parts.
+                case MatchKoto selection and not TryKoto when this.inertScan.Check(selection.Expression, item):
+                    for (var a = 0; a < selection.Arms.Count; a++)
+                    {
+                        var arm = selection.Arms[a];
+                        if (!this.inertScan.Check(arm.Pattern, item) || (arm.Guard is { } guard && !this.inertScan.Check(guard, item)) || !this.Delivers(arm.Body, item))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return selection.Arms.Count != 0;
             }
 
             var stored = -1;
@@ -461,6 +485,13 @@ public sealed partial class Binding
                 return false;
             }
         }
+
+        // Whether a branch or arm body of a value-producing selection delivers the item: its statements transfer it (a `yield`
+        // into the result, or a return), or its expression value stores it.
+        private bool Delivers(Koto body, BindingSymbol item)
+            => body is CodeBlockKoto block
+                ? this.TransferredLater(block.Items, 0, item) || (block is { IsExpressionBody: true, Items: [var value] } && this.Stores(value, item))
+                : this.TransfersAtOnce(body, item) || this.Stores(body, item);
 
         // G28: a local is not destroyed when a later statement of its block transfers it at once, directly or as the Subject
         // of a match that transfers its payload, and no statement before that one names it or may leave the block normally.

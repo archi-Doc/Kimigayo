@@ -434,6 +434,39 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: a value-producing `if` or `match` whose every branch delivers the item stores it in its result.
+    private const string Choose = "struct Choose<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 2\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n" +
+        "        let chosen: Option<I.(Iterator).Item> = ";
+
+    [Fact]
+    public void ASelectionDeliveringTheItemInEveryBranchIsAccepted()
+    {
+        var source = Counter + Choose + "if self.steps > 0\n            self.steps -= 1\n            yield first@move\n        else => first@move\n        return chosen@move\n" +
+            "var choose = Choose<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match choose.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and choose.steps == 0 else => $abort(\"choose\")\nConsole.writeLine(\"chosen\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorChosenValue", source, "chosen\n");
+    }
+
+    [Theory]
+    [InlineData("match self.steps\n            0 => first@move\n            _ => first@move\n        return chosen@move\n")]
+    [InlineData("match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n")]
+    public void AMatchDeliveringTheItemIsAccepted(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A branch that delivers another value leaves the item to its scope.
+    [Theory]
+    [InlineData("if self.steps > 0 => first@move\n        else => .None\n        return chosen@move\n")]
+    [InlineData("match self.steps\n            0 => first@move\n            _ => .None\n        return chosen@move\n")]
+    public void ASelectionThatMayDropTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // G28: a match on another value is judged as an `if`: each arm transfers the item or falls through holding it.
     private const string Select = "struct Select<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
         "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        match self.skipped\n";
