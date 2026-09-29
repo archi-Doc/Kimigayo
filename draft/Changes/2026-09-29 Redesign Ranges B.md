@@ -2,7 +2,7 @@
 
 日付: 2026-09-29
 
-状態: 最終提案。正式仕様への取り込み・実装・検証は未実施。
+状態: 最終提案。統合前の見直しで見つかった誤りと漏れ（§2.3.1・§2.3.3・§2.4.1・§2.5.1・§2.6.2・§3.2・§3.4・§3.6・§5・§6.2）を修正した。
 
 本書で変更する事項は、`docs/SPEC.md` とその参照先より優先する。本書で変更しない事項には既存仕様を適用する。
 
@@ -65,15 +65,17 @@
 
 #### 2.3.1. `Position`
 
-`Kimi.Position` は、閉じた内在 Contract である。満たす型は、12 の整数型（`PrimitiveInteger`）と、§22.1 が指定する `FromEnd<T>`・`Start`・`End` だけである。
+`Kimi.Position` は、**閉じた Contract** である。閉じた Contract は Kimi が宣言する通常の Contract で、適合する型を §22.1 が指定するものに限る。`Position` に適合する型は、12 の整数型（`PrimitiveInteger`）と、§22.1 が指定する `FromEnd<T>`・`Start`・`End` だけである。利用者の型は適合を宣言できない。
 
 ```kimi
-contract Position
+public contract Position: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
     func tryResolve(self: Self, length: isize) -> Option<isize>
 ```
 
-- **含意**: `T is PrimitiveInteger` は `T is Position` を含意する。`T is Position` は、Copy・Owned・Equatable・Utf8Format を含意する。
-- **整数の実装**: §22.1 が指定する Kimi の内部関数とし、コンパイラーが宣言IDで結び付ける。整数型にメンバーは追加せず、この要件は `P is Position` を通じて呼ぶ。
+- **含意**: `T is Position` は、Contract の継承（§8.4.2）で Equatable・Utf8Format を、Contract の制約で Copy・Owned を含意する。特別な証明規則は、「`T is PrimitiveInteger` は `T is Position` を含意する」の1つだけである。
+- **整数の実装**: §22.1 が指定する Kimi の内部関数とし、コンパイラーが宣言IDで結び付ける（Equatable の組み込み適合と同じ経路）。整数型にメンバーは追加せず、この要件は `P is Position` を通じて呼ぶ。
 
 #### 2.3.2. 位置の型と解決
 
@@ -109,11 +111,12 @@ public struct Start           // フィールドを持たない。End も同じ�
 
 #### 2.3.3. 値の読み取り
 
-- **読み取り**: Scalar read（§3.5.3）の対象を、Position 型と PositionRange 型にも広げる。
-  - 適用する場面は Scalar read と同じで、共通適合の値の位置（引数・型注釈付き初期化・代入元・戻り値など）と、組み込み演算子の被演算子（範囲構文と `^` を含む）である。
+- **読み取り型**: Scalar と、Position か PositionRange を満たす型を、**読み取り型**と呼ぶ。Scalar read（§3.5.3）は**値の読み取り**（value read）と改め、その対象を読み取り型に広げる。
+  - 適用する場面は現行の Scalar read と同じで、共通適合の値の位置（引数・型注釈付き初期化・代入元・戻り値など）と、組み込み演算子の被演算子（範囲構文と `^` を含む）である。
   - Position か PositionRange が証明できるジェネリックな型も、対象になる。
   - 期待型のない `let p = t` は、現行どおり参照のまま束縛する。
-- **受け手**: `t.tryResolve(L)` では、参照経路の選択（§3.4.1）が参照先の Place を選び、値の受け手がそれを Copy で取得する。新しい規則は要らない。
+  - 仕様で Scalar read の対象を「Scalar」と書いている箇所（§3.3.6・§3.4.1・§7.3・§10.2・§13.5.3・§14.9.1・§15.2・付録 E）は、個別の例外を書かず「読み取り型」に置き換える。
+- **受け手**: §7.3 の受け手の表では、所有の受け手 `Self` を参照から暗黙に取れるのは、Scalar の `Self` を Scalar read で読む場合だけである。この行を読み取り型に広げる。`t.tryResolve(L)`（`t: ref/FromEnd<i32>`）では、参照経路の選択（§3.4.1）が参照先を選び、値の読み取りで `Self` を Copy する。
 - **型引数の推論**（§10.2.1 の例外）: 制約から Position か PositionRange が導ける型引数は、参照の実引数から、参照の層を外した終端の型を推論する。
   - これらの Contract を満たすのは値型だけなので、ほかに候補はない。
   - `T is PrimitiveInteger` で制約した型引数と、列の添字のキー（§2.6.1）にも適用する。
@@ -140,6 +143,17 @@ let p: FromEnd<i32> = t    // 型注釈付き初期化でも同じく読む。
 | `..b` | `Range<Start, E>` |
 | `..=b` | `ClosedRange<Start, E>` |
 | `..` | `Range<Start, End>` |
+
+```kimi
+public struct Range<S, E>     // ClosedRange<S, E> も同じ形。
+    S is Position
+    E is Position
+    Self is Copy
+    Self is Equatable
+    Self is PositionRange
+    public let start: S
+    public let end: E
+```
 
 - **格納**: 公開・読み取り専用の `start: S`・`end: E` だけを持つ。`Start`・`End` は大きさを持たない。
 - **能力と作り方**: Owned・Copy・Equatable で、`PositionRange` を満たす。範囲構文だけで作る。
@@ -170,14 +184,16 @@ let e = ..            // Range<Start, End>
 
 #### 2.5.1. `PositionRange`
 
-`Kimi.PositionRange` は、`Position` と同じく閉じた内在 Contract である。満たす型は、§22.1 が指定する `Range`・`ClosedRange`・`ResolvedRange` だけである。
+`Kimi.PositionRange` は、`Position` と同じく閉じた Contract である。満たす型は、§22.1 が指定する `Range`・`ClosedRange`・`ResolvedRange` だけである。
 
 ```kimi
-contract PositionRange
+public contract PositionRange: Equatable, Utf8Format
+    Self is Copy
+    Self is Owned
     func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
 ```
 
-- **含意**: `T is PositionRange` は、Copy・Owned・Equatable・Utf8Format を含意する。
+- **含意**: `T is PositionRange` は、`Position` と同じ仕組みで Copy・Owned・Equatable・Utf8Format を含意する。
 - **効果**: 解決は、境界と長さだけを読む。そのため、呼び出しと検査を融合・除去してよい。
 
 #### 2.5.2. `ResolvedRange`
@@ -265,6 +281,7 @@ r.tryResolve(3)         // None: 終端 4 が長さ 3 を超える。
   - `tryGet(k)` は、添字 `x[k]` の try 版である。Dictionary の `tryGet` と同じ命名規約で、STYLE に記す。
   - `splitAt(p)` は、p を1回だけ評価・解決して `(x[..p], x[p..])` を返す。`trySplitAt(p)` は、解決に失敗すれば None を返す。
   - 固定配列と Array の同名 API は、`x[..]` の Slice の API と同じ意味とする。結果は受け手の共有借用に依存する（`during self`）。
+  - 固定配列の API は、固定配列の反復の入口と同じく、内部 group `Kimi.Storage.FixedArray` の受け手関数（`<E, length N>`）として Kimi で宣言し、固定配列の受け手でだけ公開する。
 - **`tryGet` の選択**: Position と PositionRange を両方満たす型はないので、2つの宣言のうち適用できるのは常に1つである。
 - **isize の値のまま**: `truncate(length:)`・`init(capacity:)`・`init(repeating:count:)`、戻り値（`firstIndex`・`indices`）。
 
@@ -382,8 +399,8 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 1. **型同一性の要件**（§8.3・§8.4.8.1・§8.7）: `X is U`（U は型）を一般規則とし、条件付き適合の条件にも使えるようにする。
    - 正規化して同一（同じ束縛子を含む）なら Proven、具体型どうしで異なれば Refuted、それ以外は Unknown とする。
    - 前提として得た同一性は、その有効範囲（条件付き適合のブロック本体を含む）で置換に使える。
-2. **閉じた内在 Contract**（§8.4.7）: `Position` と `PositionRange` の適合は、§22.1 が指定する型だけとする。整数の Position への適合は組み込みとし、§8.4.7.3 の PrimitiveInteger が与える能力に Position を加える。
-3. **値の読み取り**（§3.5.3・§10.2.1）: Scalar read の対象を Position 型と PositionRange 型に広げ、その型引数の推論を定める（§2.3.3）。
+2. **閉じた Contract**（§8.4.7）: `Position` と `PositionRange` は、適合する型を §22.1 が指定するものに限る Kimi の通常の Contract とする。含意は Contract の継承と制約で表す。整数の Position への適合は組み込みとし、§8.4.7.3 の PrimitiveInteger が与える能力に Position を加える（唯一の特別な証明規則）。
+3. **値の読み取り**（§3.5.3・§7.3・§10.2・§10.2.1）: Scalar read を値の読み取りと改め、対象を読み取り型（Scalar・Position 型・PositionRange 型）に広げる。§7.3 の所有の受け手の行も読み取り型に広げ、その型引数の推論を定める（§2.3.3）。
 4. **リテラル式**（§12.3.1）: `^a` と片側の範囲を加え、範囲の境界には期待型を境界ごとに伝える（§2.4.2）。既定は通常の整数リテラルと同じ i32 とし、「Index 化では isize」という既定を削除する。
 5. **警告**（§17.4）: 位置と範囲がリテラル式・`Start`・`End` だけからなり、次のどちらかのときに警告を出す。判定はリテラルの値による線形の不等式なので、決定的に行える。実行時の Abort は、現行どおりコンパイルエラーに変えない（§17.3.4）。
    - すべての長さ L で解決に失敗する（例: 要素位置の `^0`、`..=^0`、`2..=1`、`^3..^5`）。
@@ -416,6 +433,7 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 - **薄い入口**: ジェネリックな API は、解決だけを行う薄い入口にする。
   - 本体（要素の移動・Slice の生成）は、isize・`ResolvedRange` を受け取る共通の処理に任せる。
   - Array と固定配列の読み取り API は、Slice の API に委ねる。
+  - Array の `insert`・`remove` などの位置版は、Kimi の入口で isize に解決してから、コンパイラーが実装する isize 版を呼ぶ。コンパイラーの Index 版と、Index のレイアウトに依存する生成は削除する。
 - **反復器**: `RangeIterator<T>` は `current` と `end` だけを持ち、終端のフラグを持たない。`ClosedRangeIterator<T>` は、次の2案を測定で比べて選ぶ。
   - (a) 終端が T の最大値でなければ `[s, e + 1)` の状態で始め、最大値のときだけ終端のフラグを使う。
   - (b) `current > end` を終了状態とし、`current` と `end` の2つだけで表す。最後の要素を返すときに `current = 1`・`end = 0` とする。入口で逆転を拒否するので、内部の逆転は終了だけを表す。
@@ -438,7 +456,8 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 - **検査の除去**（§4.6.8）: 次の2つの証明を分けて扱う。この区別はコンパイラー内部のもので、公開型には所有者の情報を加えない。
   - 境界検査の除去には、`end <= 現在の長さ` の証明だけを要する（`indices` と `resolve` の結果を含む）。
   - アドレスや要素参照の再利用には、Storage・借用・アドレスがなお有効である証明が別に要る。再確保の前のアドレスは使わない。
-- **固定配列の読み取り API**: Kimigayo には拡張宣言がないので、`x[..]` の Slice の API に委ねるメンバーとして、コンパイラーが提供する（`length`・`indices` と同じ扱い）。
+- **固定配列の読み取り API**: Kimigayo には拡張宣言がないので、固定配列の反復の入口と同じく、内部 group `Kimi.Storage.FixedArray` の受け手関数として Kimi で宣言する。コンパイラーは固定配列の受け手でだけ、この group を探す。`length`・`indices` も、都合のよい時点でこの group に移す。
+- **`ResolvedRange` の反復**: 意味は `RangeIterator<isize>` の入口と同じに保ち、反復器を作らない現行のカーソルループは、最適化として残す（§6.3 の性質テストで同じ列を確かめる）。
 
 **診断**（`Fix` の文。§23 の構造化した修復候補の定義にも使う。自動の修復候補は、変更後の本体が検証できる場合だけ示す）:
 
@@ -463,8 +482,13 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 
 ### 3.6. 実装上の注意
 
-1. **要件を持つ閉じた内在 Contract は前例がない**（`PrimitiveInteger` は要件を持たない）。適合の集合は宣言IDで固定し、整数の実装を内部関数に結び付けて、`KimiLibraryValidation` で署名を検査する。§8.4.5 の照合は使わない。
+1. **閉じた Contract は前例がない**。現行の検証は、内在 Contract にメンバーを認めない（`KimiLibraryValidation`）ので、内在 Contract にはしない。
+   - 適合の集合は宣言IDで固定し、利用者の `Self is Position` は拒否する。
+   - Kimi の型（`FromEnd<T>` など）の適合は、通常の照合（§8.4.5）で検証する。
+   - 整数の適合は照合を使わず、Equatable の組み込み適合と同じ経路で、宣言IDにより内部関数に結び付ける。署名は `KimiLibraryValidation` で検査する。
 2. **型同一性の証明と置換**: 条件付き適合の本体では、E を S として型検査する。§8.4.3 の関連型の同一性の事実と同じ仕組みで扱う。
+   - 現行では、具体型を代入した後の判定はできるが、型の適合（`FitsTypeCore`）は事実を使わないので、本体で `self.end`（型 E）を S として扱えない。
+   - 一般的な等式の解決器は作らない。有効範囲にある型引数どうしの同一性の前提は、その範囲で片方の型引数を他方に置き換える正規化として実装する。`sum<T>(values: Range<T, T>)` は同じ型なので、置換なしで証明できる。
 3. **位置添字の正規化と Indexable の選択**（`bf6c09cd`）: 列の具体型の位置添字は、先に isize へ正規化してから `Indexable<isize>` を選ぶ。それ以外は、現行の選択に任せる。
 4. **`tryGet` の2つの宣言**: リテラル式や参照の実引数でも、適用できる候補が1つに決まることを確かめる（`tryGet(3)`・`tryGet(0..3)`・`tryGet(i)`）。
 5. **受け手の誤った統一**: 次の2つは誤りである。§2.6.1 のとおり、場所を1回だけ確定する。
@@ -558,7 +582,11 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 | 箇所 | 変更 |
 | --- | --- |
 | `docs/SPEC.md` の宣言索引、§3 の Copy の表 | `Index`・`IndexRange`・`Range<T>` を削除する。`FromEnd<T>`・`Start`・`End`・`Range<S, E>`・`ClosedRange<S, E>`・`ClosedRangeIterator<T>`・`Position`・`PositionRange` を追加する |
-| §3.5.3・§10.2・§10.2.1 | Scalar read の対象を Position 型・PositionRange 型に広げる。その型引数の推論 |
+| §3.5.3・§10.2・§10.2.1 | Scalar read を値の読み取りと改め、対象を読み取り型に広げる。その型引数の推論 |
+| §3.3.6・§3.4.1・§13.5.3・§14.9.1・§15.2 | Scalar read の対象としての「Scalar」を、読み取り型に置き換える |
+| §5.3 | raw pointer の添字の文言（`pointer[^1]`・`pointer[0..4]`） |
+| §7.3 | 所有の受け手の行を読み取り型に広げる。例の `insert(index: Index…)` を改める |
+| §12.1・§12.2 | 分類の「From-end Index」、片側の範囲の評価順 |
 | §4.5・§4.6.1 | 型の表、添字が受け付ける型、`indices` の定義、固定配列の読み取り API。長さの情報と要素 Place の規則は維持する |
 | §4.6.2・§4.6.3 | 該当部分を本書 §2.3・§2.4・§2.7 で置き換える。本書が「現行どおり」とした規則は、型名を改めて維持する |
 | §4.6.4 | 解決と失敗の記述を本書 §2.5 で置き換え、Index 化の記述を削除する。評価順・書き込み・Abort の規則は維持する |
@@ -576,6 +604,9 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
 | `utf8-formatting.md` | 位置と範囲の整形 |
 | 付録 D・E・F | 対象外の項目、用語、文法 |
 | 実装仕様 §21.5.3・付録 A.13 | 検査の生成、試験要件 |
+| アンカー | §3.5.3・§4.6.2〜4.6.4 の見出しを変えるので、それを参照するリンク（LIBRARY・付録 E・examples・milestones の README など）を直す |
+
+仕様の外の文書（`docs/LIBRARY.md`・`docs/STYLE.md`・`docs/STATUS.md`・`docs/examples/Ranges`・`tests/milestones/README.md`）は、実装の各単位で更新する。
 
 ## 6. Decision — 最終決定
 
@@ -592,6 +623,8 @@ Console.writeLine("\((1..^1).resolve(5))") // 1..4
    - API を値で受け取るジェネリックな入口にし、読み取り API を Slice の定義にそろえ、値の読み取りを実装する。
    - 途中段階に限り、Kimi は `Index` を Position に、既存の範囲型を PositionRange に適合させる（仕様の規則ではない）。
 3. **構文を切り替える**。`^x` を FromEnd に、範囲を `Range`・`ClosedRange` に切り替え、リテラル式・2つの反復器・整形を実装する。`Index`・`IndexRange`・`Range<T>` を削除する。
+   - 旧 `Range<T>` と新 `Range<S, E>` が同名で並ぶ期間は作らない。新しい型の追加と構文の切り替えを1つの単位にするか、仮の名前で追加してから改名する。
+   - 影響するテストが多い（範囲と Index のテストクラス約15個、ネイティブ fixture 約130件、Milestone 7・9・11・13・14・27・28・29・37・39）ので、切り替えは範囲・`^x`・テストに分けてコミットする。
 4. **下げ方を共通化する**。直接選択の部品化、検査の統合・畳み込み・除去、受け手の制限の撤廃、警告を実装する。
 
 各単位は、`./scripts/verify.ps1 -Class ...` と、関連する O0・O2 の fixture・Milestone で検証してからコミットする。セッションの最後に `./scripts/verify.ps1 -Mode Session` を実行する。
