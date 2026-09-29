@@ -244,6 +244,28 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorNumberedOnce", source, "numbered\n");
     }
 
+    // G28, SPEC 14.8.3: a guard Moves no payload and a false guard preserves the Subject, so guarded arms that transfer the
+    // payload consume it; here the guard is false and the next arm transfers the value.
+    [Fact]
+    public void AGuardedArmThatTransfersThePayloadIsAccepted()
+    {
+        var source = NumberedOnce + ".Some(let value) if self.index > 0 => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
+            "            .None => return .None\nvar once = NumberedOnce<i32>.init(5)\nvar positions: isize = 0\nvar sum: i32 = 0\nloop\n    match once.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            sum += pair.1\n        .None => exit\nrequire positions == 2 and sum == 5 else => $abort(\"guarded\")\nConsole.writeLine(\"guarded\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorGuardedTransfer", source, "guarded\n");
+    }
+
+    // A guard that may leave the block, here by an ordinary return (SPEC 14.8.3), destroys the Subject on that path.
+    [Fact]
+    public void AGuardThatMayLeaveTheBlockIsRejected()
+    {
+        var source = NumberedOnce + ".Some(let value) if self.index > 0 or (return .None) => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
+            "            .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.All(c.Binding.Issues, issue => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, issue.Code));
+    }
+
     // An aggregate that stores the item but is not transferred on is destroyed inside next.
     [Theory]
     [InlineData(".Some(let value)\n                let pair = (self.index, value@move)\n                return .None")]

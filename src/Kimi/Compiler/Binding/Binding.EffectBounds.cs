@@ -332,7 +332,9 @@ public sealed partial class Binding
         // value or placed into another value is destroyed by its new owner, which the summary visits there; a match arm or
         // expression-bodied branch passes its value on to the enclosing expression.
         // G28: a by-value Subject destroys nothing when every arm matches a Case without payload, or binds the whole payload
-        // and transfers the binding at once (`return .Some(item@move)`, `return item@move`) before any other effect.
+        // and transfers the binding at once (`return .Some(item@move)`, `return item@move`) before any other effect. A guard
+        // Moves no payload and a false guard preserves the Subject for the next arm (SPEC 14.8.3), so a guard that cannot
+        // leave the block is allowed.
         private bool PayloadsTransferred(MatchKoto match)
         {
             if (!binding.TryGetMatch(match, out var plan) || plan is not { Mode: SubjectMode.ByValue } || plan.Arms.Count == 0)
@@ -343,7 +345,7 @@ public sealed partial class Binding
             for (var a = 0; a < plan.Arms.Count; a++)
             {
                 var arm = plan.Arms[a];
-                if (arm.Syntax.Guard is not null || (uint)arm.Pattern >= (uint)plan.Positions.Count ||
+                if ((arm.Syntax.Guard is { } guard && !this.inertScan.Check(guard, null)) || (uint)arm.Pattern >= (uint)plan.Positions.Count ||
                     plan.Positions[arm.Pattern] is not { Kind: BoundPatternKind.Case, Case: { } matched } root)
                 {
                     return false;
@@ -1410,7 +1412,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto)
+            if (this.symbol is not null && ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto)
             {
                 this.inert = false;
                 return;
@@ -1445,7 +1447,8 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        internal bool Check(Koto statement, BindingSymbol symbol)
+        // A null symbol checks only that the statement cannot leave its block.
+        internal bool Check(Koto statement, BindingSymbol? symbol)
         {
             this.symbol = symbol;
             this.iterations = 0;
