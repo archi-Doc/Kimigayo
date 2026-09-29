@@ -1608,6 +1608,7 @@ public sealed partial class Binding
     // function or deferred body cannot cross that boundary; a capture there still names the symbol.
     private sealed class InertScan : KotoVisitor
     {
+        private readonly List<string> labels = new();
         private BindingSymbol? symbol;
         private int iterations;
         private int boundaries;
@@ -1636,8 +1637,10 @@ public sealed partial class Binding
 
             if (this.boundaries == 0)
             {
-                if (node is TryKoto or JumpKoto { Label: not null } or JumpKoto { Akind: not (KotoKind.Exit or KotoKind.Continue) } ||
-                    (node is JumpKoto && this.iterations == 0))
+                // An exit or continue stays inside when it targets an iteration whose body it is in: the nearest one, or
+                // one whose Label it names.
+                if (node is TryKoto || (node is JumpKoto jump &&
+                    (jump.Akind is not (KotoKind.Exit or KotoKind.Continue) || (jump.Label is null ? this.iterations == 0 : !this.labels.Contains(jump.Label)))))
                 {
                     this.inert = false;
                     return;
@@ -1645,9 +1648,20 @@ public sealed partial class Binding
 
                 if (node is CodeBlockKoto && ReferenceEquals(node, node.Parent switch { ForKoto loop => loop.Body, WhileKoto loop => loop.Body, LoopKoto loop => loop.Body, _ => null }))
                 {
+                    var label = node.Parent?.Parent is LabeledKoto labeled ? labeled.Label : null;
+                    if (label is not null)
+                    {
+                        this.labels.Add(label);
+                    }
+
                     this.iterations++;
                     node.VisitChildren(this);
                     this.iterations--;
+                    if (label is not null)
+                    {
+                        this.labels.RemoveAt(this.labels.Count - 1);
+                    }
+
                     return;
                 }
             }
@@ -1659,6 +1673,7 @@ public sealed partial class Binding
         internal bool Check(Koto statement, BindingSymbol? symbol, bool exits = true)
         {
             this.symbol = symbol;
+            this.labels.Clear();
             this.iterations = 0;
             this.boundaries = exits ? 0 : 1;
             this.inert = true;
