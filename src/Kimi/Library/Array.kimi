@@ -21,39 +21,83 @@ public struct Array<T>
     public func intoIterator(self: Self) -> ArrayOwningIterator<T>
         return ArrayOwningIterator<T>.init(Storage.ownStorage(self@move))
 
-    /// Returns a shared reference to the element at `index`, or `None` when `index` is out of range.
-    public func tryGet(self, index: isize) -> Option<ref/T during self>
-        require index >= 0 and index < self.length else => return .None
-        return .Some(self[index]@ref/T)
+    /// Inserts `value` before the boundary `index` resolves to; `insert(^0, value)` appends (SPEC 4.7.2).
+    ///
+    /// - abort: `index` does not resolve against the current length.
+    public func insert<P>(self: uniq/Self, index: P, value: T)
+        P is Position
+        self.insertAt(PositionSyntax.resolved(index, self.length), value@move)
+
+    /// Removes and returns the element `index` resolves to; the following elements keep their order.
+    ///
+    /// - return: The removed element; the caller takes ownership.
+    /// - abort: `index` does not resolve to an element position.
+    public func remove<P>(self: uniq/Self, index: P) -> T
+        P is Position
+        return self.removeAt(PositionSyntax.resolved(index, self.length))
+
+    /// Exchanges the elements `first` and `second` resolve to; positions resolving to one element change nothing.
+    ///
+    /// - abort: A position does not resolve to an element position.
+    public func swap<P, Q>(self: uniq/Self, first: P, second: Q)
+        P is Position
+        Q is Position
+        let count = self.length
+        self.swapAt(first: PositionSyntax.resolved(first, count), second: PositionSyntax.resolved(second, count))
 
     /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
-    public func tryGet(self, index: Index) -> Option<ref/T during self>
+    public func tryGet<P>(self, index: P) -> Option<ref/T during self>
+        P is Position
         match index.tryResolve(self.length)
-            .Some(let position) => return self.tryGet(position)
+            .Some(let position)
+                require position < self.length else => return .None
+                return .Some(self[position]@ref/T)
             .None => return .None
 
-    /// Returns an exclusive reference to the element at `index`, or `None` when `index` is out of range.
-    public func tryGetUniq(self: uniq/Self, index: isize) -> Option<uniq/T during self>
-        require index >= 0 and index < self.length else => return .None
-        let slot = self[index]@uniq/T
-        return .Some(slot@move)
+    /// Returns the Slice `range` selects, or `None` when `range` does not resolve against the current length.
+    public func trySlice<R>(self, range: R) -> Option<Slice<T> during self>
+        R is PositionRange
+        match range.tryResolve(self.length)
+            .Some(let resolved) => return .Some(self[resolved])
+            .None => return .None
+
+    /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, length)`.
+    ///
+    /// - abort: `index` does not resolve against the current length.
+    public func splitAt<P>(self, index: P) -> (Slice<T> during self, Slice<T> during self)
+        P is Position
+        let position = PositionSyntax.resolved(index, self.length)
+        return (self[..position], self[position..])
+
+    /// Splits the elements at the boundary `index` resolves to, returning `None` when it does not resolve.
+    public func trySplitAt<P>(self, index: P) -> Option<(Slice<T> during self, Slice<T> during self)>
+        P is Position
+        match index.tryResolve(self.length)
+            .Some(let position) => return .Some((self[..position], self[position..]))
+            .None => return .None
 
     /// Returns an exclusive reference to the element `index` resolves to, or `None` when it resolves to no element.
-    public func tryGetUniq(self: uniq/Self, index: Index) -> Option<uniq/T during self>
+    public func tryGetUniq<P>(self: uniq/Self, index: P) -> Option<uniq/T during self>
+        P is Position
         match index.tryResolve(self.length)
-            .Some(let position) => return self.tryGetUniq(position)
+            .Some(let position)
+                require position < self.length else => return .None
+                let slot = self[position]@uniq/T
+                return .Some(slot@move)
             .None => return .None
 
-    /// Removes and returns the element at `index`; the last element takes its position.
+    /// Removes and returns the element `index` resolves to; the last element takes its position.
     ///
     /// Runs in O(1) and does not preserve order.
     ///
     /// - return: The removed element; the caller takes ownership.
-    /// - abort: `index` is outside `[0, length)`.
-    public func swapRemove(self: uniq/Self, index: isize) -> T
+    /// - abort: `index` does not resolve to an element position.
+    public func swapRemove<P>(self: uniq/Self, index: P) -> T
+        P is Position
         let count = self.length
-        require index >= 0 and index < count else => $abort("Array index out of range")
-        self.swap(first: index, second: count - 1)
+        let position = PositionSyntax.resolved(index, count)
+        require position >= 0 and position < count else => $abort("Array index out of range")
+        self.swapAt(first: position, second: count - 1)
         match self.pop()
             .Some(let removed) => return removed@move
             .None => $abort("Array index out of range")
@@ -98,7 +142,7 @@ public struct Array<T>
         var index: isize = 0
         while index < count
             if not matching(self[index])
-                if kept != index => self.swap(first: kept, second: index)
+                if kept != index => self.swapAt(first: kept, second: index)
                 kept += 1
             index += 1
         self.truncate(kept)
@@ -108,7 +152,7 @@ public struct Array<T>
         var low: isize = 0
         var high = self.length - 1
         while low < high
-            self.swap(first: low, second: high)
+            self.swapAt(first: low, second: high)
             low += 1
             high -= 1
 
@@ -129,13 +173,13 @@ public struct Array<T>
                 parent = start
             else
                 end -= 1
-                self.swap(first: 0, second: end)
+                self.swapAt(first: 0, second: end)
             while true
                 var child = parent * 2 + 1
                 if child >= end => exit
                 if child + 1 < end and by(self[child], self[child + 1]) < 0 => child += 1
                 if by(self[parent], self[child]) >= 0 => exit
-                self.swap(first: parent, second: child)
+                self.swapAt(first: parent, second: child)
                 parent = child
 
 /// The standard shared Array iterator: each `next` lends the next untaken element for shared access (SPEC 22.1.2.3).

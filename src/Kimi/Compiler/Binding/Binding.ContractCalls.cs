@@ -137,6 +137,13 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 8.4.7.3: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
+        // concrete integers gain no members.
+        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
+        {
+            Add(position);
+        }
+
         // Expand the proved contracts of this referenced receiver only, as for an explicit associated
         // projection. Inherited signatures can depend on their refining contract's associated identities.
         for (var i = 0; i < group.Contracts.Count; i++)

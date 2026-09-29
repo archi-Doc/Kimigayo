@@ -8,7 +8,7 @@ public sealed partial class OwnershipAnalysis
 {
     private static bool IsPointerPlace(Koto source)
     {
-        // SPEC 5.2, 12: stored fields, Tuple elements and isize-indexed fixed-array elements
+        // SPEC 5.2, 12: stored fields, Tuple elements and integer-indexed fixed-array elements
         // of *p or p[n] are raw Places too. Range and from-end forms keep their existing handling.
         for (var depth = 0; depth < 64; depth++)
         {
@@ -18,7 +18,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             if (source is not BinaryKoto element || !ElementAccess.IsSyntax(element) ||
-                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || !ReferenceEquals(element.Right.BoundType, BoundType.ISize))))
+                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || element.Right.BoundType is not { IsInteger: true })))
             {
                 return false;
             }
@@ -77,7 +77,7 @@ public sealed partial class OwnershipAnalysis
         // against the fixed length during lowering; a literal in-range index is a static offset.
         var pointer = this.PointerAddress(KotoHelper.UnwrapParentheses(element.Left));
         var selector = element is IndexKoto ? ElementAccess.StaticSelector(element) : position;
-        var index = pointer >= 0 && selector < 0 ? this.Value(this.Expression(element.Right, PlaceUseKind.Read)) : -1;
+        var index = pointer >= 0 && selector < 0 ? this.Value(this.PositionPlace(element.Right, this.Expression(element.Right, PlaceUseKind.Read))) : -1;
         if (pointer < 0 || (selector < 0 && (index < 0 || !this.flow!.Nodes[element].CanCompleteNormally)))
         {
             return -1;

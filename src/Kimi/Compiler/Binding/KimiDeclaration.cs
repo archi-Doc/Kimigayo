@@ -13,8 +13,8 @@ public enum KimiDeclarationId : byte
     Option,
     Result,
     Array,
-    Index,
-    IndexRange,
+    FromEnd,
+    ClosedRange,
     ResolvedRange,
     Slice,
     Dictionary,
@@ -45,8 +45,6 @@ public enum KimiDeclarationId : byte
     ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
-    ArrayInsertIndex,
-    ArrayRemoveIndex,
     Utf8Format,
     BufferWriter,
     BufferFull,
@@ -131,6 +129,8 @@ public enum KimiDeclarationId : byte
     StorageInlineBase,
     Position,
     PositionRange,
+    Start,
+    End,
 }
 
 public enum KimiDeclarationState : byte

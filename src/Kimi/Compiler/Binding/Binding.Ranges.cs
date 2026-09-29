@@ -6,32 +6,36 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 4.6.3: range syntax constructs Range<T> for two integer boundaries and IndexRange for an Index or an omitted
-    // boundary, through internal Type functions of the Kimi Kotonoha. Each synthesized call pins its target declaration, so
-    // neither a same-named source declaration nor the source's access rules affect it; its arguments are the source
-    // boundaries, bound beforehand under the ordinary rules.
+    // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax construct FromEnd<T>, Range<S, E> and ClosedRange<S, E> through the
+    // internal Kimi group PositionSyntax. Each synthesized call pins its target declaration, so neither a same-named source
+    // declaration nor the source's access rules affect it; its arguments are the source operands, bound beforehand under the
+    // ordinary rules. A key applied directly (below) constructs no value and has no call.
     private readonly Dictionary<Koto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 4.6.2: an integer IndexRange boundary becomes Index.unchecked<I>(offset:limit:), whose invalid offset IndexRange
-    // construction rejects in boundary order after both boundaries are evaluated (SPEC 4.6.4).
-    private readonly Dictionary<Koto, InvocationKoto> boundaryCalls = new(ReferenceEqualityComparer.Instance);
-
-    // SPEC 4.6.1, 4.6.4: an Index, IndexRange or Range<I> key of a built-in selection is resolved against the receiver's
-    // length by a synthesized key.resolve(receiver.length) call whose length argument reads the receiver the selection
-    // evaluated (an EvaluatedKoto), so any receiver is evaluated once; a ResolvedRange key is applied as written and rechecked.
+    // SPEC 4.6.4, 4.6.9: a position or range key of a built-in selection that is not applied directly resolves against the
+    // receiver's length by a synthesized PositionSyntax.resolved<P> or resolvedRange<R> call whose length argument reads
+    // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
+    // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
     private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
 
     private BoundType ResolvedRangeType => this.InternType(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
 
-    /// <summary>Gets the synthesized construction of a range value, or null for a direct index-position range.</summary>
-    /// <param name="node">The range expression.</param>
-    /// <returns>The bound call, or null for an index-position range or an unbound expression.</returns>
-    internal InvocationKoto? RangeValueCall(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is RangeKoto range && range.BindingState == BindingState.Resolved &&
-            this.rangeCalls.TryGetValue(range, out var call) && call.BindingState == BindingState.Resolved ? call : null;
+    private BoundType StartType => this.InternType(BoundTypeKind.Nominal, this.Library.Start, SemanticsKind.Owner, []);
 
-    /// <summary>Gets the synthesized resolution call of an Index or unresolved range key, or null for an isize or ResolvedRange key.</summary>
+    private BoundType EndType => this.InternType(BoundTypeKind.Nominal, this.Library.End, SemanticsKind.Owner, []);
+
+    /// <summary>Gets the synthesized construction of a prefix <c>^</c> or range value, or null for a directly applied key.</summary>
+    /// <param name="node">The <c>^</c> or range expression.</param>
+    /// <returns>The bound call, or null for a directly applied key or an unbound expression.</returns>
+    internal InvocationKoto? RangeValueCall(Koto node)
+    {
+        var syntax = KotoHelper.UnwrapParentheses(node);
+        return syntax is RangeKoto or FromEndIndexKoto && syntax.BindingState == BindingState.Resolved &&
+            this.rangeCalls.TryGetValue(syntax, out var call) && call.BindingState == BindingState.Resolved ? call : null;
+    }
+
+    /// <summary>Gets the synthesized resolution call of a position or range key that is not applied directly, or null.</summary>
     /// <param name="node">The selection expression.</param>
     /// <returns>The bound call, or null.</returns>
     internal InvocationKoto? ResolvedKeyCall(Koto node)
@@ -50,11 +54,51 @@ public sealed partial class Binding
         node.BindingFailure = BindingFailure.None;
     }
 
-    // The element Type T of a Range<T>, or null for any other Type.
-    private BoundType? RangeElement(BoundType? type)
-        => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && ReferenceEquals(type.Symbol, this.Library.Range) ? type.Components[0] : null;
+    // SPEC 4.6.2: `^a` whose operand is literal-only (SPEC 12.3.1).
+    private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
 
-    private bool IsIndexType(BoundType? type) => type is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(type.Symbol, this.Library.Index);
+    // A literal-only integer or `^a` position.
+    private static bool IsLiteralOnlyPosition(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return IsIntegerLiteralOnly(node) || IsLiteralOnlyFromEnd(node);
+    }
+
+    private BoundType FromEndType(BoundType offset) => this.InternType(BoundTypeKind.Constructed, this.Library.FromEnd, SemanticsKind.Owner, [offset]);
+
+    // The T of FromEnd<T>, or null for any other Type.
+    private BoundType? FromEndOffsetType(BoundType? type)
+        => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && ReferenceEquals(type.Symbol, this.Library.FromEnd) ? type.Components[0] : null;
+
+    // Whether the Type is one that prefix ^ or range syntax constructs, so a literal-only expression may fit it.
+    private bool IsSyntaxPositionType(BoundType type)
+        => type.Kind == BoundTypeKind.Constructed && (ReferenceEquals(type.Symbol, this.Library.FromEnd) || ReferenceEquals(type.Symbol, this.Library.Range) || ReferenceEquals(type.Symbol, this.Library.ClosedRange));
+
+    // SPEC 12.3.1: the default Type of a literal-only `^a` or range: i32 boundaries and offsets, Start and End for omitted ones.
+    private BoundType? LiteralPositionDefault(Koto node) => node switch
+    {
+        FromEndIndexKoto => this.FromEndType(BoundType.I32),
+        RangeKoto range => this.InternType(
+            BoundTypeKind.Constructed,
+            range.IsInclusive ? this.Library.ClosedRange : this.Library.Range,
+            SemanticsKind.Owner,
+            [this.LiteralBoundaryDefault(range.Start, this.StartType), this.LiteralBoundaryDefault(range.End, this.EndType)]),
+        _ => null,
+    };
+
+    private BoundType LiteralBoundaryDefault(Koto? boundary, BoundType omitted)
+        => boundary is null ? omitted : KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(BoundType.I32) : BoundType.I32;
+
+    // SPEC 4.6.3.1, 12.3.1: whether a literal-only `^a` or range fits a candidate Type: a range fits the Type of its shape
+    // when each written boundary fits its S or E and each omitted one is Start or End.
+    private bool FitsLiteralPosition(Koto node, BoundType type, BindingScope scope) => node switch
+    {
+        FromEndIndexKoto fromEnd => this.FromEndOffsetType(type) is { } offset && this.FitsInputLiteral(fromEnd.Operand, offset, scope),
+        RangeKoto range => type is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(type.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range) &&
+            (range.Start is null ? ReferenceEquals(type.Components[0], this.StartType) : this.FitsInputLiteral(range.Start, type.Components[0], scope)) &&
+            (range.End is null ? ReferenceEquals(type.Components[1], this.EndType) : this.FitsInputLiteral(range.End, type.Components[1], scope)),
+        _ => false,
+    };
 
     // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
     // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
@@ -71,11 +115,6 @@ public sealed partial class Binding
         }
 
         foreach (var call in this.rangeCalls.Values)
-        {
-            ResetSynthetic(call);
-        }
-
-        foreach (var call in this.boundaryCalls.Values)
         {
             ResetSynthetic(call);
         }
@@ -99,6 +138,10 @@ public sealed partial class Binding
         this.exclusiveIndexers.Clear();
     }
 
+    // SPEC 4.6.1, 4.6.9: the key of a fixed-array, Slice or Array selection. An integer key of any PrimitiveInteger Type and
+    // a written `^x` are applied directly by the element paths of the caller (false with no result); a range whose written
+    // boundaries are integers or `^x` is applied directly here; any other position or range key is resolved by a
+    // synthesized call. Returns false without binding for other receivers.
     private bool TryBindKeyedSelection(IndexKoto source, BindingScope scope, BoundType receiver, out BoundType? result)
     {
         result = null;
@@ -109,43 +152,71 @@ public sealed partial class Binding
             return false;
         }
 
+        var element = core.Components[0];
         BoundType? key;
         if (source.Right is RangeKoto range)
         {
-            if (!range.IsInclusive && !this.IsIndexBoundary(range.Start, scope) && !this.IsIndexBoundary(range.End, scope))
-            {
-                return false; // Integer or omitted boundaries select directly.
-            }
-
-            key = this.BindRangeValue(range, scope, null);
-            if (key is null)
+            var direct = this.BindDirectRange(range, scope, out var failed);
+            if (failed)
             {
                 result = Complete(source, null);
                 return true;
             }
+
+            if (direct)
+            {
+                this.SharedElementView(source.Left);
+                result = Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+                return true;
+            }
+
+            key = this.BindRangeValue(range, scope, null);
+        }
+        else if (source.Right is FromEndIndexKoto fromEnd)
+        {
+            // SPEC 4.6.9: `^x` resolves as `length - x` within the element access's one bounds check.
+            var offset = this.FromEndOffset(fromEnd, scope, null);
+            if (offset is null)
+            {
+                Complete(fromEnd, null);
+                result = Complete(source, null);
+                return true;
+            }
+
+            Complete(fromEnd, ReferenceEquals(offset, BoundType.Never) ? BoundType.Never : this.FromEndType(offset));
+            return false;
         }
         else
         {
-            // A key whose Type its declaration fixes binds as written; any other integer form keeps the isize expectation.
-            var declared = KotoHelper.UnwrapParentheses(source.Right) is IdentifierNameKoto or MemberAccessKoto or InvocationKoto or FromEndIndexKoto or IndexKoto;
-            key = IsUnfittedLiteral(source.Right) ? null : this.BindNode(source.Right, scope, declared ? null : BoundType.ISize);
+            key = this.BindPositionKey(source.Right, scope);
+            if (key is not null && (ReferenceEquals(key, BoundType.Never) || this.IsIntegerOperand(key, scope)))
+            {
+                return false; // SPEC 4.6.9: an integer key is converted to an isize position by the element access.
+            }
         }
 
-        var index = this.IsIndexType(key);
-        var unresolved = (key is { Kind: BoundTypeKind.Nominal } && ReferenceEquals(key.Symbol, this.Library.IndexRange)) || this.RangeElement(key) is not null;
-        if (!index && !unresolved && !ReferenceTypes.IsResolvedRange(key))
-        {
-            return false;
-        }
-
-        if ((index || unresolved) && this.ResolveKeyCall(source, scope) is null)
+        if (key is null)
         {
             result = Complete(source, null);
             return true;
         }
 
-        var element = core.Components[0];
-        if (index)
+        var resolved = ReferenceTypes.IsResolvedRange(key);
+        var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
+        if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
+        {
+            Fail(source.Right, BindingFailure.TypeMismatch);
+            result = Complete(source, null);
+            return true;
+        }
+
+        if (!resolved && this.ResolveKeyCall(source, scope, key, !position) is null)
+        {
+            result = Complete(source, null);
+            return true;
+        }
+
+        if (position)
         {
             if (receiver is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner })
             {
@@ -162,32 +233,136 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool IsIndexBoundary(Koto? boundary, BindingScope scope)
-        => boundary is not null && !IsUnfittedLiteral(boundary) && this.IsIndexType(this.BindNode(boundary, scope));
-
-    private InvocationKoto? ResolveKeyCall(IndexKoto source, BindingScope scope)
+    // SPEC 4.6.1, 4.6.9: a key binds without an expected Type, so a literal-only key is i32; a reference to a read Type is
+    // read as its value (SPEC 3.5.3), whose Type is returned.
+    private BoundType? BindPositionKey(Koto key, BindingScope scope)
     {
-        if (!this.resolvedKeys.TryGetValue(source, out var call))
+        var type = this.BindNode(key, scope);
+        return type is null || ReferenceEquals(type, BoundType.Never) ? type : this.ReadReferent(key, type);
+    }
+
+    private InvocationKoto? ResolveKeyCall(IndexKoto source, BindingScope scope, BoundType key, bool range)
+    {
+        if (!this.resolvedKeys.TryGetValue(source, out var call) || !ReferenceEquals(call.ArgumentNodes[0], source.Right))
         {
             // The length is read from the receiver the selection evaluates, never from a second evaluation of its syntax.
             var receiver = new EvaluatedKoto(source.Left);
             var length = new MemberAccessKoto(source, receiver, new IdentifierNameKoto(source, "length"));
             receiver.Parent = length;
-            call = new InvocationKoto(source, new MemberAccessKoto(source, source.Right, new IdentifierNameKoto(source, "resolve")), [length]);
+            var callee = new SyntheticKoto(source) { Parent = source };
+            call = new InvocationKoto(source, new GenericsKoto(source, callee, [new SyntheticKoto(source) { Parent = source }]), [source.Right, length]);
             this.resolvedKeys[source] = call;
         }
 
-        var callee = (MemberAccessKoto)call.Method;
-        var lengthArgument = (MemberAccessKoto)call.ArgumentNodes[0];
+        var generic = (GenericsKoto)call.Method;
+        var lengthArgument = (MemberAccessKoto)call.ArgumentNodes[1];
+        ((SyntheticKoto)generic.Identifier!).Resolve(this.PositionSyntaxMember(range ? "resolvedRange" : "resolved"), null, null);
+        ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, key, null);
         ResetSynthetic(call);
-        ResetSynthetic(callee);
-        ResetSynthetic(callee.Right);
+        ResetSynthetic(generic);
         ResetSynthetic(lengthArgument);
         ResetSynthetic(lengthArgument.Left);
         ResetSynthetic(lengthArgument.Right);
         return this.BindCall(call, scope, null) is null ? null : call;
     }
 
+    // SPEC 4.6.4: a range key whose written boundaries are integers of any PrimitiveInteger Type, read through references,
+    // or `^x` with such an operand, is applied directly: each boundary becomes an isize position without a range value.
+    // Literal-only boundaries take the other boundary's integer Type, else i32 (SPEC 4.6.3.1). Returns false, with
+    // `failed` unset, when a boundary has another Position Type, so the range is constructed instead.
+    private bool BindDirectRange(RangeKoto range, BindingScope scope, out bool failed)
+    {
+        failed = false;
+        if (range.IsInclusive && range.End is null)
+        {
+            Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
+            failed = true;
+            return false;
+        }
+
+        var start = this.DirectBoundary(range.Start, scope, out var startDirect, out var startFailed);
+        var end = this.DirectBoundary(range.End, scope, out var endDirect, out var endFailed);
+        if (startFailed || endFailed || (startDirect && endDirect && (!this.FitDirectBoundary(range.Start, scope, end) || !this.FitDirectBoundary(range.End, scope, start))))
+        {
+            Complete(range, null);
+            failed = true;
+            return false;
+        }
+
+        if (!startDirect || !endDirect)
+        {
+            return false;
+        }
+
+        Complete(range, BoundType.Range);
+        return true;
+    }
+
+    // A written boundary of a directly applied range: the established integer Type of the boundary or of its `^` operand, or
+    // null when it is omitted or literal-only. `direct` is false for a boundary of another Position Type. A `^x` node is
+    // completed only once the range is known to be direct, since a constructed range constructs it through a call.
+    private BoundType? DirectBoundary(Koto? boundary, BindingScope scope, out bool direct, out bool failed)
+    {
+        direct = true;
+        failed = false;
+        if (boundary is null || IsUnfittedLiteral(boundary))
+        {
+            return null;
+        }
+
+        var fromEnd = boundary as FromEndIndexKoto;
+        if (fromEnd is not null && IsUnfittedLiteral(fromEnd.Operand))
+        {
+            return null;
+        }
+
+        var type = this.BindPositionKey(fromEnd?.Operand ?? boundary, scope);
+        if (type is null)
+        {
+            failed = true;
+            return null;
+        }
+
+        if (ReferenceEquals(type, BoundType.Never))
+        {
+            return null;
+        }
+
+        if (this.IsIntegerOperand(type, scope))
+        {
+            return type;
+        }
+
+        if (fromEnd is not null)
+        {
+            Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: `^x` needs an integer operand.
+            failed = true;
+        }
+
+        direct = false;
+        return null;
+    }
+
+    private bool FitDirectBoundary(Koto? boundary, BindingScope scope, BoundType? other)
+    {
+        if (boundary is null)
+        {
+            return true;
+        }
+
+        if (boundary is FromEndIndexKoto fromEnd)
+        {
+            var offset = IsUnfittedLiteral(fromEnd.Operand) ? this.RequireType(fromEnd.Operand, scope, other ?? BoundType.I32) : this.BindPositionKey(fromEnd.Operand, scope);
+            Complete(fromEnd, offset is null ? null : ReferenceEquals(offset, BoundType.Never) ? BoundType.Never : this.FromEndType(offset));
+            return offset is not null;
+        }
+
+        return !IsUnfittedLiteral(boundary) || this.RequireType(boundary, scope, other ?? BoundType.I32) is not null;
+    }
+
+    // SPEC 4.6.3: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
+    // Position, known independently of the context, and a literal-only boundary takes the S or E of an expected range of
+    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.3.1). Construction checks nothing.
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope, BoundType? expected)
     {
         if (range.IsInclusive && range.End is null)
@@ -195,192 +370,139 @@ public sealed partial class Binding
             return Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
         }
 
-        // SPEC 4.6.3.1: the kind depends only on omitted boundaries and on boundary Types known independently of the context.
-        var start = this.IndependentBoundary(range.Start, scope, out var startFailed);
-        var end = this.IndependentBoundary(range.End, scope, out var endFailed);
+        var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
+        var fitted = expected is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(expected.Symbol, shape) ? expected : null;
+        var start = this.IndependentBoundary(range.Start, scope, out var startInteger, out var startFailed);
+        var end = this.IndependentBoundary(range.End, scope, out var endInteger, out var endFailed);
         if (startFailed || endFailed)
         {
             return Complete(range, null);
         }
 
-        return range.Start is null || range.End is null || this.IsIndexType(start) || this.IsIndexType(end)
-            ? this.BindIndexRange(range, scope) : this.BindIntegerRange(range, scope, start, end, expected);
+        start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
+        end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
+        if (start is null || end is null)
+        {
+            return Complete(range, null);
+        }
+
+        if (ReferenceEquals(start, BoundType.Never) || ReferenceEquals(end, BoundType.Never))
+        {
+            return Complete(range, BoundType.Never);
+        }
+
+        var type = this.InternType(BoundTypeKind.Constructed, shape, SemanticsKind.Owner, [start, end]);
+        var call = range.IsInclusive
+            ? range.Start is null ? this.PositionSyntaxCall(range, "upTo", end, null, range.End, null) : this.PositionSyntaxCall(range, "through", start, end, range.Start, range.End)
+            : range.Start is not null && range.End is not null ? this.PositionSyntaxCall(range, "between", start, end, range.Start, range.End)
+            : range.Start is not null ? this.PositionSyntaxCall(range, "from", start, null, range.Start, null)
+            : range.End is not null ? this.PositionSyntaxCall(range, "to", end, null, range.End, null)
+            : this.PositionSyntaxCall(range, "all", null, null, null, null);
+        return this.BindCall(call, scope, null) is null ? Complete(range, null) : Complete(range, type);
     }
 
-    // The Type of a boundary known independently of the context, read through safe references; null for a missing or
-    // literal-only boundary.
-    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, out bool failed)
+    // The Type of a written range boundary known independently of the context, read through references; null for an
+    // omitted or literal-only boundary. `integer` is the integer Type a literal-only other boundary takes from it.
+    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, out BoundType? integer, out bool failed)
     {
+        integer = null;
         failed = false;
         if (boundary is null || IsUnfittedLiteral(boundary))
         {
             return null;
         }
 
-        var type = this.BindNode(boundary, scope);
-        failed = type is null;
-        return this.ReadTypeReferent(type, scope) ?? type;
-    }
-
-    // SPEC 4.6.3.1: both boundaries of Range<T> have one integer Type. An established Type fits a literal-only other
-    // boundary, and two literal-only boundaries take T from an expected Range<X> or default to i32 (SPEC 12.3.1).
-    private BoundType? IntegerRangeElement(RangeKoto range, BindingScope scope, BoundType? start, BoundType? end, BoundType? expected)
-    {
-        if ((start is not null && !this.IsIntegerOperand(start, scope)) || (end is not null && !this.IsIntegerOperand(end, scope)) ||
-            (start is not null && end is not null && !ReferenceEquals(start, end)))
+        var type = this.BindPositionKey(boundary, scope);
+        if (type is null || ReferenceEquals(type, BoundType.Never))
         {
-            Fail(range, BindingFailure.TypeMismatch);
+            failed = type is null;
+            return type;
+        }
+
+        if (this.IsIntegerOperand(type, scope))
+        {
+            integer = type;
+        }
+        else if (this.FromEndOffsetType(type) is { } offset)
+        {
+            integer = offset;
+        }
+        else if (!this.ProvesClosedContract(type, this.Library.Position, scope))
+        {
+            Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: each boundary satisfies Position.
+            failed = true;
             return null;
         }
 
-        var element = start ?? end ?? (this.RangeElement(expected) is { } fitted && this.IsIntegerOperand(fitted, scope) ? fitted : BoundType.I32);
-        return this.RequireType(range.Start!, scope, element) is null || this.RequireType(range.End!, scope, element) is null ? null : element;
+        return type;
     }
 
-    private BoundType? BindIntegerRange(RangeKoto range, BindingScope scope, BoundType? start, BoundType? end, BoundType? expected)
+    private BoundType? FitRangeBoundary(Koto boundary, BindingScope scope, BoundType? expected, BoundType? other)
     {
-        if (this.IntegerRangeElement(range, scope, start, end, expected) is not { } element)
-        {
-            return Complete(range, null);
-        }
-
-        // SPEC 4.6.3.2: construction checks no order; Range<T>.between/through only store the boundaries.
-        var type = this.InternType(BoundTypeKind.Constructed, this.Library.Range, SemanticsKind.Owner, [element]);
-        var call = this.SyntheticCall(this.rangeCalls, range, this.Library.Range, range.IsInclusive ? "through" : "between", type, null, range.Start, range.End, false);
-        return this.BindCall(call, scope, null) is null ? Complete(range, null) : Complete(range, type);
+        var integer = other ?? BoundType.I32;
+        return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto
+            ? this.RequireType(boundary, scope, expected ?? this.FromEndType(integer))
+            : this.RequireType(boundary, scope, expected ?? integer);
     }
 
-    // SPEC 4.6.3.3: an IndexRange takes the Type function named by its written boundaries, between/from/to/all, or
-    // through/upTo for an inclusive end; an omitted start is 0 and an omitted end ^0.
-    private BoundType? BindIndexRange(RangeKoto range, BindingScope scope)
+    // SPEC 4.6.2: `^x` constructs FromEnd<T> from an operand of any PrimitiveInteger Type T, read through references.
+    private BoundType? BindFromEnd(FromEndIndexKoto node, BindingScope scope, BoundType? expected)
     {
-        var start = range.Start is null ? null : this.PositionArgument(range.Start, scope);
-        var end = range.End is null ? null : this.PositionArgument(range.End, scope);
-        if ((range.Start is not null && start is null) || (range.End is not null && end is null))
+        var offset = this.FromEndOffset(node, scope, expected);
+        if (offset is null || ReferenceEquals(offset, BoundType.Never))
         {
-            return Complete(range, null);
+            return Complete(node, offset);
         }
 
-        var form = start is not null && end is not null ? (range.IsInclusive ? "through" : "between")
-            : start is not null ? "from" : end is not null ? (range.IsInclusive ? "upTo" : "to") : "all";
-        var call = this.SyntheticCall(this.rangeCalls, range, this.Library.IndexRange, form, null, null, start, end, false);
-        return this.BindCall(call, scope, null) is { } type ? Complete(range, type) : Complete(range, null);
+        var call = this.PositionSyntaxCall(node, "fromEnd", offset, null, node.Operand, null);
+        return this.BindCall(call, scope, null) is null ? Complete(node, null) : Complete(node, this.FromEndType(offset));
     }
 
-    // SPEC 4.6.2: an Index boundary is passed as written. An integer boundary of any PrimitiveInteger Type, a literal-only
-    // one fitted to isize, becomes Index.unchecked<I>(offset: boundary, limit: the target's isize maximum).
-    private Koto? PositionArgument(Koto boundary, BindingScope scope)
+    // The T of `^x`: a literal-only operand takes the T of an expected FromEnd<T>, else i32 (SPEC 4.6.3.1).
+    private BoundType? FromEndOffset(FromEndIndexKoto node, BindingScope scope, BoundType? expected)
     {
-        var type = IsUnfittedLiteral(boundary) ? this.RequireType(boundary, scope, BoundType.ISize) : this.BindNode(boundary, scope);
-        if (type is null)
+        if (IsUnfittedLiteral(node.Operand))
         {
-            return null;
+            return this.RequireType(node.Operand, scope, this.FromEndOffsetType(expected) ?? BoundType.I32);
         }
 
-        if (this.IsIndexType(type))
-        {
-            return boundary;
-        }
-
-        var integer = this.ReadTypeReferent(type, scope) ?? type;
-        if (!this.IsIntegerOperand(integer, scope))
-        {
-            Fail(boundary, BindingFailure.TypeMismatch);
-            return null;
-        }
-
-        if (!ReferenceEquals(integer, type) && this.RequireType(boundary, scope, integer) is null)
-        {
-            return null;
-        }
-
-        var call = this.SyntheticCall(this.boundaryCalls, boundary, this.Library.Index, "unchecked", null, integer, boundary, null, true);
-        return this.BindCall(call, scope, null) is null ? null : call;
+        var offset = this.BindPositionKey(node.Operand, scope);
+        return offset is null || ReferenceEquals(offset, BoundType.Never) || this.IsIntegerOperand(offset, scope) ? offset : Fail(node, BindingFailure.TypeMismatch);
     }
 
-    // A synthesized call of the Type function `name` of `container`, cached per source node. `declaringType` fixes a generic
-    // container's arguments and `typeArgument` the function's own; `limit` appends the target's isize maximum. The callee
-    // is pinned to the declaration, so ordinary lookup, shadowing and access do not apply to it (SPEC 4.6.3).
-    private InvocationKoto SyntheticCall(Dictionary<Koto, InvocationKoto> cache, Koto root, BindingSymbol container, string name, BoundType? declaringType, BoundType? typeArgument, Koto? first, Koto? second, bool limit)
+    // A synthesized call of the PositionSyntax function `name`, cached per source node, with the Type arguments `firstType`
+    // and `secondType` (each null when absent) and the source operands `first` and `second` as arguments. The callee is
+    // pinned to the declaration, so ordinary lookup, shadowing and access do not apply to it (SPEC 4.6.3).
+    private InvocationKoto PositionSyntaxCall(Koto root, string name, BoundType? firstType, BoundType? secondType, Koto? first, Koto? second)
     {
-        var count = (first is null ? 0 : 1) + (second is null ? 0 : 1) + (limit ? 1 : 0);
-
-        // Index formation checks representability as isize without a public maximum-value API. Target-independent Binding
-        // emits no code and uses a value that every isize holds; a later target preparation replaces it.
-        var maximum = this.compilation.PointerWidth switch { 32 => (ulong)int.MaxValue, 64 => (ulong)long.MaxValue, _ => 127UL };
-        if (!cache.TryGetValue(root, out var call) || call.ArgumentNodes.Count != count || (call.Method is GenericsKoto) != (typeArgument is not null) ||
-            (first is not null && !ReferenceEquals(call.ArgumentNodes[0], first)) || (second is not null && !ReferenceEquals(call.ArgumentNodes[first is null ? 0 : 1], second)) ||
-            (limit && !(((NumberLiteralKoto)call.ArgumentNodes[count - 1]).TryGetIntegerMagnitude(out var cached) && cached == maximum)))
+        var count = (first is null ? 0 : 1) + (second is null ? 0 : 1);
+        var types = (firstType is null ? 0 : 1) + (secondType is null ? 0 : 1);
+        if (!this.rangeCalls.TryGetValue(root, out var call) || call.ArgumentNodes.Count != count || (call.Method is GenericsKoto cached ? cached.TypeArguments.Count : 0) != types ||
+            (first is not null && !ReferenceEquals(call.ArgumentNodes[0], first)) || (second is not null && !ReferenceEquals(call.ArgumentNodes[count - 1], second)))
         {
             var callee = new SyntheticKoto(root) { Parent = root };
-            Koto method = typeArgument is null ? callee : new GenericsKoto(root, callee, [new SyntheticKoto(root) { Parent = root }]);
-            var arguments = new Koto[count];
-            var next = 0;
-            if (first is not null)
-            {
-                arguments[next++] = first;
-            }
-
-            if (second is not null)
-            {
-                arguments[next++] = second;
-            }
-
-            if (limit)
-            {
-                arguments[next] = new NumberLiteralKoto(root, maximum);
-            }
-
-            call = new InvocationKoto(root, method, arguments);
-            cache[root] = call;
+            Koto method = types == 0 ? callee : new GenericsKoto(root, callee, types == 1 ? [new SyntheticKoto(root) { Parent = root }] : [new SyntheticKoto(root) { Parent = root }, new SyntheticKoto(root) { Parent = root }]);
+            call = new InvocationKoto(root, method, count == 0 ? [] : count == 1 ? [first ?? second!] : [first!, second!]);
+            this.rangeCalls[root] = call;
         }
 
         var generic = call.Method as GenericsKoto;
-        ((SyntheticKoto)(generic?.Identifier ?? call.Method)).Resolve(this.ContainerMember(container, name), null, declaringType);
+        ((SyntheticKoto)(generic?.Identifier ?? call.Method)).Resolve(this.PositionSyntaxMember(name), null, null);
         if (generic is not null)
         {
-            ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, typeArgument, null);
-            ResetSynthetic(generic);
-        }
+            ((SyntheticKoto)generic.TypeArguments[0]).Resolve(null, firstType ?? secondType, null);
+            if (types == 2)
+            {
+                ((SyntheticKoto)generic.TypeArguments[1]).Resolve(null, secondType, null);
+            }
 
-        if (limit)
-        {
-            ResetSynthetic(call.ArgumentNodes[count - 1]);
+            ResetSynthetic(generic);
         }
 
         ResetSynthetic(call);
         return call;
     }
 
-    // A single directly selected boundary: an integer of any PrimitiveInteger Type, read through references, or a literal-only
-    // one at isize (SPEC 4.6.2).
-    private bool DirectPosition(Koto? boundary, BindingScope scope)
-    {
-        if (boundary is null)
-        {
-            return true;
-        }
-
-        if (IsUnfittedLiteral(boundary))
-        {
-            return this.RequireType(boundary, scope, BoundType.ISize) is not null;
-        }
-
-        var type = this.IndependentBoundary(boundary, scope, out var failed);
-        if (failed)
-        {
-            return false;
-        }
-
-        if (type is null || !this.IsIntegerOperand(type, scope))
-        {
-            Fail(boundary, BindingFailure.TypeMismatch);
-            return false;
-        }
-
-        return this.RequireType(boundary, scope, type) is not null;
-    }
-
-    private BindingSymbol? ContainerMember(BindingSymbol container, string name)
-        => this.scopes.TryGetValue(container.Declaration, out var members) && members.Values.TryGetValue(name, out var member) ? member : null;
+    private BindingSymbol? PositionSyntaxMember(string name)
+        => this.Library.PositionSyntax is { } group && this.scopes.TryGetValue(group, out var members) && members.Values.TryGetValue(name, out var member) ? member : null;
 }

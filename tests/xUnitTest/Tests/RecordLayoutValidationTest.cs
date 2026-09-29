@@ -9,10 +9,7 @@ namespace XunitTest;
 public class RecordLayoutValidationTest
 {
     [Theory]
-    [InlineData(KimiDeclarationId.Index, 2)]
-    [InlineData(KimiDeclarationId.IndexRange, 3)]
     [InlineData(KimiDeclarationId.ResolvedRange, 2)]
-    [InlineData(KimiDeclarationId.Range, 3)]
     public void EveryConstructedFieldRequiresItsBoundType(KimiDeclarationId id, int count)
     {
         var c = Compilation.CreateForTest();

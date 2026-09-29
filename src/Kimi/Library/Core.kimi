@@ -59,259 +59,372 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
-/// A Copy position measured from the start or, when `isFromEnd` is set, from the end of a sequence.
+/// A position `offset` elements before the end of a target (SPEC 4.6.2); prefix `^` constructs it.
 ///
-/// An Index retains no target (SPEC 4.6.2); `^n` constructs the from-end form.
-public struct Index
-    Self is Copy
-    Self is Equatable
-    public let offset: isize
-    public let isFromEnd: bool
-
-    /// Creates a position `offset` elements from the start, or from the end when `fromEnd` is true.
-    ///
-    /// - abort: `offset < 0`.
-    public init(offset: isize, fromEnd: bool = false)
-        require offset >= 0 else => $abort("Negative Index offset")
-        self.offset = offset
-        self.isFromEnd = fromEnd
-
-    /// Creates a from-start position without checking its sign; only the forms below and range syntax use it.
-    init(! unchecked: isize)
-        self.offset = unchecked
-        self.isFromEnd = false
-
-    /// Forms a from-start position from an integer boundary of range syntax (SPEC 4.6.2).
-    ///
-    /// An offset that is negative or not representable as isize becomes `-1`, so IndexRange construction checks
-    /// the boundaries in order after both are evaluated (SPEC 4.6.4). `limit` is the target's isize maximum.
-    internal func unchecked<I>(offset: I, limit: isize) -> Index
-        I is PrimitiveInteger
-        match Index.tryPosition(offset, limit)
-            .Some(let position) => return Index.init(unchecked: position)
-            .None => return Index.init(unchecked: -1)
-
-    /// Returns `value` as an isize when `0 <= value <= limit`, or None; shared by Index formation and range resolution.
-    internal func tryPosition<I>(value: I, limit: isize) -> Option<isize>
-        I is PrimitiveInteger
-        require value >= 0 and limit >= 0 else => return .None
-        require value@u128 <= limit@u128 else => return .None
-        return .Some(value@isize)
-
-    specialize func tryPosition<isize>(value: isize, limit: isize) -> Option<isize>
-        require value >= 0 and value <= limit else => return .None
-        return .Some(value)
-
-    specialize func tryPosition<i32>(value: i32, limit: isize) -> Option<isize>
-        let wide = value@isize
-        require wide >= 0 and wide <= limit else => return .None
-        return .Some(wide)
-
-    specialize func tryPosition<usize>(value: usize, limit: isize) -> Option<isize>
-        require limit >= 0 and value <= limit@usize else => return .None
-        return .Some(value@isize)
-
-    /// Compares both the offset and the direction; `^0` and `0` are different positions.
-    public func equals(self: ref/Self, other: ref/Self) -> bool
-        return self.offset == other.offset and self.isFromEnd == other.isFromEnd
-
-    /// Resolves this position against `length` to an absolute boundary in `[0, length]`.
-    ///
-    /// A boundary may equal `length` (SPEC 4.6.4); `^0` resolves to the length itself.
-    ///
-    /// - abort: The position lies outside `[0, length]`.
-    public func resolve(self, length: isize) -> isize
-        match self.tryResolve(length)
-            .Some(let position) => return position
-            .None => $abort("Index out of range")
-
-    /// Resolves this position against `length`, returning `None` instead of Aborting when it is out of range.
-    public func tryResolve(self, length: isize) -> Option<isize>
-        require length >= 0 and self.offset >= 0 and self.offset <= length else => return .None
-        if self.isFromEnd => return .Some(length - self.offset)
-        return .Some(self.offset)
-
-/// Unresolved start and end positions with an end-inclusion flag (SPEC 4.6.3.3).
-///
-/// Range syntax constructs an IndexRange through the internal Type functions below, its normal forms: an omitted
-/// start is `0` and an omitted end is `^0`. They check the integer boundaries in boundary order after both
-/// boundaries are evaluated (SPEC 4.6.4). An IndexRange is a Copy value, retains no target and is not iterable;
-/// resolve it against a length to obtain a ResolvedRange.
-public struct IndexRange
-    Self is Copy
-    Self is Equatable
-    public let start: Index
-    public let end: Index
-    public let isInclusive: bool
-
-    /// Checks both boundaries in order after range syntax evaluated them (SPEC 4.6.4).
-    ///
-    /// - abort: A boundary offset is negative or not representable as isize.
-    init(start: Index, end: Index, inclusive: bool)
-        require start.offset >= 0 else => $abort("Invalid range start")
-        require end.offset >= 0 else => $abort("Invalid range end")
-        self.start = start
-        self.end = end
-        self.isInclusive = inclusive
-
-    /// Creates the half-open range `start..end`.
-    internal func between(start: Index, end: Index) -> IndexRange => IndexRange.init(start, end, false)
-
-    /// Creates the range `start..`, which ends at `^0`.
-    internal func from(start: Index) -> IndexRange => IndexRange.init(start, Index.init(0, fromEnd: true), false)
-
-    /// Creates the range `..end`, which starts at `0`.
-    internal func to(end: Index) -> IndexRange => IndexRange.init(Index.init(0), end, false)
-
-    /// Creates the range `..`, which covers a whole sequence.
-    internal func all() -> IndexRange => IndexRange.init(Index.init(0), Index.init(0, fromEnd: true), false)
-
-    /// Creates the inclusive range `start..=end`.
-    internal func through(start: Index, end: Index) -> IndexRange => IndexRange.init(start, end, true)
-
-    /// Creates the inclusive range `..=end`, which starts at `0`.
-    internal func upTo(end: Index) -> IndexRange => IndexRange.init(Index.init(0), end, true)
-
-    /// Compares the unresolved boundaries and the inclusion flag; `0..2` and `0..=1` are different values.
-    public func equals(self: ref/Self, other: ref/Self) -> bool
-        return self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
-
-    /// Resolves both boundaries against `length` into a validated half-open interval.
-    ///
-    /// - abort: A boundary lies outside `[0, length]`, an inclusive end equals `length`, or the resolved start
-    ///   exceeds the resolved end.
-    public func resolve(self, length: isize) -> ResolvedRange
-        match self.tryResolve(length)
-            .Some(let resolved) => return resolved
-            .None => $abort("Range out of range")
-
-    /// Resolves both boundaries against `length`, returning `None` instead of Aborting.
-    ///
-    /// Both boundaries must resolve within `[0, length]`; an inclusive end must lie below the length and is
-    /// normalized to the half-open form (SPEC 4.6.4).
-    public func tryResolve(self, length: isize) -> Option<ResolvedRange>
-        var first: isize = 0
-        var last: isize = 0
-        match self.start.tryResolve(length)
-            .Some(let position) => first = position
-            .None => return .None
-        match self.end.tryResolve(length)
-            .Some(let position) => last = position
-            .None => return .None
-        if self.isInclusive
-            require last < length else => return .None
-            last = last + 1
-        require first <= last else => return .None
-        return .Some(ResolvedRange.init(start: first, end: last))
-
-/// An interval of integers of `T` (SPEC 4.6.3.2).
-///
-/// Range syntax with two integer boundaries constructs it through the internal Type functions below. Construction
-/// checks no order; iteration, resolution and slicing check the boundaries when they use the value.
-public struct Range<T>
+/// Construction checks nothing: `^(-1)` is a valid value that fails to resolve. `^0` is the end boundary and `^1`
+/// the last element.
+public struct FromEnd<T>
     T is PrimitiveInteger
     Self is Copy
     Self is Equatable
-    Self is Iterable
-    associate Iterable.IteratorType(source) is RangeIterator<T>
-    Self is UniqIterable
-    associate UniqIterable.IteratorType(source) is RangeIterator<T>
-    Self is IntoIterable
-    associate IntoIterable.IteratorType is RangeIterator<T>
-    public let start: T
-    public let end: T
-    public let isInclusive: bool
+    Self is Position
+    public let offset: T
 
-    init(start: T, end: T, inclusive: bool)
+    internal init(offset: T)
+        self.offset = offset
+
+    /// Compares the offsets.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.offset == other.offset
+
+    /// Resolves to `length - offset` when `0 <= offset <= length`, or returns `None`.
+    public func tryResolve(self: Self, length: isize) -> Option<isize>
+        match self.offset.tryResolve(length)
+            .Some(let distance) => return .Some(length - distance)
+            .None => return .None
+
+    /// Resolves to `length - offset`.
+    ///
+    /// - abort: `offset` lies outside `[0, length]`.
+    public func resolve(self: Self, length: isize) -> isize
+        match self.tryResolve(length)
+            .Some(let position) => return position
+            .None => $abort("Position out of range")
+
+    /// Writes `^` followed by the offset.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        try writer.write("^")
+        return writer.write(self.offset)
+
+/// The start boundary of a target, which an omitted range start denotes (SPEC 4.6.2).
+public struct Start
+    Self is Copy
+    Self is Equatable
+    Self is Position
+
+    internal init() => ()
+
+    /// Returns true: all Start values are equal.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return true
+
+    /// Resolves to `0`, or returns `None` when `length < 0`.
+    public func tryResolve(self: Self, length: isize) -> Option<isize>
+        require length >= 0 else => return .None
+        return .Some(0)
+
+    /// Resolves to `0`.
+    ///
+    /// - abort: `length < 0`.
+    public func resolve(self: Self, length: isize) -> isize
+        require length >= 0 else => $abort("Position out of range")
+        return 0
+
+    /// Writes nothing: the boundary that range syntax omits.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return .Ok(())
+
+/// The end boundary of a target, which an omitted range end denotes (SPEC 4.6.2).
+public struct End
+    Self is Copy
+    Self is Equatable
+    Self is Position
+
+    internal init() => ()
+
+    /// Returns true: all End values are equal.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return true
+
+    /// Resolves to `length`, or returns `None` when `length < 0`.
+    public func tryResolve(self: Self, length: isize) -> Option<isize>
+        require length >= 0 else => return .None
+        return .Some(length)
+
+    /// Resolves to `length`.
+    ///
+    /// - abort: `length < 0`.
+    public func resolve(self: Self, length: isize) -> isize
+        require length >= 0 else => $abort("Position out of range")
+        return length
+
+    /// Writes nothing: the boundary that range syntax omits.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return .Ok(())
+
+/// A half-open interval of positions from `start`, excluding `end` (SPEC 4.6.3.2).
+///
+/// Range syntax `a..b`, `a..`, `..b` and `..` constructs it; an omitted boundary is `Start` or `End`. Construction
+/// checks nothing, so a reversed range is a valid value that fails to resolve. It is iterable when both boundaries
+/// have one integer Type.
+public struct Range<S, E>
+    S is Position
+    E is Position
+    Self is Copy
+    Self is Equatable
+    Self is PositionRange
+    public let start: S
+    public let end: E
+
+    internal init(start: S, end: E)
         self.start = start
         self.end = end
-        self.isInclusive = inclusive
 
-    /// Creates the half-open range `start..end` for range syntax.
-    internal func between(start: T, end: T) -> Range<T> => Range<T>.init(start, end, false)
-
-    /// Creates the inclusive range `start..=end` for range syntax.
-    internal func through(start: T, end: T) -> Range<T> => Range<T>.init(start, end, true)
-
-    /// Compares both boundaries and the inclusion flag; `0..3` and `0..=2` are different values.
+    /// Compares both boundaries.
     public func equals(self: ref/Self, other: ref/Self) -> bool
-        return self.start == other.start and self.end == other.end and self.isInclusive == other.isInclusive
+        return self.start == other.start and self.end == other.end
 
-    /// Resolves the integers as positions against `length` into a validated half-open interval (SPEC 4.6.4).
-    ///
-    /// - abort: `length` is negative, the range is reversed, or a boundary lies outside the target.
-    public func resolve(self, length: isize) -> ResolvedRange
-        match self.tryResolve(length)
-            .Some(let resolved) => return resolved
-            .None => $abort("Range out of range")
-
-    /// Resolves the integers as positions against `length`, returning `None` instead of Aborting.
-    ///
-    /// A half-open range needs `0 <= start <= end <= length` and an inclusive one `0 <= start <= end < length`.
-    public func tryResolve(self, length: isize) -> Option<ResolvedRange>
-        require length >= 0 else => return .None
-        var limit = length
-        if self.isInclusive => limit = length - 1
-        match Index.tryPosition(self.end, limit)
-            .Some(let last)
-                match Index.tryPosition(self.start, last)
-                    .Some(let first)
-                        if self.isInclusive => return .Some(ResolvedRange.init(start: first, end: last + 1))
+    /// Resolves both boundaries against `length` into `[start, end)`, or returns `None` when a boundary does not
+    /// resolve or the resolved start exceeds the resolved end (SPEC 4.6.4).
+    public func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
+        match self.start.tryResolve(length)
+            .Some(let first)
+                match self.end.tryResolve(length)
+                    .Some(let last)
+                        require first <= last else => return .None
                         return .Some(ResolvedRange.init(start: first, end: last))
                     .None => return .None
             .None => return .None
 
-    /// Starts a shared enumeration from `start` upward; a reversed range Aborts (SPEC 4.6.3.5).
-    public func iterate(self: ref/Self during source) -> RangeIterator<T>
-        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+    /// Resolves both boundaries against `length` into `[start, end)`.
+    ///
+    /// - abort: A boundary does not resolve, or the resolved start exceeds the resolved end.
+    public func resolve(self: Self, length: isize) -> ResolvedRange
+        match self.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => $abort("Range out of range")
 
-    /// Starts an enumeration through an exclusive borrow; the range itself does not change.
-    public func iterateUniq(self: uniq/Self during source) -> RangeIterator<T>
-        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+    /// Writes the start, `..` and the end, each boundary in its own representation: `1..^1`, `2..`.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        try writer.write(self.start)
+        try writer.write("..")
+        return writer.write(self.end)
 
-    /// Starts an enumeration of the consumed range value.
-    public func intoIterator(self: Self) -> RangeIterator<T>
-        return RangeIterator<T>.starting(self.start, self.end, self.isInclusive)
+    Self is Iterable when S is PrimitiveInteger, E is S
+        associate Iterable.IteratorType(source) is RangeIterator<S>
 
-/// The standard integer range iterator (SPEC 4.6.3.5).
+        /// Starts a shared enumeration from `start` upward; the iterator keeps no borrow of the range.
+        ///
+        /// - abort: `start > end`.
+        public func iterate(self: ref/Self during source) -> RangeIterator<S>
+            return RangeIterator<S>.starting(self.start, self.end)
+
+    Self is UniqIterable when S is PrimitiveInteger, E is S
+        associate UniqIterable.IteratorType(source) is RangeIterator<S>
+
+        /// Starts an enumeration through an exclusive borrow; the range itself does not change.
+        ///
+        /// - abort: `start > end`.
+        public func iterateUniq(self: uniq/Self during source) -> RangeIterator<S>
+            return RangeIterator<S>.starting(self.start, self.end)
+
+    Self is IntoIterable when S is PrimitiveInteger, E is S
+        associate IntoIterable.IteratorType is RangeIterator<S>
+
+        /// Starts an enumeration of the consumed range value.
+        ///
+        /// - abort: `start > end`.
+        public func intoIterator(self: Self) -> RangeIterator<S>
+            return RangeIterator<S>.starting(self.start, self.end)
+
+/// A closed interval of positions from `start`, including `end` (SPEC 4.6.3.2).
 ///
-/// It yields the values below `end` in unit steps, then `end` once when the range included it, and never adds past
-/// its last value, so it also ends at the maximum of `T`.
+/// Range syntax `a..=b` and `..=b` constructs it; its end resolves as an element position. Construction checks
+/// nothing. It is iterable when both boundaries have one integer Type.
+public struct ClosedRange<S, E>
+    S is Position
+    E is Position
+    Self is Copy
+    Self is Equatable
+    Self is PositionRange
+    public let start: S
+    public let end: E
+
+    internal init(start: S, end: E)
+        self.start = start
+        self.end = end
+
+    /// Compares both boundaries.
+    public func equals(self: ref/Self, other: ref/Self) -> bool
+        return self.start == other.start and self.end == other.end
+
+    /// Resolves the start and the end, as an element position `q`, against `length` into `[start, q + 1)`, or returns
+    /// `None` when a boundary does not resolve, `q` is not below `length` or the start exceeds `q` (SPEC 4.6.4).
+    public func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
+        match self.start.tryResolve(length)
+            .Some(let first)
+                match self.end.tryResolve(length)
+                    .Some(let last)
+                        require first <= last and last < length else => return .None
+                        return .Some(ResolvedRange.init(start: first, end: last + 1))
+                    .None => return .None
+            .None => return .None
+
+    /// Resolves the range against `length` into the half-open `[start, end + 1)`.
+    ///
+    /// - abort: A boundary does not resolve, the end is not an element position or the start exceeds the end.
+    public func resolve(self: Self, length: isize) -> ResolvedRange
+        match self.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => $abort("Range out of range")
+
+    /// Writes the start, `..=` and the end, each boundary in its own representation: `1..=3`, `..=^1`.
+    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        try writer.write(self.start)
+        try writer.write("..=")
+        return writer.write(self.end)
+
+    Self is Iterable when S is PrimitiveInteger, E is S
+        associate Iterable.IteratorType(source) is ClosedRangeIterator<S>
+
+        /// Starts a shared enumeration from `start` through `end`; the iterator keeps no borrow of the range.
+        ///
+        /// - abort: `start > end`.
+        public func iterate(self: ref/Self during source) -> ClosedRangeIterator<S>
+            return ClosedRangeIterator<S>.starting(self.start, self.end)
+
+    Self is UniqIterable when S is PrimitiveInteger, E is S
+        associate UniqIterable.IteratorType(source) is ClosedRangeIterator<S>
+
+        /// Starts an enumeration through an exclusive borrow; the range itself does not change.
+        ///
+        /// - abort: `start > end`.
+        public func iterateUniq(self: uniq/Self during source) -> ClosedRangeIterator<S>
+            return ClosedRangeIterator<S>.starting(self.start, self.end)
+
+    Self is IntoIterable when S is PrimitiveInteger, E is S
+        associate IntoIterable.IteratorType is ClosedRangeIterator<S>
+
+        /// Starts an enumeration of the consumed range value.
+        ///
+        /// - abort: `start > end`.
+        public func intoIterator(self: Self) -> ClosedRangeIterator<S>
+            return ClosedRangeIterator<S>.starting(self.start, self.end)
+
+/// The iterator of a half-open integer range (SPEC 4.6.3.4).
+///
+/// It yields `start` upward in unit steps while the value is below `end`, and keeps no end flag.
 public struct RangeIterator<T>
     T is PrimitiveInteger
     Self is Iterator
     associate Iterator.Item is T
     var current: T
     let end: T
-    var includesEnd: bool
 
-    init(current: T, end: T, includesEnd: bool)
+    init(current: T, end: T)
         self.current = current
         self.end = end
-        self.includesEnd = includesEnd
 
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
-    internal func starting(start: T, end: T, inclusive: bool) -> RangeIterator<T>
+    internal func starting(start: T, end: T) -> RangeIterator<T>
         require start <= end else => $abort("Reversed range")
-        return RangeIterator<T>.init(start, end, inclusive)
+        return RangeIterator<T>.init(start, end)
 
     /// Starts at `start` of a validated half-open interval, which is never reversed.
-    internal func unchecked(start: T, end: T) -> RangeIterator<T> => RangeIterator<T>.init(start, end, false)
+    internal func unchecked(start: T, end: T) -> RangeIterator<T> => RangeIterator<T>.init(start, end)
 
     /// Returns the next value, or None after the last one.
     public func next(self: uniq/Self) -> Option<T>
         let value = self.current
+        require value < self.end else => return .None
+        self.current = value + 1
+        return .Some(value)
+
+/// The iterator of a closed integer range (SPEC 4.6.3.4).
+///
+/// It yields `start` upward in unit steps and `end` last, and never adds past `end`, so it also ends at the maximum
+/// of `T`.
+public struct ClosedRangeIterator<T>
+    T is PrimitiveInteger
+    Self is Iterator
+    associate Iterator.Item is T
+    var current: T
+    let end: T
+    var isExhausted: bool
+
+    init(current: T, end: T)
+        self.current = current
+        self.end = end
+        self.isExhausted = false
+
+    /// Starts at `start` after checking the order of a range entry.
+    ///
+    /// - abort: `start > end`.
+    internal func starting(start: T, end: T) -> ClosedRangeIterator<T>
+        require start <= end else => $abort("Reversed range")
+        return ClosedRangeIterator<T>.init(start, end)
+
+    /// Returns the next value, or None after `end`.
+    public func next(self: uniq/Self) -> Option<T>
+        require not self.isExhausted else => return .None
+        let value = self.current
         if value < self.end
             self.current = value + 1
-            return .Some(value)
-        if self.includesEnd
-            self.includesEnd = false
-            return .Some(value)
-        return .None
+        else
+            self.isExhausted = true
+        return .Some(value)
 
-/// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3.4).
+// SPEC 4.6.2-4.6.4: prefix `^` and range syntax construct their Types through these functions, and a position or range
+// key of a built-in sequence selection that the compiler does not apply directly resolves through them. The compiler
+// calls them by declaration, so neither a same-named source declaration nor the source's access rules affect them.
+internal group PositionSyntax
+    /// Constructs `^offset`.
+    internal func fromEnd<T>(offset: T) -> FromEnd<T>
+        T is PrimitiveInteger
+        return FromEnd<T>.init(offset)
+
+    /// Constructs `start..end`.
+    internal func between<S, E>(start: S, end: E) -> Range<S, E>
+        S is Position
+        E is Position
+        return Range<S, E>.init(start, end)
+
+    /// Constructs `start..`.
+    internal func from<S>(start: S) -> Range<S, End>
+        S is Position
+        return Range<S, End>.init(start, End.init())
+
+    /// Constructs `..end`.
+    internal func to<E>(end: E) -> Range<Start, E>
+        E is Position
+        return Range<Start, E>.init(Start.init(), end)
+
+    /// Constructs `..`.
+    internal func all() -> Range<Start, End> => Range<Start, End>.init(Start.init(), End.init())
+
+    /// Constructs `start..=end`.
+    internal func through<S, E>(start: S, end: E) -> ClosedRange<S, E>
+        S is Position
+        E is Position
+        return ClosedRange<S, E>.init(start, end)
+
+    /// Constructs `..=end`.
+    internal func upTo<E>(end: E) -> ClosedRange<Start, E>
+        E is Position
+        return ClosedRange<Start, E>.init(Start.init(), end)
+
+    /// Resolves `position` against `length`, or returns `-1` when it does not resolve.
+    ///
+    /// The caller's own bounds check rejects `-1`, so resolution and the check fail as one (SPEC 4.6.9).
+    internal func resolved<P>(position: P, length: isize) -> isize
+        P is Position
+        match position.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => return -1
+
+    /// Resolves the range key of a sequence selection against `length`.
+    ///
+    /// A range that does not resolve yields an interval that the selection's own check rejects, so resolution and
+    /// application fail as one (SPEC 4.6.4); the interval never reaches source code.
+    internal func resolvedRange<R>(range: R, length: isize) -> ResolvedRange
+        R is PositionRange
+        match range.tryResolve(length)
+            .Some(let resolved) => return resolved
+            .None => return ResolvedRange.init(start: 0, end: -1)
+
+/// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.3.3).
 ///
 /// Only `indices`, `resolve` and `tryResolve` produce it. A `for` loop over it runs the same positions as its
 /// entries without an iterator value; selection with a ResolvedRange still checks `end` against the target's length.

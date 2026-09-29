@@ -48,7 +48,7 @@ public class ElementEmissionTest
     [Theory]
     [InlineData("Negative", "-1", 2)]
     [InlineData("Length", "2", 2)]
-    [InlineData("Large", "9223372036854775807", 2)]
+    [InlineData("Large", "9223372036854775807@isize", 2)]
     [InlineData("Empty", "0", 0)]
     public void InvalidIndicesAbort(string name, string index, int length)
     {
@@ -72,7 +72,6 @@ public class ElementEmissionTest
 
     [Theory]
     [InlineData("let a = (1, 2)\nlet n = a.2")]
-    [InlineData("let a: [1 of i32] = [1]\nlet i: i32 = 0\nlet n = a[i]")]
     [InlineData("let a = (\"a\", 1)\nlet text = a.0@move\nlet twice = a.0@move")]
     [InlineData("var a: [1 of f64] = [1.0]\na[0] %= 2.0")]
     [InlineData("let a: ([0 of string], i32) = ([], 1)\nlet n = a.0@move\nlet twice = a.0@move")]

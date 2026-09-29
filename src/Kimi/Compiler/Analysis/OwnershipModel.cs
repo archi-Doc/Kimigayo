@@ -466,7 +466,12 @@ internal readonly record struct OwnershipSequence(int Operation, SequenceOperati
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 // Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.
 // Put the small operator before the 16-byte payload to avoid tail padding in every CFG value.
-internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, KotoKind Operator = default, Int128 Constant = default);
+internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, KotoKind Operator = default, Int128 Constant = default)
+{
+    // SPEC 4.6.9: the Constant of a Convert value that makes an integer position an isize one; a value isize cannot hold
+    // becomes -1, which the position's one bounds check rejects.
+    internal const int PositionConversion = 1;
+}
 
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
 internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);

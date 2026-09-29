@@ -99,10 +99,8 @@ internal sealed partial class BodyLowering
         {
             ArrayHelperKind.Append => "__kimi_array_append_",
             ArrayHelperKind.Insert => "__kimi_array_insert_",
-            ArrayHelperKind.InsertIndex => "__kimi_array_insert_index_",
             ArrayHelperKind.Pop => "__kimi_array_pop_",
             ArrayHelperKind.Remove => "__kimi_array_remove_",
-            ArrayHelperKind.RemoveIndex => "__kimi_array_remove_index_",
             ArrayHelperKind.Place => "__kimi_array_place_",
             ArrayHelperKind.Clear => "__kimi_array_clear_",
             ArrayHelperKind.Swap => "__kimi_array_swap_",
@@ -118,17 +116,17 @@ internal sealed partial class BodyLowering
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
         var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
         var unit = WindowsLowering.Unit.ComputationType;
-        var indexParameter = kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex ? new AbiParameter("ptr", "index_value") : new("i64", "index");
+        var indexParameter = new AbiParameter("i64", "index");
         FunctionAbi abi = kind switch
         {
             ArrayHelperKind.Append when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
-            ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
+            ArrayHelperKind.Insert when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
+            ArrayHelperKind.Insert => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
             ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
-            ArrayHelperKind.Remove or ArrayHelperKind.RemoveIndex => element.IsScalar
+            ArrayHelperKind.Remove => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
                 : element.IsZeroSized
                 ? new(name, unit, [handle, indexParameter, location, length])
@@ -211,12 +209,11 @@ internal sealed partial class BodyLowering
                 break;
             case CompilerFunctionKind.ArrayAppend:
             case CompilerFunctionKind.ArrayInsert:
-            case CompilerFunctionKind.ArrayInsertIndex:
                 var insert = kind != CompilerFunctionKind.ArrayAppend;
-                callee = this.GetArrayHelper(kind == CompilerFunctionKind.ArrayInsertIndex ? ArrayHelperKind.InsertIndex : insert ? ArrayHelperKind.Insert : ArrayHelperKind.Append, element).Abi;
+                callee = this.GetArrayHelper(insert ? ArrayHelperKind.Insert : ArrayHelperKind.Append, element).Abi;
                 if (insert)
                 {
-                    if (!this.ArrayIndexArgument(library, body, id, kind == CompilerFunctionKind.ArrayInsertIndex, out var index))
+                    if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var index))
                     {
                         return Fail("Array insert index is unavailable at the call.", out failure);
                     }
@@ -245,9 +242,8 @@ internal sealed partial class BodyLowering
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
                 break;
             case CompilerFunctionKind.ArrayRemove:
-            case CompilerFunctionKind.ArrayRemoveIndex:
-                callee = this.GetArrayHelper(kind == CompilerFunctionKind.ArrayRemoveIndex ? ArrayHelperKind.RemoveIndex : ArrayHelperKind.Remove, element).Abi;
-                if (!this.ArrayIndexArgument(library, body, id, kind == CompilerFunctionKind.ArrayRemoveIndex, out var removed))
+                callee = this.GetArrayHelper(ArrayHelperKind.Remove, element).Abi;
+                if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var removed))
                 {
                     return Fail("Array remove index is unavailable at the call.", out failure);
                 }
@@ -586,19 +582,6 @@ internal sealed partial class BodyLowering
 
         this.arguments.Clear();
         return true;
-    }
-
-    private bool ArrayIndexArgument(KimiLibrary library, OwnershipBody body, int call, bool indexValue, out EmissionOperand operand)
-    {
-        if (!indexValue)
-        {
-            return this.ScalarArrayArgument(body, call, 1, BoundType.ISize, out operand);
-        }
-
-        operand = default;
-        return library.Index.Type is { } type && this.TryGetArrayElement(type, out var element) &&
-            element.Layout is { Fields.Length: 2 } layout && layout.Offset(0) == 0 && layout.Offset(1) == 8 &&
-            this.ArrayValueArgument(body, call, 1, element, out operand);
     }
 
     // A scalar argument (the receiver borrow, an isize index or amount) is the acquired entry's aliased value.

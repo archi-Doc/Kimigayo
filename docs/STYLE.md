@@ -121,7 +121,8 @@ across fragments for style: logical order controls initializer effects and rever
   one generic parameter, `P is Position` or `R is PositionRange`, instead of an overload per Type; the
   generic entry only resolves it and delegates to a common `isize` or `ResolvedRange` body.
 - `[Kimi]` A try-prefixed operation is the try form of the operation with the same inputs: `tryGet(k)` is
-  the try form of `x[k]` for a position and a range alike, as Dictionary's `tryGet` is for a key.
+  the try form of `x[k]` for a position, as Dictionary's `tryGet` is for a key, and `trySlice(r)` for a range.
+  Constraints alone never distinguish overloads (SPEC §9.1), so a position and a range entry need different names.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
 
 ### 3.3. Properties and comparisons

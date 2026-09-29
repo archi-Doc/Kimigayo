@@ -125,11 +125,12 @@ internal sealed partial class BodyLowering
 
             if (value.Kind == OwnershipValueKind.Convert &&
                 (operation.Kind != OwnershipOperationKind.Produce ||
-                (operation.Source is Parsing.ConversionKoto conversion
-                    ? !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
+                (value.Constant == OwnershipValue.PositionConversion
+                    ? !IsPositionConversion(operation.Source, ValueType(body, Input(body, id, 0)), ValueType(body, id))
+                    : operation.Source is not Parsing.ConversionKoto conversion ||
+                        !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
                         !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, conversion.Left.BoundType)) ||
-                        !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id))
-                    : !IsPositionConversion(operation.Source, ValueType(body, Input(body, id, 0)), ValueType(body, id), lowering))))
+                        !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id)))))
             {
                 return false;
             }
@@ -256,11 +257,11 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    // SPEC 4.6.2, 4.6.4: a direct slice boundary or a prefix ^ operand of another integer Type becomes an isize
-    // position by a checked conversion after it is evaluated.
-    private static bool IsPositionConversion(Parsing.Koto source, BoundType? input, BoundType? target, BodyLowering? lowering)
+    // SPEC 4.6.4, 4.6.9: an element key, a directly applied range boundary or a written `^` operand of another integer Type
+    // becomes an isize position after it is evaluated; a value isize cannot hold becomes -1.
+    private static bool IsPositionConversion(Parsing.Koto source, BoundType? input, BoundType? target)
         => ReferenceEquals(target, BoundType.ISize) && ScalarTypes.Width(input) != 0 && !ReferenceEquals(input, BoundType.ISize) &&
-        ReferenceEquals(input, SignatureType(lowering, source.BoundType)) && source.Parent is Parsing.RangeKoto or Parsing.FromEndIndexKoto;
+        (source.Parent is Parsing.RangeKoto or Parsing.FromEndIndexKoto || (source.Parent is Parsing.IndexKoto index && ReferenceEquals(index.Right, source)));
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :

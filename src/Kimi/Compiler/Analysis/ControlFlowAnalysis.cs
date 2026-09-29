@@ -411,9 +411,9 @@ public sealed class ControlFlowAnalysis
             case IdentifierNameKoto or MemberAccessKoto when node.CodeContext.Compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter:
                 flow = this.Visit(getter, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
-            case RangeKoto when node.CodeContext.Compilation.Binding.RangeValueCall(node) is { } rangeValue:
-                // SPEC 4.6.3: range syntax outside an index position is its synthesized Range construction, whose
-                // boundary arguments may themselves be synthesized Index constructions.
+            case RangeKoto or FromEndIndexKoto when node.CodeContext.Compilation.Binding.RangeValueCall(node) is { } rangeValue:
+                // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax that construct a value are their synthesized PositionSyntax
+                // calls, whose arguments may themselves be synthesized `^x` constructions.
                 flow = this.Visit(rangeValue, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
             case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:

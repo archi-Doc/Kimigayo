@@ -16,6 +16,17 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 $dotnet = (Get-Command dotnet).Source
 $results = [Collections.Generic.List[object]]::new()
 
+# The location of the only occurrence of $Anchor in an embedded Kimi library source, for an Abort that library code initiates.
+function Get-KimiLibraryLocation([string] $File, [string] $Anchor) {
+    $text = [IO.File]::ReadAllText((Join-Path $repo "src/Kimi/Library/$File")).Replace("`r`n", "`n")
+    $offset = $text.IndexOf($Anchor, [StringComparison]::Ordinal)
+    if ($offset -lt 0 -or $offset -ne $text.LastIndexOf($Anchor, [StringComparison]::Ordinal)) { throw "Library anchor '$Anchor' is not unique in $File." }
+    $line = $text.Substring(0, $offset).Split("`n").Count
+    $column = $offset - $text.LastIndexOf("`n", $offset)
+    $version = [regex]::Match([IO.File]::ReadAllText((Join-Path $repo 'src/Kimi/Compiler/Core/Compilation.cs')), 'CurrentLanguageVersion = "([^"]+)"').Groups[1].Value
+    return "compiler://Kimi/$version/$($File):$($line):$($column)"
+}
+
 function Invoke-Captured([string] $File, [string[]] $Arguments, [int] $ExpectedExit = 0) {
     $start = [Diagnostics.ProcessStartInfo]::new($File)
     $start.UseShellExecute = $false

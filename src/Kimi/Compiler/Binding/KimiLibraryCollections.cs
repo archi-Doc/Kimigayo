@@ -14,10 +14,8 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.ArrayReserve, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize]),
         new(KimiDeclarationId.ArrayAppend, CollectionType.Unit, [CollectionType.Receiver, CollectionType.Element]),
         new(KimiDeclarationId.ArrayInsert, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize, CollectionType.Element]),
-        new(KimiDeclarationId.ArrayInsertIndex, CollectionType.Unit, [CollectionType.Receiver, CollectionType.Index, CollectionType.Element]),
         new(KimiDeclarationId.ArrayPop, CollectionType.OptionElement, [CollectionType.Receiver]),
         new(KimiDeclarationId.ArrayRemove, CollectionType.Element, [CollectionType.Receiver, CollectionType.ISize]),
-        new(KimiDeclarationId.ArrayRemoveIndex, CollectionType.Element, [CollectionType.Receiver, CollectionType.Index]),
         new(KimiDeclarationId.ArrayClear, CollectionType.Unit, [CollectionType.Receiver]),
         new(KimiDeclarationId.ArraySwap, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize, CollectionType.ISize]),
         new(KimiDeclarationId.ArrayShrinkToFit, CollectionType.Unit, [CollectionType.Receiver]),
@@ -34,7 +32,6 @@ public sealed partial class KimiLibrary
     {
         Unit,
         ISize,
-        Index,
         Receiver,
         Element,
         OptionElement,
@@ -59,7 +56,7 @@ public sealed partial class KimiLibrary
     private bool ValidBoundCollectionOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var dictionary = id is >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit;
-        if (!dictionary && id is not (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap or KimiDeclarationId.ArrayWithCapacity))
+        if (!dictionary && id is not (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap or KimiDeclarationId.ArrayWithCapacity))
         {
             return true;
         }
@@ -103,7 +100,6 @@ public sealed partial class KimiLibrary
         {
             CollectionType.Unit => ReferenceEquals(type, BoundType.Unit),
             CollectionType.ISize => ReferenceEquals(type, BoundType.ISize),
-            CollectionType.Index => ReferenceEquals(type, this.GetSymbol(KimiDeclarationId.Index)?.Type),
             CollectionType.Element => ReferenceEquals(type, element),
             CollectionType.OptionElement => type is not null && this.BoundStorageContainer(type, KimiDeclarationId.Option, element, 0),
             CollectionType.Value => value is not null && ReferenceEquals(type, value),

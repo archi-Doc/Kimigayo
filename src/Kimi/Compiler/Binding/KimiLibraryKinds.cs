@@ -33,8 +33,6 @@ public enum CompilerFunctionKind : byte
     ArrayRemove,
     ArrayClear,
     ArrayShrinkToFit,
-    ArrayInsertIndex,
-    ArrayRemoveIndex,
     ArraySwap,
     ArrayWithCapacity,
     TextFixed,

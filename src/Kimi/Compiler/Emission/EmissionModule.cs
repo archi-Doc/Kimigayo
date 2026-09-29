@@ -349,10 +349,8 @@ internal enum ArrayHelperKind : byte
 {
     Append,
     Insert,
-    InsertIndex,
     Pop,
     Remove,
-    RemoveIndex,
     Place,
     Clear,
     Drop,
@@ -390,3 +388,12 @@ internal enum DictionaryHelperKind : byte
 
 /// <summary>Physical Dictionary entry helper; bound Types and Origins never escape lowering.</summary>
 internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, AggregateLayout? Result, FunctionAbi? Related);
+
+// SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
+internal static class SliceShape
+{
+    internal const long EndOmitted = 1;
+    internal const long StartFromEnd = 2;
+    internal const long EndFromEnd = 4;
+    internal const long Closed = 8;
+}

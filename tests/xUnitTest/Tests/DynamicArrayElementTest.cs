@@ -27,7 +27,7 @@ public class DynamicArrayElementTest
     [Theory]
     [InlineData("Negative", "-1")]
     [InlineData("Length", "1")]
-    [InlineData("Maximum", "9223372036854775807")]
+    [InlineData("Maximum", "9223372036854775807@isize")]
     public void BoundsAbort(string name, string index)
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayReadBounds" + name,
@@ -42,7 +42,6 @@ public class DynamicArrayElementTest
     [InlineData("let values: Array<i32> = [42]\nlet moved = values@move\nlet n = values[0]")]
     [InlineData("let values: Array<string> = [\"owned\"]\nlet taken = values[0]@move")]
     [InlineData("let values: Array<i32> = [42]\nlet taken = values[0]@move")]
-    [InlineData("let values: Array<i32> = [42]\nlet i: i32 = 0\nlet n = values[i]")]
     [InlineData("var values: Array<i32> = [42]\nlet borrow = values@uniq\nlet n = borrow[(work: do\n    borrow@uniq.clear()\n    exit to work: 0)]")]
     public void RejectsInvalidAccess(string source)
     {

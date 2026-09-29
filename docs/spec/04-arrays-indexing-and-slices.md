@@ -152,7 +152,7 @@ func reordered<length N>(value: [(N + 4) of u8]) -> [(4 + N) of u8] => value
 
 ## 4.5. Operations and ownership
 
-Fixed arrays and Array expose the [length metadata](#461-access-and-length-metadata) `length` and `indices`, and the read operations `tryGet`, `splitAt` and `trySplitAt` of §4.6.6. Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
+Fixed arrays and Array expose the [length metadata](#461-access-and-length-metadata) `length` and `indices`, and the read operations `tryGet`, `trySlice`, `splitAt` and `trySplitAt` of §4.6.6. Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let` and borrowed-access permissions.
 
 A fixed array is Copy exactly when its complete element Type is Copy (§3.5.1). Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
 
@@ -434,29 +434,29 @@ r.tryResolve(3)         // None: the end 4 exceeds the length 3.
 
 **Aborting operations.** The Contracts require only `tryResolve`. Every aborting operation that takes a position or range, such as indexing, `insert`, `remove` and `resolve`, performs the same resolution and initiates Abort when it yields `None`. The position and range Types other than the integers publish `resolve(self: Self, length: isize)` as the naming pair of `tryResolve` (§4.7.1).
 
-**Slicing.** For a target of current length `L`, `x[r]` applies the interval of `r.tryResolve(L)` and Aborts when there is none, and `x.tryGet(r)` returns `None` instead (§4.6.6). An implementation may fuse resolution and application without materializing a `ResolvedRange`. `values[..]` and `values[L..]` also apply to empty arrays; `values[L..L]` and `values[^0..]` are empty; element position `L` or `^0`, and a closed end of `^0`, are invalid.
+**Slicing.** For a target of current length `L`, `x[r]` applies the interval of `r.tryResolve(L)` and Aborts when there is none, and `x.trySlice(r)` returns `None` instead (§4.6.6). An implementation may fuse resolution and application without materializing a `ResolvedRange`. `values[..]` and `values[L..]` also apply to empty arrays; `values[L..L]` and `values[^0..]` are empty; element position `L` or `^0`, and a closed end of `^0`, are invalid.
 
 ```kimi
 let r = 2..5
 let shortArray: [3 of i32] = [1, 2, 3]
-let checked = shortArray.tryGet(r) // None.
+let checked = shortArray.trySlice(r) // None.
 let failed = shortArray[r]         // Abort if executed.
 ```
 
-**Failure.** Ordinary element and range indexing initiates Abort on invalid bounds; use the `tryGet` and `trySplitAt` operations for expected input failures. A try-prefixed API converts only its own length or bounds failure to `None`, not failures in argument evaluation or in other operations; a successful try-prefixed API returns `Some`. Because construction checks nothing, a negative position fails at its use. With `n < 0` and a Slice `s`:
+**Failure.** Ordinary element and range indexing initiates Abort on invalid bounds; use the `tryGet`, `trySlice` and `trySplitAt` operations for expected input failures. A try-prefixed API converts only its own length or bounds failure to `None`, not failures in argument evaluation or in other operations; a successful try-prefixed API returns `Some`. Because construction checks nothing, a negative position fails at its use. With `n < 0` and a Slice `s`:
 
 | Operation | Result |
 | --- | --- |
 | `let p = ^n`, `let r = n..` | Succeeds; construction checks nothing |
 | `values[n..]`, `values[^n..]`, `values[^n]`, `values[2..=1]` | Abort in resolution |
-| `s.tryGet(n..)`, `s.tryGet(^n)`, `s.tryGet(2..=1)`, `s.trySplitAt(^n)` | `None` |
+| `s.trySlice(n..)`, `s.tryGet(^n)`, `s.trySlice(2..=1)`, `s.trySplitAt(^n)` | `None` |
 
 Integers from external input are passed in their own Type:
 
 ```kimi
 func tryWindow<T, I>(values: Slice<T> ! start: I, end: I) -> Option<Slice<T> during values.source>
     I is PrimitiveInteger
-    return values.tryGet(start..end) // None for negative, reversed or out-of-range boundaries.
+    return values.trySlice(start..end) // None for negative, reversed or out-of-range boundaries.
 ```
 
 **Evaluation order.** The receiver and index are each evaluated once under the [evaluation order](12-expressions.md#122-evaluation-order). A range expression evaluates its written boundaries, start before end; an omitted boundary evaluates nothing. A failure inside a boundary expression stops subsequent evaluation, and neither `^x` nor range construction checks anything afterwards. Three independent examples:
@@ -517,16 +517,16 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | `s[index]` | The element Place `place ref/T during s.source`; `index` is a position of any Type (§4.6.9) |
 | `s[range]` | `Slice<T>` retaining `s.source`; `range` is a range of any Type, resolved against the current length (§4.6.4) |
 | `s.tryGet(index)` | `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>` with `P is Position`; `None` unless `index` resolves to an element position |
-| `s.tryGet(range)` | `tryGet<R>(self: Self, range: R) -> Option<Slice<T> during source>` with `R is PositionRange`; `None` when `range` does not resolve |
+| `s.trySlice(range)` | `trySlice<R>(self: Self, range: R) -> Option<Slice<T> during source>` with `R is PositionRange`; `None` when `range` does not resolve |
 | `s.splitAt(index)` | `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)` with `P is Position`; resolves `index` once to `p` and returns `(s[..p], s[p..])` |
 | `s.trySplitAt(index)` | `Option` of that Tuple; `None` when `index` does not resolve |
 | `s.contains(value)`, `T is Equatable` | `bool`; whether some element equals `value: ref/T` |
 | `s.firstIndex(of: value)`, `T is Equatable` | `Option<isize>`; the first index whose element equals `value: ref/T` |
 | `s.firstIndex(matching: f)` | `Option<isize>`; the first index for which `f`, with `F is Callable<(ref/T) -> bool>`, returns `true` |
 
-The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Positions and ranges are passed by value and read from references (§3.5.3). Both split operations accept the boundaries zero and length; invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`. `tryGet` is the try-prefixed form of `s[k]`: no Type satisfies both `Position` and `PositionRange`, so exactly one of its two declarations applies to any argument, including a literal-only expression. It deliberately has a fixed reference result for a position, independent of `T`'s Copy capability.
+The search operations visit elements in increasing index order, stop at the first match and neither Copy nor Move elements; each comparison or call receives a shared reference to the element. Positions and ranges are passed by value and read from references (§3.5.3). Both split operations accept the boundaries zero and length; invalid boundaries abort for `splitAt` and return `None` for `trySplitAt`. `tryGet` and `trySlice` are the try-prefixed forms of `s[k]` for a position and for a range. They have different names because Constraints alone never distinguish overloads (§9.1). `tryGet` deliberately has a fixed reference result, independent of `T`'s Copy capability.
 
-Fixed arrays and Array provide `tryGet`, `splitAt` and `trySplitAt` with the meaning of the same operation on their whole-range Slice `x[..]`; their results depend on the receiver's shared borrow (`during self`) instead of a Slice source.
+Fixed arrays and Array provide `tryGet`, `trySlice`, `splitAt` and `trySplitAt` with the meaning of the same operation on their whole-range Slice `x[..]`; their results depend on the receiver's shared borrow (`during self`) instead of a Slice source.
 
 A Slice element Place follows the element Place rules of §4.6.1 but is shared-only: writes, Moves and exclusive borrows through a Slice are rejected. No result Type depends on Copy: for an unknown `T`, a by-value `s[0]` needs `T is Copy`, while `s[0]@ref` works for every `T`.
 
@@ -553,7 +553,7 @@ match s.tryGet(10)
     .None => ()
 
 func tryTail<T>(values: Slice<T>) -> Option<Slice<T> during values.source>
-    return values.tryGet(1..) // None for an empty Slice; no static length condition.
+    return values.trySlice(1..) // None for an empty Slice; no static length condition.
 ```
 
 ```kimi
@@ -711,7 +711,7 @@ values.append(values[0])       // The element Copy finishes before receiver acti
 | `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts |
 | `isEmpty: bool` | Read-only; whether `length` is zero |
 | `first`, `last: Option<ref/T>` | Read-only, `get(self: ref/Self) -> Option<ref/T during self>`; the first or last element, or `None` when empty |
-| `tryGet(index)`, `tryGet(range)`, `splitAt(index)`, `trySplitAt(index)` | The read operations of §4.6.6 on `self[..]`, with results `during self` |
+| `tryGet(index)`, `trySlice(range)`, `splitAt(index)`, `trySplitAt(index)` | The read operations of §4.6.6 on `self[..]`, with results `during self` |
 | `tryGetUniq<P>(index: P)`, `P is Position` | `Option<uniq/T during self>` with an exclusive receiver; `None` unless `index` resolves to an element position |
 | `swap<P, Q>(first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements; positions resolving to the same element change nothing; an invalid position Aborts |
 | `swapRemove<P>(index: P) -> T`, `P is Position` | Removes and returns the element; the last element takes its position, so order is not preserved |

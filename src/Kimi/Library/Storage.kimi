@@ -167,3 +167,34 @@ internal group Storage
         /// with the iterator in reverse index order (SPEC 4.7.6).
         public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
             return FixedArrayOwningIterator<E, [N of E]>.init(ownStorage(self@move))
+
+        /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
+        public func tryGet<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<ref/E during source>
+            P is Position
+            match index.tryResolve(self.length)
+                .Some(let position)
+                    require position < self.length else => return .None
+                    return .Some(self[position]@ref/E)
+                .None => return .None
+
+        /// Returns the Slice `range` selects, or `None` when `range` does not resolve against the length.
+        public func trySlice<E, length N, R>(self: ref/[N of E] during source, range: R) -> Option<Slice<E> during source>
+            R is PositionRange
+            match range.tryResolve(self.length)
+                .Some(let resolved) => return .Some(self[resolved])
+                .None => return .None
+
+        /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, N)`.
+        ///
+        /// - abort: `index` does not resolve against the length.
+        public func splitAt<E, length N, P>(self: ref/[N of E] during source, index: P) -> (Slice<E> during source, Slice<E> during source)
+            P is Position
+            let position = PositionSyntax.resolved(index, self.length)
+            return (self[..position], self[position..])
+
+        /// Splits the elements at the boundary `index` resolves to, returning `None` when it does not resolve.
+        public func trySplitAt<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<(Slice<E> during source, Slice<E> during source)>
+            P is Position
+            match index.tryResolve(self.length)
+                .Some(let position) => return .Some((self[..position], self[position..]))
+                .None => return .None

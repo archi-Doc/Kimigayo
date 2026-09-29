@@ -164,10 +164,15 @@ public class ArrayBindingTest
             "var names: Array<string> = []\nnames@uniq.append(\"alpha\")\nnames@uniq.append(\"gamma\")\nnames@uniq.insert(1, \"beta\")\nlet second = names@uniq.remove(1)\nConsole.writeLine(second)\nmatch names@uniq.pop()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"empty\")\nrequire names.length == 1 else => $abort(\"length\")\nnames@uniq.clear()\nnames@uniq.append(\"delta\")\nConsole.writeLine(\"ok\")",
             "beta\ngamma\nok\n");
 
-    // SPEC 4.7.1, 4.7.4: invalid positions and a negative reserve amount Abort before the collection changes.
+    // SPEC 4.7.1, 4.7.2: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
-    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "Hello.kimi:4:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
-    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:15: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
+    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(")]
+    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(")]
+    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+
+    // SPEC 4.7.4: a negative reserve amount Aborts before the collection changes.
+    [Theory]
     [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
     public void MutationOperationsAbortOnInvalidPositionsAndAmounts(string name, string source, string stdout, string stderr)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, stderr);
@@ -190,7 +195,8 @@ public class ArrayBindingTest
     [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
-    [InlineData("let index: i32 = 0\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.insertAt(0, 1)", DiagnosticCode.UnresolvedBinding_Kd)]
     public void MutationOperationsRejectWrongReceiversAndArguments(string statement, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);

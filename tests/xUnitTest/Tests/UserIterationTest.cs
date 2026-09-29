@@ -315,7 +315,7 @@ public class UserIterationTest
     [InlineData("for i in 5 => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
     [InlineData("let i = ^1\nfor x in i => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
     [InlineData("struct S\n    public let x: i32 = 0\nfor i in S.init() => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
-    [InlineData("func f(values: ref/Index)\n    for v in values => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
+    [InlineData("func f(values: ref/FromEnd<i32>)\n    for v in values => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
     [InlineData("for (a, b) in 5 => ()", DiagnosticCode.UnsatisfiedConstraint_Kd, true)]
     [InlineData(Counter + Three + "for (one, two) in Three.init() => ()", DiagnosticCode.TypeMismatch_Kd, false)]
     public void MissingEntriesAndWrongBindingShapesAreRejected(string source, DiagnosticCode code, bool atSubject)

@@ -26,7 +26,7 @@ internal sealed partial class BodyLowering
         var receiver = body.Places[plan.Receiver].Type;
         var syntaxReceiver = operation.Source switch
         {
-            FromEndIndexKoto fromEnd => ElementAccess.ValueSource(fromEnd.Operand),
+            FromEndIndexKoto { Parent: BinaryKoto selection } => ElementAccess.ValueSource(selection.Left),
             BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
             ForKoto loop => ElementAccess.ValueSource(loop.Iterable),
             _ => null,
@@ -49,26 +49,6 @@ internal sealed partial class BodyLowering
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
-        }
-
-        if (plan.Kind == SequenceOperation.FromEnd)
-        {
-            var result = ValueType(body, id);
-            if (operation.Source is not FromEndIndexKoto || !ReferenceEquals(receiver, BoundType.ISize) ||
-                !ReferenceEquals(result, SignatureType(this, operation.Source.BoundType)) ||
-                result is null || !ReferenceEquals(result.Symbol, library.Index) ||
-                value.Count != 0 || plan.Projection != -1 || plan.End != -1 ||
-                (uint)plan.Index >= (uint)id || ValuePlace(body.Operations[plan.Index]) != plan.Receiver ||
-                !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
-                this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } indexLayout ||
-                !this.TryGetLocation(operation.Source, directory, constants, out var indexLocation))
-            {
-                return Fail("From-end Index construction requires its evaluated isize offset and designated layout.", out failure);
-            }
-
-            function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, operation.Place), this.PhysicalOperand(body, plan.Index), new(EmissionOperandKind.Integer, indexLayout.Offset(1))], place: body.Operations.Count + id, location: indexLocation, op: "FromEnd", check: ArithmeticCheckKind.Argument);
-            return true;
         }
 
         if (plan.Kind == SequenceOperation.Length && plan.Index != -1)
@@ -114,6 +94,21 @@ internal sealed partial class BodyLowering
 
             receiver = SignatureType(this, body.Operations[projection.Operation].Source.BoundType)!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
+        }
+
+        if (plan.Kind == SequenceOperation.FromEnd)
+        {
+            // SPEC 4.6.9: a written `^x` element key is `length - x`, computed without a check of its own; the element
+            // access's one bounds check rejects an offset outside [1, length].
+            if (operation.Source is not FromEndIndexKoto || receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) ||
+                !ReferenceEquals(ValueType(body, id), BoundType.ISize) || plan.End != -1 || (uint)plan.Index >= (uint)id ||
+                !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) || (body.IsReachable(id) && !this.Dominates(plan.Index, id)))
+            {
+                return Fail("From-end position requires its evaluated isize offset and a sequence receiver.", out failure);
+            }
+
+            function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, 8), this.PhysicalOperand(body, plan.Index)], place: operation.Place, op: "fromEnd");
+            return true;
         }
 
         if (plan.Kind == SequenceOperation.Borrow)
@@ -191,17 +186,20 @@ internal sealed partial class BodyLowering
             Koto? endSyntax = null;
             Koto? resolvedKey = null;
             BoundType? sliceType = null;
+            var shape = 0L;
             if (operation.Source is IndexKoto keyed && ElementAccess.IsResolvedSlice(keyed))
             {
                 // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
                 resolvedKey = ElementAccess.KeySyntax(keyed);
                 sliceType = SignatureType(this, keyed.BoundType);
             }
-            else if (operation.Source is IndexKoto { Right: RangeKoto { IsInclusive: false } rangeSyntax } source)
+            else if (operation.Source is IndexKoto { Right: RangeKoto rangeSyntax } source)
             {
-                startSyntax = rangeSyntax.Start;
-                endSyntax = rangeSyntax.End;
+                // SPEC 4.6.4: a `^x` boundary evaluates x and resolves against the length in the slice operation.
+                startSyntax = rangeSyntax.Start is FromEndIndexKoto { Operand: var startOffset } ? startOffset : rangeSyntax.Start;
+                endSyntax = rangeSyntax.End is FromEndIndexKoto { Operand: var endOffset } ? endOffset : rangeSyntax.End;
                 sliceType = SignatureType(this, source.BoundType);
+                shape = (rangeSyntax.Start is FromEndIndexKoto ? SliceShape.StartFromEnd : 0) | (rangeSyntax.End is FromEndIndexKoto ? SliceShape.EndFromEnd : 0) | (rangeSyntax.IsInclusive ? SliceShape.Closed : 0);
             }
 
             if (receiver.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array) || sliceType is not { Kind: BoundTypeKind.Slice, Origin: not null } slice ||
@@ -241,7 +239,7 @@ internal sealed partial class BodyLowering
 
             ReadOnlySpan<EmissionOperand> bounds = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
                 plan.Index < 0 ? new(EmissionOperandKind.Integer, 0) : this.PhysicalOperand(body, plan.Index),
-                plan.End < 0 ? new(EmissionOperandKind.Integer, -1) : this.PhysicalOperand(body, plan.End), new(EmissionOperandKind.Integer, plan.End < 0 ? 1 : 0),
+                plan.End < 0 ? new(EmissionOperandKind.Integer, -1) : this.PhysicalOperand(body, plan.End), new(EmissionOperandKind.Integer, shape | (plan.End < 0 ? SliceShape.EndOmitted : 0)),
                 new(EmissionOperandKind.Integer, body.Operations.Count + id)];
             function.AddScalar(EmissionOpcode.Sequence, id, bounds, place: operation.Place, location: sliceLocation, op: "SliceRange", check: ArithmeticCheckKind.Bounds, representation: sliceElement);
             return true;

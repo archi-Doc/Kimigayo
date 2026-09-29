@@ -187,12 +187,13 @@ public sealed partial class Binding
         node = KotoHelper.UnwrapParentheses(node);
         return node.BoundType is null &&
             (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
-            IsLiteralOnlyOperation(node) || IsLiteralOnlyRange(node));
+            IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
 
-    // SPEC 4.6.3.1, 12.3.1: a range whose two boundaries are integer literal-only expressions is itself literal-only.
+    // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
     private static bool IsLiteralOnlyRange(Koto node)
-        => node is RangeKoto { Start: { } start, End: { } end } && IsIntegerLiteralOnly(start) && IsIntegerLiteralOnly(end);
+        => node is RangeKoto range && (range.Start ?? range.End) is not null &&
+            (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
 
     // SPEC 12.3.1: a built-in unary +/-, arithmetic, bitwise or shift operation whose operands are all integer literals or
     // literal-only operations; it is fitted to a Type as one literal.
@@ -269,17 +270,17 @@ public sealed partial class Binding
         node = KotoHelper.UnwrapParentheses(node);
         var number = node as NumberLiteralKoto ?? (node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand as NumberLiteralKoto : null);
         return number is not null ? DefaultLiteralType(number, null) : IsLiteralOnlyOperation(node) ? BoundType.I32
-            : IsLiteralOnlyRange(node) ? this.InternType(BoundTypeKind.Constructed, this.Library.Range, SemanticsKind.Owner, [BoundType.I32]) : null;
+            : IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node) ? this.LiteralPositionDefault(node) : null;
     }
 
     private bool FitsInputLiteral(Koto node, BoundType type, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        if (IsLiteralOnlyRange(node) && node.BoundType is null)
+        if ((IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node)) && node.BoundType is null)
         {
-            // SPEC 4.6.3.1: both boundaries fit the T of a candidate Range<T>. A comparison operand is already fitted.
-            var range = (RangeKoto)node;
-            return this.RangeElement(type) is { } element && this.FitsInputLiteral(range.Start!, element, scope) && this.FitsInputLiteral(range.End!, element, scope);
+            // SPEC 4.6.3.1: each boundary fits its S or E, and a `^a` operand the T of FromEnd<T>. A comparison operand is
+            // already fitted.
+            return this.FitsLiteralPosition(node, type, scope);
         }
 
         if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.IsGenericInteger(type, scope))
@@ -1018,12 +1019,9 @@ public sealed partial class Binding
 
     private BoundType? BindUnary(UnaryKoto unary, BindingScope scope, BoundType? expected)
     {
-        if (unary is FromEndIndexKoto)
+        if (unary is FromEndIndexKoto fromEnd)
         {
-            // SPEC 4.6.2: Index formation accepts every PrimitiveInteger; a literal-only operand has expected Type isize.
-            var offset = IsUnfittedLiteral(unary.Operand) ? this.RequireType(unary.Operand, scope, BoundType.ISize) : this.ReadReferent(unary.Operand, this.BindNode(unary.Operand, scope));
-            return offset is null ? Complete(unary, null) : ReferenceEquals(offset, BoundType.Never) ? Complete(unary, BoundType.Never)
-                : this.IsIntegerOperand(offset, scope) ? Complete(unary, this.InternType(BoundTypeKind.Nominal, this.Library.Index, SemanticsKind.Owner, [])) : Fail(unary, BindingFailure.TypeMismatch);
+            return this.BindFromEnd(fromEnd, scope, expected);
         }
 
         if (unary is MacroKoto)

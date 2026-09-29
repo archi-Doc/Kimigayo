@@ -64,8 +64,8 @@ public sealed partial class KimiLibrary
         return true;
     }
 
-    // SPEC 4.6.3 and 11.2: lowering constructs and matches these Cases and fields directly (Option/Result
-    // results, prefix ^, range syntax and resolution), so their bound payload and field Types are fixed.
+    // SPEC 4.6.3 and 11.2: lowering constructs and matches these Cases and fields directly (Option/Result results and
+    // the ResolvedRange key of a slice selection), so their bound payload and field Types are fixed.
     private bool ValidBoundRecordLayout(BindingSymbol symbol, KimiDeclarationId id)
     {
         if (id is KimiDeclarationId.Option or KimiDeclarationId.Result)
@@ -75,18 +75,9 @@ public sealed partial class KimiLibrary
 
         if (symbol.Declaration is not StructKoto declaration)
         {
-            return id is not (KimiDeclarationId.Index or KimiDeclarationId.IndexRange or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Range);
+            return id != KimiDeclarationId.ResolvedRange;
         }
 
-        var index = this.GetSymbol(KimiDeclarationId.Index)?.Type;
-        return id switch
-        {
-            KimiDeclarationId.Index => BoundFields(declaration, BoundType.ISize, BoundType.Boolean),
-            KimiDeclarationId.IndexRange => index is not null && BoundFields(declaration, index, index, BoundType.Boolean),
-            KimiDeclarationId.ResolvedRange => BoundFields(declaration, BoundType.ISize, BoundType.ISize),
-            KimiDeclarationId.Range => declaration.GenericParameterNodes is [{ BoundType: { Kind: BoundTypeKind.Parameter } element }] &&
-                BoundFields(declaration, element, element, BoundType.Boolean),
-            _ => true,
-        };
+        return id != KimiDeclarationId.ResolvedRange || BoundFields(declaration, BoundType.ISize, BoundType.ISize);
     }
 }

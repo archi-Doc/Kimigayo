@@ -42,11 +42,11 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
-                        KimiDeclarationId.Index => this.ValidIndex(symbol),
-                        KimiDeclarationId.IndexRange => this.ValidIndexRange(symbol),
-                        KimiDeclarationId.Range => this.ValidRange(symbol),
+                        KimiDeclarationId.FromEnd => this.ValidFromEnd(symbol),
+                        KimiDeclarationId.Start or KimiDeclarationId.End => this.ValidBoundary(symbol, entry.Id),
+                        KimiDeclarationId.Range or KimiDeclarationId.ClosedRange => this.ValidRange(symbol, entry.Id),
                         KimiDeclarationId.ResolvedRange => this.ValidResolvedRange(symbol),
-                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
@@ -748,48 +748,44 @@ public sealed partial class KimiLibrary
             : BareType(parameter.Type) is TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } borrowed } reference && reference.SemanticsKind == semantics && BareName(borrowed.Identifier, argument);
     }
 
-    // Prefix ^ writes this ordinary Copy struct's two fields directly, so its shape is a compiler contract.
-    private bool ValidIndex(BindingSymbol symbol)
+    // SPEC 4.6.2: public struct FromEnd<T> under T is PrimitiveInteger with its T offset; prefix ^ constructs it through
+    // PositionSyntax.fromEnd, and a directly applied `^x` key reads only the operand.
+    private bool ValidFromEnd(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is StructKoto { Name: "Index", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: 2, Members.Count: >= 7, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
-        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
-        BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
-        declaration.Members[0] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } offset &&
-        offset.NameKoto.IdentifierName == "offset" && BareName(offset.TypeKoto, "isize") &&
-        declaration.Members[1] is VariableKoto { VariableKind: VariableKind.Let, Modifier: ModifierKind.Public, InitializerKoto: null, AttributeChain: null } fromEnd &&
-        fromEnd.NameKoto.IdentifierName == "isFromEnd" && BareName(fromEnd.TypeKoto, "bool") &&
-        declaration.Members[2] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, Parameters.Count: 2, GenericArguments.Count: 0, Origins.Count: 0, TypeConstraints.Count: 0, ReturnType: null, Body: not null, ExpressionBody: null, AttributeChain: null } constructor &&
-        constructor.Parameters[0] is { InternalName: "offset", ExternalName: "offset", DefaultValue: null, AttributeChain: null } offsetParameter && BareName(offsetParameter.Type, "isize") &&
-        constructor.Parameters[1] is { InternalName: "fromEnd", ExternalName: "fromEnd", DefaultValue: BoolLiteralKoto { Value: false }, AttributeChain: null } fromEndParameter && BareName(fromEndParameter.Type, "bool") &&
-        OnlyFunctionsFrom(declaration, 2); // Prefix ^ relies on these two fields being the whole storage.
-
-    // SPEC 4.6.3.2: public struct Range<T> under T is PrimitiveInteger, with T start and end and an isInclusive flag; range
-    // syntax calls its internal between and through Type functions.
-    private bool ValidRange(BindingSymbol symbol)
-        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is StructKoto { Name: "Range", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 2, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        symbol.Declaration is StructKoto { Name: "FromEnd", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 2, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
         declaration.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
         BareName(declaration.ConstraintNodes[0].Left, "T") && BareName(declaration.ConstraintNodes[0].Right, "PrimitiveInteger") &&
-        BareName(declaration.ConstraintNodes[1].Left, "Self") && BareName(declaration.ConstraintNodes[1].Right, "Copy") &&
-        FirstStorage(declaration) is var first && // The associated iterator Types precede the fields.
-        ValidField(declaration, first, "start", "T") && ValidField(declaration, first + 1, "end", "T") && ValidField(declaration, first + 2, "isInclusive", "bool") &&
-        FindDeclaration(declaration, "between", true) is FunctionKoto { Modifier: ModifierKind.Internal } &&
-        FindDeclaration(declaration, "through", true) is FunctionKoto { Modifier: ModifierKind.Internal };
+        ValidField(declaration, FirstStorage(declaration), "offset", "T") && this.ValidPositionSyntax("fromEnd");
 
-    // SPEC 4.6.3.3: public struct IndexRange with Index start and end and an isInclusive flag; its constructors are the normal
-    // forms of range syntax, and it resolves against a length in Kimigayo.
-    private bool ValidIndexRange(BindingSymbol symbol)
+    // SPEC 4.6.2, 4.6.8: public zero-sized structs Start and End, which omitted range boundaries construct.
+    private bool ValidBoundary(BindingSymbol symbol, KimiDeclarationId id)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is StructKoto { Name: "IndexRange", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 1, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
-        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
-        BareName(declaration.ConstraintNodes[0].Left, "Self") && BareName(declaration.ConstraintNodes[0].Right, "Copy") &&
-        ValidField(declaration, 0, "start", "Index") && ValidField(declaration, 1, "end", "Index") && ValidField(declaration, 2, "isInclusive", "bool") &&
-        declaration.Members[3] is FunctionKoto { IsConstructor: true, Parameters.Count: 3, NameBoundaryIndex: -1, ReturnType: null, Body: not null, AttributeChain: null } constructor &&
-        (constructor.Modifier & ModifierKind.Public) == 0 && // SPEC 4.6.3.3: there is no public IndexRange.init; range syntax uses the Type functions.
-        constructor.Parameters[0] is { InternalName: "start", ExternalName: "start", DefaultValue: null } startParameter && BareName(startParameter.Type, "Index") &&
-        constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "Index") &&
-        constructor.Parameters[2] is { InternalName: "inclusive", ExternalName: "inclusive", DefaultValue: null } inclusiveParameter && BareName(inclusiveParameter.Type, "bool");
+        symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 0, OriginNames.Count: 0, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        declaration.Name == (id == KimiDeclarationId.Start ? "Start" : "End") && ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        OnlyFunctionsFrom(declaration, FirstStorage(declaration));
+
+    // SPEC 4.6.3.2: public structs Range<S, E> and ClosedRange<S, E> under S is Position and E is Position with their start
+    // and end fields; range syntax constructs them through the PositionSyntax functions of its shape.
+    private bool ValidRange(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var closed = id == KimiDeclarationId.ClosedRange;
+        return symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+            symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 2, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 3, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+            declaration.Name == (closed ? "ClosedRange" : "Range") && ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+            declaration.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "S", SemanticsParameter: null, AttributeChain: null } &&
+            declaration.GenericParameterNodes[1] is GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null } &&
+            BareName(declaration.ConstraintNodes[0].Left, "S") && BareName(declaration.ConstraintNodes[0].Right, "Position") &&
+            BareName(declaration.ConstraintNodes[1].Left, "E") && BareName(declaration.ConstraintNodes[1].Right, "Position") &&
+            FirstStorage(declaration) is var first && ValidField(declaration, first, "start", "S") && ValidField(declaration, first + 1, "end", "E") &&
+            (closed ? this.ValidPositionSyntax("through") && this.ValidPositionSyntax("upTo") :
+                this.ValidPositionSyntax("between") && this.ValidPositionSyntax("from") && this.ValidPositionSyntax("to") && this.ValidPositionSyntax("all"));
+    }
+
+    // A PositionSyntax function the compiler calls by declaration: one internal, non-overloaded group function.
+    private bool ValidPositionSyntax(string name)
+        => this.PositionSyntax is { } group && FindDeclaration(group, name, true) is FunctionKoto { IsSpecialization: false, NameBoundaryIndex: < 0 } function &&
+        ReferenceEquals(function.Parent, group);
 
     // SPEC 4.6.3.4: public struct ResolvedRange with isize start and end; its init(! start, end) is internal, because only
     // indices, resolve and tryResolve produce a validated interval.
@@ -811,24 +807,24 @@ public sealed partial class KimiLibrary
         ReferenceEquals(function.Parent, this.ArrayScope.Owner) && function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.TypeConstraints.Count == 0 &&
         function.Parameters[0] is { ExternalName: "capacity", InternalName: "capacity", DefaultValue: null, AttributeChain: null } parameter && BareName(parameter.Type, "isize");
 
-    // SPEC 4.7.2, 4.7.4: an exclusive receiver, isize/Index positions, T inputs and T or Option<T> results.
+    // SPEC 4.7.2, 4.7.4: an exclusive receiver, isize positions, T inputs and T or Option<T> results; the isize position
+    // operations are internal, and the public position entries of Array resolve a position before calling them.
     private bool ValidArrayOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var (kind, name) = id switch
         {
             KimiDeclarationId.ArrayReserve => (CompilerFunctionKind.ArrayReserve, "reserve"),
             KimiDeclarationId.ArrayAppend => (CompilerFunctionKind.ArrayAppend, "append"),
-            KimiDeclarationId.ArrayInsert => (CompilerFunctionKind.ArrayInsert, "insert"),
-            KimiDeclarationId.ArrayInsertIndex => (CompilerFunctionKind.ArrayInsertIndex, "insert"),
+            KimiDeclarationId.ArrayInsert => (CompilerFunctionKind.ArrayInsert, "insertAt"),
             KimiDeclarationId.ArrayPop => (CompilerFunctionKind.ArrayPop, "pop"),
-            KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "remove"),
-            KimiDeclarationId.ArrayRemoveIndex => (CompilerFunctionKind.ArrayRemoveIndex, "remove"),
-            KimiDeclarationId.ArraySwap => (CompilerFunctionKind.ArraySwap, "swap"),
+            KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "removeAt"),
+            KimiDeclarationId.ArraySwap => (CompilerFunctionKind.ArraySwap, "swapAt"),
             KimiDeclarationId.ArrayClear => (CompilerFunctionKind.ArrayClear, "clear"),
             _ => (CompilerFunctionKind.ArrayShrinkToFit, "shrinkToFit"),
         };
         if (symbol.CompilerFunction != kind || symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.ArrayScope.Owner) ||
-            function.NameBoundaryIndex >= 0 || function.Name != name || function.Modifier != ModifierKind.Public ||
+            function.NameBoundaryIndex >= 0 || function.Name != name ||
+            function.Modifier != (id is KimiDeclarationId.ArrayInsert or KimiDeclarationId.ArrayRemove or KimiDeclarationId.ArraySwap ? ModifierKind.Internal : ModifierKind.Public) ||
             function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 ||
             function.Body is not null || function.ExpressionBody is not null || function.AttributeChain is not null ||
             function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count == 0 ||
@@ -844,10 +840,8 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.ArrayReserve => inputs == 1 && Input(function, 1, "additional", "isize") && function.ReturnType is null,
             KimiDeclarationId.ArrayAppend => inputs == 1 && Input(function, 1, "value", "T") && function.ReturnType is null,
             KimiDeclarationId.ArrayInsert => inputs == 2 && Input(function, 1, "index", "isize") && Input(function, 2, "value", "T") && function.ReturnType is null,
-            KimiDeclarationId.ArrayInsertIndex => inputs == 2 && Input(function, 1, "index", "Index") && Input(function, 2, "value", "T") && function.ReturnType is null,
             KimiDeclarationId.ArrayPop => inputs == 0 && BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") && BareName(option.TypeArguments[0], "T"),
             KimiDeclarationId.ArrayRemove => inputs == 1 && Input(function, 1, "index", "isize") && BareName(function.ReturnType, "T"),
-            KimiDeclarationId.ArrayRemoveIndex => inputs == 1 && Input(function, 1, "index", "Index") && BareName(function.ReturnType, "T"),
             KimiDeclarationId.ArraySwap => inputs == 2 && Input(function, 1, "first", "isize") && Input(function, 2, "second", "isize") && function.ReturnType is null,
             _ => inputs == 0 && function.ReturnType is null,
         };

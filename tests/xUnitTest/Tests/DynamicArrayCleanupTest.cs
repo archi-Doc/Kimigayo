@@ -10,7 +10,8 @@ public class DynamicArrayCleanupTest
 
     [Theory]
     [InlineData("Isize", "0@isize")]
-    [InlineData("Index", "Index.init(0)")]
+    [InlineData("FromEnd", "^1")]
+    [InlineData("Narrow", "0@u8")]
     public void AbandonedLaterIndexDestroysAcquiredValue(string name, string indexValue)
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayCleanupArgument" + name,

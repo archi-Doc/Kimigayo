@@ -637,7 +637,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.RangeValueCall(node) is { } rangeValue)
         {
-            return this.Expression(rangeValue, use, acquisition); // SPEC 4.6.3: range syntax constructs the library Range.
+            return this.Expression(rangeValue, use, acquisition); // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax construct Kimi values.
         }
 
         if (this.compilation.Binding.StorageProjection(node) is { } storage)
@@ -670,9 +670,6 @@ public sealed partial class OwnershipAnalysis
 
         switch (node)
         {
-            case FromEndIndexKoto fromEnd:
-                var offset = this.PositionPlace(fromEnd.Operand, this.Expression(fromEnd.Operand));
-                return offset < 0 ? -1 : this.SequenceValue(fromEnd, fromEnd.BoundType!, SequenceOperation.FromEnd, offset, index: this.Value(offset));
             case FunctionKoto { BoundClosure: { } } closure:
                 return this.CreateClosure(closure);
             case ParenthesizedKoto parentheses:

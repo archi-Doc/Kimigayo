@@ -112,7 +112,7 @@ For an owning collection `values`, a bare subject uses Iterable, `values@uniq` u
 | `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
 | `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
-| `Range<T>` | `T` | `T` | `T` |
+| `Range<T, T>`, `ClosedRange<T, T>`, `T is PrimitiveInteger` | `T` | `T` | `T` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
 Sequence iteration uses index order; Dictionary iteration uses insertion order. Dictionary keys remain shared during exclusive iteration. Nested references are not flattened. Owning collection iterators destroy unreturned elements or entries; borrowing iterators do not destroy the collection.
@@ -134,7 +134,7 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 
 ## 3. Positions, Views and Collections
 
-### 3.1. Index and Ranges
+### 3.1. Positions and Ranges
 
 [Specification: positions](spec/04-arrays-indexing-and-slices.md#462-positions), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
 
@@ -142,33 +142,27 @@ The closed Contracts `Position` and `PositionRange` fix the position and range T
 
 | Contract | Member | Guarantee |
 | --- | --- | --- |
-| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
-| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. |
+| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types, `FromEnd<T>`, `Start` and `End` conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
+| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform. |
 
-Index, `Range<T>`, IndexRange and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
+The position and range Types are Copy, Owned and Equatable and have no public constructor; none provides Comparable or arithmetic. Every one other than the integers also publishes `resolve(self: Self, length: isize)`, which Aborts where `tryResolve` returns None.
 
 | Type | Member | Guarantee |
 | --- | --- | --- |
-| `Index` | `offset: isize`, `isFromEnd: bool` | Direction and nonnegative distance. |
-| | `init(offset: isize, fromEnd: bool = false)` | Negative offsets Abort at construction. `^n` constructs a from-end Index from an integer of any Type; a negative or unrepresentable `n` Aborts. |
-| | `resolve(self: ref/Self, length: isize) -> isize` | Returns a boundary in `[0, length]`; invalid length or bounds Abort. |
-| | `tryResolve(self: ref/Self, length: isize) -> Option<isize>` | Returns None for invalid length or bounds. |
-| `Range<T>`, `T is PrimitiveInteger` | `start: T`, `end: T`, `isInclusive: bool` | Integer boundaries, possibly reversed; no `length` or `isEmpty`. |
-| | `resolve(self, length: isize) -> ResolvedRange` | Resolves the integers as positions; invalid length or bounds Abort. |
-| | `tryResolve(self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds, including values not representable as isize. |
-| | `iterate`, `iterateUniq`, `intoIterator` | Return `RangeIterator<T>`, which copies the boundaries; a reversed range Aborts at the entry. |
-| `RangeIterator<T>` | `next(self: uniq/Self) -> Option<T>` | A Non-Copy Iterator from `start` upward in unit steps; never computes past its last value and stays exhausted after None. It has no public constructor. |
-| `IndexRange` | `start: Index`, `end: Index`, `isInclusive: bool` | Unresolved boundaries; no target-independent length and no iteration. |
-| | `resolve(self: ref/Self, length: isize) -> ResolvedRange` | Resolves and validates the interval; invalid length or bounds Abort. |
-| | `tryResolve(self: ref/Self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds. |
+| `FromEnd<T>`, `T is PrimitiveInteger` | `offset: T` | `^x` stores `x` unchecked; it resolves to `length - offset` when `0 <= offset <= length`. Equality compares offsets; formatted as `^offset`. |
+| `Start`, `End` | (none) | Zero-sized boundaries of an omitted range start and end, resolving to `0` and `length`; all values of each are equal; formatted as nothing. |
+| `Range<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The half-open interval of `..`; resolves to `[s, e)` when the resolved `s <= e`. Possibly reversed; no `length` or `isEmpty`. Formatted as `start..end`. |
+| `ClosedRange<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The closed interval of `..=`; its end resolves as an element position `q`, giving `[s, q + 1)` when `s <= q < length`. Formatted as `start..=end`. |
+| | `iterate`, `iterateUniq`, `intoIterator` | Conditional entries of both range Types, under `S is PrimitiveInteger` and `E is S`: return `RangeIterator<S>` or `ClosedRangeIterator<S>`, which copy the boundaries; a reversed range Aborts at the entry. |
+| `RangeIterator<T>`, `ClosedRangeIterator<T>` | `next(self: uniq/Self) -> Option<T>` | Non-Copy Iterators from `start` upward in unit steps, the closed one ending with `end`; they never compute past their last value and stay exhausted after None. No public constructor. |
 | `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. Only `indices`, `resolve` and `tryResolve` produce it. |
 | | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`, `resolve(self: Self, length: isize) -> ResolvedRange` | Its `PositionRange` conformance: the interval itself when `end <= length`; otherwise None, or Abort for `resolve`. |
 | | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes `start..end`. |
 | | `iterate`, `iterateUniq`, `intoIterator` | Return `RangeIterator<isize>` over `start` through `end - 1`; they never Abort. |
 
-Range syntax is the only constructor of `Range<T>` and IndexRange. Two integer boundaries of one Type `T` construct `Range<T>` (`0..n`, `1..=3`; an all-literal range is `Range<i32>` unless its context fits another `T`). An omitted or Index boundary constructs IndexRange (`a..`, `..b`, `..=b`, `..`, `1..^1`); its integer boundaries, of any integer Type, are formed into Indexes in order after both are evaluated, and a negative or unrepresentable one Aborts. Neither checks boundary order at construction; ordering is checked on resolution or iteration. Omitted start and end normalize to `0` and `^0`.
+Prefix `^` and range syntax are the only constructors of `FromEnd<T>`, `Start`, `End`, `Range<S, E>` and `ClosedRange<S, E>`, through the internal group `PositionSyntax`. Each boundary has its own Type; a literal-only boundary takes the `S` or `E` of an expected range, else the integer Type of the other boundary, else `i32`. Nothing is checked at construction; resolution, indexing and iteration check their inputs.
 
-`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares Index direction/offset, `Range<T>` fields, normalized IndexRange fields, or ResolvedRange endpoints; it does not compare coincidentally equivalent ranges across Types.
+`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares boundaries of one Type; ranges of different shapes or boundary Types cannot be compared.
 
 ### 3.2. Slice<T> {source}
 
@@ -181,13 +175,12 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | Member | Guarantee |
 | --- | --- |
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Metadata without element access. |
-| `s[i]`, where i is `isize or Index` | `place ref/T during source`; invalid element bounds Abort. |
-| `s[r]`, where r is `Range<I>`, `IndexRange` or `ResolvedRange` | `Slice<T> during source`; invalid range bounds Abort. |
-| `tryGet(self: Self, index: isize or Index) -> Option<ref/T during source>` | None for an invalid element index. |
-| `trySlice(self: Self, range: IndexRange or ResolvedRange) -> Option<Slice<T> during source>` | None for invalid range bounds. |
-| `trySlice<I>(self: Self, range: Range<I>) -> Option<Slice<T> during source>`, `I is PrimitiveInteger` | None for negative, reversed or out-of-range integer boundaries. |
-| `splitAt(self: Self, index: isize or Index) -> (Slice<T> during source, Slice<T> during source)` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
-| `trySplitAt(self: Self, index: isize or Index) -> Option<(Slice<T> during source, Slice<T> during source)>` | The same split, returning None for an invalid boundary. |
+| `s[i]`, where i is a position | `place ref/T during source`; invalid element bounds Abort. |
+| `s[r]`, where r is a range | `Slice<T> during source`; invalid range bounds Abort. |
+| `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>`, `P is Position` | None unless `index` resolves to an element position. |
+| `trySlice<R>(self: Self, range: R) -> Option<Slice<T> during source>`, `R is PositionRange` | None when `range` does not resolve against the length. |
+| `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)`, `P is Position` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
+| `trySplitAt<P>(self: Self, index: P) -> Option<(Slice<T> during source, Slice<T> during source)>`, `P is Position` | The same split, returning None for an invalid boundary. |
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
 | `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
 | `firstIndex<F>(self: Self, matching: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `matching` returns true, or None. |
@@ -197,7 +190,7 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 
 Split boundaries include zero and length. Both results retain the source dependency, including empty results. `SliceIterator<T> {source}` is an `Iterator` whose `Item` is `ref/T during source`; it copies the handle and keeps a position. Indexable and the iteration modes follow §2.
 
-Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` returns None, but `tryGet(^(-1))` Aborts while constructing the argument.
+Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` and `tryGet(^(-1))` return None, but an Abort while evaluating an argument still Aborts.
 
 ### 3.3. Common Dynamic Collection Rules
 
@@ -230,19 +223,21 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
 | `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
-| `values[i]`, where i is `isize or Index` | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
-| `values[r]`, where r is `Range<I>`, `IndexRange` or `ResolvedRange` | A shared Slice; invalid bounds Abort. |
+| `values[i]`, where i is a position | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
+| `values[r]`, where r is a range | A shared Slice; invalid bounds Abort. |
 | `append(self: uniq/Self, value: T) -> ()` | Adds at the end; amortized O(1). |
-| `insert(self: uniq/Self, index: isize or Index, value: T) -> ()` | Inserts at a boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
+| `insert<P>(self: uniq/Self, index: P, value: T) -> ()`, `P is Position` | Inserts at the resolved boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
 | `pop(self: uniq/Self) -> Option<T>` | Returns the last element, or None when empty. O(1). |
-| `remove(self: uniq/Self, index: isize or Index) -> T` | Returns the removed element, preserving order; invalid bounds Abort. O(1 + n). |
+| `remove<P>(self: uniq/Self, index: P) -> T`, `P is Position` | Returns the element at the resolved element position, preserving order; invalid bounds Abort. O(1 + n). |
 | `clear(self: uniq/Self) -> ()` | Destroys elements in reverse index order and retains capacity. |
 | `isEmpty: bool` | Whether `length` is zero. |
 | `first`, `last: Option<ref/T during self>` | The first or last element, or None when empty. |
-| `tryGet(self, index: isize or Index) -> Option<ref/T during self>` | A shared element reference, or None for an invalid index. O(1). |
-| `tryGetUniq(self: uniq/Self, index: isize or Index) -> Option<uniq/T during self>` | An exclusive element reference, or None for an invalid index. O(1). |
-| `swap(self: uniq/Self, first: isize, second: isize) -> ()` | Exchanges two elements without Copy or destruction; equal indices change nothing; invalid indices Abort. O(1). |
-| `swapRemove(self: uniq/Self, index: isize) -> T` | Removes the element; the last element takes its position. O(1), order not preserved. |
+| `tryGet<P>(self, index: P) -> Option<ref/T during self>`, `P is Position` | A shared element reference, or None for an invalid position. O(1). |
+| `trySlice<R>(self, range: R) -> Option<Slice<T> during self>`, `R is PositionRange` | A shared Slice, or None when `range` does not resolve. O(1). |
+| `splitAt<P>(self, index: P)`, `trySplitAt<P>(self, index: P)`, `P is Position` | The splits of §3.2 on `self[..]`, with results `during self`. |
+| `tryGetUniq<P>(self: uniq/Self, index: P) -> Option<uniq/T during self>`, `P is Position` | An exclusive element reference, or None for an invalid position. O(1). |
+| `swap<P, Q>(self: uniq/Self, first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements without Copy or destruction; positions resolving to one element change nothing; invalid positions Abort. O(1). |
+| `swapRemove<P>(self: uniq/Self, index: P) -> T`, `P is Position` | Removes the element; the last element takes its position. O(1), order not preserved. |
 | `truncate(self: uniq/Self, length: isize) -> ()` | Destroys the elements from `length` in decreasing index order; a negative length Aborts. |
 | `appendAll(self: uniq/Self, other: Array<T>) -> ()` | Moves every element of `other` to the end in order. |
 | `appendCopies(self: uniq/Self, values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order. |
@@ -263,6 +258,7 @@ A fixed array `[N of T]` has no source declaration. Its members are receiver fun
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
 | `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
+| `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
 
 `FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline in its private storage-boundary Field. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 

@@ -51,7 +51,6 @@ public class ElementAssignmentEmissionTest
     [InlineData("func f(a: [1 of i32])\n    a[0] = 42")]
     [InlineData("func f() -> [1 of i32] => [0]\nf()[0] = 42")]
     [InlineData("var a: [1 of i32] = [0]\na[0] = true")]
-    [InlineData("var a: [1 of i32] = [0]\nlet i: i32 = 0\na[i] = 42")]
     [InlineData("func f()\n    return\n    var a: [1 of i32]\n    a[0] = 42")]
     public void InvalidOrUnsupportedWritesProduceNoIr(string source)
     {
@@ -94,7 +93,7 @@ public class ElementAssignmentEmissionTest
     [Theory]
     [InlineData("Negative", "-1", 1, "[0]")]
     [InlineData("Length", "1", 1, "[0]")]
-    [InlineData("Large", "9223372036854775807", 1, "[0]")]
+    [InlineData("Large", "9223372036854775807@isize", 1, "[0]")]
     [InlineData("Empty", "0", 0, "[]")]
     public void BoundsAbortAfterTheRightSide(string name, string index, int length, string initial)
     {

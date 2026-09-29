@@ -22,7 +22,7 @@ internal sealed partial class BodyLowering
     // Every operation whose lowering emits a checked split is classified here, so its block continuation is known before
     // the physical blocks are computed.
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
-        ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
+        ? conversion.Checked && value.Constant != OwnershipValue.PositionConversion ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
         : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
         : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
@@ -95,7 +95,7 @@ internal sealed partial class BodyLowering
 
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.Borrow or SequenceOperation.Slice or SequenceOperation.FromEnd && (uint)sequence.Operation < (uint)count)
+            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.Borrow or SequenceOperation.Slice && (uint)sequence.Operation < (uint)count)
             {
                 this.continuations[sequence.Operation] = count + sequence.Operation;
             }

@@ -175,7 +175,9 @@ public sealed partial class Binding
         item = null;
         var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null) ||
+        // SPEC 8.4.8.2: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
+        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) != ConstraintProof.Refuted) ||
             (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {

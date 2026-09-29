@@ -59,6 +59,7 @@ public sealed partial class KimiLibrary
         this.StorageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new(storage) { Parent = this.Scope } : this.Scope;
         this.FixedArrayMembers = (this.StorageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
+        this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
@@ -115,9 +116,11 @@ public sealed partial class KimiLibrary
         this.UniqIndexable = this.GetSymbol(KimiDeclarationId.UniqIndexable)!;
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
-        this.Index = this.GetSymbol(KimiDeclarationId.Index)!;
-        this.IndexRange = this.GetSymbol(KimiDeclarationId.IndexRange)!;
+        this.FromEnd = this.GetSymbol(KimiDeclarationId.FromEnd)!;
+        this.Start = this.GetSymbol(KimiDeclarationId.Start)!;
+        this.End = this.GetSymbol(KimiDeclarationId.End)!;
         this.Range = this.GetSymbol(KimiDeclarationId.Range)!;
+        this.ClosedRange = this.GetSymbol(KimiDeclarationId.ClosedRange)!;
         this.ResolvedRange = this.GetSymbol(KimiDeclarationId.ResolvedRange)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
@@ -216,14 +219,20 @@ public sealed partial class KimiLibrary
     /// <summary>Gets the recognized owning dynamic Array Type declaration (SPEC 4.5, 4.7).</summary>
     public BindingSymbol DynamicArray { get; }
 
-    /// <summary>Gets the designated storable sequence Index Type (SPEC 4.6.2).</summary>
-    public BindingSymbol Index { get; }
+    /// <summary>Gets the designated from-end position Type that prefix <c>^</c> constructs (SPEC 4.6.2).</summary>
+    public BindingSymbol FromEnd { get; }
 
-    /// <summary>Gets the designated unresolved IndexRange Type that range syntax constructs for positions (SPEC 4.6.3).</summary>
-    public BindingSymbol IndexRange { get; }
+    /// <summary>Gets the designated start boundary Type of an omitted range start (SPEC 4.6.2).</summary>
+    public BindingSymbol Start { get; }
 
-    /// <summary>Gets the designated generic integer Range Type that range syntax constructs for two integers (SPEC 4.6.3.2).</summary>
+    /// <summary>Gets the designated end boundary Type of an omitted range end (SPEC 4.6.2).</summary>
+    public BindingSymbol End { get; }
+
+    /// <summary>Gets the designated half-open range Type that <c>..</c> constructs (SPEC 4.6.3.2).</summary>
     public BindingSymbol Range { get; }
+
+    /// <summary>Gets the designated closed range Type that <c>..=</c> constructs (SPEC 4.6.3.2).</summary>
+    public BindingSymbol ClosedRange { get; }
 
     /// <summary>Gets the designated validated ResolvedRange Type (SPEC 4.6.3).</summary>
     public BindingSymbol ResolvedRange { get; }
@@ -251,6 +260,10 @@ public sealed partial class KimiLibrary
     /// <param name="owner">A declaration container.</param>
     /// <returns>Whether its functions receive a built-in Type through <c>self</c>.</returns>
     internal bool IsBuiltinMemberGroup(Koto owner) => ReferenceEquals(owner, this.FixedArrayMembers) || ReferenceEquals(owner, this.IntegerPositionMembers);
+
+    /// <summary>Gets the internal Kimi group whose functions construct prefix <c>^</c> and range syntax values and resolve
+    /// position and range keys (SPEC 4.6.2-4.6.4).</summary>
+    internal DeclarationContainerKoto? PositionSyntax { get; }
 
     internal FunctionKoto DictionaryUnlink { get; }
 

@@ -393,7 +393,7 @@ public sealed partial class Binding
                 case IndexKoto:
                     this.Queue(binding.ResolvedKeyCall(node));
                     break;
-                case RangeKoto:
+                case RangeKoto or FromEndIndexKoto:
                     this.Queue(binding.RangeValueCall(node));
                     break;
                 case BinaryKoto { ComparisonCall: { } comparison }:

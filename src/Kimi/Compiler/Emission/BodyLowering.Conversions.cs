@@ -85,6 +85,13 @@ internal sealed partial class BodyLowering
             var kind = body.Values[id].Kind;
             var plan = kind == OwnershipValueKind.Convert
                 ? PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth) : default;
+            if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && plan.Operator is null)
+            {
+                // SPEC 4.6.9: an unsigned position of the same width reinterpreted as isize is negative exactly when isize
+                // cannot hold it, so the bounds check of its use rejects it without a conversion check.
+                plan = default;
+            }
+
             if (kind == OwnershipValueKind.Convert)
             {
                 Grow(ref this.conversionIndices, count);

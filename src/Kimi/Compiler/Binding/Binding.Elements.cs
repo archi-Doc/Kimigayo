@@ -44,37 +44,19 @@ public sealed partial class Binding
 
             if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
             {
-                return keyed; // SPEC 4.6.1: an Index, Range or ResolvedRange key.
+                return keyed; // SPEC 4.6.1: a range, ResolvedRange or resolved position key.
             }
 
+            // SPEC 4.6.9: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
+            // converts it to an isize element position within the element access's bounds check.
             if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
             {
-                this.RequireType(source.Right, scope, BoundType.ISize);
                 // SPEC 4.6.9: the element Place keeps its stored complete Type.
                 return Complete(source, receiver!.Components[0].Components[0]);
             }
 
-            var sequence = ReferenceTypes.IsDynamicArray(receiver) ? receiver!.Components[0] : receiver;
-            if (sequence?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is RangeKoto range && !range.IsInclusive)
-            {
-                // SPEC 4.6.4: integer or omitted boundaries select directly. Two boundaries share the Type of Range<T>; a single
-                // boundary is formed into an Index, a literal-only one at isize. Ownership converts other integer Types to isize
-                // after both boundaries are evaluated.
-                if (range.Start is not null && range.End is not null
-                    ? this.IntegerRangeElement(range, scope, this.IndependentBoundary(range.Start, scope, out _), this.IndependentBoundary(range.End, scope, out _), null) is null
-                    : !this.DirectPosition(range.Start ?? range.End, scope))
-                {
-                    return Complete(source, null);
-                }
-
-                Complete(range, BoundType.Range);
-                this.SharedElementView(source.Left);
-                return Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: this.PlaceOrigin(source.Left)));
-            }
-
             if (receiver?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array && source.Right is not RangeKoto)
             {
-                this.RequireType(source.Right, scope, BoundType.ISize);
                 return Complete(source, receiver.Components[0]); // SPEC 4.6.6: the shared element Place.
             }
 
@@ -89,7 +71,11 @@ public sealed partial class Binding
                 return Fail(source, BindingFailure.Unsupported);
             }
 
-            this.RequireType(source.Right, scope, BoundType.ISize);
+            if (ReferenceEquals(receiver, BoundType.Never))
+            {
+                this.BindNode(source.Right, scope);
+            }
+
             this.ReceiverElement(source.Left, receiver);
         }
         else

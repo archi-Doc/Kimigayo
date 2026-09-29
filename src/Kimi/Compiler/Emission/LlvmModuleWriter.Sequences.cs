@@ -17,27 +17,6 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator == "FromEnd")
-        {
-            Name(output, "  %invalid", id);
-            output.Write(" = icmp slt i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", 0\n");
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
-            output.Write("  store i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", ptr ");
-            Address();
-            Name(output, ", align 8\n  %direction", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 ");
-            WriteNumber(output, operands[2].Value);
-            Name(output, "\n  store i8 1, ptr %direction", id);
-            output.Write(", align 1\n");
-            return;
-        }
-
         if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.
@@ -130,6 +109,12 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator is "SliceRange" or "SliceResolved")
         {
+            // SPEC 4.6.4: a closed range names its last element q and applies [start, q + 1) when start <= q < length; a
+            // half-open one applies [start, end) when start <= end <= length. A from-end boundary is `length - offset`, and
+            // every boundary that does not resolve compares out of range as an unsigned value, so one check covers all.
+            var shape = instruction.ScalarOperator == "SliceRange" ? operands[4].Value : 0;
+            var closed = (shape & SliceShape.Closed) != 0;
+            var last = closed ? "%slicelast" : "%slicefinish";
             if (instruction.ScalarOperator == "SliceResolved")
             {
                 // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value.
@@ -147,25 +132,27 @@ internal static partial class LlvmModuleWriter
             else
             {
                 Name(output, "  %slicestart", id);
-                output.Write(" = or i64 0, ");
-                WriteOperand(output, operands[2]);
-                Name(output, "\n  %slicefinish", id);
-                output.Write(" = or i64 0, ");
-                if (operands[4].Value != 0)
+                Boundary((shape & SliceShape.StartFromEnd) != 0, operands[2]);
+                output.Write("\n  ");
+                Name(output, last, id);
+                if ((shape & SliceShape.EndOmitted) != 0)
                 {
+                    output.Write(" = or i64 0, ");
                     End();
                 }
                 else
                 {
-                    WriteOperand(output, operands[3]);
+                    Boundary((shape & SliceShape.EndFromEnd) != 0, operands[3]);
                 }
             }
 
             Name(output, "\n  %reversed", id);
             Name(output, " = icmp ugt i64 %slicestart", id);
-            Name(output, ", %slicefinish", id);
+            output.Write(", ");
+            Name(output, last, id);
             Name(output, "\n  %pastend", id);
-            Name(output, " = icmp ugt i64 %slicefinish", id);
+            output.Write(closed ? " = icmp uge i64 " : " = icmp ugt i64 ");
+            Name(output, last, id);
             output.Write(", ");
             End();
             Name(output, "\n  %invalid", id);
@@ -173,6 +160,13 @@ internal static partial class LlvmModuleWriter
             Name(output, ", %pastend", id);
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+            if (closed)
+            {
+                Name(output, "  %slicefinish", id);
+                Name(output, " = add i64 %slicelast", id);
+                output.Write(", 1\n");
+            }
+
             if (fixedLength < 0)
             {
                 Name(output, "  %seqbase", id);
@@ -258,6 +252,16 @@ internal static partial class LlvmModuleWriter
             Name(output, "%seqcapptr", id);
             output.Write(", align 8\n");
         }
+        else if (instruction.ScalarOperator == "fromEnd")
+        {
+            // SPEC 4.6.9: `length - offset` wraps without a check; the element access's bounds check follows.
+            Name(output, "  %v", id);
+            output.Write(" = sub i64 ");
+            End();
+            output.Write(", ");
+            WriteOperand(output, operands[3]);
+            output.Write('\n');
+        }
         else
         {
             Name(output, "  %v", id);
@@ -294,6 +298,22 @@ internal static partial class LlvmModuleWriter
             {
                 WriteOperand(output, addressOperand);
             }
+        }
+
+        void Boundary(bool fromEnd, EmissionOperand value)
+        {
+            if (fromEnd)
+            {
+                output.Write(" = sub i64 ");
+                End();
+                output.Write(", ");
+            }
+            else
+            {
+                output.Write(" = or i64 0, ");
+            }
+
+            WriteOperand(output, value);
         }
 
         void Start()

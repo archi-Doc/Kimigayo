@@ -44,7 +44,7 @@ public class BorrowedArrayEmissionTest
     [Theory]
     [InlineData("Negative", "-1")]
     [InlineData("Length", "1")]
-    [InlineData("Maximum", "9223372036854775807")]
+    [InlineData("Maximum", "9223372036854775807@isize")]
     public void BoundsAbort(string name, string index)
         => ScalarEmissionTest.EmitFixture(
             "BorrowedArrayBounds" + name,

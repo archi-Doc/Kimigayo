@@ -6,6 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // The evaluated operand of a directly applied range boundary: the boundary itself, or the operand of its `^`.
+    private static Koto? PositionOperand(Koto? boundary) => boundary is FromEndIndexKoto fromEnd ? fromEnd.Operand : boundary;
+
     private int CreateSlice(IndexKoto source)
     {
         var depth = this.comparisonDepth++;
@@ -13,18 +16,21 @@ public sealed partial class OwnershipAnalysis
         int result;
         if (ElementAccess.IsResolvedSlice(source))
         {
-            // SPEC 4.6.4: a ResolvedRange key, written or resolved from an Index-bounded or inclusive range, is one value.
+            // SPEC 4.6.4: a ResolvedRange key, written or resolved from a range key of other boundaries, is one value.
             var key = receiver < 0 ? -1 : this.Value(this.SelectionKey(source, receiver, projection));
             result = receiver < 0 || key < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, key);
         }
         else
         {
-            // SPEC 4.6.4: both boundaries are evaluated before either is converted to an isize position.
+            // SPEC 4.6.4: both written boundaries, or the operands of their `^`, are evaluated before either is converted
+            // to an isize position; the slice operation resolves from-end boundaries and checks the interval once.
             var range = (RangeKoto)source.Right;
-            var startPlace = range.Start is { } begin ? this.Expression(begin) : -1;
-            var endPlace = range.End is { } finish ? this.Expression(finish) : -1;
-            var start = range.Start is null ? -1 : this.Value(this.PositionPlace(range.Start, startPlace));
-            var end = range.End is null ? -1 : this.Value(this.PositionPlace(range.End, endPlace));
+            var begin = PositionOperand(range.Start);
+            var finish = PositionOperand(range.End);
+            var startPlace = begin is null ? -1 : this.Expression(begin);
+            var endPlace = finish is null ? -1 : this.Expression(finish);
+            var start = begin is null ? -1 : this.Value(this.PositionPlace(begin, startPlace));
+            var end = finish is null ? -1 : this.Value(this.PositionPlace(finish, endPlace));
             result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
                 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
         }
@@ -79,11 +85,12 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    // SPEC 4.6.2, 4.6.4: an integer position of another Type is converted to isize, with its check, where the plan places
-    // it; the universal verification of a generic integer has no value to convert.
+    // SPEC 4.6.2, 4.6.9: an integer position of another Type is converted to isize where the plan places it. A value that
+    // isize cannot hold becomes -1, which the one bounds check of its use rejects; the universal verification of a generic
+    // integer has no value to convert.
     private int PositionPlace(Koto source, int place)
     {
-        if (place < 0 || this.Value(place) < 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.ISize))
+        if (place < 0 || this.Value(place) < 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.ISize) || this.body.Places[place].Type is not { IsInteger: true })
         {
             return place;
         }
@@ -91,7 +98,7 @@ public sealed partial class OwnershipAnalysis
         var converted = this.Place(source, BoundType.ISize, OwnershipPlaceKind.Temporary, false);
         this.Emit(OwnershipOperationKind.Produce, source, converted);
         this.RegisterTemporary(converted);
-        this.SetValue(this.Value(converted), OwnershipValueKind.Convert, [this.Value(place)]);
+        this.SetValue(this.Value(converted), OwnershipValueKind.Convert, [this.Value(place)], constant: OwnershipValue.PositionConversion);
         return converted;
     }
 

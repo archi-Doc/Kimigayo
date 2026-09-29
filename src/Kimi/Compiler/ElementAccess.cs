@@ -61,6 +61,11 @@ internal static class ElementAccess
     // not a Place.
     internal static bool IsSlicing(Koto source) => source is IndexKoto { BoundType.Kind: BoundTypeKind.Slice } slice && (slice.Right is RangeKoto || IsResolvedSlice(slice));
 
+    // SPEC 4.6.1: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
+    internal static bool IsSequence(BoundType? type)
+        => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
+            is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
+
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)
     {
@@ -86,8 +91,8 @@ internal static class ElementAccess
         => ReferenceEquals(type, BoundType.Never) && KotoHelper.UnwrapParentheses(source) is BinaryKoto element &&
             IsSyntax(element) && TryType(element, out var destination, out _) ? destination : type;
 
-    // A transferred operand (x@move) or an Identity acquisition is the operand Place's own value:
-    // its temporary keeps the Place's syntax, so both unwrap like a label.
+    // A transferred operand (x@move), an Identity acquisition or an adapted literal (5@isize) is the operand Place's own
+    // value: its temporary keeps the Place's syntax, so each unwraps like a label.
     internal static Koto ValueSource(Koto source)
     {
         while (true)
@@ -98,7 +103,7 @@ internal static class ElementAccess
                 case LabeledKoto labeled:
                     source = labeled.Target;
                     break;
-                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity } conversion:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity or ConversionBinding.Literal } conversion:
                     source = conversion.Left;
                     break;
                 case EvaluatedKoto evaluated:

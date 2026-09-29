@@ -36,7 +36,7 @@ public class DynamicArrayBorrowTest
     [Theory]
     [InlineData("Negative", "-1")]
     [InlineData("End", "1")]
-    [InlineData("Maximum", "9223372036854775807")]
+    [InlineData("Maximum", "9223372036854775807@isize")]
     public void BoundsAreCheckedBeforeFormingTheReference(string name, string index)
         => ScalarEmissionTest.EmitFixture("DynamicArrayBorrowBounds" + name, "let values: Array<i32> = [42]\nlet item = values[" + index + "]@ref", string.Empty, 1, "Hello.kimi:2:12: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 

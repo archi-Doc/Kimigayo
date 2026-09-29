@@ -15,7 +15,7 @@ $variants = [ordered]@{
     # Workload-derived alternates: another threshold, an earlier stop and an out-of-range removal that Aborts without cleanup.
     AlternateThreshold = @{ source = (Edit-KimiSource $original 'let threshold: i32 = 20' 'let threshold: i32 = 50' 'isLarge@ref) == 3 else' 'isLarge@ref) == 1 else' 'isLarge@ref) == 2 else' 'isLarge@ref) == 1 else' 'Large orders: 3 overall, 2 in the tail.' 'Large orders: 1 overall, 1 in the tail.'); stdout = $expected.Replace('Large orders: 3 overall, 2 in the tail.', 'Large orders: 1 overall, 1 in the tail.') }
     EarlyStop = @{ source = (Edit-KimiSource $original 'if order.category == 30 => exit' 'if order.category == 20 => exit' 'require seen == 4 else' 'require seen == 2 else' 'Stopped at order 4.' 'Stopped at order 2.'); stdout = $expected.Replace('Stopped at order 4.', 'Stopped at order 2.') }
-    RemoveOutOfRange = @{ source = (Edit-KimiSource $original 'let removed = orders.remove(0)' 'let removed = orders.remove(9)'); stdout = $expected.Substring(0, $expected.IndexOf('Removed order 1.')); exit = 1; stderr = '{name}.kimi:76:23: abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
+    RemoveOutOfRange = @{ source = (Edit-KimiSource $original 'let removed = orders.remove(0)' 'let removed = orders.remove(9)'); stdout = $expected.Substring(0, $expected.IndexOf('Removed order 1.')); exit = 1; stderr = (Get-KimiLibraryLocation 'Array.kimi' 'self.removeAt(') + ': abort KIMI_E_INDEX_BOUNDS: Index out of bounds' + "`n" }
 }
 Invoke-MilestoneVariants $variants $expected
 # Rejections must name the actual diagnostic and must leave neither IR nor an executable.

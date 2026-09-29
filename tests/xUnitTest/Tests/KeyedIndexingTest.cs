@@ -5,28 +5,30 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 4.6.1, 4.6.4: built-in element selection accepts isize or Index keys and range selection accepts Range
-/// or ResolvedRange keys, including inclusive and from-end range syntax; keys resolve against the current length.</summary>
+/// <summary>SPEC 4.6.1, 4.6.4, 4.6.9: built-in element selection accepts a position of any Type satisfying Position and range
+/// selection a range of any Type satisfying PositionRange, including closed and from-end range syntax; keys resolve against
+/// the current length.</summary>
 public class KeyedIndexingTest
 {
     private const string IndexKeys =
-        "let values: [4 of i32] = [10, 20, 30, 40]\nlet last: Index = ^1\n" +
-        "require values[last] == 40 and values[Index.init(1)] == 20 and values[^4] == 10 else => $abort(\"fixed\")\n" +
-        "let view = values[..]\nrequire view[last] == 40 and view[^2] == 30 and view[Index.init(0)] == 10 else => $abort(\"slice\")\n" +
-        "let dynamic: Array<i32> = [1, 2, 3]\nrequire dynamic[^1] == 3 and dynamic[Index.init(1)] == 2 else => $abort(\"array\")\n" +
-        "func at(items: ref/[4 of i32], position: Index) -> i32 => items[position]\nrequire at(values, ^2) == 30 else => $abort(\"through reference\")\n" +
+        "let values: [4 of i32] = [10, 20, 30, 40]\nlet last = ^1\n" +
+        "require values[last] == 40 and values[1@u8] == 20 and values[^4] == 10 and values[2@i64] == 30 else => $abort(\"fixed\")\n" +
+        "let view = values[..]\nrequire view[last] == 40 and view[^2] == 30 and view[0@u64] == 10 else => $abort(\"slice\")\n" +
+        "let dynamic: Array<i32> = [1, 2, 3]\nrequire dynamic[^1] == 3 and dynamic[1@i16] == 2 and dynamic[last] == 3 else => $abort(\"array\")\n" +
+        "func at(items: ref/[4 of i32], position: FromEnd<i32>) -> i32 => items[position]\nrequire at(values, ^2) == 30 else => $abort(\"through reference\")\n" +
+        "func pick<P>(items: Slice<i32>, position: P) -> i32\n    P is Position\n    return items[position]\nlet everything = ..\nrequire pick(values[..], ^1) == 40 and pick(values[..], 1@u8) == 20 and pick(values[..], everything.start) == 10 else => $abort(\"generic\")\n" +
         "let text: [2 of string] = [\"First text.\", \"Last text.\"]\nlet words = text[..]\nConsole.writeLine(words[last])\nConsole.writeLine(words[^2])\n" +
-        "let borrowed = words[Index.init(0)]@ref\nConsole.writeLine(borrowed)\nConsole.writeLine(\"ok\")";
+        "let borrowed = words[0@usize]@ref\nConsole.writeLine(borrowed)\nConsole.writeLine(\"ok\")";
 
     private const string RangeKeys =
-        "let values: [5 of i32] = [1, 2, 3, 4, 5]\nlet saved: IndexRange = 1..^1\nlet middle = values[saved]\n" +
+        "let values: [5 of i32] = [1, 2, 3, 4, 5]\nlet saved = 1..^1\nlet middle = values[saved]\n" +
         "require middle.length == 3 and middle[0] == 2 and middle[^1] == 4 else => $abort(\"saved\")\n" +
         "let inclusive = values[1..=2]\nrequire inclusive.length == 2 and inclusive[0] == 2 and inclusive[1] == 3 else => $abort(\"inclusive\")\n" +
         "let tail = values[^2..]\nrequire tail.length == 2 and tail[0] == 4 else => $abort(\"from-end start\")\n" +
         "let head = values[..^1]\nrequire head.length == 4 and head[3] == 4 else => $abort(\"from-end end\")\n" +
         "let resolved = saved.resolve(values.length)\nlet again = values[resolved]\nrequire again.length == 3 and again[1] == 3 else => $abort(\"resolved\")\n" +
         "let empty = values[^0..]\nrequire empty.isEmpty else => $abort(\"empty\")\n" +
-        "let whole: IndexRange = ..\nrequire values[whole].length == 5 and middle[whole].length == 3 else => $abort(\"whole\")\n" +
+        "let whole = ..\nrequire values[whole].length == 5 and middle[whole].length == 3 else => $abort(\"whole\")\n" +
         "let nested = middle[1..]\nrequire nested.length == 2 and nested[0] == 3 else => $abort(\"nested\")\n" +
         "let direct = (1..3).resolve(3)\nlet applied = middle[direct]\nrequire applied.length == 2 and applied[0] == 3 else => $abort(\"direct\")\n" +
         "Console.writeLine(\"ok\")";
@@ -39,14 +41,14 @@ public class KeyedIndexingTest
         "let middle: Slice<i32> = selection: do\n    let inner: Slice<[4 of i32]> = grid[1..]\n    let line = inner[0][..]\n    exit to selection: line[1..3]\n" +
         "require middle.length == 2 and middle[0] == 20 and middle[1] == 30 else => $abort(\"middle\")\n" +
         "let last = rows[^1][1..]\nrequire last.length == 3 and last[0] == 6 else => $abort(\"last\")\n" +
-        "let saved: IndexRange = 1..^1\nlet keyed = rows[0][saved]\nrequire keyed.length == 2 and keyed[0] == 20 else => $abort(\"keyed\")\n" +
+        "let saved = 1..^1\nlet keyed = rows[0][saved]\nrequire keyed.length == 2 and keyed[0] == 20 else => $abort(\"keyed\")\n" +
         "func head(table: ref/[3 of [4 of i32]]) -> i32 => table[2][..][0]\nrequire head(grid) == 5 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
 
     // SPEC 4.6.4: a key resolves against the length of the receiver the selection evaluated, so a call receiver runs once.
     private const string CallReceivers =
         "func make(count: uniq/i32) -> [3 of i32]\n    count@follow += 1\n    return [1, 2, 3]\n" +
         "func makeArray(count: uniq/i32) -> Array<i32>\n    count@follow += 1\n    return [4, 5, 6]\n" +
-        "var calls: i32 = 0\nlet last: Index = ^1\n" +
+        "var calls: i32 = 0\nlet last = ^1\n" +
         "require make(calls@uniq)[^1] == 3 and make(calls@uniq)[last] == 3 and calls == 2 else => $abort(\"fixed\")\n" +
         "require makeArray(calls@uniq)[^2] == 5 and calls == 3 else => $abort(\"array\")\n" +
         "let middle = make(calls@uniq)[1..^1].length\nrequire middle == 1 and calls == 4 else => $abort(\"range\")\nConsole.writeLine(\"ok\")";
@@ -65,7 +67,9 @@ public class KeyedIndexingTest
         => ScalarEmissionTest.EmitFixture("KeyedIndexing" + name, source, stdout);
 
     [Theory]
-    [InlineData("let values: [3 of i32] = [1, 2, 3]\nlet i: i32 = 1\nlet v = values[i]", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let values: [3 of i32] = [1, 2, 3]\nlet i = 1.5\nlet v = values[i]", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let values: [3 of i32] = [1, 2, 3]\nlet v = values[true]", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let values: [3 of i32] = [1, 2, 3]\nlet v = values[^1.5]", DiagnosticCode.TypeMismatch_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

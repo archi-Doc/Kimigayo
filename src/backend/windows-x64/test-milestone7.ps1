@@ -123,8 +123,8 @@ $invalid = [ordered]@{
     EscapedIndex = @{ source = (Edit-KimiSource $original 'require total == 42' 'require row == 0'); diagnostic = 'UnresolvedBinding_Kd' }
     WrongExitResult = @{ source = (Edit-KimiSource $original 'exit to rows //' 'exit to rows: 1 //'); diagnostic = 'TypeMismatch_Kd' }
     MissingTarget = @{ source = (Edit-KimiSource $original 'continue to rows' 'continue to missing'); diagnostic = 'ControlFlow_Kd' }
-    I32Rows = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0..3'); diagnostic = 'TypeMismatch_Kd' } # Range<i32> items are not positions.
-    WrongIndexType = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index@i32]'); diagnostic = 'TypeMismatch_Kd' }
+    FloatingRows = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for row in 0.0..3.0'); diagnostic = 'TypeMismatch_Kd' } # f64 is not a position.
+    WrongIndexType = @{ source = (Edit-KimiSource $original 'rowView[index]' 'rowView[index@f64]'); diagnostic = 'TypeMismatch_Kd' }
     TupleBinding = @{ source = (Edit-KimiSource $original 'for row in matrix.indices' 'for (row, other) in matrix.indices'); diagnostic = 'TypeMismatch_Kd' }
     Uninitialized = @{ source = (Edit-KimiSource $original 'let rowView = matrix[0][..]' "let other: [4 of i32]`n    let rowView = other[..]"); diagnostic = 'UninitializedPlace_Kd' }
 }

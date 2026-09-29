@@ -17,7 +17,7 @@ public class SliceOperationsTest
         "let parts = s.splitAt(1)\nrequire parts.0.length == 1 and parts.0[0] == 20 and parts.1.length == 2 and parts.1[0] == 30 else => $abort(\"split\")\n" +
         "let ends = s.splitAt(^0)\nrequire ends.0.length == 3 and ends.1.isEmpty else => $abort(\"split at end\")\n" +
         "match s.trySplitAt(5)\n    .Some(_) => $abort(\"beyond split\")\n    .None => Console.writeLine(\"None for split 5.\")\n" +
-        "match s.trySplitAt(Index.init(0))\n    .Some(let pair)\n        require pair.0.isEmpty and pair.1.length == 3 else => $abort(\"split 0\")\n    .None => $abort(\"split none\")\n" +
+        "match s.trySplitAt(0@u8)\n    .Some(let pair)\n        require pair.0.isEmpty and pair.1.length == 3 else => $abort(\"split 0\")\n    .None => $abort(\"split none\")\n" +
         "match s.trySlice(1..)\n    .Some(let tail)\n        require tail.length == 2 and tail[0] == 30 else => $abort(\"tail\")\n    .None => $abort(\"tail none\")\n" +
         "match s.trySlice(2..=5)\n    .Some(_) => $abort(\"beyond slice\")\n    .None => Console.writeLine(\"None for 2..=5.\")\n" +
         "let r = (1..3).resolve(3)\nmatch s.trySlice(r)\n    .Some(let inner)\n        require inner.length == 2 and inner[1] == 40 else => $abort(\"resolved\")\n    .None => $abort(\"resolved none\")\n" +

@@ -41,7 +41,7 @@ public class SequenceEmissionTest
     [Theory]
     [InlineData("-1")]
     [InlineData("1")]
-    [InlineData("9223372036854775807")]
+    [InlineData("9223372036854775807@isize")]
     public void SliceBoundsAbort(string index)
         => ScalarEmissionTest.EmitFixture(
             "SequenceBounds" + (index == "-1" ? "Negative" : index == "1" ? "Length" : "Maximum"),
@@ -70,7 +70,6 @@ public class SequenceEmissionTest
     [InlineData("func make() -> [1 of i32] => [42]\nlet s = make()[..]\nlet n = s[0]")]
     [InlineData("let s = scope: do\n    let a: [1 of i32] = [1]\n    exit to scope: a[..]\nlet n = s[0]")]
     [InlineData("var a: [1 of i32] = [1]\nlet s = a[..]\nlet n = s[(work: do\n    a[0] = 2\n    exit to work: 0)]")]
-    [InlineData("let a: [1 of i32] = [1]\nlet i: i32 = 0\na[..][i]")]
     public void RejectsInvalidOrUnsupportedInput(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

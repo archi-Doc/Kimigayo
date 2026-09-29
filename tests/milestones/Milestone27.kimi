@@ -3,7 +3,7 @@ func startBound() -> isize
     Console.writeLine("Start evaluated.")
     return 1
 
-func endBound() -> Index
+func endBound() -> FromEnd<i32>
     Console.writeLine("End evaluated.")
     return ^1
 
@@ -36,14 +36,14 @@ func tail<T>(values: Slice<T>) -> Slice<T>{result}
 
 public func main()
     let grid: [3 of [4 of i32]] = [[1, 2, 3, 4], [10, 20, 30, 40], [5, 6, 7, 8]]
-    let bounds: IndexRange = startBound()..endBound()
+    let bounds = startBound()..endBound()
     let resolved = bounds.resolve(grid[1].length)
     require resolved.start == 1 and resolved.end == 3 else => $abort("Range resolution failed")
     let middle: Slice<i32> = selection: do
         let rows: Slice<[4 of i32]> = grid[1..]
         let row = rows[0][..]
         exit to selection: row[resolved] // Retain grid, not either local Slice handle.
-    let last: Index = ^1
+    let last = ^1
     require middle.length == 2 and middle[0] == 20 and middle[last] == 30 else => $abort("Nested view failed")
     let parts = middle.splitAt(1)
     require parts.0[0] == 20 and parts.1[0] == 30 else => $abort("Split failed")
