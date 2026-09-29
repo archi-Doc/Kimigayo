@@ -123,6 +123,58 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableContractGenericTwoKeys", TwoKeys + GenericTwoKeys + Use, "generic keys\n");
     }
 
+    // Qualified projections, per-reference requirement candidates and reference dispatch add no warm allocation: the generic
+    // two-key program binds with exactly the bytes of its concrete counterpart, and warm ownership analysis and IR writing
+    // of both allocate nothing.
+    [Fact]
+    public void WarmGenericTwoKeyCompilationAddsNoAllocation()
+    {
+        const string Generic = "let table = Table.init(3, 4)\nlet n = Name.init(1)\nlet b: i64 = pick(table@ref, 0, n)\nrequire b == 4 else => $abort(\"pick\")";
+        const string Concrete = "let table = Table.init(3, 4)\nlet n = Name.init(1)\nlet b: i64 = table[n]\nrequire b == 4 else => $abort(\"pick\")";
+        var generic = Measure(TwoKeys + GenericTwoKeys + Generic);
+        var concrete = Measure(TwoKeys + Concrete);
+        Assert.Equal(concrete.Binding, generic.Binding);
+        Assert.Equal((0L, 0L), (generic.Ownership, generic.Generation));
+        Assert.Equal((0L, 0L), (concrete.Ownership, concrete.Generation));
+
+        static (long Binding, long Ownership, long Generation) Measure(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            for (var i = 0; i < 100; i++)
+            {
+                Assert.True(c.Bind().IsComplete);
+                c.Binding.CheckStartup(OutputKind.Application);
+                Assert.True(c.Ownership.Analyze().IsVerified);
+                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            }
+
+            var success = true;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Bind().IsComplete;
+            }
+
+            var binding = GC.GetAllocatedBytesForCurrentThread() - before;
+            c.Binding.CheckStartup(OutputKind.Application);
+            before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+            }
+
+            var ownership = GC.GetAllocatedBytesForCurrentThread() - before;
+            before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            }
+
+            Assert.True(success);
+            return (binding, ownership, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+    }
+
     // Through UniqIndexable, updates select each conformance's indexUniq by the key Type in generic code.
     [Fact]
     public void GenericUpdatesSelectAmongSeveralUniqConformances()
