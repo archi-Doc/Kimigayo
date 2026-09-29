@@ -350,6 +350,38 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: each branch of an `if` transfers the item or falls through holding it, and a later statement transfers what the
+    // falling-through path holds.
+    private const string Branch = "struct Branch<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        if self.skipped > 0\n";
+
+    [Fact]
+    public void ABranchMayTransferTheItemBeforeALaterTransfer()
+    {
+        var source = Counter + Branch + "            return first@move\n        self.skipped += 1\n        return first@move\n" +
+            "var branch = Branch<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match branch.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and branch.skipped == 1 else => $abort(\"branch\")\nConsole.writeLine(\"branched\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorBranchTransfer", source, "branched\n");
+    }
+
+    [Fact]
+    public void BothBranchesMayTransferTheItem()
+    {
+        var c = MinimalEmissionTest.Analyze(Branch + "            return first@move\n        else\n            self.skipped += 1\n            return first@move\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A branch that leaves while holding the item, or a fall-through path left without a later transfer, destroys it.
+    [Theory]
+    [InlineData("            return .None\n        return first@move\n")]
+    [InlineData("            return first@move\n        self.skipped += 1\n        return .None\n")]
+    [InlineData("            return first@move\n        else\n            return .None\n")]
+    public void ABranchThatMayDestroyTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Branch + tail);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // G28: an item passed by value to a helper is owned by the helper, whose parameter is not destroyed when its body
     // transfers it at once.
     private const string Helper = "struct Helper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +

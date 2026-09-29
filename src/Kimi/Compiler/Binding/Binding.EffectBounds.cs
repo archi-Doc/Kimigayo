@@ -538,6 +538,43 @@ public sealed partial class Binding
                     return true; // A `loop` that transfers the value in its first iteration leaves it only through that transfer.
                 }
 
+                if (statement is IfKoto branching)
+                {
+                    // Conditions are inert, and each body transfers the value or falls through holding it; a path that
+                    // holds it continues here, and when every path transfers it the `if` is the transfer.
+                    var transferred = branching.ElseBody is not null;
+                    for (var b = 0; b <= branching.Branches.Count; b++)
+                    {
+                        var body = b < branching.Branches.Count ? branching.Branches[b].Body : branching.ElseBody;
+                        if (body is null)
+                        {
+                            break;
+                        }
+
+                        if (b < branching.Branches.Count && !this.inertScan.Check(branching.Branches[b].Condition, symbol))
+                        {
+                            return false;
+                        }
+
+                        if (!this.TransferredLater(body.Items, 0, symbol))
+                        {
+                            if (!this.InertFrom(body.Items, 0, symbol))
+                            {
+                                return false;
+                            }
+
+                            transferred = false;
+                        }
+                    }
+
+                    if (transferred)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 if (!this.inertScan.Check(statement, symbol))
                 {
                     return false;
