@@ -43,6 +43,8 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 - `[Kimi]` Treat acronyms as words: `Utf8Writer`, not `UTF8Writer`. Use familiar abbreviations such as
   `min`, `max` and `utf8`; prefer `index` to `idx`.
 - `[Kimi]` Put helpers in their domain's group or struct, not a catch-all `Utils` or `Helpers` group.
+- `[Advice]` Avoid giving a control-flow label the same name as a value visible in its active scope.
+  Labels and values remain separate namespaces; this recommendation changes no language validity.
 - `[Advice]` Put one primary public declaration in each file. Split large Types by topic, preserving
   storage order (§2.2).
 
