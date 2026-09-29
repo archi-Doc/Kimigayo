@@ -68,8 +68,9 @@ public sealed class BoundCall
     // Selected from source syntax, never inferred again after generic substitution.
     internal bool TupleOperator { get; set; }
 
-    // The bound Contract reference (Indexable<Name>) whose requirement a generic call selected; its instance dispatches
-    // through that conformance (SPEC 8.4.9). Null for other calls.
+    // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
+    // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
+    // (SPEC 8.4.9). Null for calls of other functions.
     internal BindingSymbol? RequirementContract { get; set; }
 
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
@@ -674,9 +675,12 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
-            if (requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } selectedContract && IsBoundContractReference(selectedContract))
+            if (selected.IsRequirement)
             {
-                call.CallStorage.RequirementContract = RequirementReference(requirementShape, winner);
+                // A requirement reached through a receiver's Contracts names the reference that supplied it; a comparison
+                // callee names its Contract directly, and Equatable and Comparable take no Type arguments.
+                call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } ? RequirementReference(requirementShape, winner) :
+                    callee is ComparisonCalleeKoto ? winner.Scope.Owner.BoundSymbol : null;
             }
 
             if (selected.ReturnType is PlaceResultKoto && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)

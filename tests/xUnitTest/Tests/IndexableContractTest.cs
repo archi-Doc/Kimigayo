@@ -20,6 +20,12 @@ public class IndexableContractTest
         "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n";
 
+    // SPEC 8.4.9: a generic Type's conformance names its reference in the Type's own parameters; an instance dispatches
+    // through the reference the generic call recorded, instantiated (`Indexable<isize>` for `Keyed<isize>`).
+    private const string Keyed =
+        "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
+        "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n";
+
     // SPEC 8.4.2: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
     private const string FirstPlace =
         "func firstPlace<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]\n";
@@ -36,6 +42,7 @@ public class IndexableContractTest
         { "SharedOnly", Shared + "let view = View.init(42)\nrequire view[0] == 42 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
         { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq) = 40\nfirstUniq(counts@uniq) += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "GenericConformanceReference", Keyed + FirstPlace + "let keyed = Keyed<isize>.init(7)\nrequire firstPlace(keyed) == 7 and keyed[1] == 7 else => $abort(\"keyed\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "PlaceComparison", Pair + FirstPlace + "var names = Pair<string>.init(\"a\", \"b\")\nlet held = names[1]@ref\nrequire firstPlace(names) == \"a\" and names[1] == held and firstPlace(names) != held and held == names[1] else => $abort(\"compare\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
 

@@ -470,7 +470,7 @@ public sealed partial class Binding
         }
 
         if (receiver.Symbol is not { } owner ||
-            (qualifier is null ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) : this.ConformanceByReference(owner, associated, qualifier)) is not { } identity)
+            (qualifier is null ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) : this.ConformanceByReference(owner, receiver, associated, qualifier)) is not { } identity)
         {
             return null;
         }
@@ -646,8 +646,9 @@ public sealed partial class Binding
         }
     }
 
-    // The one conformance of `owner` whose bound reference reaches `qualifier` as the declaring reference of `associated`.
-    private BoundConformance? ConformanceByReference(BindingSymbol owner, BindingSymbol associated, BoundType qualifier)
+    // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
+    // reaches `qualifier` as the declaring reference of `associated`.
+    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier)
     {
         if (!this.conformancesByType.TryGetValue(owner, out var identities))
         {
@@ -659,7 +660,7 @@ public sealed partial class Binding
         {
             var identity = identities[i];
             if (identity.Paths.Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
-                ReferenceEquals(reference, qualifier))
+                (ReferenceEquals(reference, qualifier) || ReferenceEquals(this.StoredType(reference, receiver), qualifier)))
             {
                 if (found is not null && !ReferenceEquals(found, identity))
                 {
