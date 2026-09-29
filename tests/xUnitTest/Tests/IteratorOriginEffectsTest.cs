@@ -208,6 +208,7 @@ public class IteratorOriginEffectsTest
         "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
+    [InlineData("let first = self.inner.next()\n        let step: i32 = if self.steps > 0\n            self.steps -= 1\n            yield 1\n        else => 0\n        self.steps += step\n        return first@move")] // A yield inside the gap
     public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
     {
         var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +

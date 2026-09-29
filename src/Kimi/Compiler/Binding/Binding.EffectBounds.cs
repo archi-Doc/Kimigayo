@@ -1611,6 +1611,7 @@ public sealed partial class Binding
         private readonly List<string> labels = new();
         private LoopKoto? restart;
         private BindingSymbol? symbol;
+        private int selections;
         private int iterations;
         private int boundaries;
         private bool inert;
@@ -1640,10 +1641,30 @@ public sealed partial class Binding
             {
                 // An exit or continue stays inside when it targets an iteration whose body it is in: the nearest one, or
                 // one whose Label it names.
-                if (node is TryKoto || (node is JumpKoto jump && !this.Restarts(jump) &&
-                    (jump.Akind is not (KotoKind.Exit or KotoKind.Continue) || (jump.Label is null ? this.iterations == 0 : !this.labels.Contains(jump.Label)))))
+                if (node is TryKoto || (node is JumpKoto jump && !this.Restarts(jump) && !this.StaysInside(jump)))
                 {
                     this.inert = false;
+                    return;
+                }
+
+                // SPEC 14.5.2: a yield ends the nearest, or the named, `if` or `match` whose body it is in.
+                var selection = node is CodeBlockKoto ? node.Parent : null;
+                if (selection is IfKoto or MatchKoto && !ReferenceEquals((selection as MatchKoto)?.Expression, node))
+                {
+                    var label = selection.Parent is LabeledKoto labeled ? labeled.Label : null;
+                    if (label is not null)
+                    {
+                        this.labels.Add(label);
+                    }
+
+                    this.selections++;
+                    node.VisitChildren(this);
+                    this.selections--;
+                    if (label is not null)
+                    {
+                        this.labels.RemoveAt(this.labels.Count - 1);
+                    }
+
                     return;
                 }
 
@@ -1677,6 +1698,7 @@ public sealed partial class Binding
             this.restart = restart;
             this.symbol = symbol;
             this.labels.Clear();
+            this.selections = 0;
             this.iterations = 0;
             this.boundaries = exits ? 0 : 1;
             this.inert = true;
@@ -1685,6 +1707,14 @@ public sealed partial class Binding
             this.restart = null;
             return this.inert;
         }
+
+        // Whether an exit, continue or yield targets an iteration or selection whose body inside the statement contains it.
+        private bool StaysInside(JumpKoto jump) => jump.Akind switch
+        {
+            KotoKind.Exit or KotoKind.Continue => jump.Label is null ? this.iterations > 0 : this.labels.Contains(jump.Label),
+            KotoKind.Yield => jump.Label is null ? this.selections > 0 : this.labels.Contains(jump.Label),
+            _ => false,
+        };
 
         private bool Restarts(JumpKoto jump)
             => jump.Akind == KotoKind.Continue && this.restart is { } loop &&
