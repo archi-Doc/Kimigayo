@@ -187,9 +187,8 @@ public sealed partial class Binding
         }
 
         // SPEC 8.4.9: an associated Type of a generic Contract is identified by its declaring bound reference.
-        // Families with Origin parameters keep the unqualified form their applications use.
         var projection = type.Symbol?.Declaration is not ContractKoto && reference?.Type is { Kind: BoundTypeKind.Constructed } declaring &&
-            ReferenceEquals(declaring.Symbol?.Declaration, associated.Scope.Owner) && this.AssociatedParameters(associated.Declaration).Length == 0
+            ReferenceEquals(declaring.Symbol?.Declaration, associated.Scope.Owner)
             ? this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, declaring])
             : this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type]);
         syntax.BoundSymbol = associated;
@@ -576,8 +575,7 @@ public sealed partial class Binding
 
         // SPEC 8.4.9: substituting Self in `Self.Element` of a bound reference's requirement or conformance keeps that
         // reference (`Indexable<isize>`) as the qualifier of the projection.
-        if (type is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: 0, Components: [{ Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: ContractKoto }] } &&
-            this.AssociatedParameters(type.Symbol!.Declaration).Length == 0 &&
+        if (type is { Kind: BoundTypeKind.AssociatedProjection, Components: [{ Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: ContractKoto }] } &&
             (self ?? EnclosingContractSelf(scope)) is { } replacement && replacement.Symbol?.Declaration is not ContractKoto &&
             (this.activeRequirementContract ?? ReferenceContract(scope))?.Type is { Kind: BoundTypeKind.Constructed } boundReference &&
             this.DeclaringReference(type.Symbol!, boundReference) is var declaring && ReferenceEquals(declaring.Symbol?.Declaration, type.Symbol!.Scope.Owner))
