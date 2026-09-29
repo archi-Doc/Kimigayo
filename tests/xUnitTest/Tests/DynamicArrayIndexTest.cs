@@ -29,11 +29,11 @@ public class DynamicArrayIndexTest
             "last\nfirst\n");
 
     [Theory]
-    [InlineData("RemoveEnd", "let n = values@uniq.remove(^0)", "self.removeAt(")]
-    [InlineData("RemoveBeforeStart", "let n = values@uniq.remove(^2)", "self.removeAt(")]
-    [InlineData("InsertBeforeStart", "values@uniq.insert(^2, 7)", "self.insertAt(")]
-    [InlineData("InsertAfterEnd", "values@uniq.insert(2@u8, 7)", "self.insertAt(")]
-    [InlineData("InsertWide", "values@uniq.insert(18446744073709551615@u64, 7)", "self.insertAt(")]
+    [InlineData("RemoveEnd", "let n = values@uniq.remove(^0)", "self.removeAt(position)")]
+    [InlineData("RemoveBeforeStart", "let n = values@uniq.remove(^2)", "self.removeAt(-1)")]
+    [InlineData("InsertBeforeStart", "values@uniq.insert(^2, 7)", "self.insertAt(-1")]
+    [InlineData("InsertAfterEnd", "values@uniq.insert(2@u8, 7)", "self.insertAt(-1")]
+    [InlineData("InsertWide", "values@uniq.insert(18446744073709551615@u64, 7)", "self.insertAt(-1")]
     public void ChecksResolvedBounds(string name, string statement, string anchor)
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayIndexBounds" + name,
@@ -50,7 +50,7 @@ public class DynamicArrayIndexTest
             "func value() -> i32\n    Console.writeLine(\"value\")\n    return 1\nvar values: Array<i32> = []\nvalues@uniq.insert(^(-1), value())",
             "value\n",
             1,
-            LibrarySource.Location("Array.kimi", "self.insertAt(") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+            LibrarySource.Location("Array.kimi", "self.insertAt(-1") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
     public void BoundsAreCheckedAfterLaterArguments()
@@ -59,7 +59,7 @@ public class DynamicArrayIndexTest
             "func value() -> i32\n    Console.writeLine(\"value\")\n    return 1\nvar values: Array<i32> = []\nvalues@uniq.insert(^1, value())",
             "value\n",
             1,
-            LibrarySource.Location("Array.kimi", "self.insertAt(") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+            LibrarySource.Location("Array.kimi", "self.insertAt(-1") + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Fact]
     public void ReceiverReservationAllowsTemporarySharedInspection()

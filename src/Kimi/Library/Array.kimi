@@ -26,7 +26,11 @@ public struct Array<T>
     /// - abort: `index` does not resolve against the current length.
     public func insert<P>(self: uniq/Self, index: P, value: T)
         P is Position
-        self.insertAt(PositionSyntax.resolved(index, self.length), value@move)
+        // Each path calls insertAt, so a resolved position reaches it unmerged and `^1` moves one element; -1 fails
+        // insertAt's own check.
+        match index.tryResolve(self.length)
+            .Some(let position) => self.insertAt(position, value@move)
+            .None => self.insertAt(-1, value@move)
 
     /// Removes and returns the element `index` resolves to; the following elements keep their order.
     ///
@@ -34,7 +38,10 @@ public struct Array<T>
     /// - abort: `index` does not resolve to an element position.
     public func remove<P>(self: uniq/Self, index: P) -> T
         P is Position
-        return self.removeAt(PositionSyntax.resolved(index, self.length))
+        // As insert: a resolved position reaches removeAt unmerged; -1 fails removeAt's own check.
+        match index.tryResolve(self.length)
+            .Some(let position) => return self.removeAt(position)
+            .None => return self.removeAt(-1)
 
     /// Exchanges the elements `first` and `second` resolve to; positions resolving to one element change nothing.
     ///

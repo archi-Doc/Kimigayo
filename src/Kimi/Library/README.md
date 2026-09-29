@@ -13,6 +13,13 @@ embedded, validated and implemented.
   functions belong inside declaration containers such as groups or structs.
 - `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage,
   metadata and built-in operations are supplied by the compiler and they may only add functions.
+  The internal group `Kimi.Storage.FixedArray` in `Storage.kimi` holds the fixed-array receiver
+  functions. The `length` and `indices` of a fixed array stay compiler sequence metadata, shared
+  with Array and Slice: a group declares functions, not Properties, and the fixed length folds to `N`.
+- A position operation that calls an internal `isize` operation passes a resolved position on its
+  own path (`match index.tryResolve(length)`, with `-1` on the `None` path) rather than a merged
+  `PositionSyntax.resolved` value, where LLVM cannot relate the merged value to the length (as for
+  the one-element move of `insert(^1, value)`).
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.

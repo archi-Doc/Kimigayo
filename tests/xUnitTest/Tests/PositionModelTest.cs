@@ -47,6 +47,12 @@ public class PositionModelTest
         "let values: [4 of i32] = [1, 2, 3, 4]\nlet a = values[^1]\nlet s = values[1..^1]\nlet c = values[..=2]\nlet t = values[^2..]\nlet u = values[1@u8..3@i64]\n" +
         "require a == 4 and s.length == 2 and c.length == 3 and t.length == 2 and u.length == 2 else => $abort(\"fold\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 8.8: integer positions resolved through generic dispatch, FromEnd<T> and Array.insert.
+    private const string Specializations =
+        "func at<P>(p: P) -> isize\n    P is Position\n    match p.tryResolve(4)\n        .Some(let q) => return q\n        .None => return -1\n" +
+        "var values: Array<i32> = [1, 2, 3]\nvalues.insert(^1, 9)\n" +
+        "require at(3) == 3 and at(^1) == 3 and at(5@isize) == -1 and at(^(2@usize)) == 2 and values[2] == 9 else => $abort(\"special\")\nConsole.writeLine(\"ok\")";
+
     private static readonly (string Name, BigInteger Min, BigInteger Max)[] Integers =
     [
         ("i8", sbyte.MinValue, sbyte.MaxValue), ("u8", 0, byte.MaxValue), ("i16", short.MinValue, short.MaxValue), ("u16", 0, ushort.MaxValue),
@@ -156,6 +162,15 @@ public class PositionModelTest
         Assert.DoesNotContain("= sub i64 4, ", ir, StringComparison.Ordinal);
         Assert.DoesNotContain(" = sext i32 ", ir, StringComparison.Ordinal);
         Assert.True(ir.Split("br i1 false,").Length - 1 >= 4, ir);
+    }
+
+    // SPEC 8.8: the Kimi integer witness has explicit specializations for isize, i32 and usize; generic dispatch and
+    // FromEnd<T> select them, so none of these Types reaches the generic body's u128 comparison.
+    [Fact]
+    public void IntegerPositionsSelectTheirSpecializations()
+    {
+        var ir = ScalarEmissionTest.EmitFixture("PositionModelSpecializations", Specializations, "ok\n");
+        Assert.DoesNotContain(" to i128", ir, StringComparison.Ordinal);
     }
 
     private static string Bool(bool value) => value ? "true" : "false";
