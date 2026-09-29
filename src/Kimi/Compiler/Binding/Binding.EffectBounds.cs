@@ -331,10 +331,11 @@ public sealed partial class Binding
         // An owned temporary is destroyed where it is discarded or borrowed. A value that is returned, stored, passed by
         // value or placed into another value is destroyed by its new owner, which the summary visits there; a match arm or
         // expression-bodied branch passes its value on to the enclosing expression.
-        // G28: a by-value Subject destroys nothing when every arm matches a Case without payload, or binds the whole payload
-        // and transfers the binding at once (`return .Some(item@move)`, `return item@move`) before any other effect. A guard
-        // Moves no payload and a false guard preserves the Subject for the next arm (SPEC 14.8.3), so a guard that cannot
-        // leave the block is allowed.
+        // G28: a by-value Subject is destroyed only through its arms' parts: in each arm, a Case or Tuple shell destroys
+        // nothing, a binding transferred at once (`return .Some(item@move)`, `return .Some((i, item@move))`) is not destroyed,
+        // and any other binding, wildcard or literal part is. A guard Moves no payload and a false guard preserves the
+        // Subject for the next arm (SPEC 14.8.3), so a guard that cannot leave the block is allowed. Returns false, leaving
+        // the whole Subject to the caller, for a form it does not classify.
         private bool PayloadsTransferred(MatchKoto match)
         {
             if (!binding.TryGetMatch(match, out var plan) || plan is not { Mode: SubjectMode.ByValue } || plan.Arms.Count == 0)
@@ -345,23 +346,32 @@ public sealed partial class Binding
             for (var a = 0; a < plan.Arms.Count; a++)
             {
                 var arm = plan.Arms[a];
-                if ((arm.Syntax.Guard is { } guard && !this.inertScan.Check(guard, null)) || (uint)arm.Pattern >= (uint)plan.Positions.Count ||
-                    plan.Positions[arm.Pattern] is not { Kind: BoundPatternKind.Case, Case: { } matched } root)
+                if ((arm.Syntax.Guard is { } guard && !this.inertScan.Check(guard, null)) || (uint)arm.Pattern >= (uint)plan.Positions.Count)
                 {
                     return false;
                 }
 
-                if (matched.Payload.Length == 0 && root.End == arm.Pattern + 1)
+                for (var p = arm.Pattern; p < plan.Positions[arm.Pattern].End; p++)
                 {
-                    continue; // Nothing is left to destroy for a Case without payload.
-                }
+                    var position = plan.Positions[p];
+                    if (position.ImplicitFollows != 0 || position.AccessMode != PatternAccessMode.Owned)
+                    {
+                        return false; // A part reached through a reference is not owned by the match.
+                    }
 
-                if (matched.Payload.Length != 1 || root.End != arm.Pattern + 2 ||
-                    plan.Positions[arm.Pattern + 1] is not { Kind: BoundPatternKind.Binding, AccessMode: PatternAccessMode.Owned, ImplicitFollows: 0, BodySymbol: { } item } payload ||
-                    payload.Parent != arm.Pattern ||
-                    !(arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) : this.TransfersAtOnce(arm.Syntax.Body, item)))
-                {
-                    return false;
+                    switch (position.Kind)
+                    {
+                        case BoundPatternKind.Case or BoundPatternKind.Tuple:
+                            break; // Its parts are its child positions.
+                        case BoundPatternKind.Binding when position.BodySymbol is { } item &&
+                            (arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) : this.TransfersAtOnce(arm.Syntax.Body, item)):
+                            break;
+                        case BoundPatternKind.Binding or BoundPatternKind.Wildcard or BoundPatternKind.Literal or BoundPatternKind.Unit:
+                            this.Destruction(this.Type(position.MatchedType), match);
+                            break;
+                        default:
+                            return false;
+                    }
                 }
             }
 

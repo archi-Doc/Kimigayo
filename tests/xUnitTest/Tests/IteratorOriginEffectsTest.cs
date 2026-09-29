@@ -266,6 +266,32 @@ public class IteratorOriginEffectsTest
         Assert.All(c.Binding.Issues, issue => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, issue.Code));
     }
 
+    // G28: a nested pattern destroys only its untransferred parts: the isize position is Copy and the value is transferred,
+    // so a stored pair is handed out whole; the value is a string here, whose ownership reaches the caller.
+    private const string StoredPair = "struct StoredPair<T>\n    Self is Iterator\n    associate Iterator.Item is (isize, T)\n    var pending: Option<(isize, T)>\n" +
+        "    public init(value: T) => self.pending = .Some((41, value@move))\n    public func next(self: uniq/Self) -> Option<(isize, T)>\n" +
+        "        match Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)\n            ";
+
+    [Fact]
+    public void ANestedPatternThatTransfersItsValueIsAccepted()
+    {
+        var source = StoredPair + ".Some((let position, let value)) => return .Some((position + 1, value@move))\n            .None => return .None\n" +
+            "var stored = StoredPair<string>.init(\"Stored pair.\")\nvar positions: isize = 0\nloop\n    match stored.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            Console.writeLine(pair.1)\n        .None => exit\nrequire positions == 42 else => $abort(\"pair\")\nConsole.writeLine(\"nested\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorNestedTransfer", source, "Stored pair.\nnested\n");
+    }
+
+    // A nested wildcard or a binding left to its scope destroys that part of the item inside next.
+    [Theory]
+    [InlineData(".Some((let position, _)) => return .None")]
+    [InlineData(".Some((let position, let value)) => return .None")]
+    [InlineData(".Some((let position, let value))\n                let kept = value@move\n                return .None")]
+    public void ANestedPatternThatDropsAPartIsRejected(string arm)
+    {
+        var c = MinimalEmissionTest.Analyze(StoredPair + arm + "\n            .None => return .None\n");
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // An aggregate that stores the item but is not transferred on is destroyed inside next.
     [Theory]
     [InlineData(".Some(let value)\n                let pair = (self.index, value@move)\n                return .None")]
