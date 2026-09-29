@@ -19,7 +19,7 @@ public sealed partial class Binding
             return intrinsic;
         }
 
-        if (call.ConformingType is not { } self || call.Target.Scope.Owner.BoundSymbol is not { } contract ||
+        if (call.ConformingType is not { } self || (this.InstanceReference(call, self, outer) ?? call.Target.Scope.Owner.BoundSymbol) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||
             witness.Function is not { BasePath: null } function ||
@@ -52,5 +52,26 @@ public sealed partial class Binding
                 result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
             }
         }
+    }
+
+    // SPEC 8.4.9: the conformance of the instance's Type to the bound reference the generic call selected, with that
+    // reference's Type arguments instantiated (`Indexable<Name>`, or `C<E>` read as `C<i32>`); null to resolve by declaration.
+    private BindingSymbol? InstanceReference(BoundCall call, BoundType self, BoundCall outer)
+    {
+        if (call.RequirementContract?.Type is not { } reference || this.InstantiateStorageType(reference, outer) is not { } concrete ||
+            self.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < identities.Count; i++)
+        {
+            if (ReferenceEquals(identities[i].Contract.Type, concrete))
+            {
+                return identities[i].Contract;
+            }
+        }
+
+        return null;
     }
 }

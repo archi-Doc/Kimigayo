@@ -68,6 +68,10 @@ public sealed class BoundCall
     // Selected from source syntax, never inferred again after generic substitution.
     internal bool TupleOperator { get; set; }
 
+    // The bound Contract reference (Indexable<Name>) whose requirement a generic call selected; its instance dispatches
+    // through that conformance (SPEC 8.4.9). Null for other calls.
+    internal BindingSymbol? RequirementContract { get; set; }
+
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Target = target;
@@ -75,6 +79,7 @@ public sealed class BoundCall
         this.Receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
+        this.RequirementContract = null;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
@@ -669,6 +674,11 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            if (requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } selectedContract && IsBoundContractReference(selectedContract))
+            {
+                call.CallStorage.RequirementContract = RequirementReference(requirementShape, winner);
+            }
+
             if (selected.ReturnType is PlaceResultKoto && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
             {
                 // SPEC 7.1.1: the call designates the published Place; its Type is the stored Type, and the plan keeps the reference.

@@ -108,6 +108,7 @@ public sealed partial class Binding
             var call = requirement ? this.forwardedRequirement : destination ?? new BoundCall();
             call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
             call.TupleOperator = inner.TupleOperator;
+            call.RequirementContract = inner.RequirementContract;
             return requirement ? this.InstantiateRequirementCall(call, outer, destination) : call;
         }
         finally

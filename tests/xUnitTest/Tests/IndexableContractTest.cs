@@ -110,6 +110,29 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableContractTwoKeys", TwoKeys + Use, "two keys\n");
     }
 
+    // SPEC 8.4.9, 4.6.9: inside a generic body, a parameter with two Indexable conformances selects the one whose Key is the
+    // key's own Type, and `S.(Indexable<Name>).Element` names that conformance's Element, distinct from the other one.
+    private const string GenericTwoKeys =
+        "func pick<S>(table: ref/S, k: isize, n: Name) -> S.(Indexable<Name>).Element\n    S is Indexable<isize>\n    S is Indexable<Name>\n" +
+        "    S.(Indexable<isize>).Element is Copy\n    S.(Indexable<Name>).Element is Copy\n    let small: S.(Indexable<isize>).Element = table[k]\n    return table[n]\n";
+
+    [Fact]
+    public void TheKeyTypeSelectsAmongSeveralGenericConformances()
+    {
+        const string Use = "let table = Table.init(3, 4)\nlet b: i64 = pick(table@ref, 0, Name.init(1))\nrequire b == 4 else => $abort(\"pick\")\nConsole.writeLine(\"generic keys\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractGenericTwoKeys", TwoKeys + GenericTwoKeys + Use, "generic keys\n");
+    }
+
+    // The two Element projections are distinct Types in the generic body.
+    [Fact]
+    public void GenericElementsOfDistinctReferencesDoNotMix()
+    {
+        const string Mixed = "func mix<S>(table: ref/S, n: Name) -> S.(Indexable<isize>).Element\n    S is Indexable<isize>\n    S is Indexable<Name>\n" +
+            "    S.(Indexable<Name>).Element is Copy\n    return table[n]\n";
+        var c = MinimalEmissionTest.Analyze(TwoKeys + Mixed);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Theory]
     [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]")]
     [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]")]

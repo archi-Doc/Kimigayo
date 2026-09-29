@@ -61,6 +61,26 @@ public sealed partial class Binding
         }
     }
 
+    // The Contract, as a bound reference when it takes Type arguments, that declares a requirement reached through a shape.
+    private static BindingSymbol RequirementReference(BoundContract shape, BindingSymbol requirement)
+    {
+        var owner = requirement.Scope.Owner;
+        if (ReferenceEquals(shape.Symbol.Declaration, owner))
+        {
+            return shape.Symbol;
+        }
+
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner))
+            {
+                return shape.Ancestors[i];
+            }
+        }
+
+        return shape.Symbol;
+    }
+
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
@@ -161,8 +181,10 @@ public sealed partial class Binding
 
             for (var i = 0; i < members.Count; i++)
             {
+                // SPEC 8.4.9: one requirement reached through distinct bound references (Indexable<isize>, Indexable<Name>)
+                // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var requirement = members[i];
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add(requirement))
+                if (requirement.Declaration is FunctionKoto && group.Seen.Add((requirement, RequirementReference(shape, requirement))))
                 {
                     group.Members.Add(requirement);
                     group.Contracts.Add(shape.Symbol);
@@ -211,7 +233,7 @@ public sealed partial class Binding
         /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
         internal List<BindingSymbol> Contracts { get; } = new();
 
-        internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
+        internal HashSet<(BindingSymbol Requirement, BindingSymbol Contract)> Seen { get; } = new();
 
         internal BoundType Self { get; set; } = null!;
 
