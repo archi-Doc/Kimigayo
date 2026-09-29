@@ -218,6 +218,7 @@ public sealed record BoundType : ControlFlowType
     // Whole-subtree summaries, computed once at construction (see the constructor).
     private readonly bool carriesOrigin;
     private readonly bool carriesOriginOrSlot;
+    private readonly bool containsParameter;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
@@ -235,14 +236,17 @@ public sealed record BoundType : ControlFlowType
         // Components are complete before interning, so these summaries are exact and never revisited.
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
-        for (var i = 0; components is not null && i < components.Length && !(found && slot); i++)
+        var parameter = kind == BoundTypeKind.Parameter;
+        for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
             slot |= components[i].carriesOriginOrSlot;
+            parameter |= components[i].containsParameter;
         }
 
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
+        this.containsParameter = parameter;
     }
 
     private enum NumericCategory : byte
@@ -312,6 +316,10 @@ public sealed record BoundType : ControlFlowType
     /// <summary>Gets a value indicating whether this subtree carries an Origin or a Type Parameter.</summary>
     /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>
     internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
+
+    /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
+    /// may substitute (SPEC 8.3).</summary>
+    internal bool ContainsParameter => this.containsParameter;
 
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
 

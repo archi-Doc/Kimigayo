@@ -329,7 +329,23 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        if (expected is { ContainsParameter: true })
+        {
+            expected = this.SubstituteIdentityPremises(expected, scope);
+        }
+
         var actual = this.BindNodeCore(node, scope, expected);
+        if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
+        {
+            // SPEC 8.3: the expression has the one Type that the identity premises of its scope make of its Types.
+            if (ReferenceEquals(node.BoundType, actual))
+            {
+                node.BoundType = substituted;
+            }
+
+            actual = substituted;
+        }
+
         if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
         {
@@ -593,6 +609,11 @@ public sealed partial class Binding
                     resultType = BoundType.Unit;
                 }
 
+                if (resultType is { ContainsParameter: true })
+                {
+                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.3
+                }
+
                 var actual = jump.Expression is { } operand ? this.BindNode(operand, scope, resultType) : BoundType.Unit;
                 if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
                 {
@@ -754,6 +775,11 @@ public sealed partial class Binding
 
         var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
+        if (symbol.Kind == BindingSymbolKind.Local && declared is { ContainsParameter: true })
+        {
+            declared = this.SubstituteIdentityPremises(declared, scope); // SPEC 8.3: one Type in the premise's scope.
+        }
+
         if (originDeclaration is not null)
         {
             foreach (var set in originDeclaration.Sets.Values)

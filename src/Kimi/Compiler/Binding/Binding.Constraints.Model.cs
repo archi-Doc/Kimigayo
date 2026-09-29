@@ -126,6 +126,10 @@ internal sealed class ConstraintEnvironment
 
     internal bool HasAssociatedProjection { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.3), so that
+    /// expressions bound in its scope substitute one for the other.</summary>
+    internal bool HasParameterIdentity { get; set; }
+
     internal void Reset()
     {
         this.Facts.Clear();
@@ -133,5 +137,6 @@ internal sealed class ConstraintEnvironment
         this.DerivedFacts.Clear();
         this.Invalid = false;
         this.HasAssociatedProjection = false;
+        this.HasParameterIdentity = false;
     }
 }
