@@ -269,8 +269,6 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it,
-    // securing the RHS first. The stored value follows the borrowed-field rules: Copy scalars, references and pointers.
     // SPEC 7.1.1: a value use of a published Place reads the referent through the reference the call returns, like a
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
     private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
@@ -312,12 +310,13 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 7.1.1, 13.7: an assignment or compound update through a place uniq/T result secures the right-hand side,
-    // evaluates the call once as its reference, and stores through it.
+    // evaluates the call once as its reference, and replaces the referent through it (any stored Type for `=`, numeric for
+    // a compound update).
     private int WritePlaceCall(Koto source, InvocationKoto call)
     {
         var type = call.BoundType;
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))
         {
             this.Unsupported(source);
@@ -360,17 +359,18 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var stored = this.Emit(OwnershipOperationKind.StorePointer, call, value, acquisition: this.body.Places[value].Acquisition);
-        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        this.StorePointer(call, pointer, value);
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
+    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
+    // RHS first, as the same replacement.
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
         var reference = followed.Left;
         var type = this.Concrete(followed.BoundType);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))
         {
             this.Unsupported(source);
@@ -411,17 +411,18 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var stored = this.Emit(OwnershipOperationKind.StorePointer, reference, value, acquisition: this.body.Places[value].Acquisition);
-        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        this.StorePointer(reference, pointer, value);
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
+    // SPEC 5.2, 7.1.1, 13.5.5.1, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
+    // call publishes, a followed uniq reference or the exclusive address of a field reached through a reference. The old
+    // value is destroyed by its Type's destruction plan and the acquired value's responsibility moves into the destination
+    // (LowerPointer); no compiler-owned destination or temporary is created for it.
     private void StorePointer(Koto target, int pointer, int value)
     {
-        // Transfer the acquired source's responsibility to caller-managed storage.
-        // No compiler-owned destination or temporary is created for the raw Place.
         var stored = this.Emit(OwnershipOperationKind.StorePointer, target, value, acquisition: this.body.Places[value].Acquisition);
-        if (ScalarResult(target.BoundType!))
+        if (ScalarResult(this.body.Places[value].Type))
         {
             this.SetValue(stored, OwnershipValueKind.PointerStore, [pointer, this.Value(value)], constant: value);
         }

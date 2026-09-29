@@ -487,43 +487,27 @@ internal sealed partial class BodyLowering
             var child = elementLayout;
             var isString = ReferenceEquals(representation, WindowsLowering.String);
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
+            var location = -1;
+            var parts = this.DestructionPath(body, operation) >= 0;
             if (isString || child is { NeedsDestruction: true })
             {
-                if (this.DestructionPath(body, operation) >= 0)
+                if (parts)
                 {
+                    // An owned element whose parts were moved out destroys only its remaining parts.
                     if (!this.LowerPartDestruction(body, function, constants, directory, id, out failure))
                     {
                         return false;
                     }
                 }
-                else
+                else if (!this.TryGetLocation(operation.Source, directory, constants, out location))
                 {
-                    if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
-                    {
-                        return Fail("Element destruction requires a source location.", out failure);
-                    }
-
-                    AddOwnedDestruction(function, id, destination, location, child);
+                    return Fail("Element destruction requires a source location.", out failure);
                 }
             }
 
-            if (representation.Layout.Size != 0)
+            if (!AddReplacement(function, id, destination, operation.Input, representation, child, isString, location, destroy: !parts))
             {
-                if (child is { } aggregate)
-                {
-                    var start = function.Operands.Count;
-                    function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Input));
-                    function.Operands.Add(destination);
-                    function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, OperandStart: start, OperandCount: 2, Aggregate: aggregate));
-                }
-                else if (isString)
-                {
-                    function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, operation.Input), destination]);
-                }
-                else
-                {
-                    function.AddScalar(EmissionOpcode.StoreElement, id, [this.PhysicalOperand(body, input)], representation.ComputationType, place: plan.Operation, representation: representation);
-                }
+                function.AddScalar(EmissionOpcode.StoreElement, id, [this.PhysicalOperand(body, input)], representation.ComputationType, place: plan.Operation, representation: representation);
             }
 
             this.AddStringFlags(function, operation, id);

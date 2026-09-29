@@ -267,23 +267,23 @@ public sealed partial class OwnershipAnalysis
             return this.UpdateBorrowedField(assignment, field);
         }
 
+        // SPEC 13.7: secure the RHS, then replace the field through its exclusive address, borrowed through the receiver,
+        // like a referent: the old value is destroyed by its Type's plan and the new one moves in.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (ElementAccess.AccessType(root)?.Semantics != SemanticsKind.Uniq ||
-            !(ReferenceTypes.IsValue(this.Concrete(field.BoundType)) || this.GenericInteger(field)))
+        if (ElementAccess.AccessType(root) is not { Semantics: SemanticsKind.Uniq } receiverType || field.BoundType is not { } stored)
         {
             this.Unsupported(assignment);
             return -1;
         }
 
         var input = this.Expression(assignment.Right);
-        var receiver = this.Receiver(root);
-        if (input < 0 || receiver < 0)
+        var address = input < 0 ? -1 : this.BorrowStruct(field, this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType.Origin));
+        if (address < 0)
         {
             return -1;
         }
 
-        var operation = this.Emit(OwnershipOperationKind.WriteBorrowedField, assignment, receiver, input);
-        this.SetValue(operation, OwnershipValueKind.BorrowedFieldWrite, [this.Value(receiver), this.Value(input)]);
+        this.StorePointer(field, this.Value(address), input);
         return this.Temporary(assignment);
     }
 

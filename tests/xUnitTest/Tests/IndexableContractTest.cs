@@ -73,7 +73,6 @@ public class IndexableContractTest
     [Theory]
     [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\nlet bare = pair[0]")]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet view = pair[0]@ref\npair[0] = 3\nrequire view == 1 else => $abort(\"x\")")]
-    [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\npair[0] = \"c\"")] // Non-Copy replacement through a Place shares the reference-write boundary (STATUS).
     public void RejectsAtOwnership(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
