@@ -25,6 +25,7 @@ Toolchain identity is checked during setup/update or with `kimi toolchain verify
 
 ## 3. Current position
 
+- **Diagnostics track (2026-09-30, user decision):** the diagnostics plan is integrated (D0): SPEC §23.3.3, §23.3.6 and §23.4.7 define outcomes, acceptance, records, categories, prerequisites, limits, order and rendering; [DIAGNOSTICS.md](DIAGNOSTICS.md) holds the internal model, common rules and migration rules; AGENTS.md holds the Diagnostic Development Workflow. JSON records are prepared but not emitted. P31 is paused until D2b completes, and no language milestone runs in parallel with D2a or D2b.
 - **Verification performance (2026-09-30):** toolchain checks are explicit, kernel32 is shared, and 32 original-source milestone runners pass O0/O2. Session `20260929-195754-059-session-verification-performance-retry` passes a warning-free Release build, 13,461 tests and 58 related native fixture executions. CLI, module and installation-failure checks pass separately. Milestone 1 takes 2.54s versus 22.13s before workload simplification (single samples; not compiler throughput). Failed initial runs remain recorded; see PLAN_HISTORY.
 
 - **Repository layout and outputs (2026-09-28):** `426563d2` separates disposable `temp/` work from retained `artifacts/` evidence/packages and reorganizes the English README. Projects remain under `src/` and `tests/`; verification starts at `scripts/verify.ps1`. Session `20260928-123203-403-session-temp-artifacts` passes warning-free Debug/Release builds, all 13,038 tests in each configuration, 2 native O0/O2 executions and 25 Release Milestone 1 checks. Milestone 28 and its retry are blocked by Windows application control at native process startup. Evidence is under `artifacts/verify/`; language milestone position is unchanged.
@@ -63,7 +64,7 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 10 | P39 | Semantics-generic follow | DONE (2026-09-27) | A pair `s/T` Place is followed to its stored target `T` under the admitted Semantics set; generic accessors over `Collection<s/T>` return `ref/T`/`uniq/T` with the dependencies of the followed layer. The re-spelled target passes 29 harness checks in Debug and Release. |
 | 11 | P28 | General Iterator/Iterable | DONE (2026-09-29) | User lending loops in all three modes, LendingIterator/Iterator with the effect bound, the `Kimi.Iteration` adapters, associated families and every standard collection iterate through Kimigayo entries over `Kimi.Storage` (G28–G30, G32, G33 resolved). The unchanged target passes 43 harness checks in Debug and Release. |
 | 12 | P41 | Positions and ranges | DONE (2026-09-30) | The SPEC integrates `draft/Changes/2026-09-29 Redesign Ranges B.md`; Type identity as substitution, closed `Position`/`PositionRange`, the value read, `FromEnd<T>`/`Start`/`End`/`Range<S, E>`/`ClosedRange<S, E>`, generic position entries, merged bounds checks, the measured closed iterator and the §17.4.4 warning are implemented. Program 41 passes 77 harness checks; programs 7, 27, 29 and 37 are re-spelled and keep their state. |
-| 13 | P31 | Dictionary | IN_PROGRESS | Unchanged target and 71 Debug/Release harness checks pass. Finish the source migration over the Place and storage boundaries (G20): indexing through `UniqIndexable<K>`, iteration through the standard entries, generic operation/result dispatch and reserve/growth in Kimigayo; nonempty runtime literals; borrowed indexing and nested owning storage. Place-independent items may be finished earlier at a convenient point. |
+| 13 | P31 | Dictionary | IN_PROGRESS (paused for the Diagnostics track) | Unchanged target and 71 Debug/Release harness checks pass. Finish the source migration over the Place and storage boundaries (G20): indexing through `UniqIndexable<K>`, iteration through the standard entries, generic operation/result dispatch and reserve/growth in Kimigayo; nonempty runtime literals; borrowed indexing and nested owning storage. Place-independent items may be finished earlier at a convenient point. |
 | 14 | P40 | Disjoint exclusive element access | TODO | Depends on the API decision recorded with G22. Two distinct elements of a standard collection are borrowed exclusively at the same time through a splitting operation built on `Kimi.Storage`; equal keys are rejected at runtime with `None`; conflicting whole-collection access is rejected statically. Program 40 is authored after the decision. |
 | 15 | P26 | General closures and Callable | TODO | Composite/generic captures, function items and erasure (issue G10), indirect-call ABI. |
 | 16 | P37 | Integrated processing application | DONE (2026-09-27) | Collections, borrows, iteration and closures combined. The unchanged target passes 47 harness checks in Debug and Release (variants, Abort path, Loan violations) and its allocation/complexity observations (`WorkloadCostTest`). |
@@ -75,13 +76,26 @@ States: TODO / IN_PROGRESS / DONE. A milestone is DONE only when every condition
 | 22 | P36 | General static storage | TODO | First initialization, effects, cycles, shutdown. Program 36 is authored and binds; ownership analysis stops at the static group. |
 | 23 | P38 | Integrated core application | TODO | Properties, inheritance, objects and formatting combined. Program 38 is authored; Binding stops at `Weak<rc/Lamp>`. |
 
-P22, P19, P20, P21, P29, P32, P30, P23, P27, P39, P28, P37 and P41 are done. P31 is the active milestone.
+P22, P19, P20, P21, P29, P32, P30, P23, P27, P39, P28, P37 and P41 are done. P31 is paused while the Diagnostics track runs D1–D2b (user decision, 2026-09-30); it resumes afterwards.
+
+### Diagnostics track (active)
+
+Stages follow [DIAGNOSTICS.md](DIAGNOSTICS.md) §8; each unit follows the Diagnostic Development Workflow (AGENTS.md). The authority is SPEC §23.3.3, §23.3.6 and §23.4.7.
+
+| ID | Stage | State | Completion condition |
+| --- | --- | --- | --- |
+| D0 | Documentation intake: SPEC, Appendices D/E, DIAGNOSTICS.md, AGENTS.md, execution prompt; the draft is frozen | DONE (2026-09-30) | Work proceeds from the permanent documents alone. |
+| D1 | Baseline and definitions, with no published change: snapshot harness and performance baseline; one test helper for diagnostics; catalog categories, Advice, load validation with template arity; audit of shared codes, free-text codes (such as `ControlFlow_Kd`) and implementation limits reported with `Language` codes; location fixes; `DiagnosticPrecisionTest` and `MilestoneSourcesTest` read public records | TODO | Every code has a category; enumeration and catalog consistency tests pass; existing tests produce no invalid location; the snapshot equals the baseline. |
+| D2a | Common finalization boundary: error state separated from display; diagnostic owner, partitions and source table; `CheckDiagnostic` with the fault path; one CLI finalization point; language-server conversion | TODO | Snapshot differences are only the intended kinds (timing, order, attribution, error-state fixes). |
+| D2b | Identity and explicit prerequisites, recorder by recorder (lexing and parsing with the recovery map, Binding, startup, control flow, ownership); then remove the transitional filter, `DiagnosticDependencyVisitor` and the `BorrowOriginHint` suppression | TODO | Independent problems at one position survive; syntax cascades are suppressed; milestone and mutation runs show no unexplained rejection and no fallback; order is deterministic; milestone stage baselines are reviewed and updated. |
+| D3 | Explanations: bounded formatting, excerpts and evidence; Type mismatch and invalid assignment Reasons and ranges; Move, borrow and overload detail after a cost review | TODO | Target cases show the expected locations, Reasons and evidence. |
+| D4 | Evaluation: CLI and language-server results, performance, verified scope and remaining limits | TODO | DIAGNOSTICS.md §9 evaluation is recorded, and STATUS states the verified boundary. |
 
 ### Toolchain track (after P38, or earlier when instructed)
 
 The language server and the check foundation for a future CSP adapter (SPEC Chapter 23) are **implemented** (L1–L6; plan archived as [draft/Design/2026-09-28 Language Server and Compiler Services.md](../../draft/Design/2026-09-28%20Language%20Server%20and%20Compiler%20Services.md)). The CSP adapter itself is not planned yet. The compiler milestone order is unchanged.
 
-The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](../../src/Benchmark/Lsp.md) include the sandbox-specific process-test reruns. P28 remains the active compiler milestone.
+The 2026-09-28 LSP review fixed transport/lifecycle and snapshot-consistency defects and reduced hot-path allocations; its follow-up fixed lone-surrogate, request-ID and unreadable-change defects and made typing at one place independent of document length. [Measurements and verification](../../src/Benchmark/Lsp.md) include the sandbox-specific process-test reruns.
 
 | ID | Subject | Acceptance |
 | --- | --- | --- |
@@ -107,7 +121,8 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-Follow §4 with P31, P40 and P26. Independent P31 source work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
+1. Diagnostics track D1, then D2a and D2b (P31 paused), then D3 and D4.
+2. Resume §4 with P31, P40 and P26. Independent P31 source work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
 
 Concurrent sessions use separate worktrees and stage only their own paths. Library bodies reached only through generic dispatch are collected through `CollectWitnesses`; keep that path in view when a body has no verified generic instance.
 

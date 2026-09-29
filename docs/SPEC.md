@@ -68,7 +68,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 ### Part VII. Compiler services
 
 - [23. Compiler services](spec/23-compiler-services.md)
-  - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes, diagnostic records, input identity and revisions.
+  - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes and acceptance, input identity, revisions and diagnostics (categories, records, source tables, prerequisites and suppression, limits, order and rendering).
   - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication and settings.
   - [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol): purpose, the provided foundation and the requirements of the future protocol.
 
