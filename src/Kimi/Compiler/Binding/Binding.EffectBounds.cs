@@ -366,7 +366,7 @@ public sealed partial class Binding
             return true;
         }
 
-        // Whether the body is exactly `return item@move` or `return .Some(item@move)`: the binding is transferred first.
+        // Whether the body is exactly `return v` where evaluating v stores the binding in the returned value.
         private bool TransfersAtOnce(Koto body, BindingSymbol item)
         {
             while (body is CodeBlockKoto { Items: [var only] })
@@ -374,13 +374,49 @@ public sealed partial class Binding
                 body = only;
             }
 
-            var value = body is ReturnKoto { Expression: { } returned } ? returned : null;
-            if (value is InvocationKoto { ArgumentNodes: [var argument] } construction && binding.TryGetEnumConstruction(construction, out _))
+            return body is ReturnKoto { Expression: { } returned } && this.Stores(returned, item);
+        }
+
+        // Whether `value` is `item@move`, or a Case construction or Tuple that stores it in exactly one part while its other
+        // parts neither name it nor may leave the block (G28): the aggregate is complete or evaluation Aborts.
+        private bool Stores(Koto value, BindingSymbol item)
+        {
+            value = KotoHelper.UnwrapParentheses(value);
+            if (IsTransferOf(value, item))
             {
-                value = argument; // A Case construction stores its one payload first.
+                return true;
             }
 
-            return IsTransferOf(value, item);
+            IReadOnlyList<Koto>? parts = value switch
+            {
+                InvocationKoto construction when binding.TryGetEnumConstruction(construction, out _) => construction.ArgumentNodes,
+                TupleLiteralKoto tuple => tuple.Elements,
+                _ => null,
+            };
+
+            var stored = -1;
+            for (var i = 0; parts is not null && i < parts.Count; i++)
+            {
+                if (this.Stores(parts[i], item))
+                {
+                    if (stored >= 0)
+                    {
+                        return false;
+                    }
+
+                    stored = i;
+                }
+            }
+
+            for (var i = 0; stored >= 0 && i < parts!.Count; i++)
+            {
+                if (i != stored && !this.inertScan.Check(parts[i], item))
+                {
+                    return false;
+                }
+            }
+
+            return stored >= 0;
         }
 
         // G28: a local is not destroyed when a later statement of its block transfers it at once, directly or as the Subject

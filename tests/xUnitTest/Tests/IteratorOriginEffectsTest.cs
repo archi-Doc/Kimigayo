@@ -229,6 +229,31 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorHoldAcross", source, "held across\n");
     }
 
+    // G28: a returned Case construction or Tuple that stores the item, with parts that neither name it nor may leave the
+    // block, transfers it at once, so an Iterator may number the values it hands out.
+    private const string NumberedOnce = "struct NumberedOnce<T>\n    Self is Iterator\n    associate Iterator.Item is (isize, T)\n    var value: Option<T>\n    public var index: isize = 0\n" +
+        "    public init(value: T) => self.value = .Some(value@move)\n    public func next(self: uniq/Self) -> Option<(isize, T)>\n" +
+        "        match Kimi.Intrinsics.exchange(self.value@uniq, with: .None)\n            ";
+
+    [Fact]
+    public void AnItemStoredInAReturnedTupleIsTransferred()
+    {
+        var source = NumberedOnce + ".Some(let value)\n                self.index += 1\n                return .Some((self.index, value@move))\n            .None => return .None\n" +
+            "var once = NumberedOnce<i32>.init(5)\nvar positions: isize = 0\nvar sum: i32 = 0\nloop\n    match once.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            sum += pair.1\n        .None => exit\nrequire positions == 1 and sum == 5 and once.index == 1 else => $abort(\"numbered\")\nConsole.writeLine(\"numbered\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorNumberedOnce", source, "numbered\n");
+    }
+
+    // An aggregate that stores the item but is not transferred on is destroyed inside next.
+    [Theory]
+    [InlineData(".Some(let value)\n                let pair = (self.index, value@move)\n                return .None")]
+    [InlineData(".Some(let value)\n                let pair: Option<(isize, T)> = .Some((self.index, value@move))\n                return .None")]
+    public void AnItemStoredInADroppedAggregateIsRejected(string arm)
+    {
+        var c = MinimalEmissionTest.Analyze(NumberedOnce + arm + "\n            .None => return .None\n");
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A statement between the item's initialization and its transfer that names the item, or that may leave the block
     // normally (a return, or an exit to an iteration outside it), may destroy it inside next.
     [Theory]
