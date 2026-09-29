@@ -68,9 +68,35 @@ public class KeyedIndexingTest
         "var items: Array<i32> = [1, 0, 5]\nlet removed = items.remove(items[0])\nrequire removed == 0 and items.length == 2 and items[1] == 5 else => $abort(\"own position\")\n" +
         "Console.writeLine(\"ok\")";
 
+    // SPEC 4.6.6: the read operations of fixed arrays and Array mean the same operation on their whole-range Slice, for
+    // positions of every form, valid or not.
+    private const string ReadApis =
+        "func value(o: Option<ref/i32 during a>) -> i32\n    match o\n        .Some(let x) => return x\n        .None => return -1\n" +
+        "func size(o: Option<Slice<i32>>) -> isize\n    match o\n        .Some(let s)\n            let handle = s@follow\n            return handle.length\n        .None => return -1\n" +
+        "func split(o: Option<(Slice<i32>, Slice<i32>)>) -> isize\n    match o\n        .Some(let parts) => return parts.0.length\n        .None => return -1\n" +
+        "func position<P>(fixed: ref/[4 of i32], array: ref/Array<i32>, p: P) -> bool\n    P is Position\n" +
+        "    let a = value(fixed.tryGet(p))\n    return a == value(fixed[..].tryGet(p)) and a == value(array.tryGet(p)) and a == value(array[..].tryGet(p)) and " +
+        "split(fixed.trySplitAt(p)) == split(fixed[..].trySplitAt(p)) and split(array.trySplitAt(p)) == split(array[..].trySplitAt(p)) and split(fixed.trySplitAt(p)) == split(array.trySplitAt(p))\n" +
+        "func range<R>(fixed: ref/[4 of i32], array: ref/Array<i32>, r: R) -> bool\n    R is PositionRange\n" +
+        "    let a = size(fixed.trySlice(r))\n    return a == size(fixed[..].trySlice(r)) and a == size(array.trySlice(r)) and a == size(array[..].trySlice(r))\n" +
+        "let fixed: [4 of i32] = [10, 20, 30, 40]\nlet array: Array<i32> = [10, 20, 30, 40]\n" +
+        "require position(fixed, array, 0) and position(fixed, array, 3) and position(fixed, array, ^1) and position(fixed, array, ^0) else => $abort(\"positions\")\n" +
+        "require position(fixed, array, 5) and position(fixed, array, -1) and position(fixed, array, 1@u8) and position(fixed, array, ^(2@i64)) and position(fixed, array, ^5) else => $abort(\"more positions\")\n" +
+        "require range(fixed, array, 1..^1) and range(fixed, array, ..=3) and range(fixed, array, 2..) and range(fixed, array, 3..1) and range(fixed, array, ^5..) and range(fixed, array, 0..=4) else => $abort(\"ranges\")\n" +
+        "require fixed.splitAt(^1).0.length == fixed[..].splitAt(^1).0.length and array.splitAt(1@u8).1.length == array[..].splitAt(1@u8).1.length else => $abort(\"split\")\n" +
+        "require value(fixed.tryGet(^1)) == 40 and size(array.trySlice(1..^1)) == 2 else => $abort(\"values\")\nConsole.writeLine(\"ok\")";
+
+    // SPEC 4.6.1, 15.1.3: after a Partial Move through a literal static path the remaining elements stay accessible by
+    // literal paths, and positions select through chained arrays.
+    private const string PartialMoveAndChains =
+        "var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[2]@move\nConsole.writeLine(taken)\nConsole.writeLine(names[1])\nnames[2] = \"d\"\nConsole.writeLine(names[2])\n" +
+        "var matrix: [2 of [3 of i32]] = [[1, 2, 3], [4, 5, 6]]\nmatrix[^1][^1] = 9\nrequire matrix[1][2] == 9 and matrix[^2][..^1].length == 2 and matrix[1][1@u8..][0] == 5 else => $abort(\"chain\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "ReceiverForms", ReceiverForms, "ok\n" },
+        { "ReadApis", ReadApis, "ok\n" },
+        { "PartialMoveAndChains", PartialMoveAndChains, "c\nb\nd\nok\n" },
         { "IndexKeys", IndexKeys, "Last text.\nFirst text.\nFirst text.\nok\n" },
         { "RangeKeys", RangeKeys, "ok\n" },
         { "NestedViews", NestedViews, "ok\n" },
@@ -91,5 +117,20 @@ public class KeyedIndexingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
+    // SPEC 4.6.1, 4.6.6, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize;
+    // a dynamic position may select a moved element; and an Array read result keeps the receiver shared-borrowed.
+    [Theory]
+    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[^1]@move", DiagnosticCode.UnsupportedOwnership_Kd)]
+    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet i: isize = 2\nlet taken = names[i]@move", DiagnosticCode.UnsupportedOwnership_Kd)]
+    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[0]@move\nConsole.writeLine(names[^1])", DiagnosticCode.MovedPlace_Kd)]
+    [InlineData("var array: Array<i32> = [1, 2]\nlet first = array.tryGet(0)\narray.append(3)\nlet again = first", DiagnosticCode.CallActivationConflict_Kd)]
+    [InlineData("var array: Array<i32> = [1, 2]\nlet part = array.trySlice(..1)\narray.append(3)\nlet again = part", DiagnosticCode.CallActivationConflict_Kd)]
+    public void RejectsAtOwnership(string source, DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, x => x.Code == code);
     }
 }

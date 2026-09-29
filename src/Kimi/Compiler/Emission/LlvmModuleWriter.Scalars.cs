@@ -316,11 +316,22 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
+    // The condition of a check that the compiler proved: the failure block stays unreachable.
+    private const string ProvenValid = "false";
+
     private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition)
     {
         var id = instruction.Operation;
         output.Write("  br i1 ");
-        Name(output, condition, id);
+        if (ReferenceEquals(condition, ProvenValid))
+        {
+            output.Write(ProvenValid);
+        }
+        else
+        {
+            Name(output, condition, id);
+        }
+
         Name(output, ", label %abort", id);
         Name(output, ", label %b", instruction.Place);
         output.Write('\n');

@@ -26,6 +26,16 @@ public class PositionWarningTest
     [InlineData("let a = fixed[5..2]", "The range 5..2 fails to resolve for every length")]
     [InlineData("let a = fixed[..=3]", "The range ..=3 fails to resolve for the fixed array's length 3")]
     [InlineData("let s = values[..]\nlet a = s[^0..=^0]", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet(^0)", "The element position ^0 fails to resolve for every length")]
+    [InlineData("let a = fixed.tryGet(3)", "The element position 3 fails to resolve for the fixed array's length 3")]
+    [InlineData("let a = fixed.trySlice(1..5)", "The range 1..5 fails to resolve for the fixed array's length 3")]
+    [InlineData("let a = fixed.splitAt(^4)", "The position ^4 fails to resolve for the fixed array's length 3")]
+    [InlineData("var v: Array<i32> = [1]\nlet r = v.remove(^0)", "The element position ^0 fails to resolve for every length")]
+    [InlineData("var v: Array<i32> = [1]\nv.insert(^(-1), 2)", "The position ^(-1) fails to resolve for every length")]
+    [InlineData("var v: Array<i32> = [1, 2]\nv.swap(0, -1)", "The element position -1 fails to resolve for every length")]
+    [InlineData("let s = values[..]\nlet p = s.trySplitAt(-1)", "The position -1 fails to resolve for every length")]
+    [InlineData("let r = (2..=1).tryResolve(5)", "fails to resolve for every length")]
+    [InlineData("let p = (^(-1)).resolve(3)", "fails to resolve for every length")]
     public void CertainFailuresAreWarned(string statement, string message)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
@@ -50,6 +60,14 @@ public class PositionWarningTest
     [InlineData("let r = 2..=1\nlet a = values[r]")]
     [InlineData("let n: i32 = 5\nlet a = values[n..2]")]
     [InlineData("let a = values[(1 << 40)..]")]
+    [InlineData("let a = values.tryGet(^1)")]
+    [InlineData("let a = fixed.tryGet(2)")]
+    [InlineData("let a = fixed.splitAt(3)")]
+    [InlineData("let a = fixed.trySlice(^3..)")]
+    [InlineData("var v: Array<i32> = [1]\nv.insert(^0, 2)")]
+    [InlineData("let r = (1..^1).tryResolve(5)")]
+    [InlineData("let p = (^3).tryResolve(2)")]
+    [InlineData("let n = 0\nlet p = values.tryGet(n - 1)")]
     public void ResolvableOrNonLiteralKeysAreNotWarned(string statement)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);

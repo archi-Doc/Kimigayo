@@ -38,8 +38,21 @@ public class RangeValueTest
         "let reversed = 3..1\nlet negative = ^(-1)\nrequire reversed.start == 3 and negative.offset == -1 else => $abort(\"unchecked\")\n" +
         "Console.writeLine(\"\\(bounds) \\(resolved) \\(..=^2) \\(2..) \\(..)\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC utf8-formatting §4.2: `^` and the offset, nothing for Start and End, and each boundary of a range as written.
+    private const string Formats =
+        "let whole = ..\nlet n: u8 = 7\nConsole.writeLine(\"\\(^2) [\\(whole.start)] [\\(whole.end)] \\(0..=3) \\(..^1) \\(^n..) \\(..=^(0@i64)) \\((1..4).resolve(9))\")";
+
+    // SPEC 4.6.3.4: an entry copies the boundaries, so a returned iterator keeps no borrow of its local range.
+    private const string Entries =
+        "func makeNumbers() -> RangeIterator<i32>\n    let numbers = 0..3\n    return numbers.iterate()\n" +
+        "func makeClosed() -> ClosedRangeIterator<u8>\n    let numbers = 250@u8..=255\n    return numbers.intoIterator()\n" +
+        "var total = 0\nfor number in Kimi.Iteration.owning(makeNumbers())\n    total += number\n" +
+        "var count = 0\nfor b in Kimi.Iteration.owning(makeClosed())\n    count += 1\nrequire total == 3 and count == 6 else => $abort(\"entries\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "Formats", Formats, "^2 [] [] 0..=3 ..^1 ^7.. ..=^0 1..4\n" },
+        { "Entries", Entries, "ok\n" },
         { "Resolve", Resolve, "Reversed refused.\nClosed end refused.\nLong from-end refused.\nEnd element refused.\nPosition refused.\nNegative length refused.\nok\n" },
         { "Order", Order, "Start evaluated.\nEnd evaluated.\n1..^1 1..3 ..=^2 2.. ..\nok\n" },
     };

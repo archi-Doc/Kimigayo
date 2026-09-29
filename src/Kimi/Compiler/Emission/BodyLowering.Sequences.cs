@@ -107,6 +107,12 @@ internal sealed partial class BodyLowering
                 return Fail("From-end position requires its evaluated isize offset and a sequence receiver.", out failure);
             }
 
+            if (receiver.Kind == BoundTypeKind.FixedArray && receiver.Length >= 0 && this.PhysicalOperand(body, plan.Index) is { Kind: EmissionOperandKind.Integer } offset)
+            {
+                this.Fold(id, unchecked((long)(receiver.Length - offset.Value))); // SPEC 4.6.8: `^c` on a fixed array is `N - c`.
+                return true;
+            }
+
             function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, 8), this.PhysicalOperand(body, plan.Index)], place: operation.Place, op: "fromEnd");
             return true;
         }

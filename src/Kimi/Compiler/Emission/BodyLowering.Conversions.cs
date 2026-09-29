@@ -8,6 +8,11 @@ internal sealed partial class BodyLowering
     private int[] conversionIndices = [];
     private int[] physicalValues = [];
 
+    // SPEC 4.6.8: positions resolved at compile time. A folded value is an isize constant that its consumers read in place of
+    // the operation, which emits nothing.
+    private bool[] folded = [];
+    private Int128[] foldedValues = [];
+
     internal static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
     {
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
@@ -71,13 +76,23 @@ internal sealed partial class BodyLowering
     // Semantic aliases remain separate: a conversion's Type and dominance identity
     // are checked before resolving the physical bits used by every IR consumer.
     private EmissionOperand PhysicalOperand(OwnershipBody body, int id)
-        => this.referenceRoots[id] >= 0 && ReferenceTypes.IsString(ValueType(body, id))
-            ? this.ReferenceOperand(body, id) : Operand(body, this.physicalValues[id]);
+        => this.folded[id] ? new(EmissionOperandKind.Integer, this.foldedValues[id]) :
+            this.referenceRoots[id] >= 0 && ReferenceTypes.IsString(ValueType(body, id)) ? this.ReferenceOperand(body, id) : Operand(body, this.physicalValues[id]);
+
+    // Records that the value `id` is the isize constant `value`.
+    private void Fold(int id, Int128 value)
+    {
+        this.folded[id] = true;
+        this.foldedValues[id] = value;
+    }
 
     private void PrepareConversions(OwnershipBody body)
     {
         var count = body.Values.Count;
         Grow(ref this.physicalValues, count);
+        Grow(ref this.folded, count);
+        Grow(ref this.foldedValues, count);
+        this.folded.AsSpan(0, count).Clear();
         this.conversions.Clear();
 
         for (var id = 0; id < count; id++)
@@ -101,6 +116,17 @@ internal sealed partial class BodyLowering
 
             this.checks[id] = ClassifyCheck(body.Values[id], ValueType(body, id), plan);
             var input = kind is OwnershipValueKind.Alias or OwnershipValueKind.Convert ? Input(body, id, 0) : -1;
+            if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && (uint)input < (uint)id &&
+                (this.folded[input] ? new EmissionOperand(EmissionOperandKind.Integer, this.foldedValues[input]) : Operand(body, this.physicalValues[input])) is { Kind: EmissionOperandKind.Integer } position)
+            {
+                // SPEC 4.6.9: a literal position is converted at compile time; a value isize cannot hold becomes -1.
+                var limit = this.pointerWidth == 32 ? (Int128)int.MaxValue : long.MaxValue;
+                this.Fold(id, position.Value >= -limit - 1 && position.Value <= limit ? position.Value : -1);
+                this.checks[id] = ArithmeticCheckKind.None;
+                this.physicalValues[id] = id;
+                continue;
+            }
+
             this.physicalValues[id] = (uint)input < (uint)id && ((kind == OwnershipValueKind.Alias && IsScalar(ValueType(body, input))) || (kind == OwnershipValueKind.Convert && plan.Operator is null))
                 ? this.physicalValues[input] : id;
         }
@@ -111,7 +137,7 @@ internal sealed partial class BodyLowering
         failure = null;
         var plan = this.conversions[this.conversionIndices[id]];
         var check = this.checks[id];
-        if (plan.Operator is null && check == ArithmeticCheckKind.None)
+        if (this.folded[id] || (plan.Operator is null && check == ArithmeticCheckKind.None))
         {
             return true;
         }

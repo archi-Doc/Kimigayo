@@ -22,9 +22,22 @@ public class ValueReadTest
         "match w.tryResolve(5)\n    .Some(_) => ()\n    .None => $abort(\"receiver\")\n" +
         "Console.writeLine(\"\\(whole)\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 3.5.3: a position is read from an exclusive reference, from two layers of references, into a typed Binding, as
+    // a returned value and as a call result used as a key.
+    private const string Forms =
+        "func back(p: ref/FromEnd<i32>) -> FromEnd<i32> => p\nfunc same(p: FromEnd<i32>) -> FromEnd<i32> => p\n" +
+        "let values: [4 of i32] = [1, 2, 3, 4]\nvar last = ^1\nlet viaUniq = values[last@uniq]\nlet shared = last@ref\nlet twice = shared@ref\nlet typed: FromEnd<i32> = twice\n" +
+        "let range = 1..^1\nlet ranged = range@ref\n" +
+        "require viaUniq == 4 and values[shared] == 4 and values[twice] == 4 and typed == ^1 and back(shared) == ^1 and values[same(^2)] == 3 and values[ranged].length == 2 else => $abort(\"reads\")\n" +
+        "Console.writeLine(\"ok\")";
+
     [Fact]
     public void ReadTypesAreReadThroughReferences()
         => ScalarEmissionTest.EmitFixture("ValueReadTypes", Reads, "0..4\nok\n");
+
+    [Fact]
+    public void PositionsAreReadInEveryForm()
+        => ScalarEmissionTest.EmitFixture("ValueReadForms", Forms, "ok\n");
 
     [Fact]
     public void AnUnannotatedLocalKeepsTheReference()

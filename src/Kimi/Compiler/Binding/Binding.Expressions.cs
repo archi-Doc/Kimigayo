@@ -528,7 +528,9 @@ public sealed partial class Binding
             case IdentifierNameKoto identifier:
                 return this.BindName(identifier, scope);
             case InvocationKoto invocation:
-                return this.BindCall(invocation, scope, expected);
+                var called = this.BindCall(invocation, scope, expected);
+                this.CheckLiteralArguments(invocation); // SPEC 17.4.4
+                return called;
             case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
                 var inferredSymbol = this.InferredCase(inferred, scope, expected);
                 return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);

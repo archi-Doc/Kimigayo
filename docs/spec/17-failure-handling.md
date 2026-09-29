@@ -325,6 +325,7 @@ let a = fixed[3]          // Warning: the element position 3 fails for length 3.
 let b = values[^0]        // Warning: ^0 is never an element position.
 let c = values[2..=1]     // Warning: reversed for every length.
 let d = values[1..^1]     // No warning: resolves when the length is at least 2.
+let e = values.remove(^0) // Warning: an operation's element position is judged the same way.
 ```
 
 ## 17.5. Test verification operations

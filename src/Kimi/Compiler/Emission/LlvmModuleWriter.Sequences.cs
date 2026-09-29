@@ -4,6 +4,33 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    // SPEC 4.6.4, 4.6.8: the absolute interval of a directly applied range whose boundaries are constants and whose
+    // receiver is a fixed array, when it resolves; an interval that fails keeps its runtime check and Aborts when executed.
+    private static bool TryConstantSlice(long fixedLength, Int128 shape, EmissionOperand start, EmissionOperand end, out Int128 first, out Int128 last)
+    {
+        first = last = 0;
+        var endOmitted = (shape & SliceShape.EndOmitted) != 0;
+        if (fixedLength < 0 || start.Kind != EmissionOperandKind.Integer || (!endOmitted && end.Kind != EmissionOperandKind.Integer))
+        {
+            return false;
+        }
+
+        first = (shape & SliceShape.StartFromEnd) != 0 ? fixedLength - start.Value : start.Value;
+        last = endOmitted ? fixedLength : (shape & SliceShape.EndFromEnd) != 0 ? fixedLength - end.Value : end.Value;
+        if ((shape & SliceShape.Closed) != 0)
+        {
+            if (first < 0 || first > last || last >= fixedLength)
+            {
+                return false;
+            }
+
+            last++;
+            return true;
+        }
+
+        return first >= 0 && first <= last && last <= fixedLength;
+    }
+
     private static void WriteSequence(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
         if (instruction.ScalarOperator is "DictionaryLocate" or "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress" or "FixedStorage")
@@ -37,21 +64,30 @@ internal static partial class LlvmModuleWriter
                 output.Write(", align 8\n");
             }
 
-            Name(output, "  %invalid", id);
-            output.Write(" = icmp uge i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", ");
-            if (arrayRead)
+            // SPEC 4.6.8: a constant position proven inside a fixed array needs no runtime check.
+            if (arrayRead && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
             {
-                WriteNumber(output, operands[2].Value);
+                WriteArithmeticFailure(output, constants, instruction, ProvenValid);
             }
             else
             {
-                Name(output, "%seqend", id);
+                Name(output, "  %invalid", id);
+                output.Write(" = icmp uge i64 ");
+                WriteOperand(output, operands[1]);
+                output.Write(", ");
+                if (arrayRead)
+                {
+                    WriteNumber(output, operands[2].Value);
+                }
+                else
+                {
+                    Name(output, "%seqend", id);
+                }
+
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction, "%invalid");
             }
 
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
             Name(output, "  %offset", id);
             output.Write(" = mul i64 ");
             WriteOperand(output, operands[1]);
@@ -115,7 +151,22 @@ internal static partial class LlvmModuleWriter
             var shape = instruction.ScalarOperator == "SliceRange" ? operands[4].Value : 0;
             var closed = (shape & SliceShape.Closed) != 0;
             var last = closed ? "%slicelast" : "%slicefinish";
-            if (instruction.ScalarOperator == "SliceResolved")
+            Int128 constantStart = 0;
+            Int128 constantEnd = 0;
+            var constantSlice = instruction.ScalarOperator == "SliceRange" && TryConstantSlice(fixedLength, shape, operands[2], operands[3], out constantStart, out constantEnd);
+            if (constantSlice)
+            {
+                // SPEC 4.6.8: constant boundaries proven inside a fixed array need no runtime check.
+                Name(output, "  %slicestart", id);
+                output.Write(" = or i64 0, ");
+                WriteNumber(output, constantStart);
+                Name(output, "\n  %slicefinish", id);
+                output.Write(" = or i64 0, ");
+                WriteNumber(output, constantEnd);
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, ProvenValid);
+            }
+            else if (instruction.ScalarOperator == "SliceResolved")
             {
                 // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value.
                 Name(output, "  %slicestart", id);
@@ -146,25 +197,28 @@ internal static partial class LlvmModuleWriter
                 }
             }
 
-            Name(output, "\n  %reversed", id);
-            Name(output, " = icmp ugt i64 %slicestart", id);
-            output.Write(", ");
-            Name(output, last, id);
-            Name(output, "\n  %pastend", id);
-            output.Write(closed ? " = icmp uge i64 " : " = icmp ugt i64 ");
-            Name(output, last, id);
-            output.Write(", ");
-            End();
-            Name(output, "\n  %invalid", id);
-            Name(output, " = or i1 %reversed", id);
-            Name(output, ", %pastend", id);
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
-            if (closed)
+            if (!constantSlice)
             {
-                Name(output, "  %slicefinish", id);
-                Name(output, " = add i64 %slicelast", id);
-                output.Write(", 1\n");
+                Name(output, "\n  %reversed", id);
+                Name(output, " = icmp ugt i64 %slicestart", id);
+                output.Write(", ");
+                Name(output, last, id);
+                Name(output, "\n  %pastend", id);
+                output.Write(closed ? " = icmp uge i64 " : " = icmp ugt i64 ");
+                Name(output, last, id);
+                output.Write(", ");
+                End();
+                Name(output, "\n  %invalid", id);
+                Name(output, " = or i1 %reversed", id);
+                Name(output, ", %pastend", id);
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+                if (closed)
+                {
+                    Name(output, "  %slicefinish", id);
+                    Name(output, " = add i64 %slicelast", id);
+                    output.Write(", 1\n");
+                }
             }
 
             if (fixedLength < 0)
