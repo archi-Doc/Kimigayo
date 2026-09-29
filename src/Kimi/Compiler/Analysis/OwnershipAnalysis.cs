@@ -95,12 +95,8 @@ public sealed partial class OwnershipAnalysis
             this.collector.Visit(module.RootKoto);
         }
 
-        for (var i = 0; i < this.libraryBodies.Count; i++)
-        {
-            this.flow.Append(this.libraryBodies[i]);
-            this.collector.Visit(this.libraryBodies[i]);
-        }
-
+        this.AnalyzeLibraryBodies(0);
+        this.ValidateEffectBounds();
         var errors = 0;
         var unsupported = 0;
         for (var i = 0; i < this.issues.Count; i++)
@@ -148,6 +144,7 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.libraryBodies.Clear();
+        this.templateBodies.Clear();
         this.witnessTypes.Clear();
         if (this.defaultBody is { } declaration)
         {
@@ -193,6 +190,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             this.body = this.bodyPool[this.bodies.Count];
+            this.templateBodies[function] = this.body;
             this.bodies.Add(this.body);
         }
 

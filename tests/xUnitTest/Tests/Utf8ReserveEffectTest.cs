@@ -74,7 +74,7 @@ public class Utf8ReserveEffectTest
     {
         const string Nested = "struct Noisy\n    public init() => ()\n    deinit => State.value += 1\nstruct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n";
         var c = Analyze(State + Nested, "_ = Box<Noisy>.init(Noisy.init())");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Theory]
@@ -107,8 +107,8 @@ public class Utf8ReserveEffectTest
     public void AmbientOrUnknownEffectsInvalidateTheConformance(string prefix, string operation)
     {
         var c = Analyze(prefix, operation);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // SPEC 8.4.5: synthesized calls are part of the summary: indexers, iteration steps, and key comparisons through a
@@ -152,7 +152,7 @@ public class Utf8ReserveEffectTest
         var source = State + "struct Noisy\n    deinit => State.value += 1\n" + helper +
             "struct Writer {source}\n    Self is BufferWriter\n    let items: uniq/Array<Noisy> during source\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        " + operation + "\n        return .Err(BufferFull.init())";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Theory]
@@ -169,7 +169,7 @@ public class Utf8ReserveEffectTest
         var key = "struct Key\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool\n        " +
             (destruction ? "return true\n    deinit => State.value += 1\n" : "_ = State.value\n        return true\n");
         var c = Analyze(State + key, "var values: Dictionary<Key, i32> = [:]\n        " + operation);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class Utf8ReserveEffectTest
         var prefix = State + "open struct Base\n    protected init() => " + (destruction ? "()" : "State.value += 1") +
             (destruction ? "\n    deinit => State.value += 1" : string.Empty) + "\nstruct Leaf: Base\n    public init(): base() => ()\n";
         var c = Analyze(prefix, "let value = Leaf.init()");
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Theory]
@@ -198,7 +198,7 @@ public class Utf8ReserveEffectTest
         var prefix = State + "open struct Base\n    protected init() => ()\nstruct Leaf: Base\n    public init(): base() => ()\n" +
             (openView ? string.Empty : "    deinit => State.value += 1\n");
         var c = Analyze(prefix, "let value = Kimi.Intrinsics.makeObj(Leaf.init())" + (openView ? "@obj/Base" : string.Empty));
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Fact]

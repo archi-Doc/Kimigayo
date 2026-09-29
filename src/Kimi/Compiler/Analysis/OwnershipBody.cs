@@ -5,11 +5,12 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipBody
 {
     // One bit lane per PlaceState flag, in flag order. A block input state is Lanes * words ulongs.
-    private const int Lanes = 4;
+    private const int Lanes = 5;
     private const int MustLane = 0;
     private const int MayLane = 1;
     private const int MovedLane = 2;
     private const int AssignedLane = 3;
+    private const int OwnedLane = 4;
 
     private int words;
     private int blockCount;
@@ -351,6 +352,7 @@ public sealed partial class OwnershipBody
                 this.Clear(place, MayLane);
                 this.Clear(place, MovedLane);
                 this.Clear(place, AssignedLane);
+                this.Clear(place, OwnedLane);
                 if (this.moveRoots[place] >= 0)
                 {
                     this.SetPathState(this.moveRoots[place], false, true);
@@ -378,6 +380,7 @@ public sealed partial class OwnershipBody
                     // Keep the possible Copy's initialization, but no later use may rely on it.
                     this.Clear(place, MustLane);
                     this.Set(place, MovedLane);
+                    this.Clear(place, OwnedLane); // A Copy remnant owns nothing that its destruction could affect.
                 }
 
                 if (operation.Input >= 0)
@@ -425,6 +428,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Cleanup:
                 this.Clear(place, MustLane);
                 this.Clear(place, MayLane);
+                this.Clear(place, OwnedLane);
                 if (this.moveRoots[place] >= 0)
                 {
                     this.SetPathState(this.moveRoots[place], false, cleanup: true);
@@ -442,7 +446,8 @@ public sealed partial class OwnershipBody
         return (PlaceState)(((scratch[word] & bit) != 0 ? (int)PlaceState.MustInit : 0) |
             ((scratch[this.words + word] & bit) != 0 ? (int)PlaceState.MayInit : 0) |
             ((scratch[(MovedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayMoved : 0) |
-            ((scratch[(AssignedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayAssigned : 0));
+            ((scratch[(AssignedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayAssigned : 0) |
+            ((scratch[(OwnedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayOwn : 0));
     }
 
     private void Initialize(int place)
@@ -451,6 +456,7 @@ public sealed partial class OwnershipBody
         this.Set(place, MayLane);
         this.Clear(place, MovedLane);
         this.Set(place, AssignedLane);
+        this.Set(place, OwnedLane);
         if (place < this.Places.Count && this.moveRoots[place] >= 0)
         {
             this.SetPathState(this.moveRoots[place], true);
@@ -463,6 +469,7 @@ public sealed partial class OwnershipBody
         this.Clear(place, MustLane);
         this.Clear(place, MayLane);
         this.Set(place, MovedLane);
+        this.Clear(place, OwnedLane);
         if (place < this.Places.Count && this.moveRoots[place] >= 0)
         {
             this.SetPathState(this.moveRoots[place], false);

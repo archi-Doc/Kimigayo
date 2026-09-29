@@ -8,6 +8,9 @@ public sealed partial class Binding
 {
     private EffectSummary? effectSummary;
 
+    // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
+    private EffectSummary? destructionSummary;
+
     private enum EffectBound : byte
     {
         // SPEC utf8-formatting 12: reserve uses only the authority supplied through self.
@@ -17,45 +20,85 @@ public sealed partial class Binding
         Iterator,
     }
 
+    /// <summary>
+    /// SPEC 8.4.5, 22.1.2.4: checks every effect bound again after ownership analysis, now counting the destructions each
+    /// reached body performs, as its planned cleanups show. An implementation whose body ownership analysis did not reach,
+    /// such as an unused library Iterator, runs nowhere and is not checked.
+    /// </summary>
+    /// <param name="rejected">Receives the use of each conformance whose destruction effects exceed its bound.</param>
+    internal void ValidateDestructionEffects(List<Koto> rejected)
+    {
+        this.destructionSummary?.BeginPass();
+        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        {
+            if (this.EffectBoundViolation(this.activeConformancePaths[i], true) is { } path)
+            {
+                rejected.Add(path.Use);
+            }
+        }
+    }
+
     // SPEC 8.4.5: BufferWriter.reserve and Iterator.next publish effect upper bounds. Conformance checks the complete
     // transitive effect summary of every implementation against its bound; an effect it cannot classify is a conflict.
+    // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
+    // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects).
     private void ValidateEffectBounds()
     {
         this.effectSummary?.BeginPass();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
-            var path = this.activeConformancePaths[i];
-            if (!path.IsVerified)
+            if (this.EffectBoundViolation(this.activeConformancePaths[i], false) is { } path)
             {
-                continue;
-            }
-
-            var reserve = path.Contract.LibraryDeclaration == KimiDeclarationId.BufferWriter;
-            if (!reserve && !IsRefinement(path.Contract, this.Library.Iterator))
-            {
-                continue;
-            }
-
-            for (var w = 0; w < path.WitnessStorage.Count; w++)
-            {
-                var witness = path.WitnessStorage[w];
-                if ((reserve || ReferenceEquals(witness.Requirement.Scope.Owner, this.Library.LendingIterator.Declaration)) &&
-                    !(this.effectSummary ??= new(this)).Check(reserve ? EffectBound.Reserve : EffectBound.Iterator, witness.Implementation, path.Scope))
-                {
-                    path.Invalid = true;
-                    path.IsVerified = false;
-                    path.Identity.Invalid = true;
-                    path.Identity.IsVerified = false;
-                    Fail(path.Use, BindingFailure.IncompatibleImplementation);
-                    break;
-                }
+                Fail(path.Use, BindingFailure.IncompatibleImplementation);
             }
         }
     }
 
+    // The path, marked invalid, when one of its bounded implementations exceeds the bound; null otherwise.
+    private BoundConformancePath? EffectBoundViolation(BoundConformancePath path, bool destructions)
+    {
+        if (!path.IsVerified)
+        {
+            return null;
+        }
+
+        var reserve = path.Contract.LibraryDeclaration == KimiDeclarationId.BufferWriter;
+        if (!reserve && !IsRefinement(path.Contract, this.Library.Iterator))
+        {
+            return null;
+        }
+
+        for (var w = 0; w < path.WitnessStorage.Count; w++)
+        {
+            var witness = path.WitnessStorage[w];
+            if (!reserve && !ReferenceEquals(witness.Requirement.Scope.Owner, this.Library.LendingIterator.Declaration))
+            {
+                continue;
+            }
+
+            if (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null)
+            {
+                continue;
+            }
+
+            var summary = destructions ? this.destructionSummary ??= new(this) : this.effectSummary ??= new(this);
+            if (!summary.Check(reserve ? EffectBound.Reserve : EffectBound.Iterator, witness.Implementation, path.Scope, destructions))
+            {
+                path.Invalid = true;
+                path.IsVerified = false;
+                path.Identity.Invalid = true;
+                path.Identity.IsVerified = false;
+                return path;
+            }
+        }
+
+        return null;
+    }
+
     // One reusable transitive summary: bodies, callees, specializations, synthesized calls (accessors, indexers, ranges,
     // iteration, formatting, comparisons), lazy initialization and destruction are visited once per instantiation context.
-    // Anything it cannot classify, such as an indirect call or a Type it cannot instantiate, fails the bound.
+    // Anything it cannot classify, such as an indirect call or a Type it cannot instantiate, fails the bound. Destruction
+    // is counted only in the pass after ownership analysis, from the cleanups each body actually performs.
     private sealed class EffectSummary(Binding binding) : KotoVisitor
     {
         private readonly HashSet<(Koto Node, int Context)> seen = new();
@@ -65,7 +108,7 @@ public sealed partial class Binding
         private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<BoundCall> calls = new();
         private readonly List<(BoundType Iterator, BoundOrigin Storage)> storedIterators = new();
-        private readonly InertScan inertScan = new();
+        private readonly List<int> selectedArms = new();
         private IReadOnlyList<BoundOrigin> selfOrigins = [];
         private BindingScope? scope;
         private BoundType item = BoundType.Unit;
@@ -77,6 +120,7 @@ public sealed partial class Binding
         private BindingSymbol? steppedField;
         private Koto? stepUse;
         private bool valid;
+        private bool destructions;
 
         public override void Visit(Koto node)
         {
@@ -87,12 +131,7 @@ public sealed partial class Binding
 
             if (node is FieldKoto local)
             {
-                this.Queue(local.InitializerKoto);
-                if (!this.TransferredLater(local))
-                {
-                    this.Destruction(local.BoundSymbol?.Type is { } type ? this.Type(type) : null, local);
-                }
-
+                this.Queue(local.InitializerKoto); // Its destruction, if any, is one of the body's cleanups.
                 return;
             }
 
@@ -112,8 +151,11 @@ public sealed partial class Binding
             if (node is IdentifierNameKoto or MemberAccessKoto && node.BoundSymbol is { Declaration: PropertyKoto property, Scope.Owner: GroupKoto })
             {
                 // Lazy initialization runs at the first read. SPEC utf8-formatting 12: reserve may not reach ambient mutable state.
+                // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
+                // are unknown.
                 this.Queue(property.InitializerKoto);
-                if (property.VariableKind == VariableKind.Var && this.bound == EffectBound.Reserve)
+                if ((property.VariableKind == VariableKind.Var && this.bound == EffectBound.Reserve) ||
+                    (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _)))
                 {
                     this.valid = false;
                     return;
@@ -137,19 +179,6 @@ public sealed partial class Binding
                 this.Comparison(this.Type(dictionary) is { } key ? binding.DictionaryComparison(key) : null);
             }
 
-            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced } assigned && !this.Reinitializes(assigned) && !this.InitializesField(assigned))
-            {
-                this.Destruction(this.Type(replaced), node);
-            }
-
-            // A borrowed receiver or field read creates no owned temporary and runs no destructor; calls, literals and
-            // explicit Moves produce owned temporaries. Locals and parameters are destroyed at their declarations.
-            if (node is InvocationKoto or ArrayLiteralKoto or DictionaryLiteralKoto or TupleLiteralKoto or ConversionKoto { ConversionBinding: ConversionBinding.Transfer } &&
-                node.BoundType is { } temporary && !this.Consumed(node))
-            {
-                this.Destruction(this.Type(temporary), node);
-            }
-
             node.VisitChildren(this);
         }
 
@@ -159,12 +188,13 @@ public sealed partial class Binding
 
         // SPEC 8.4.8.2: the bound is judged in the conformance scope (D and the conditions P); the implementation's item
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
-        // `I is Iterator`.
-        internal bool Check(EffectBound bound, BindingSymbol implementation, BindingScope scope)
+        // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
+        internal bool Check(EffectBound bound, BindingSymbol implementation, BindingScope scope, bool destructions)
         {
             this.bound = bound;
             this.scope = scope;
             this.valid = true;
+            this.destructions = destructions;
             this.seen.Clear();
             this.destroyed.Clear();
             this.pending.Clear();
@@ -204,9 +234,6 @@ public sealed partial class Binding
 
             return this.valid;
         }
-
-        private static bool IsTransferOf(Koto? value, BindingSymbol item)
-            => value is ConversionKoto { ConversionBinding: ConversionBinding.Transfer, Left: IdentifierNameKoto moved } && ReferenceEquals(moved.BoundSymbol, item);
 
         // SPEC 8.4.3: a parameter, projection or Semantics application stands for any complete Type of an instance.
         private static bool IsAbstract(BoundType type)
@@ -326,437 +353,6 @@ public sealed partial class Binding
             }
 
             return true;
-        }
-
-        // An owned temporary is destroyed where it is discarded or borrowed. A value that is returned, stored, passed by
-        // value or placed into another value is destroyed by its new owner, which the summary visits there; a match arm or
-        // expression-bodied branch passes its value on to the enclosing expression.
-        // G28: a by-value Subject is destroyed only through its arms' parts: in each arm, a Case or Tuple shell destroys
-        // nothing, a binding transferred at once (`return .Some(item@move)`, `return .Some((i, item@move))`) is not destroyed,
-        // and any other binding, wildcard or literal part is. A guard Moves no payload and a false guard preserves the
-        // Subject for the next arm (SPEC 14.8.3), so a guard that cannot leave the block is allowed. Returns false, leaving
-        // the whole Subject to the caller, for a form it does not classify.
-        private bool PayloadsTransferred(MatchKoto match)
-        {
-            if (!binding.TryGetMatch(match, out var plan) || plan is not { Mode: SubjectMode.ByValue } || plan.Arms.Count == 0)
-            {
-                return false;
-            }
-
-            for (var a = 0; a < plan.Arms.Count; a++)
-            {
-                var arm = plan.Arms[a];
-                if ((arm.Syntax.Guard is { } guard && !this.inertScan.Check(guard, null)) || (uint)arm.Pattern >= (uint)plan.Positions.Count)
-                {
-                    return false;
-                }
-
-                for (var p = arm.Pattern; p < plan.Positions[arm.Pattern].End; p++)
-                {
-                    var position = plan.Positions[p];
-                    if (position.ImplicitFollows != 0 || position.AccessMode != PatternAccessMode.Owned)
-                    {
-                        return false; // A part reached through a reference is not owned by the match.
-                    }
-
-                    switch (position.Kind)
-                    {
-                        case BoundPatternKind.Case or BoundPatternKind.Tuple:
-                            break; // Its parts are its child positions.
-                        case BoundPatternKind.Binding when position.BodySymbol is { } item &&
-                            (arm.Syntax.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, item) :
-                            this.TransfersAtOnce(arm.Syntax.Body, item) || this.Stores(arm.Syntax.Body, item)): // An arm value is judged where the match is used.
-                            break;
-                        case BoundPatternKind.Binding or BoundPatternKind.Wildcard or BoundPatternKind.Literal or BoundPatternKind.Unit:
-                            this.Destruction(this.Type(position.MatchedType), match);
-                            break;
-                        default:
-                            return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        // Whether the body is exactly `return v`, or an assignment `p = v` whose target neither names the binding nor may
-        // leave the block, where evaluating v stores the binding: the returned value or the assigned Place owns it.
-        private bool TransfersAtOnce(Koto body, BindingSymbol item)
-        {
-            while (body is CodeBlockKoto { Items: [var only] })
-            {
-                body = only;
-            }
-
-            return body switch
-            {
-                JumpKoto { Expression: { } returned } => this.Stores(returned, item), // return, or exit/yield into a result.
-                BinaryKoto { Akind: KotoKind.Equals } assignment => this.inertScan.Check(assignment.Left, item) && this.Stores(assignment.Right, item),
-                FieldKoto { InitializerKoto: { } initializer } => this.Stores(initializer, item), // The new local's own destruction is counted there.
-                _ => false,
-            };
-        }
-
-        // Whether `value` is `item@move`, or a Case construction, Tuple or call that stores it in exactly one part, a call
-        // taking it by value, while its other parts neither name it nor may leave the block (G28): the aggregate is complete,
-        // or the callee owns the value and its own summary covers it, or evaluation Aborts.
-        private bool Stores(Koto value, BindingSymbol item)
-        {
-            value = KotoHelper.UnwrapParentheses(value);
-            if (IsTransferOf(value, item))
-            {
-                return true;
-            }
-
-            BoundCall? call = null;
-            IReadOnlyList<Koto>? parts = null;
-            switch (value)
-            {
-                case InvocationKoto construction when binding.TryGetEnumConstruction(construction, out _):
-                    parts = construction.ArgumentNodes;
-                    break;
-                case InvocationKoto { BoundCall: { } bound } invocation when this.inertScan.Check(invocation.Method, item):
-                    parts = invocation.ArgumentNodes;
-                    call = bound;
-                    break;
-                case TupleLiteralKoto tuple:
-                    parts = tuple.Elements;
-                    break;
-                case IfKoto { ElseBody: { } otherwise } branching:
-                    // A value-producing `if` stores the item when every branch delivers it and no condition names it.
-                    for (var b = 0; b < branching.Branches.Count; b++)
-                    {
-                        if (!this.inertScan.Check(branching.Branches[b].Condition, item) || !this.Delivers(branching.Branches[b].Body, item))
-                        {
-                            return false;
-                        }
-                    }
-
-                    return this.Delivers(otherwise, item);
-                case MatchKoto moved when IsTransferOf(moved.Expression, item):
-                    return this.PayloadsTransferred(moved); // The Subject is moved in; its arms account for its parts.
-                case MatchKoto selection and not TryKoto when this.inertScan.Check(selection.Expression, item):
-                    for (var a = 0; a < selection.Arms.Count; a++)
-                    {
-                        var arm = selection.Arms[a];
-                        if (!this.inertScan.Check(arm.Pattern, item) || (arm.Guard is { } guard && !this.inertScan.Check(guard, item)) || !this.Delivers(arm.Body, item))
-                        {
-                            return false;
-                        }
-                    }
-
-                    return selection.Arms.Count != 0;
-            }
-
-            var stored = -1;
-            for (var i = 0; parts is not null && i < parts.Count; i++)
-            {
-                if (this.Stores(parts[i], item))
-                {
-                    if (stored >= 0 || (call is not null && !PassedByValue(call, parts[i])))
-                    {
-                        return false;
-                    }
-
-                    stored = i;
-                }
-            }
-
-            for (var i = 0; stored >= 0 && i < parts!.Count; i++)
-            {
-                if (i != stored && !this.inertScan.Check(parts[i], item))
-                {
-                    return false;
-                }
-            }
-
-            return stored >= 0;
-
-            static bool PassedByValue(BoundCall call, Koto argument)
-            {
-                for (var i = 0; i < call.ArgumentOperations.Length; i++)
-                {
-                    if (ReferenceEquals(call.ArgumentOperations[i].Source, argument))
-                    {
-                        return call.ArgumentOperations[i].Kind == ArgumentOperationKind.Value;
-                    }
-                }
-
-                return false;
-            }
-        }
-
-        // Whether a branch or arm body of a value-producing selection delivers the item: its statements transfer it (a `yield`
-        // into the result, or a return), or its expression value stores it.
-        private bool Delivers(Koto body, BindingSymbol item)
-            => body is CodeBlockKoto block
-                ? this.TransferredLater(block.Items, 0, item) || (block is { IsExpressionBody: true, Items: [var value] } && this.Stores(value, item))
-                : this.TransfersAtOnce(body, item) || this.Stores(body, item);
-
-        // G28: a local is not destroyed when a later statement of its block transfers it at once, directly or as the Subject
-        // of a match that transfers its payload, and no statement before that one names it or may leave the block normally.
-        // A later assignment to a `var` local counts its own destruction.
-        private bool TransferredLater(FieldKoto local)
-        {
-            if (local.BoundSymbol is not { } symbol || local.Parent is not CodeBlockKoto block)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < block.Items.Count; i++)
-            {
-                if (ReferenceEquals(block.Items[i], local))
-                {
-                    return this.TransferredLater(block.Items, i + 1, symbol);
-                }
-            }
-
-            return false;
-        }
-
-        // G28: an assignment to a `var` local of its block that an earlier statement moved out whole, with no mention in
-        // between, initializes it and destroys nothing; the new value is not destroyed when a later statement transfers it
-        // as for a declaration. Otherwise the assignment counts the destruction of the replaced or unconsumed value.
-        private bool Reinitializes(BinaryKoto assignment)
-        {
-            if (KotoHelper.UnwrapParentheses(assignment.Left) is not IdentifierNameKoto { BoundSymbol: { Declaration: FieldKoto { VariableKind: VariableKind.Var } } symbol } ||
-                assignment.Parent is not CodeBlockKoto block)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < block.Items.Count; i++)
-            {
-                if (!ReferenceEquals(block.Items[i], assignment))
-                {
-                    continue;
-                }
-
-                for (var j = i - 1; j >= 0; j--)
-                {
-                    var statement = block.Items[j];
-                    if (statement is MatchKoto match ? IsTransferOf(match.Expression, symbol) :
-                        statement is FieldKoto local ? IsTransferOf(local.InitializerKoto, symbol) :
-                        statement is BinaryKoto { Akind: KotoKind.Equals } moved && IsTransferOf(moved.Right, symbol))
-                    {
-                        // SPEC 14.4: the end of a `loop` body continues at its start, where the Move transfers the value again.
-                        return this.TransferredLater(block.Items, i + 1, symbol) ||
-                            (block.Parent is LoopKoto loop && ReferenceEquals(loop.Body, block) && this.InertFrom(block.Items, i + 1, symbol, loop) &&
-                            this.TransferredLater(block.Items, 0, symbol, loop));
-                    }
-
-                    if (!this.inertScan.Check(statement, symbol, exits: false))
-                    {
-                        return false; // Its declaration, or another use, may leave it initialized.
-                    }
-                }
-
-                return false;
-            }
-
-            return false;
-        }
-
-        // G28: a constructor's assignment of a stored field without a default initializer, with no earlier statement of its
-        // body naming the field, initializes the field and destroys nothing.
-        private bool InitializesField(BinaryKoto assignment)
-        {
-            if (KotoHelper.UnwrapParentheses(assignment.Left) is not MemberAccessKoto
-                {
-                    Left: IdentifierNameKoto { IdentifierName: "self" },
-                    BoundSymbol: { Declaration: PropertyKoto { InitializerKoto: null }, Property.IsStored: true } field,
-                })
-            {
-                return false;
-            }
-
-            switch (assignment.Parent)
-            {
-                case FunctionKoto { IsConstructor: true } constructor:
-                    return ReferenceEquals(constructor.ExpressionBody, assignment);
-                case CodeBlockKoto { Parent: FunctionKoto { IsConstructor: true } constructor } block when ReferenceEquals(constructor.Body, block):
-                    for (var i = 0; i < block.Items.Count && !ReferenceEquals(block.Items[i], assignment); i++)
-                    {
-                        if (!this.inertScan.Check(block.Items[i], field, exits: false))
-                        {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        // Whether statement `start` onward transfers `symbol` before anything could destroy it. Abort destroys nothing
-        // (SPEC 17.3); the effects of the statements in between are summarized as usual.
-        private bool TransferredLater(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol, LoopKoto? restart = null)
-        {
-            for (var i = start; i < statements.Count; i++)
-            {
-                var statement = statements[i];
-                if (this.TransfersAtOnce(statement, symbol) || (statement is MatchKoto match && IsTransferOf(match.Expression, symbol) && this.PayloadsTransferred(match)) ||
-                    (statement is LoopKoto loop && this.TransferredLater(loop.Body.Items, 0, symbol, loop)))
-                {
-                    return true; // A `loop` that transfers the value in its first iteration leaves it only through that transfer.
-                }
-
-                if (statement is IfKoto branching)
-                {
-                    // Conditions are inert, and each body transfers the value or falls through holding it; a path that
-                    // holds it continues here, and when every path transfers it the `if` is the transfer.
-                    var transferred = branching.ElseBody is not null;
-                    for (var b = 0; b <= branching.Branches.Count; b++)
-                    {
-                        var body = b < branching.Branches.Count ? branching.Branches[b].Body : branching.ElseBody;
-                        if (body is null)
-                        {
-                            break;
-                        }
-
-                        if (b < branching.Branches.Count && !this.inertScan.Check(branching.Branches[b].Condition, symbol, restart: restart))
-                        {
-                            return false;
-                        }
-
-                        if (!this.TransferredLater(body.Items, 0, symbol, restart))
-                        {
-                            if (!this.InertFrom(body.Items, 0, symbol, restart))
-                            {
-                                return false;
-                            }
-
-                            transferred = false;
-                        }
-                    }
-
-                    if (transferred)
-                    {
-                        return true;
-                    }
-
-                    continue;
-                }
-
-                if (statement is MatchKoto selection and not TryKoto && this.inertScan.Check(selection.Expression, symbol, restart: restart))
-                {
-                    // A match on another value is judged as an `if`: patterns and guards are inert, and each arm transfers
-                    // the value or falls through holding it.
-                    var transferred = true;
-                    for (var a = 0; a < selection.Arms.Count; a++)
-                    {
-                        var arm = selection.Arms[a];
-                        if (!this.inertScan.Check(arm.Pattern, symbol, restart: restart) || (arm.Guard is { } guard && !this.inertScan.Check(guard, symbol, restart: restart)))
-                        {
-                            return false;
-                        }
-
-                        if (!(arm.Body is CodeBlockKoto body ? this.TransferredLater(body.Items, 0, symbol, restart) : this.TransfersAtOnce(arm.Body, symbol)))
-                        {
-                            if (!(arm.Body is CodeBlockKoto kept ? this.InertFrom(kept.Items, 0, symbol, restart) : this.inertScan.Check(arm.Body, symbol, restart: restart)))
-                            {
-                                return false;
-                            }
-
-                            transferred = false;
-                        }
-                    }
-
-                    if (transferred)
-                    {
-                        return true;
-                    }
-
-                    continue;
-                }
-
-                if (!this.inertScan.Check(statement, symbol, restart: restart))
-                {
-                    return false;
-                }
-            }
-
-            return false;
-        }
-
-        // Whether the statements from `start` on neither name `symbol` nor may leave their block.
-        private bool InertFrom(IReadOnlyList<Koto> statements, int start, BindingSymbol symbol, LoopKoto? restart = null)
-        {
-            for (var i = start; i < statements.Count; i++)
-            {
-                if (!this.inertScan.Check(statements[i], symbol, restart: restart))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private bool Consumed(Koto node)
-        {
-            for (var depth = 0; depth < 64; depth++)
-            {
-                var parent = node.Parent;
-                switch (parent)
-                {
-                    case ParenthesizedKoto or CodeBlockKoto { IsExpressionBody: true }:
-                        node = parent;
-                        continue;
-                    case MatchKoto match when !ReferenceEquals(match.Expression, node):
-                        node = parent;
-                        continue;
-                    case MatchKoto match:
-                        return this.PayloadsTransferred(match);
-                    case IfKoto when node is CodeBlockKoto:
-                        node = parent;
-                        continue;
-                    case JumpKoto { Akind: KotoKind.Yield, Label: null } yielded when ReferenceEquals(yielded.Expression, node):
-                        // SPEC 14.5.2: the value becomes the result of the nearest `if` or `match`, used where it is.
-                        var target = yielded.Parent;
-                        while (target is not null and not (IfKoto or MatchKoto or FunctionKoto))
-                        {
-                            target = target.Parent;
-                        }
-
-                        if (target is not (IfKoto or MatchKoto))
-                        {
-                            return false;
-                        }
-
-                        node = target;
-                        continue;
-                    case ReturnKoto or TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto or ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity }:
-                        return true;
-                    case FunctionKoto function:
-                        return ReferenceEquals(function.ExpressionBody, node);
-                    case FieldKoto local:
-                        return ReferenceEquals(local.InitializerKoto, node);
-                    case BinaryKoto { Akind: KotoKind.Equals } assignment:
-                        return ReferenceEquals(assignment.Right, node);
-                    case InvocationKoto invocation when !ReferenceEquals(invocation.Method, node):
-                        if (binding.TryGetEnumConstruction(invocation, out _))
-                        {
-                            return true; // A payload is stored in the constructed Case.
-                        }
-
-                        var operations = invocation.BoundCall is { } call ? call.ArgumentOperations : default;
-                        for (var i = 0; i < operations.Length; i++)
-                        {
-                            if (ReferenceEquals(operations[i].Source, node))
-                            {
-                                return operations[i].Kind == ArgumentOperationKind.Value;
-                            }
-                        }
-
-                        return false;
-                    default:
-                        return false;
-                }
-            }
-
-            return false;
         }
 
         // A formatting root evaluates its synthesized calls. $tryWrite's acquisition only borrows its Writer operand, and
@@ -1381,25 +977,250 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; i < function.Parameters.Count; i++)
+            if (this.destructions)
             {
-                if (binding.symbols.TryGetValue(function.Parameters[i], out var symbol) && this.ParameterTransferred(function, symbol))
-                {
-                    continue; // G28: the body transfers the parameter before anything could destroy it.
-                }
-
-                this.Destruction(function.Parameters[i].Type.BoundType is { } parameter ? this.Type(parameter) : null, function);
+                this.Cleanups(function);
             }
 
             this.context = previous;
         }
 
-        private bool ParameterTransferred(FunctionKoto function, BindingSymbol parameter)
-            => function.Body is { } body ? this.TransferredLater(body.Items, 0, parameter) :
-                function.ExpressionBody is { } value && (this.Stores(value, parameter) || this.TransfersAtOnce(value, parameter));
+        // SPEC 22.1.2.4: the values a body destroys are exactly the cleanups ownership analysis planned for it: a local,
+        // parameter or temporary destroyed at its scope end, a replaced value, element or pointee, each reduced to the parts
+        // still initialized there. Their Types are read in the current instantiation context. A body without a plan has
+        // unknown effects; a body with its own ownership diagnostic is rejected by that diagnostic.
+        private void Cleanups(FunctionKoto function)
+        {
+            if (function is { IsConstructor: true, IsGenerated: true, Body: null, ExpressionBody: null })
+            {
+                return; // A generated constructor moves its parameters into the new value's fields.
+            }
+
+            if (binding.compilation.Ownership.TemplateBody(function, true) is not { } body)
+            {
+                this.valid = false;
+                return;
+            }
+
+            if (body.Issues.Count != 0)
+            {
+                return;
+            }
+
+            for (var id = 0; this.valid && id < body.Operations.Count; id++)
+            {
+                if (!body.IsReachable(id))
+                {
+                    continue;
+                }
+
+                var operation = body.Operations[id];
+                switch (operation.Kind)
+                {
+                    // A write to the result initializes it and has no cleanup step of its own.
+                    case OwnershipOperationKind.Cleanup or OwnershipOperationKind.Write when operation.Place >= 0 && (uint)body.OperationSteps[id] < (uint)body.CleanupSteps.Count &&
+                        body.CleanupSteps[body.OperationSteps[id]].Operation == id:
+                        var action = body.CleanupSteps[body.OperationSteps[id]].Action;
+                        if (action == CleanupAction.Unsupported)
+                        {
+                            this.valid = false;
+                        }
+                        else if (action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
+                        {
+                            var place = body.Places[operation.Place];
+                            if (operation.Kind != OwnershipOperationKind.Cleanup || place.Kind != OwnershipPlaceKind.Subject || this.Type(place.Type) is not { } subject ||
+                                !this.SubjectDestroyed(place.Source, operation.Source, subject))
+                            {
+                                this.Destroyed(body, id, body.MoveRoot(operation.Place), place.Type, operation.Source);
+                            }
+                        }
+
+                        break;
+                    case OwnershipOperationKind.WriteElement when operation.Input >= 0:
+                        var projection = operation.Projection;
+                        var path = projection >= 0 && body.Projections[projection].Path == projection ? body.ProjectionPath(projection) : -1;
+                        this.Destroyed(body, id, path, body.Places[operation.Input].Type, operation.Source);
+                        break;
+                    case OwnershipOperationKind.StorePointer when operation.Place >= 0:
+                        this.Destruction(this.Type(body.Places[operation.Place].Type), operation.Source); // The replaced pointee.
+                        break;
+                }
+            }
+        }
+
+        // SPEC 14.8: a by-value Subject holds a Case its arms selected, less what their Patterns acquired. In an arm's guard
+        // it holds that arm's whole Case, whose payload a guard never Moves (SPEC 14.8.3); in the arm's body, and where the
+        // arms that can complete normally join after the match, it holds only the payload parts those Patterns left.
+        // Destroying it destroys just those (nothing for `.None`). False, for the whole Subject, when the use is elsewhere
+        // or an arm concerned does not select a Case of the Subject's enum.
+        private bool SubjectDestroyed(Koto subject, Koto use, BoundType type)
+        {
+            // The Subject Place is sourced by the Subject expression (or by the match itself).
+            var match = subject as MatchKoto;
+            for (var source = subject; match is null && source.Parent is { } parent; source = parent)
+            {
+                match = parent is MatchKoto candidate && ReferenceEquals(candidate.Expression, source) ? candidate : null;
+                if (match is null && parent is not ParenthesizedKoto)
+                {
+                    break;
+                }
+            }
+
+            if (match is null || !binding.TryGetMatch(match, out var plan) || plan is not { Mode: SubjectMode.ByValue } || type.Symbol?.Declaration is not EnumKoto ||
+                binding.compilation.Ownership.ControlFlow is not { } flow)
+            {
+                return false;
+            }
+
+            var node = ReferenceEquals(use, match) ? null : use;
+            while (node is not null && !ReferenceEquals(node.Parent, match))
+            {
+                node = node.Parent;
+            }
+
+            if (node is null && !ReferenceEquals(use, match))
+            {
+                return false;
+            }
+
+            this.selectedArms.Clear();
+            for (var a = 0; a < plan.Arms.Count; a++)
+            {
+                var arm = plan.Arms[a];
+                if (node is null ? flow.Nodes.TryGetValue(arm.Syntax.Body, out var info) && info.CanCompleteNormally
+                    : ReferenceEquals(arm.Syntax.Body, node) || ReferenceEquals(arm.Syntax.Guard, node))
+                {
+                    if ((uint)arm.Pattern >= (uint)plan.Positions.Count ||
+                        plan.Positions[arm.Pattern] is not { Kind: BoundPatternKind.Case, ImplicitFollows: 0, AccessMode: PatternAccessMode.Owned, Case: { } selected } ||
+                        !ReferenceEquals(selected.Owner, type.Symbol))
+                    {
+                        return false;
+                    }
+
+                    this.selectedArms.Add(a);
+                }
+            }
+
+            for (var i = 0; i < this.selectedArms.Count; i++)
+            {
+                var arm = plan.Arms[this.selectedArms[i]];
+                if (node is not null && ReferenceEquals(arm.Syntax.Guard, node))
+                {
+                    foreach (var syntax in plan.Positions[arm.Pattern].Case!.Payload)
+                    {
+                        this.Destruction(binding.StoredType(syntax, type), use);
+                    }
+                }
+                else
+                {
+                    this.LeftParts(plan, arm.Pattern, use);
+                }
+            }
+
+            return node is null || this.selectedArms.Count != 0;
+        }
+
+        // The parts of a Case or Tuple position that its Pattern left in the Subject: a part bound by a Move or Copy-or-Move
+        // acquisition leaves nothing (that binding's own cleanup counts it), a part reached through a reference owns
+        // nothing, and any other leaf (a wildcard, a literal, a Copy binding) stays and is destroyed with the Subject.
+        private void LeftParts(BoundMatch plan, int position, Koto use)
+        {
+            for (var p = position + 1; this.valid && p < plan.Positions[position].End; p = plan.Positions[p].End)
+            {
+                var part = plan.Positions[p];
+                if (part.ImplicitFollows != 0 || part.AccessMode != PatternAccessMode.Owned ||
+                    (part.Kind == BoundPatternKind.Binding && part.Acquisition is PatternAcquisition.Move or PatternAcquisition.CopyOrMove))
+                {
+                    continue;
+                }
+
+                if (part.Kind is BoundPatternKind.Case or BoundPatternKind.Tuple)
+                {
+                    this.LeftParts(plan, p, use);
+                }
+                else
+                {
+                    this.Destruction(this.Type(part.MatchedType), use);
+                }
+            }
+        }
+
+        // A destroyed value, or, when parts of its move path were moved out, the parts still possibly initialized.
+        private void Destroyed(OwnershipBody body, int operation, int path, BoundType type, Koto use)
+        {
+            if (path < 0)
+            {
+                this.Destruction(this.Type(type), use);
+                return;
+            }
+
+            body.LoadPathInput(operation);
+            this.DestroyedParts(body, path, use);
+        }
+
+        // As part destruction lowers them: a complete path is destroyed whole; otherwise every part that has no path of its
+        // own (and a stored base) is destroyed while the remainder may own a value, and each part path recursively. A
+        // Copy remnant of a Copy-or-Move acquisition owns nothing whose destruction has an effect (PlaceState.MayOwn).
+        private void DestroyedParts(OwnershipBody body, int path, Koto use)
+        {
+            var node = body.GetMovePath(path);
+            var remainder = (body.CurrentRemainderState(path) & PlaceState.MayOwn) != 0;
+            if (node.Child < 0 || (body.CurrentPathState(path) & PlaceState.MustInit) != 0)
+            {
+                if (remainder)
+                {
+                    this.Destruction(this.Type(node.Type), use);
+                }
+
+                return;
+            }
+
+            for (var part = 0; remainder && this.valid && part < node.Count; part++)
+            {
+                if (!HasPath(body, node, part))
+                {
+                    this.Destruction(PartType(node.Type, part) is { } stored ? this.Type(stored) : null, use);
+                }
+            }
+
+            for (var child = node.Child; this.valid && child >= 0; child = body.GetMovePath(child).Next)
+            {
+                this.DestroyedParts(body, child, use);
+            }
+
+            if (remainder && node.Type.StoredBase is { } parent)
+            {
+                this.Destruction(this.Type(parent), use);
+            }
+
+            static bool HasPath(OwnershipBody body, MovePath node, int selector)
+            {
+                for (var child = node.Child; child >= 0; child = body.GetMovePath(child).Next)
+                {
+                    if (body.GetMovePath(child).Selector == selector)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            static BoundType? PartType(BoundType type, int selector) => type.Kind switch
+            {
+                BoundTypeKind.FixedArray => type.Components[0],
+                BoundTypeKind.Tuple => type.Components[selector],
+                _ => StructStorage.FieldType(type, selector),
+            };
+        }
 
         private void Destruction(BoundType? type, Koto use)
         {
+            if (!this.destructions)
+            {
+                return; // Binding checks accesses and calls; destruction is counted after ownership analysis.
+            }
+
             if (type is null)
             {
                 this.valid = false;
@@ -1426,14 +1247,15 @@ public sealed partial class Binding
                 return;
             }
 
-            if (type.Semantics != SemanticsKind.Owner)
+            // Destroying a Copy value, such as a Slice handle or a shared reference, has no effect.
+            if (type.Semantics != SemanticsKind.Owner || binding.ProveCopy(type, use) == ConstraintProof.Proven)
             {
                 return;
             }
 
             if (type.Kind == BoundTypeKind.Parameter)
             {
-                this.valid &= binding.ProveCopy(type, use) == ConstraintProof.Proven;
+                this.valid = false; // A Type parameter that is not proven Copy may have any destructor.
             }
             else if (StructStorage.IsStruct(type))
             {
@@ -1648,124 +1470,6 @@ public sealed partial class Binding
             this.contextIndex.Add(call, this.contexts.Count - 1);
             return this.contexts.Count - 1;
         }
-    }
-
-    // Whether a statement neither names a symbol nor may leave its block normally (SPEC 14.5.2): no return, try, yield or
-    // labeled transfer, and no unlabeled exit or continue outside an iteration body it contains. Transfers inside a
-    // function or deferred body cannot cross that boundary; a capture there still names the symbol.
-    private sealed class InertScan : KotoVisitor
-    {
-        private readonly List<string> labels = new();
-        private LoopKoto? restart;
-        private BindingSymbol? symbol;
-        private int selections;
-        private int iterations;
-        private int boundaries;
-        private bool inert;
-
-        public override void Visit(Koto node)
-        {
-            if (!this.inert)
-            {
-                return;
-            }
-
-            if (this.symbol is not null && ReferenceEquals(node.BoundSymbol, this.symbol) && node is IdentifierNameKoto or MemberAccessKoto)
-            {
-                this.inert = false;
-                return;
-            }
-
-            if (node is FunctionKoto or DeferredBlockKoto)
-            {
-                this.boundaries++;
-                node.VisitChildren(this);
-                this.boundaries--;
-                return;
-            }
-
-            if (this.boundaries == 0)
-            {
-                // An exit or continue stays inside when it targets an iteration whose body it is in: the nearest one, or
-                // one whose Label it names.
-                if (node is TryKoto || (node is JumpKoto jump && !this.Restarts(jump) && !this.StaysInside(jump)))
-                {
-                    this.inert = false;
-                    return;
-                }
-
-                // SPEC 14.5.2: a yield ends the nearest, or the named, `if` or `match` whose body it is in.
-                var selection = node is CodeBlockKoto ? node.Parent : null;
-                if (selection is IfKoto or MatchKoto && !ReferenceEquals((selection as MatchKoto)?.Expression, node))
-                {
-                    var label = selection.Parent is LabeledKoto labeled ? labeled.Label : null;
-                    if (label is not null)
-                    {
-                        this.labels.Add(label);
-                    }
-
-                    this.selections++;
-                    node.VisitChildren(this);
-                    this.selections--;
-                    if (label is not null)
-                    {
-                        this.labels.RemoveAt(this.labels.Count - 1);
-                    }
-
-                    return;
-                }
-
-                if (node is CodeBlockKoto && ReferenceEquals(node, node.Parent switch { ForKoto loop => loop.Body, WhileKoto loop => loop.Body, LoopKoto loop => loop.Body, _ => null }))
-                {
-                    var label = node.Parent?.Parent is LabeledKoto labeled ? labeled.Label : null;
-                    if (label is not null)
-                    {
-                        this.labels.Add(label);
-                    }
-
-                    this.iterations++;
-                    node.VisitChildren(this);
-                    this.iterations--;
-                    if (label is not null)
-                    {
-                        this.labels.RemoveAt(this.labels.Count - 1);
-                    }
-
-                    return;
-                }
-            }
-
-            node.VisitChildren(this);
-        }
-
-        // A null symbol checks only that the statement cannot leave its block; `exits: false` checks only the mention. A
-        // `continue` to `restart`, the `loop` whose body holds the statement, restarts a body that transfers the value first.
-        internal bool Check(Koto statement, BindingSymbol? symbol, bool exits = true, LoopKoto? restart = null)
-        {
-            this.restart = restart;
-            this.symbol = symbol;
-            this.labels.Clear();
-            this.selections = 0;
-            this.iterations = 0;
-            this.boundaries = exits ? 0 : 1;
-            this.inert = true;
-            this.Visit(statement);
-            this.symbol = null;
-            this.restart = null;
-            return this.inert;
-        }
-
-        // Whether an exit, continue or yield targets an iteration or selection whose body inside the statement contains it.
-        private bool StaysInside(JumpKoto jump) => jump.Akind switch
-        {
-            KotoKind.Exit or KotoKind.Continue => jump.Label is null ? this.iterations > 0 : this.labels.Contains(jump.Label),
-            KotoKind.Yield => jump.Label is null ? this.selections > 0 : this.labels.Contains(jump.Label),
-            _ => false,
-        };
-
-        private bool Restarts(JumpKoto jump)
-            => jump.Akind == KotoKind.Continue && this.restart is { } loop &&
-                (jump.Label is null ? this.iterations == 0 : loop.Parent is LabeledKoto labeled && labeled.Label == jump.Label && !this.labels.Contains(jump.Label));
     }
 
     // Two calls read the callee's Types identically when they agree on target, declaring Type and every substitution.

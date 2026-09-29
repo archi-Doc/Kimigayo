@@ -14,6 +14,10 @@ public enum PlaceState : byte
     MayInit = 2,
     MayMoved = 4,
     MayAssigned = 8,
+
+    // The Place may hold a value it owns, not only a Copy remnant left by a Copy-or-Move acquisition (whose destruction has
+    // no effect). An effect bound counts a destruction only where this holds.
+    MayOwn = 16,
 }
 
 public enum OwnershipPlaceKind : byte
@@ -138,6 +142,10 @@ public enum OwnershipFailure : byte
 
     // SPEC 15.4.4: an Origin obligation that neither Binding nor this analysis proves, such as an Origin nothing constrains.
     UnprovenOrigin,
+
+    // SPEC 8.4.5, 22.1.2.4: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
+    // published effect bound of its Contract.
+    EffectBound,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -193,6 +201,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
         OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
+        OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
 }

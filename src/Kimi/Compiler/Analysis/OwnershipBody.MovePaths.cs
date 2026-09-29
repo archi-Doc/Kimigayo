@@ -215,11 +215,13 @@ public sealed partial class OwnershipBody
                 {
                     this.Clear(slot, MustLane);
                     this.Clear(slot, MayLane);
+                    this.Clear(slot, OwnedLane);
                 }
                 else if (conditional)
                 {
                     this.Clear(slot, MustLane);
                     this.Set(slot, MovedLane);
+                    this.Clear(slot, OwnedLane);
                 }
                 else
                 {

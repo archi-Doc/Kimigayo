@@ -179,8 +179,8 @@ public class IteratorOriginEffectsTest
     public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
     {
         var c = MinimalEmissionTest.Analyze(wrapper);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // SPEC 22.1.2.4 (G28): matching an item of the stored Iterator by value destroys nothing when every arm either matches a
@@ -209,6 +209,9 @@ public class IteratorOriginEffectsTest
     [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("let first = self.inner.next()\n        outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
     [InlineData("let first = self.inner.next()\n        let step: i32 = if self.steps > 0\n            self.steps -= 1\n            yield 1\n        else => 0\n        self.steps += step\n        return first@move")] // A yield inside the gap
+    [InlineData("let first = self.inner.next()\n        defer => self.steps += 1\n        return first@move")] // The destructions are the planned cleanups, so a defer,
+    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        while i < 2 => i += 1\n        self.steps += i\n        return first@move")] // a while loop,
+    [InlineData("var first = self.inner.next()\n        while self.steps < 0\n            let skipped = first@move\n            self.steps += 1\n            return skipped@move\n        return first@move")] // or a transfer inside one is not a syntactic boundary.
     public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
     {
         var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
@@ -264,8 +267,8 @@ public class IteratorOriginEffectsTest
         var source = NumberedOnce + ".Some(let value) if self.index > 0 or (return .None) => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
             "            .None => return .None\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        Assert.All(c.Binding.Issues, issue => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, issue.Code));
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+        Assert.All(c.Binding.Issues.Select(x => x.Code).Concat(c.Ownership.Issues.Select(x => x.Code)), code => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, code));
     }
 
     // G28: a nested pattern destroys only its untransferred parts: the isize position is Copy and the value is transferred,
@@ -291,7 +294,7 @@ public class IteratorOriginEffectsTest
     public void ANestedPatternThatDropsAPartIsRejected(string arm)
     {
         var c = MinimalEmissionTest.Analyze(StoredPair + arm + "\n            .None => return .None\n");
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // An aggregate that stores the item but is not transferred on is destroyed inside next.
@@ -301,7 +304,7 @@ public class IteratorOriginEffectsTest
     public void AnItemStoredInADroppedAggregateIsRejected(string arm)
     {
         var c = MinimalEmissionTest.Analyze(NumberedOnce + arm + "\n            .None => return .None\n");
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: assigning a `var` item local after a statement moved it out initializes it, and the new value is transferred
@@ -350,7 +353,7 @@ public class IteratorOriginEffectsTest
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        loop\n            match self.inner.next()\n                .Some(let item)\n" +
             "                    self.skipped += 1\n                    if self.skipped < 2 => continue\n                    return .Some(item@move)\n                .None => return .None\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // An exit after the reinitialization leaves the loop with the value, which the function then destroys.
@@ -358,7 +361,7 @@ public class IteratorOriginEffectsTest
     public void ALoopThatMayLeaveWithItsItemIsRejected()
     {
         var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 2 => exit\n        return .None\n");
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     [Fact]
@@ -368,7 +371,7 @@ public class IteratorOriginEffectsTest
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        while self.retries < 3\n" +
             "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            attempt = self.inner.next()\n        return .None\n";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: each branch of an `if` transfers the item or falls through holding it, and a later statement transfers what the
@@ -400,7 +403,7 @@ public class IteratorOriginEffectsTest
     public void ABranchThatMayDestroyTheItemIsRejected(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Branch + tail);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: an arm that yields or evaluates to a value storing the payload hands it to the match result, which the local
@@ -431,7 +434,7 @@ public class IteratorOriginEffectsTest
     public void AnArmThatDropsThePayloadIsRejected(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Pick + tail);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: a value-producing `if` or `match` whose every branch delivers the item stores it in its result.
@@ -464,7 +467,7 @@ public class IteratorOriginEffectsTest
     public void ASelectionThatMayDropTheItemIsRejected(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Choose + tail);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: a match on another value is judged as an `if`: each arm transfers the item or falls through holding it.
@@ -487,7 +490,7 @@ public class IteratorOriginEffectsTest
     public void AMatchArmThatMayDestroyTheItemIsRejected(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Select + tail);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: a constructor's first assignment of a field without a default initializes it, so an Iterator may build a
@@ -511,7 +514,7 @@ public class IteratorOriginEffectsTest
     {
         const string Entry = "struct Entry<T>\n    public let position: isize\n    public var value: Option<T> = .None\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = .Some(value@move)\n";
         var c = MinimalEmissionTest.Analyze(Entry + Entries);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // G28: an item passed by value to a helper is owned by the helper, whose parameter is not destroyed when its body
@@ -536,7 +539,7 @@ public class IteratorOriginEffectsTest
     public void AnItemPassedToAHelperThatDropsItIsRejected(string help)
     {
         var c = MinimalEmissionTest.Analyze(Helper + help);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // A reinitialized value left to its scope, or an assignment that replaces a value no statement moved out, destroys it.
@@ -546,7 +549,7 @@ public class IteratorOriginEffectsTest
     public void AReinitializedLocalThatMayBeDestroyedIsRejected(string tail)
     {
         var c = MinimalEmissionTest.Analyze(Reuse + tail);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // A statement between the item's initialization and its transfer that names the item, or that may leave the block
@@ -564,7 +567,7 @@ public class IteratorOriginEffectsTest
         var source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // A payload that is discarded, or bound and left to its scope, runs an unknown destructor inside next.
@@ -577,7 +580,7 @@ public class IteratorOriginEffectsTest
         var source = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n            " + arm + "\n            .None => return .None\n";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // A call without a published effect bound, such as a requirement of a Type parameter, cannot certify next.
@@ -587,6 +590,6 @@ public class IteratorOriginEffectsTest
         const string Source = "struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n" +
             "    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 }

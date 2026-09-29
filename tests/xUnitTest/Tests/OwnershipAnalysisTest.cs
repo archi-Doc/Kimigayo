@@ -221,7 +221,7 @@ public class OwnershipAnalysisTest
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
         var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
         var consume = body.Operations.ToList().FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == s);
-        Assert.Equal(PlaceState.MustInit | PlaceState.MayInit | PlaceState.MayAssigned, body.GetInputState(consume, s));
+        Assert.Equal(PlaceState.MustInit | PlaceState.MayInit | PlaceState.MayAssigned | PlaceState.MayOwn, body.GetInputState(consume, s));
         var last = body.Operations.ToList().FindLastIndex(x => x.Kind == OwnershipOperationKind.Deliver);
         Assert.Equal(PlaceState.None, body.GetInputState(last, s) & PlaceState.MustInit);
         Assert.Equal(PlaceState.MayMoved, body.GetInputState(last, s) & PlaceState.MayMoved);

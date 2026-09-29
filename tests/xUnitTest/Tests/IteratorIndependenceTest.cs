@@ -140,11 +140,9 @@ public class IteratorIndependenceTest
     {
         var source = "struct Cleanup {source, step}\n    origin source outlives step\n    let cursor: uniq/(Cursor during source) during step\n    public init(cursor: uniq/(Cursor during source) during step) => self.cursor = cursor@move\n    deinit => " + operation + "\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    public let value: uniq/i32 during source\n    public var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        do\n            let cleanup = Cleanup.init(self)\n        return .Some(self.value)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
+        // A destructor runs only where ownership analysis plans its cleanup, so its effects are judged after that analysis.
+        var rejected = c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.True(valid != rejected, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

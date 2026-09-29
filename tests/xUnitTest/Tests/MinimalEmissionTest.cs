@@ -308,4 +308,11 @@ public class MinimalEmissionTest
             string.Join(", ", c.Binding.Issues) + "; " + string.Join(", ", c.Ownership.Issues) + "; " +
             (c.Ownership.ControlFlow is { } flow ? string.Join(", ", flow.Issues) + "; " + string.Join(", ", flow.PendingBinding) : string.Empty) + "; " +
             string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
+
+    // SPEC 8.4.5: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis
+    // for the destructions the implementation's bodies actually perform (their planned cleanups).
+    internal static void AssertEffectBoundRejected(Compilation c)
+        => Assert.True(
+            c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd),
+            Describe(c, null));
 }
