@@ -378,7 +378,8 @@ public sealed partial class Binding
             return true;
         }
 
-        // Whether the body is exactly `return v` where evaluating v stores the binding in the returned value.
+        // Whether the body is exactly `return v`, or an assignment `p = v` whose target neither names the binding nor may
+        // leave the block, where evaluating v stores the binding: the returned value or the assigned Place owns it.
         private bool TransfersAtOnce(Koto body, BindingSymbol item)
         {
             while (body is CodeBlockKoto { Items: [var only] })
@@ -386,11 +387,18 @@ public sealed partial class Binding
                 body = only;
             }
 
-            return body is ReturnKoto { Expression: { } returned } && this.Stores(returned, item);
+            return body switch
+            {
+                ReturnKoto { Expression: { } returned } => this.Stores(returned, item),
+                BinaryKoto { Akind: KotoKind.Equals } assignment => this.inertScan.Check(assignment.Left, item) && this.Stores(assignment.Right, item),
+                FieldKoto { InitializerKoto: { } initializer } => this.Stores(initializer, item), // The new local's own destruction is counted there.
+                _ => false,
+            };
         }
 
-        // Whether `value` is `item@move`, or a Case construction or Tuple that stores it in exactly one part while its other
-        // parts neither name it nor may leave the block (G28): the aggregate is complete or evaluation Aborts.
+        // Whether `value` is `item@move`, or a Case construction, Tuple or call that stores it in exactly one part, a call
+        // taking it by value, while its other parts neither name it nor may leave the block (G28): the aggregate is complete,
+        // or the callee owns the value and its own summary covers it, or evaluation Aborts.
         private bool Stores(Koto value, BindingSymbol item)
         {
             value = KotoHelper.UnwrapParentheses(value);
@@ -399,19 +407,28 @@ public sealed partial class Binding
                 return true;
             }
 
-            IReadOnlyList<Koto>? parts = value switch
+            BoundCall? call = null;
+            IReadOnlyList<Koto>? parts = null;
+            switch (value)
             {
-                InvocationKoto construction when binding.TryGetEnumConstruction(construction, out _) => construction.ArgumentNodes,
-                TupleLiteralKoto tuple => tuple.Elements,
-                _ => null,
-            };
+                case InvocationKoto construction when binding.TryGetEnumConstruction(construction, out _):
+                    parts = construction.ArgumentNodes;
+                    break;
+                case InvocationKoto { BoundCall: { } bound } invocation when this.inertScan.Check(invocation.Method, item):
+                    parts = invocation.ArgumentNodes;
+                    call = bound;
+                    break;
+                case TupleLiteralKoto tuple:
+                    parts = tuple.Elements;
+                    break;
+            }
 
             var stored = -1;
             for (var i = 0; parts is not null && i < parts.Count; i++)
             {
                 if (this.Stores(parts[i], item))
                 {
-                    if (stored >= 0)
+                    if (stored >= 0 || (call is not null && !PassedByValue(call, parts[i])))
                     {
                         return false;
                     }
@@ -429,6 +446,19 @@ public sealed partial class Binding
             }
 
             return stored >= 0;
+
+            static bool PassedByValue(BoundCall call, Koto argument)
+            {
+                for (var i = 0; i < call.ArgumentOperations.Length; i++)
+                {
+                    if (ReferenceEquals(call.ArgumentOperations[i].Source, argument))
+                    {
+                        return call.ArgumentOperations[i].Kind == ArgumentOperationKind.Value;
+                    }
+                }
+
+                return false;
+            }
         }
 
         // G28: a local is not destroyed when a later statement of its block transfers it at once, directly or as the Subject
@@ -1205,11 +1235,20 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
+                if (binding.symbols.TryGetValue(function.Parameters[i], out var symbol) && this.ParameterTransferred(function, symbol))
+                {
+                    continue; // G28: the body transfers the parameter before anything could destroy it.
+                }
+
                 this.Destruction(function.Parameters[i].Type.BoundType is { } parameter ? this.Type(parameter) : null, function);
             }
 
             this.context = previous;
         }
+
+        private bool ParameterTransferred(FunctionKoto function, BindingSymbol parameter)
+            => function.Body is { } body ? this.TransferredLater(body.Items, 0, parameter) :
+                function.ExpressionBody is { } value && (this.Stores(value, parameter) || this.TransfersAtOnce(value, parameter));
 
         private void Destruction(BoundType? type, Koto use)
         {

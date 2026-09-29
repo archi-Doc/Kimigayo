@@ -350,6 +350,31 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: an item passed by value to a helper is owned by the helper, whose parameter is not destroyed when its body
+    // transfers it at once.
+    private const string Helper = "struct Helper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n" +
+        "            .Some(let item) => return self.help(item@move)\n            .None => return .None\n";
+
+    [Fact]
+    public void AnItemPassedToAHelperThatTransfersItIsAccepted()
+    {
+        var source = Counter + Helper + "    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item>\n        let wrapped: Option<I.(Iterator).Item> = .Some(value@move)\n        return wrapped@move\n" +
+            "var helper = Helper<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match helper.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 else => $abort(\"helper\")\nConsole.writeLine(\"helped\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorHelper", source, "helped\n");
+    }
+
+    // A helper that drops its parameter, directly or through a local, destroys the item inside next.
+    [Theory]
+    [InlineData("    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item> => .None\n")]
+    [InlineData("    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item>\n        let kept = value@move\n        return .None\n")]
+    public void AnItemPassedToAHelperThatDropsItIsRejected(string help)
+    {
+        var c = MinimalEmissionTest.Analyze(Helper + help);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A reinitialized value left to its scope, or an assignment that replaces a value no statement moved out, destroys it.
     [Theory]
     [InlineData("        attempt = self.inner.next()\n        return .None\n")]
