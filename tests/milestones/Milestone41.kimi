@@ -1,0 +1,72 @@
+// Milestone 41: positions and ranges - from-end positions, independently typed boundaries, closed ranges, generic
+// position APIs, value read and resolution against each target.
+
+// A range of any Type satisfying PositionRange resolves against a length and formats as written.
+func describe<R>(range: R, length: isize) -> string
+    R is PositionRange
+    match range.tryResolve(length)
+        .Some(let resolved) => return "\(range) covers \(resolved.length)"
+        .None => return "\(range) does not resolve"
+
+// A position of any Type satisfying Position selects one element.
+func pick<P>(values: Slice<i32>, position: P) -> i32
+    P is Position
+    return values[position]
+
+// Two boundaries of one integer Type make the range iterable.
+func total<T>(range: Range<T, T>) -> T
+    T is PrimitiveInteger
+    var sum: T = 0
+    for value in range
+        sum += value
+    return sum
+
+public func main()
+    let readings: [6 of i32] = [12, 18, 25, 31, 44, 50]
+    let small: u8 = 1
+    let wide: u64 = 2
+    let last = ^1 // FromEnd<i32>
+    require readings[small] == 18 and readings[wide] == 25 and readings[last] == 50 and readings[^6] == 12 else => $abort("Positions failed")
+    Console.writeLine("First \(readings[0]), last \(readings[last]).")
+
+    let inner = 1..^1 // Range<i32, FromEnd<i32>>
+    let middle = readings[inner]
+    let lastTwo = readings[^2..]
+    let firstThree = readings[..=2]
+    Console.writeLine("Inner \(inner) has \(middle.length); tail \(lastTwo[0]) and \(lastTwo[1]); head \(firstThree.length).")
+
+    let from: i64 = 2
+    let span = from..^1 // Range<i64, FromEnd<i64>>: the literal takes the other boundary's integer Type.
+    let resolved = span.resolve(readings.length)
+    var sum = 0
+    for i in resolved
+        sum += readings[i]
+    Console.writeLine("Span \(span) resolves to \(resolved), sum \(sum).")
+
+    Console.writeLine(describe(1..=4, readings.length))
+    Console.writeLine(describe(^8.., readings.length))
+    let view = readings[..]
+    require pick(view, ^2) == 44 and pick(view, 3@u16) == 31 and pick(view, inner.start) == 18 else => $abort("Generic positions failed")
+
+    match view.tryGet(^0)
+        .Some(_) => $abort("The end became an element")
+        .None => Console.writeLine("The end boundary is not an element.")
+    match view.trySlice(4..=6)
+        .Some(_) => $abort("A closed end past the length was accepted")
+        .None => Console.writeLine("A closed end past the length is refused.")
+    let halves = view.splitAt(^3)
+    require halves.0.length == 3 and halves.1[0] == 31 else => $abort("Split failed")
+
+    var queue: Array<i32> = [1, 2, 3]
+    queue.insert(^0, 4)
+    queue.insert(^1, 9)
+    let removed = queue.remove(^2)
+    queue.swap(0, ^1)
+    Console.writeLine("Queue \(queue[0]) \(queue[1]) \(queue[2]) \(queue[3]) after removing \(removed).")
+
+    var bytes = 0
+    for b in 250@u8..=255
+        bytes += 1
+    let reference = last@ref
+    require total(1..5@u8) == 10 and total(-2..3@i64) == 0 and bytes == 6 and readings[reference] == 50 else => $abort("Iteration failed")
+    Console.writeLine("Closed ranges reach 255 without overflow.")

@@ -1,6 +1,6 @@
 # Language milestones
 
-Forty independent programs are planned from the current [SPEC](../../docs/SPEC.md).
+Forty-one independent programs are planned from the current [SPEC](../../docs/SPEC.md).
 Programs 1–33 have source files; programs 34–40 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
@@ -41,7 +41,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
-| [Milestone27](Milestone27.kimi) | Saved Index/IndexRange resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
+| [Milestone27](Milestone27.kimi) | Saved position/range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
 | [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
@@ -90,7 +90,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 4 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 5 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 6 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
-| 7 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
+| 7 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 Harness re-spelled 2026-09-30 for P41: an `i32` row or key is now a valid position, so the rejections use `f64` instead. |
 | 8 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 9 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
 | 10 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Existing target/variant/rejection harness, O0/O2 |
@@ -110,9 +110,9 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnresolvedBinding_Kd` at required `value.item`; ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../../docs/dev/PLAN_HISTORY.md#programs25-28-authoring). |
-| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). |
+| 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). Re-spelled 2026-09-30 for P41 (`FromEnd<i32>` and `Range<S, E>` in place of `Index`/`IndexRange`); the re-spelled harness passes in Release (`artifacts/verify/20260929-163311-215-unit-p41-u45`). |
 | 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | DONE | Completed 2026-09-29. The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references; the harness also checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Every standard collection now iterates through Kimigayo entries over `Kimi.Storage` (Array, Dictionary, fixed array, Slice), with LendingIterator, the `Kimi.Iteration` adapters and associated families. Session `artifacts/verify/20260929-132623-627-session-p28-completion` passes the Debug/Release suites and the harnesses of every completed program. |
-| 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (129 checks per configuration); shared string iteration and zero-sized elements are positive cases (reopened and completed 2026-09-29). Allocation/cost probes pass. |
+| 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (129 checks per configuration); shared string iteration and zero-sized elements are positive cases (reopened and completed 2026-09-29). Allocation/cost probes pass. Harness re-spelled 2026-09-30 for P41: position variants use `^(0@u8)`/`^(1@i64)`, and an invalid position Aborts at the `insertAt`/`removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../../docs/dev/PLAN_HISTORY.md#review-remediation). |
 | 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../../docs/dev/PLAN_HISTORY.md#program32-completion). |
@@ -120,10 +120,11 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 34 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnresolvedBinding_Kd` at `Kimi.Intrinsics.makeRc`: the rc/arc creation and clone intrinsics have no declarations (PLAN G4). The payload, dependency-carrying payload, consuming `rc/Payload` parameter and `objref` view declarations bind. |
 | 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Node>`: `Weak<S>` is not formed and the Weak/cyclic intrinsics are undeclared (PLAN G4). |
 | 36 | YES | PASS | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
-| 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. |
+| 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `InvalidTypeFormation_Kd` at `Weak<rc/Lamp>` in the static registry; payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
+| 41 | YES | PASS | PASS (Release) | PASS (Release) | IN_PROGRESS | Authored 2026-09-30 per SPEC §4.6 (positions and ranges, P41). The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 
 [Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
@@ -156,7 +157,7 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
-The current plan has **40 programs**, including **26 programs numbered 15–40**.
+The current plan has **41 programs**, including **27 programs numbered 15–41**.
 Programs 15–33 are concrete; 34–40 are future source targets. Programs 39 and 40
 were added on 2026-09-26 for the two collection designs that the Place foundation
 leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../../docs/dev/PLAN.md#4-milestones-execution-order).
@@ -202,6 +203,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | 38 | Integrated core application | Properties, inheritance, objects and formatting combined with established features |
 | 39 | Semantics-generic follow | A pair `s/T` Place followed to its stored target under the admitted Semantics set; generic accessors over `Collection<s/T>` returning `ref/T` or `uniq/T` |
 | 40 | Disjoint exclusive element access | Simultaneous exclusive borrows of distinct elements of one collection through a splitting operation over the internal storage boundary |
+| 41 | Positions and ranges | From-end positions, independently typed range boundaries, closed ranges, generic position/range APIs, value read, resolution and formatting |
 
 ### Number migration from the 34-program plan
 
@@ -273,7 +275,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
-| 27 / 7, 13, 16, 19 | Resolve Index/IndexRange values and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
+| 27 / 7, 13, 16, 19 | Resolve saved positions and ranges and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
 | 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
@@ -287,6 +289,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 38 / 24–25, 32–36; 37 as needed | A second application using Properties, inheritance, objects and formatted output with exact lifetime behavior. | Alternate object lifetimes, replacement, empty/expired states, shutdown and relevant rejected accesses. | Cross-feature identity/cleanup/ownership checks and prerequisite regressions. It need not repeat every program-37 collection operation; no new feature family is deferred to this final target. |
 | 39 / 8, 18, 27 | Generic code over `Collection<s/T>` follows a pair Place to its stored target for every admitted `s`: shared under `value or valueborrow`, exclusive under `owner or uniq`. | Reject an exclusive follow whose admitted set includes `ref`, Take through the followed Place and any layer choice that would differ between instantiations; the followed Place depends on the outer borrow Origin whenever `s` is a borrow. | The Access Effect is fixed per admitted set at definition checking; monomorphized bodies select the owner Place or the referent without a runtime test and without allocation. Written after the G21 decision. |
 | 40 / 27–29, 31 | Borrow two distinct elements of an Array exclusively at once through a splitting operation, update both, and observe `None` for equal indices. | Reject two `@uniq` element borrows of one collection, conflicting whole-collection access while a split part is live, and retention of a part after the collection is moved or resized. | Region splitting through `Kimi.Storage` in O(1) without allocation; both child Loans end before the parent is reused. Written after the G22 decision. |
+| 41 / 7, 27, 29 | Select, slice, resolve and format positions and ranges of independently typed boundaries through fixed arrays, Slices, Arrays and generic `P is Position`/`R is PositionRange` code; iterate closed ranges up to a Type's maximum. | Element positions of every integer Type, expected boundary Types, saved and direct keys, Array position entries; reject cross-shape equality, iteration of a `FromEnd` range, arithmetic on positions, floating keys, construction outside syntax and user conformance. | One bounds check per directly applied key, a counted loop for closed ranges, no allocation or target retention by positions and ranges. |
 
 Owning clauses: [Properties](../../docs/spec/11-properties.md),
 [generics and Contracts](../../docs/spec/08-generics-constraints-and-contracts.md),
@@ -1970,6 +1973,40 @@ Focus: [reference-path selection](../../docs/spec/03-types-and-values.md#341-ref
 [generic access effects](../../docs/spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
 [follow](../../docs/spec/13-operators-and-assignment.md#13551-follow) and the proposal
 `draft/Design/2026-09-26 Semantics-Generic Follow.md`, which owns the pending decision.
+
+## Milestone 41: Positions and ranges
+
+Readings in a fixed array are selected by positions of several Types (`u8`, `u64`, `^1`) and sliced by ranges whose
+boundaries are typed independently: `1..^1` is `Range<i32, FromEnd<i32>>` and `from..^1` with `from: i64` is
+`Range<i64, FromEnd<i64>>`. Saved ranges resolve against each target they select from; generic code resolves any
+`R is PositionRange` and selects with any `P is Position`; the try-prefixed operations return `None` for an end
+boundary used as an element and for a closed end past the length; Array `insert`, `remove` and `swap` take from-end
+positions; a closed `u8` range reaches 255 without overflow; and a reference to a position is read as its value.
+
+Expected stdout:
+
+```text
+First 12, last 50.
+Inner 1..^1 has 4; tail 44 and 50; head 3.
+Span 2..^1 resolves to 2..5, sum 100.
+1..=4 covers 4
+^8.. does not resolve
+The end boundary is not an element.
+A closed end past the length is refused.
+Queue 4 2 3 1 after removing 9.
+Closed ranges reach 255 without overflow.
+```
+
+Separate checks (`test-milestone41.ps1`): wide element positions, a directly written range, expected boundary Types, a
+closed range below the maximum, Array positions of other Types, Aborts for `values[^0]`, a `u64` from-end offset beyond
+isize, a reversed closed range and `remove(^0)`; rejections of `(0..3) == (0..=2)`, iteration of `1..^1`, `^1 + 1`, a
+floating key, `FromEnd<i32>.init`, a boundary of another Type and `Self is Position` in a user struct.
+
+Focus: [positions](../../docs/spec/04-arrays-indexing-and-slices.md#462-positions),
+[ranges](../../docs/spec/04-arrays-indexing-and-slices.md#463-ranges),
+[resolution](../../docs/spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure),
+[value read](../../docs/spec/03-types-and-values.md#353-value-read) and
+[closed Contracts](../../docs/spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts).
 
 ### Programs 22–24 authoring verification (2026-09-22)
 
