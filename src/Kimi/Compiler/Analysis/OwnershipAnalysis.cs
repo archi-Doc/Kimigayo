@@ -24,6 +24,7 @@ public sealed partial class OwnershipAnalysis
     private readonly HashSet<InvocationKoto> referenceCalls = new(ReferenceEqualityComparer.Instance);
     private ControlFlowAnalysis? flow;
     private OwnershipBody body = null!;
+    private bool fixedArrayWitnesses;
     private int current;
     private int resultPlace;
     private int normalExit;
@@ -146,6 +147,7 @@ public sealed partial class OwnershipAnalysis
         this.libraryBodies.Clear();
         this.templateBodies.Clear();
         this.witnessTypes.Clear();
+        this.fixedArrayWitnesses = false;
         if (this.defaultBody is { } declaration)
         {
             declaration.IsVerified = false;
@@ -1287,17 +1289,34 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
+        var start = this.witnessScratch.Count;
         if (type.Symbol is { Declaration: StructKoto or EnumKoto } symbol && ReferenceEquals(symbol.Declaration.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
             this.witnessTypes.Add(symbol))
         {
-            this.witnessScratch.Clear();
             this.compilation.Binding.CollectWitnesses(symbol, this.witnessScratch);
-            for (var i = 0; i < this.witnessScratch.Count; i++)
-            {
-                this.CollectLibraryBody(this.witnessScratch[i]);
-            }
         }
 
+        // PLAN G32: a fixed array used as a Type argument reaches the Kimi fixed-array members through its entry conformances.
+        if (type.Kind == BoundTypeKind.FixedArray && !this.fixedArrayWitnesses)
+        {
+            this.fixedArrayWitnesses = true;
+            this.compilation.Binding.CollectFixedArrayWitnesses(this.witnessScratch);
+        }
+
+        // Dispatch through an associated Type reaches that Type's witnesses too (an entry's iterator and its `next`), so each
+        // witness's result Type is collected like a Type argument. Nested collection appends past this range.
+        var end = this.witnessScratch.Count;
+        for (var i = start; i < end; i++)
+        {
+            this.CollectLibraryBody(this.witnessScratch[i]);
+        }
+
+        for (var i = start; i < end; i++)
+        {
+            this.CollectLibraryWitnesses(this.witnessScratch[i].BoundSymbol?.Type);
+        }
+
+        this.witnessScratch.RemoveRange(start, this.witnessScratch.Count - start);
         for (var i = 0; i < type.Components.Count; i++)
         {
             this.CollectLibraryWitnesses(type.Components[i]);

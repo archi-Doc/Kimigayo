@@ -65,29 +65,16 @@ public sealed partial class Binding
             iterable = iterable.Components[0];
         }
 
-        var exclusive = source.Mode == SubjectMode.Exclusive;
-        // Dynamic Array and Dictionary use their ordinary Kimigayo entries and iterators; fixed arrays retain the sequence
-        // boundary (SPEC 14.6.2, 22.1.2.5).
-        var sequence = iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable) ? iterable :
-            ReferenceTypes.IsArray(iterable) ? iterable!.Components[0] : null;
-        if (sequence is not null)
-        {
-            // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and a shared borrow value of an array is
-            // reborrowed; both iterate as the Slice values[..], yielding ref/T during source. values@uniq and an
-            // exclusive borrow value lend the array exclusively and yield uniq/T; values@move or a temporary
-            // consumes the array instead.
-            var origin = followed?.Origin ?? this.PlaceOrigin(source.Iterable);
-            source.SharedIterable = exclusive
-                ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [sequence], origin: origin)
-                : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: origin);
-        }
+        // Dynamic Array, Dictionary and the shared and exclusive fixed-array loops use their Kimigayo entries and iterators
+        // (SPEC 14.6.2, 22.1.2.5, PLAN G32); an owning fixed-array loop keeps the sequence boundary until its inline
+        // owning remainder exists (PLAN G33).
+        var fixedOwning = iterable?.Kind == BoundTypeKind.FixedArray && source.Mode == SubjectMode.ByValue;
 
         // SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries directly; a
         // validated interval never Aborts, so no iterator value is formed.
-        var view = source.SharedIterable ?? iterable;
-        var element = view is null ? null : view.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize
-            : exclusive && ReferenceTypes.IsArray(view) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
+        var view = iterable;
+        var element = view is null ? null : fixedOwning ? view.Components[0] : view.Kind == BoundTypeKind.Slice
+            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
 
         var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
@@ -144,8 +131,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
-            !(exclusive && ReferenceTypes.IsArray(view)))
+        if (!userEntry && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not BoundTypeKind.Slice && !fixedOwning)
         {
             return this.FailIterationSubject(source, scope, iterable);
         }
@@ -196,7 +182,8 @@ public sealed partial class Binding
         item = null;
         var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
+        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null) ||
+            (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
@@ -254,6 +241,11 @@ public sealed partial class Binding
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
             return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+        }
+
+        if (IsFixedArrayEntry(self, contract))
+        {
+            return ReferenceEquals(this.FixedArrayWitness(contract), target);
         }
 
         if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))

@@ -281,6 +281,13 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
         }
 
+        // SPEC 22.1 (PLAN G32): the compiler records the fixed array's borrowing entry conformances; their witnesses are the
+        // members of the Kimi fixed-array group.
+        if (this.contractHeadersReady && IsFixedArrayEntry(type, contract))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
         // SPEC 8.7: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
         // conformances above; no declaration can add another (SPEC 8.4.8.4), so its fixed environment refutes the rest.
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&

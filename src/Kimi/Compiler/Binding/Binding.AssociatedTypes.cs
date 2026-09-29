@@ -609,6 +609,11 @@ public sealed partial class Binding
 
             try
             {
+                if (result.Kind == BoundTypeKind.AssociatedProjection && this.FixedArrayIteratorType(result) is { } fixedIterator)
+                {
+                    return fixedIterator;
+                }
+
                 if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver &&
                     this.ResolveAssociated(receiver, result.Symbol!, scope, result.Components.Count == 2 ? result.Components[1] : null) is { } fixedType)
                 {

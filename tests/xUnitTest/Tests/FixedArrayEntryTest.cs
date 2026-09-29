@@ -15,6 +15,24 @@ public class FixedArrayEntryTest
             "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = values.iterate()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nrequire total == 6 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
+    [Fact]
+    public void SharedAndExclusiveLoopsUseTheEntries()
+        => ScalarEmissionTest.EmitFixture(
+            "FixedArrayEntryLoops",
+            "var values: [3 of i32] = [1, 2, 3]\nvar total = 0\nfor v in values => total += v\nfor v in values@uniq => v@follow *= 2\nlet view = values@ref\nfor v in view => total += v\nrequire total == 18 and values[1] == 4 else => $abort(\"loops\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // Dispatch through `C.IteratorType` reaches the iterator's `next` only through the entry's result Type, for a fixed
+    // array and for a declared collection alike.
+    [Theory]
+    [InlineData("Fixed", "[4 of string]")]
+    [InlineData("Array", "Array<string>")]
+    public void GenericIterationReachesTheIteratorStep(string name, string type)
+        => ScalarEmissionTest.EmitFixture(
+            "FixedArrayEntryGeneric" + name,
+            "func count<C>(items: ref/C) -> i32\n    C is Iterable\n    var n = 0\n    for item in items => n += 1\n    return n\nlet values: " + type + " = [\"a\", \"b\", \"c\", \"d\"]\nrequire count(values) == 4 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
     [Theory]
     [InlineData("let it = Kimi.Storage.FixedArray.iterate(values)")]
     [InlineData("let it = ::Kimi.Storage.FixedArray.iterate(values)")]
