@@ -1,6 +1,6 @@
 {
   "name": "kimi-ext",
-  "publisher": "local",
+  "publisher": "archi-Doc",
   "displayName": "Kimi Extension",
   "description": "Kimi language diagnostics, build, run, and check commands for Visual Studio Code.",
   "version": "0.0.9",
