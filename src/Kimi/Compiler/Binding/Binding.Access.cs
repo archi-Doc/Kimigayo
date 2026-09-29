@@ -47,8 +47,12 @@ public sealed partial class Binding
         return null;
     }
 
+    // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
-        => type is not null && SameType(EffectiveCore(type), this.DeclarationSelf(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+        => type is not null && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter) &&
+            (ReferenceEquals(owner.Declaration, this.Library.FixedArrayMembers)
+                ? EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
+                : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
 
     private void ValidateConstraintProjectionAccess()
     {
@@ -360,7 +364,8 @@ public sealed partial class Binding
 
         for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
         {
-            if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
+            // The fixed-array member group stands for the public built-in Type (PLAN G32): only a member's own modifier applies.
+            if (current.Declaration is DeclarationContainerKoto { IsRoot: true } || (!ReferenceEquals(current, symbol) && ReferenceEquals(current.Declaration, this.Library.FixedArrayMembers)))
             {
                 break;
             }

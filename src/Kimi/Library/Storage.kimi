@@ -120,3 +120,16 @@ internal group Storage
             let slot = state.storage + (state.link - 1) * state.stride
             state.link = (slot@unsafe/isize)[1]
             return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))
+
+    // SPEC 22.1, 22.1.2.2 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
+    // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
+    // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
+    // entry conformances they implement.
+    internal group FixedArray
+        /// Starts a shared enumeration of the elements in index order.
+        public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
+            return ArrayIterator<E>.init(borrowStorage(self))
+
+        /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
+        public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
+            return ArrayUniqIterator<E>.init(borrowStorage(self))

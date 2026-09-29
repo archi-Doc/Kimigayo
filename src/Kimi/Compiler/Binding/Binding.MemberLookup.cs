@@ -119,6 +119,14 @@ public sealed partial class Binding
     // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.
     private MemberSelection LookupTypeMember(BoundType type, string name, BindingScope use, BoundType? receiver = null, BoundMemberPath? path = null, bool typeRole = false)
     {
+        // SPEC 22.1 (PLAN G32): a fixed array has no declaration; its members are the functions of the Kimi member group.
+        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !typeRole && this.Library.FixedArrayMembers is { } fixedMembers &&
+            this.scopes.TryGetValue(fixedMembers, out var fixedScope))
+        {
+            return fixedScope.Values.TryGetValue(name, out var fixedMember) && this.Accessible(fixedMember, use, receiverType: receiver)
+                ? new(fixedMember, null, path) : new(null, type, path); // Group functions substitute no declaring Type.
+        }
+
         if (type.Symbol is not { } symbol || !this.scopes.TryGetValue(symbol.Declaration, out var scope))
         {
             return default;
