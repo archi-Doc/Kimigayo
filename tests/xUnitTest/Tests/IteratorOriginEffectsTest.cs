@@ -302,6 +302,31 @@ public class IteratorOriginEffectsTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // G28: assigning a `var` item local after a statement moved it out initializes it, and the new value is transferred
+    // later, so a retry may reuse the local; the intervening early return leaves nothing to destroy.
+    private const string Reuse = "struct Reuse<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n" +
+        "        match attempt@move\n            .Some(let item) => return .Some(item@move)\n            .None => self.retries += 1\n        if self.retries > 3 => return .None\n";
+
+    [Fact]
+    public void AMovedOutLocalMayBeReinitialized()
+    {
+        var source = Counter + Reuse + "        attempt = self.inner.next()\n        return attempt@move\n" +
+            "var reuse = Reuse<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match reuse.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and reuse.retries == 1 else => $abort(\"reuse\")\nConsole.writeLine(\"reused\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorReinitialized", source, "reused\n");
+    }
+
+    // A reinitialized value left to its scope, or an assignment that replaces a value no statement moved out, destroys it.
+    [Theory]
+    [InlineData("        attempt = self.inner.next()\n        return .None\n")]
+    [InlineData("        attempt = self.inner.next()\n        attempt = self.inner.next()\n        return attempt@move\n")]
+    public void AReinitializedLocalThatMayBeDestroyedIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Reuse + tail);
+        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+    }
+
     // A statement between the item's initialization and its transfer that names the item, or that may leave the block
     // normally (a return, or an exit to an iteration outside it), may destroy it inside next.
     [Theory]

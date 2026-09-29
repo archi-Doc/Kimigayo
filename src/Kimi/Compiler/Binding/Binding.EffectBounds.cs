@@ -137,7 +137,7 @@ public sealed partial class Binding
                 this.Comparison(this.Type(dictionary) is { } key ? binding.DictionaryComparison(key) : null);
             }
 
-            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced })
+            if (node is BinaryKoto { Akind: KotoKind.Equals, Left.BoundType: { } replaced } assigned && !this.Reinitializes(assigned))
             {
                 this.Destruction(this.Type(replaced), node);
             }
@@ -447,6 +447,46 @@ public sealed partial class Binding
                 {
                     return this.TransferredLater(block.Items, i + 1, symbol);
                 }
+            }
+
+            return false;
+        }
+
+        // G28: an assignment to a `var` local of its block that an earlier statement moved out whole, with no mention in
+        // between, initializes it and destroys nothing; the new value is not destroyed when a later statement transfers it
+        // as for a declaration. Otherwise the assignment counts the destruction of the replaced or unconsumed value.
+        private bool Reinitializes(BinaryKoto assignment)
+        {
+            if (KotoHelper.UnwrapParentheses(assignment.Left) is not IdentifierNameKoto { BoundSymbol: { Declaration: FieldKoto { VariableKind: VariableKind.Var } } symbol } ||
+                assignment.Parent is not CodeBlockKoto block)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < block.Items.Count; i++)
+            {
+                if (!ReferenceEquals(block.Items[i], assignment))
+                {
+                    continue;
+                }
+
+                for (var j = i - 1; j >= 0; j--)
+                {
+                    var statement = block.Items[j];
+                    if (statement is MatchKoto match ? IsTransferOf(match.Expression, symbol) :
+                        statement is FieldKoto local ? IsTransferOf(local.InitializerKoto, symbol) :
+                        statement is BinaryKoto { Akind: KotoKind.Equals } moved && IsTransferOf(moved.Right, symbol))
+                    {
+                        return this.TransferredLater(block.Items, i + 1, symbol);
+                    }
+
+                    if (!this.inertScan.Check(statement, symbol, exits: false))
+                    {
+                        return false; // Its declaration, or another use, may leave it initialized.
+                    }
+                }
+
+                return false;
             }
 
             return false;
@@ -1457,12 +1497,12 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        // A null symbol checks only that the statement cannot leave its block.
-        internal bool Check(Koto statement, BindingSymbol? symbol)
+        // A null symbol checks only that the statement cannot leave its block; `exits: false` checks only the mention.
+        internal bool Check(Koto statement, BindingSymbol? symbol, bool exits = true)
         {
             this.symbol = symbol;
             this.iterations = 0;
-            this.boundaries = 0;
+            this.boundaries = exits ? 0 : 1;
             this.inert = true;
             this.Visit(statement);
             this.symbol = null;
