@@ -16,6 +16,8 @@
    - **AST Inspection and Manipulation:** inspect syntax and semantics, apply edits against identified source snapshots, and produce reviewable source changes.
    - **Verifiable Changes:** associate checks, tests, and measurements with exact source and configuration, reporting outcomes and remaining uncertainty.
 
+The specification and implementation are not set in stone. The specification guides implementation, but implementation insights can also lead to revisions when the specification is contradictory, overly complex, or detrimental to performance. Let’s think carefully and refine both together, guided by the Kimigayo Principles, to build a better language.
+
 # Coding Guidelines
 
 - Minimize memory allocations and optimize code for performance wherever practical.
