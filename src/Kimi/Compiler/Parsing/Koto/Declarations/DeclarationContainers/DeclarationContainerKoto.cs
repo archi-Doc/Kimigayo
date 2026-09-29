@@ -1007,7 +1007,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             token.Span,
             DiagnosticCode.UnexpectedToken_Kd,
             reader.GetSpan(token).ToString());
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
         reader.SkipSeparators();
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)

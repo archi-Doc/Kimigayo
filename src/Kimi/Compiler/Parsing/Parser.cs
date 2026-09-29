@@ -531,7 +531,7 @@ Exit:
         goto Exit;
 
 SkipAndExit:
-        reader.SkipUntilStartBlock(0);
+        reader.SkipUntilStartBlock(null);
 
 Exit:
         return (name, genericArguments, origins, bases);
@@ -783,7 +783,7 @@ Exit:
             if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
             {
                 reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
-                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, 0);
+                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, null);
                 break;
             }
 
@@ -866,7 +866,7 @@ Exit:
             if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
             {
                 reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
                 continue;
             }
 
@@ -1003,7 +1003,7 @@ Exit:
 CloseParameters:
         if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
         {
-            reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedToken_Kd);
+            reader.SkipUnexpectedUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
         }
 
         if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
@@ -2060,7 +2060,7 @@ CloseParameters:
         }
 
         var startsWithPrefix = reader.CurrentTokenKind == TokenKind.Sharp;
-        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.SkipCurrentBlock(false);
@@ -4255,7 +4255,7 @@ Loop:
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
                     reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
                     if (reader.CurrentTokenKind == TokenKind.CloseBracket)
                     {
                         break;
@@ -4297,7 +4297,7 @@ Loop:
                         reader.CurrentTokenRange,
                         DiagnosticCode.TokenMismatch_Kd,
                         TokenKind.Colon.ToText());
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
                 }
                 else
                 {
@@ -4316,7 +4316,7 @@ Loop:
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
                     reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
                     if (reader.CurrentTokenKind == TokenKind.CloseBracket)
                     {
                         break;

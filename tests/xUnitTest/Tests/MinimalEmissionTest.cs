@@ -142,7 +142,7 @@ public class MinimalEmissionTest
         if (existingDiagnostic)
         {
             // The parser error will have the same offset as an already displayed error.
-            diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+            diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: new SourceDocument("Earlier.kimi", "x"));
         }
 
         c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual func unavailable() => ()"));
@@ -163,7 +163,7 @@ public class MinimalEmissionTest
     {
         var c = Analyze("Console.writeLine(\"original\")");
         var diagnostics = customDestination ? c.Kimigayo.GetOrAddDiagnosticCollection("Added.kimi") : c.Kotonoha.DiagnosticCollection;
-        diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd);
+        diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: new SourceDocument("Earlier.kimi", "x"));
         c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "func added() => ()"));
         diagnostics.ClearDiagnostic();
         Assert.True(c.Bind().IsComplete);

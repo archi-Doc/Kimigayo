@@ -1,464 +1,619 @@
-// To create diagnostic information, follow the Template format, add it below, and add the corresponding entry to the KimiDiagnostic enum.
+// To define a diagnostic, follow the Template format below and add the same name to the DiagnosticCode enum. Every entry states its Category (SPEC 23.3.6.1); Severity defaults to Error. A message takes at most two arguments ({0}, {1}) and no free text.
 
   + Name="Template_Kd"
     Severity="Error"
+    Category="Language"
     Message="The primary diagnostic message"
     Label="A short label describing the relevant code"
-    Fix="A suggested fix for the diagnostic"
+    Advice="Conditional repair advice; no edit is inferred from it"
     Note="Additional information about the diagnostic"
 
   + Name="HiddenNamedAlias_Kd"
     Severity="Warning"
+    Category="Language"
     Message="A project-root qualifier or direct reference hides this named alias; choose another name"
 
   + Name="ConditionMustBeBool_Kd"
+    Category="Language"
     Message="The condition expression must be of type Bool"
 
   + Name="UnresolvedBinding_Kd"
+    Category="Language"
     Message="Required Name or Type information remains unresolved after final Binding"
 
   + Name="AmbiguousBinding_Kd"
+    Category="Language"
     Message="More than one declaration or operation remains applicable"
 
   + Name="DuplicateBinding_Kd"
+    Category="Language"
     Message="A declaration with the same Name or normalized Signature already exists in this scope"
 
   + Name="DuplicateDictionaryKey_Kd"
+    Category="Language"
     Message="This Dictionary literal key duplicates an earlier literal key"
 
   + Name="NotCallable_Kd"
+    Category="Language"
     Message="The selected value is not callable; lookup does not fall back to an outer function"
 
   + Name="NoApplicableOverload_Kd"
+    Category="Language"
     Message="No unique applicable overload can be established from the supplied arguments"
 
   + Name="CyclicBinding_Kd"
+    Category="Language"
     Message="A cyclic dependency prevents Type inference"
 
   + Name="InvalidAssignment_Kd"
+    Category="Language"
     Message="The selected target does not permit assignment"
 
   + Name="InaccessibleBinding_Kd"
+    Category="Language"
     Message="The selected declaration is inaccessible in this context"
 
   + Name="InvalidCaptureBinding_Kd"
+    Category="Language"
     Message="A runtime binding cannot cross this function boundary without a permitted capture"
 
   + Name="UnsupportedBinding_Kd"
+    Category="Unsupported"
     Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
 
   + Name="UnavailableFeature_Kd"
+    Category="Language"
     Message="The declaration modifier {0} is unavailable in this language revision"
 
   + Name="InvalidOriginBinding_Kd"
+    Category="Language"
     Message="The Origin name, mapping, or annotation is invalid in this type position"
 
   + Name="MissingOriginBinding_Kd"
+    Category="Language"
     Message="This Origin must be explicitly bound or resolved by the position's omission rules"
 
   + Name="InvalidTypeFormation_Kd"
+    Category="Language"
     Message="The resolved declaration or Semantics target cannot form this type"
 
   + Name="InvalidConstraint_Kd"
+    Category="Language"
     Message="The Constraint contains an invalid subject, requirement, or contradictory evidence"
 
   + Name="InvalidSelfClause_Kd"
+    Category="Language"
     Message="A Self clause of a Type declares conformance or the ObjectPayload opt-out only; the opt-out stands alone, unconditional and unrepeated, and ObjectPayload cannot be granted"
 
   + Name="NotObjectPayload_Kd"
+    Category="Language"
     Message="The Type {0} opts out of ObjectPayload and cannot be an object target or payload"
 
   + Name="UnprovenConstraint_Kd"
+    Category="Proof"
     Message="The required Constraint cannot be proven by its semantic deadline"
 
   + Name="UnsatisfiedConstraint_Kd"
+    Category="Language"
     Message="The supplied Types do not satisfy the required Constraints"
 
   + Name="InvalidKimiLibrary_Kd"
+    Category="Internal"
     Message="The compiler-owned Kimi requirement declarations are missing, duplicated, or incompatible"
 
   + Name="MissingContractImplementation_Kd"
+    Category="Language"
     Message="No implementation matches the Contract requirement after Type substitution"
 
   + Name="IncompatibleContractImplementation_Kd"
+    Category="Language"
     Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"
 
   + Name="InvalidAssociatedType_Kd"
+    Category="Language"
     Message="The associated Type has an ambiguous, missing, contradictory, or invalid Core-Type binding"
 
   + Name="InvalidCompileTimeCondition_Kd"
+    Category="Language"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 
   + Name="InvalidCompileTimeSetting_Kd"
+    Category="Input"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
 
   + Name="InvalidDependencyConfiguration_Kd"
+    Category="Input"
     Message="Invalid dependency configuration: {0}"
 
   + Name="UnresolvedDependencyGraph_Kd"
+    Category="Input"
     Message="The requested dependency graph has not been resolved and verified for this compilation"
 
   + Name="UnknownCompileTimeName_Kd"
+    Category="Language"
     Message="Unknown compile-time environment Name '{0}'"
-    Fix="Use a built-in Compilation value or configure a Project setting before parsing"
+    Advice="Use a built-in Compilation value or configure a Project setting before parsing"
 
   + Name="UnsupportedLanguageVersion_Kd"
+    Category="Input"
     Message="Unsupported language version '{0}'; this compiler supports '{1}'"
 
   + Name="ChainedComparison_Kd"
+    Category="Language"
     Message="Comparison operators cannot be chained without parentheses"
     Label="This comparison requires explicit grouping"
-    Fix="Use parentheses for a nested comparison, or combine separate comparisons with and"
+    Advice="Use parentheses for a nested comparison, or combine separate comparisons with and"
 
   + Name="EmptyExecutableBlock_Kd"
+    Category="Language"
     Message="An executable Block requires at least one Syntax item"
-    Fix="Indent the intended body, or write () to explicitly do nothing"
+    Advice="Indent the intended body, or write () to explicitly do nothing"
 
   + Name="BlockStatementInExpression_Kd"
+    Category="Language"
     Message="Unsafe and Deferred Blocks are statements and cannot be used as expressions"
 
   + Name="InvalidInlineStatement_Kd"
+    Category="Language"
     Message="An inline body requires one complete statement on the same line, without a following Block"
 
   + Name="SemicolonNotAllowed_Kd"
+    Category="Language"
     Message="Semicolons are not allowed"
-    Fix="Remove the semicolon, or use a newline to separate syntax items"
+    Advice="Remove the semicolon, or use a newline to separate syntax items"
 
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
+    Category="Language"
     Message="#case _ must be the final arm in a Case Group"
 
   + Name="CompileTimeCaseOutsideSwitch_Kd"
+    Category="Language"
     Message="#case must be a direct arm of a #switch body"
 
   + Name="EmptyCompileTimeSwitch_Kd"
+    Category="Language"
     Message="#switch requires an indented body containing at least one #case arm"
 
   + Name="InvalidCompileTimeSwitchItem_Kd"
+    Category="Language"
     Message="A #switch body may contain only #case arms, blank lines, and comments"
 
   + Name="DuplicateCompileTimeCaseFallback_Kd"
+    Category="Language"
     Message="A Case Group may contain at most one #case _ arm"
 
   + Name="DeclarationOrderWarning_Kd"
     Severity="Warning"
+    Category="Language"
     Message="Declarations should appear in this order: type constraints, Properties, functions"
 
   // Reserved for required constant evaluation, not runtime arithmetic Abort.
   + Name="DivisionByZero_Kd"
+    Category="Language"
     Message="Cannot divide by zero"
 
   + Name="DuplicateModifier_Kd"
+    Category="Language"
     Message="Duplicate modifier '{0}'"
 
   + Name="DuplicatePropertyAccessor_Kd"
+    Category="Language"
     Message="A Property may declare the '{0}' accessor at most once"
 
   + Name="DuplicateTypeConstraintDefinition_Kd"
+    Category="Language"
     Message="Type constraints for this struct are already defined in another declaration"
 
   + Name="IdentifierExpected_Kd"
+    Category="Language"
     Message="Identifier expected"
 
   + Name="IncompleteEscape_Kd"
+    Category="Language"
     Message="The string ends with an incomplete escape sequence"
 
   + Name="IncompleteSyntax_Kd"
+    Category="Language"
     Message="The syntax is incomplete"
 
   + Name="MissingReturnType_Kd"
+    Category="Language"
     Message="A return type is required after '->'. Specify a type such as '()' or 'i32', or remove '->' to omit the return type annotation."
     Label="Missing return type after this arrow"
 
   + Name="IndentationLevelMismatch_Kd"
+    Category="Language"
     Message="The indentation level does not match the expected level"
 
   + Name="IndentationLevelMismatchWarning_Kd"
     Severity="Warning"
+    Category="Language"
     Message="The indentation level does not match the expected level"
 
   + Name="InvalidAttributeKoto_Kd"
+    Category="Language"
     Message="An attribute must be in the form #Attribute or #Attribute(arguments)"
 
   + Name="InvalidCharacter_Kd"
+    Category="Language"
     Message="Unexpected character '{0}'"
 
   + Name="InvalidCharLiteral_Kd"
+    Category="Language"
     Message="A char literal must contain exactly one Unicode scalar value; quotes, backslashes, controls, and line separators must be escaped"
 
   + Name="InvalidSourceEncoding_Kd"
+    Category="Input"
     Message="Source text must be valid Unicode encoded as UTF-8"
 
   + Name="MissingCharLiteralEnd_Kd"
+    Category="Language"
     Message="Char literal is not terminated on the same line. Expected closing '"
 
   + Name="InvalidCharacterAtEndOfFile_Kd"
+    Category="Language"
     Message="Invalid character at end of file"
 
   + Name="InvalidIdentifier_Kd"
+    Category="Language"
     Message="'{0}' is not a valid identifier"
-    Fix="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
+    Advice="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
 
   + Name="InvalidIndentation_Kd"
+    Category="Language"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
 
   + Name="InvalidNumericLiteral_Kd"
+    Category="Language"
     Message="Invalid numeric literal"
 
   + Name="InvalidReferenceSyntax_Kd"
+    Category="Language"
     Message="Reference form &{0} is invalid"
 
   + Name="InvalidUnicodeEscape_Kd"
+    Category="Language"
     Message="The Unicode escape sequence must have the form '\\u(...)' and contain one to six hexadecimal digits"
 
   + Name="InvalidUnicodeScalar_Kd"
+    Category="Language"
     Message="The Unicode escape sequence does not represent a valid Unicode scalar value"
 
   + Name="IntegerOverflow_Kd"
+    Category="Language"
     Message="The integer operation exceeds the supported range"
 
   + Name="LetPropertyCannotHaveSetter_Kd"
+    Category="Language"
     Message="A let Property cannot declare a setter"
 
   + Name="MissingBlockCommentEnd_Kd"
+    Category="Language"
     Message="Reached end-of-file. Missing '*/'"
 
   + Name="CodeAfterMultilineComment_Kd"
+    Category="Language"
     Message="Code cannot follow a multiline block comment's closing delimiter on the same physical line"
-    Fix="Move the code to the next line and use ordinary indentation"
+    Advice="Move the code to the next line and use ordinary indentation"
 
   + Name="MissingComma_Kd"
+    Category="Language"
     Message="A comma is required to separate syntax elements"
 
   + Name="MissingExpectedToken_Kd"
+    Category="Language"
     Message="Expected: {0}, but reached the end of line."
 
   + Name="MissingStringLiteralEnd_Kd"
+    Category="Language"
     Message="String literal is not terminated. Expected closing \""
 
   + Name="MultipleAccessibilityModifiers_Kd"
+    Category="Language"
     Message="Only one accessibility modifier is allowed"
 
   + Name="NonExhaustiveCompileTimeCase_Kd"
+    Category="Language"
     Message="No compile-time Case Group arm matches and no fallback arm is present"
 
   + Name="TokenMismatch_Kd"
+    Category="Language"
     Message="The token does not match the expected token. Expected: {0}"
 
   + Name="TopLevelKeywordAfterCode_Kd"
+    Category="Language"
     Message="Top-level keywords such as 'alias' must appear before any other code"
-    Fix="Move this top-level keyword before all other code"
+    Advice="Move this top-level keyword before all other code"
 
   + Name="TypeMismatch_Kd"
+    Category="Language"
     Message="Values must be of the same type"
 
   + Name="InvalidTry_Kd"
+    Category="Language"
     Message="{0}"
 
   + Name="ControlFlow_Kd"
+    Category="Language"
     Message="{0}"
 
   + Name="InvalidTestDefinition_Kd"
+    Category="Language"
     Message="Test requires one argument-free Attribute on a safe ordinary named function with a body, no parameters, captures or generic/Origin parameters, and an omitted or Unit return Type"
 
   + Name="InvalidLayoutAttribute_Kd"
+    Category="Language"
     Message="Layout requires exactly one unnamed, non-interpolated string literal, 'Kimigayo' or 'C', on a struct, with no repetition on one fragment"
 
   + Name="ConflictingLayout_Kd"
+    Category="Language"
     Message="Selected struct fragments must agree on their explicit Layout mode"
 
   + Name="InvalidLibraryImport_Kd"
+    Category="Language"
     Message="LibraryImport requires exactly two unnamed, nonempty, non-interpolated, NUL-free string literals, a native requirement name and a symbol, on a bodyless func"
 
   + Name="UnsupportedImportSignature_Kd"
+    Category="Language"
     Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or unsafe/T, and Unit only as the result"
 
   + Name="ConflictingImportSignature_Kd"
+    Category="Language"
     Message="LibraryImport declarations of one external symbol must have the same physical signature"
 
   + Name="ConflictingRuntimeSymbol_Kd"
+    Category="Language"
     Message="A LibraryImport of a generated runtime declaration must name the reserved kernel32 supply and its exact physical signature"
 
   + Name="ConflictingImportSupply_Kd"
+    Category="Language"
     Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
 
   + Name="UnsafeFunctionValue_Kd"
+    Category="Language"
     Message="An unsafe function supports direct calls only; it cannot be acquired as a value, assigned or passed as an argument"
 
   + Name="UnavailableReservedImport_Kd"
+    Category="Language"
     Message="The reserved kernel32 supply exports only the reviewed project-owned definition; extending it requires a definition and profile update"
 
   + Name="MissingNativeRequirement_Kd"
+    Category="Input"
     Message="The LibraryImport name has no NativeRequirements entry or self-targeted NativeLibraries record for the current target in the defining module"
 
   + Name="SplitCLayoutStorage_Kd"
+    Category="Language"
     Message="All selected instance Fields of a C-layout struct must occur in one fragment"
 
   + Name="InvalidCLayout_Kd"
+    Category="Language"
     Message="C layout is rejected on open, derived and empty structs and on direct zero-sized Fields"
 
   + Name="InvalidInlineLayout_Kd"
+    Category="Language"
     Message="A Type that contains itself by value without indirection has no finite inline layout"
 
   + Name="UnexpectedIndent_Kd"
+    Category="Language"
     Message="Unexpected indentation"
 
   + Name="UnexpectedToken_Kd"
+    Category="Language"
     Message="Token {0} is not expected at this position"
 
   + Name="UnexpectedTrailingToken_Kd"
+    Category="Language"
     Message="Unexpected token at the end of the statement"
 
   + Name="UnmatchedEndBlock_Kd"
+    Category="Language"
     Message="Unmatched end block"
 
   + Name="UnmatchedAngleBracket_Kd"
+    Category="Language"
     Message="Unmatched angle bracket"
 
   + Name="UnmatchedBrace_Kd"
+    Category="Language"
     Message="Unmatched brace"
 
   + Name="UnmatchedBracket_Kd"
+    Category="Language"
     Message="Unmatched bracket"
 
   + Name="UnmatchedParenthesis_Kd"
+    Category="Language"
     Message="Unmatched parenthesis"
 
   + Name="UnmatchedToken_Kd"
+    Category="Language"
     Message="Unmatched token {0}"
 
   + Name="UnsupportedCompileTimeConditionType_Kd"
+    Category="Language"
     Message="This type is not supported in a compile-time condition expression"
 
   + Name="UnsupportedEscape_Kd"
+    Category="Language"
     Message="The escape sequence '{0}' is not supported"
 
   + Name="MissingStartupBody_Kd"
+    Category="Language"
     Message="An Application requires one top-level runtime body or one source-root public main"
 
   + Name="MixedStartupBodies_Kd"
+    Category="Language"
     Message="Top-level runtime items and source-root public main cannot coexist in an Application"
 
   + Name="MultipleStartupSources_Kd"
+    Category="Language"
     Message="Top-level runtime items must belong to one SourceDocument"
 
   + Name="MultipleStartupMains_Kd"
+    Category="Language"
     Message="An Application cannot declare more than one source-root public main"
 
   + Name="InvalidStartupMain_Kd"
+    Category="Language"
     Message="Startup main must be a safe, bodyful, non-imported public function with no parameters, generics, Origins or constraints, returning Unit"
 
   + Name="LibraryRuntimeBody_Kd"
+    Category="Language"
     Message="A Library cannot contain top-level runtime items"
 
   + Name="UninitializedPlace_Kd"
+    Category="Language"
     Message="This use requires an initialized value on every incoming path"
 
   + Name="MovedPlace_Kd"
+    Category="Language"
     Message="This value may have been moved on an incoming path"
 
   + Name="ReassignedLet_Kd"
+    Category="Language"
     Message="This let binding may already have completed its first initialization"
 
   + Name="UnsupportedOwnership_Kd"
+    Category="Unsupported"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
 
   + Name="DefaultArgumentMove_Kd"
+    Category="Language"
     Message="A default expression cannot move a preceding prepared argument or its owned contents"
 
   + Name="TransferRequired_Kd"
+    Category="Language"
     Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
 
   + Name="ExclusiveBorrowRequired_Kd"
+    Category="Language"
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
 
   + Name="SharedBindingAssignment_Kd"
+    Category="Language"
     Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@copy or E@move, or copy the referent into a local with @follow"
 
   + Name="ExclusiveBindingAssignment_Kd"
+    Category="Language"
     Message="This binding is an exclusive reference because its match or for Subject is Exclusive; update the referent with @follow, or bind a value from a ByValue Subject such as E@copy or E@move"
 
   + Name="SharedPathAccess_Kd"
+    Category="Language"
     Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
 
   + Name="ExclusivePathTake_Kd"
+    Category="Language"
     Message="This Place is reached through an exclusive reference, which grants Read and Write but not Take; exchange or replace the value with Kimi.Intrinsics instead of moving it"
 
   + Name="PlaceRequired_Kd"
+    Category="Language"
     Message="A function with a place ref/T or place uniq/T result returns a Place: a Place expression or a call with a compatible Place result, never a value, temporary, if, match or do"
 
   + Name="ReceiverShapeMismatch_Kd"
+    Category="Language"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 
   + Name="BareOwningShorthand_Kd"
+    Category="Language"
     Message="A bare owning Semantics shorthand (@owner, @obj, @rc or @arc) names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"
 
   + Name="NonCopyOperand_Kd"
+    Category="Language"
     Message="@copy requires a value whose Type is proven Copy; write @move to transfer it, or borrow it with @ref or @uniq"
 
   + Name="MissingSpecializationTarget_Kd"
+    Category="Language"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"
 
   + Name="SpecializationInputMismatch_Kd"
+    Category="Language"
     Message="No same-Name generic function matches the specialization's receiver and parameter structure after substitution"
 
   + Name="ComparisonLoanConflict_Kd"
+    Category="Language"
     Message="This operation conflicts with an active inspection, argument, or element access loan"
 
   + Name="CallReservationConflict_Kd"
+    Category="Language"
     Message="This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation"
 
   + Name="CallActivationConflict_Kd"
+    Category="Language"
     Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
 
   + Name="DeferredExpansionLimit_Kd"
+    Category="Resource"
     Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
 
   + Name="InternalInvariant_Kd"
+    Category="Internal"
     Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
 
   + Name="InvalidPattern_Kd"
+    Category="Language"
     Message="The Pattern is not valid for this matched Type, Case, or payload arity"
 
   + Name="NonExhaustiveMatch_Kd"
+    Category="Language"
     Message="{0}"
 
   + Name="UnreachablePattern_Kd"
     Severity="Warning"
+    Category="Language"
     Message="This Pattern is covered by earlier unguarded arm {0}"
 
   + Name="ControlFlowWarning_Kd"
     Severity="Warning"
+    Category="Language"
     Message="{0}"
 
   + Name="OuterCloserInBody_Kd"
+    Category="Language"
     Message="An outer closing delimiter cannot close an indented body on the same line"
-    Fix="Dedent on the next effective line before writing the closing delimiter"
+    Advice="Dedent on the next effective line before writing the closing delimiter"
 
   + Name="GenerationFailed_Kd"
+    Category="Internal"
     Message="LLVM artifact generation failed: {0}"
 
   + Name="GenerationResourceLimit_Kd"
+    Category="Resource"
     Message="Generic generation exceeds a mandatory resource limit: {0}"
 
   + Name="ProjectPreparationFailed_Kd"
+    Category="Input"
     Message="Project preparation failed: {0}"
 
   + Name="ProjectLoadFailed_Kd"
+    Category="Input"
     Message="{0}"
 
   + Name="TargetSelectionRequired_Kd"
+    Category="Input"
     Message="Select a target in the session settings: this project configures several targets and none is the host target"
 
   + Name="TestTargetUnavailable_Kd"
+    Category="Input"
     Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
 
   + Name="DocumentDesynchronized_Kd"
+    Category="Input"
     Message="The editor document is out of sync with the language server; close and reopen it"
 
   + Name="CheckFaulted_Kd"
+    Category="Internal"
     Message="The compiler failed internally while checking: {0}"
 
   + Name="PositionAlwaysFails_Kd"
     Severity="Warning"
+    Category="Language"
     Message="{0}"
-    Fix="Correct the literal position or range; an out-of-range access Aborts when executed"
+    Advice="Correct the literal position or range; an out-of-range access Aborts when executed"
+
+  + Name="IncompatibleSerializedSource_Kd"
+    Category="Input"
+    Message="The serialized source unit was written with another source format, language version or compiler build; parse the original sources again"
+
+  + Name="SourceReadFailed_Kd"
+    Category="Input"
+    Message="The source file cannot be read: {0}"

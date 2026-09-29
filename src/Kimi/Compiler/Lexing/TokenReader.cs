@@ -389,9 +389,9 @@ public ref struct TokenReader
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode code)
+    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode? code)
         => this.SkipUntil(kind1, kind1, kind1, code);
 
     /// <summary>
@@ -399,9 +399,9 @@ public ref struct TokenReader
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode code = DiagnosticCode.Template_Kd)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode? code = null)
         => this.SkipUntil(kind1, kind2, kind2, code);
 
     /// <summary>
@@ -410,13 +410,13 @@ public ref struct TokenReader
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
     /// <param name="kind3">The third token kind at which to stop.</param>
-    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
     public TokenKind SkipUntil(
         TokenKind kind1,
         TokenKind kind2,
         TokenKind kind3,
-        DiagnosticCode code = DiagnosticCode.Template_Kd)
+        DiagnosticCode? code = null)
     {
         while (this.CanRead)
         {
@@ -426,16 +426,31 @@ public ref struct TokenReader
                 return tokenKind;
             }
 
-            if (code != 0)
+            if (code is { } reported)
             {
-                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
-                code = 0;
+                this.AddDiagnostic(reported);
+                code = null;
             }
 
             this.AdvanceOne();
         }
 
         return default;
+    }
+
+    /// <summary>Advances until any of the specified token kinds is reached, reporting the first skipped token as <see cref="DiagnosticCode.UnexpectedToken_Kd"/>.</summary>
+    /// <param name="kind1">The first token kind at which to stop.</param>
+    /// <param name="kind2">The second token kind at which to stop.</param>
+    /// <param name="kind3">The third token kind at which to stop.</param>
+    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
+    public TokenKind SkipUnexpectedUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
+    {
+        if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3)
+        {
+            this.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, this.GetSpan(this.currentToken).ToString());
+        }
+
+        return this.SkipUntil(kind1, kind2, kind3);
     }
 
     /// <summary>
@@ -447,7 +462,7 @@ public ref struct TokenReader
     /// <see cref="TokenKind.StartBlock"/> when a block was found;
     /// otherwise, the default value.
     /// </returns>
-    public TokenKind SkipUntilStartBlock(DiagnosticCode code = DiagnosticCode.UnexpectedTrailingToken_Kd)
+    public TokenKind SkipUntilStartBlock(DiagnosticCode? code = DiagnosticCode.UnexpectedTrailingToken_Kd)
     {
         var reachedNextStatement = false;
         while (this.CanRead)
@@ -475,10 +490,10 @@ public ref struct TokenReader
                 return default;
             }
 
-            if (code != 0)
+            if (code is { } reported)
             {
-                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
-                code = 0;
+                this.AddDiagnostic(reported);
+                code = null;
             }
 
             this.AdvanceOne();
@@ -498,7 +513,7 @@ public ref struct TokenReader
     {
         if (isRootGroup)
         {
-            this.SkipUntil(TokenKind.RootGroup, 0);
+            this.SkipUntil(TokenKind.RootGroup, null);
             return;
         }
 
@@ -701,7 +716,7 @@ Loop:
             if (addDiagnostic)
             {
                 this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
             }
         }
 

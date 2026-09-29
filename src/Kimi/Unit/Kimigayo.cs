@@ -42,7 +42,7 @@ public class Kimigayo
     public void ReportDiagnostic(string path, Diagnostic diagnostic)
     {
         var entry = diagnostic.Entry;
-        var fixOrNote = entry.Fix is not null || entry.Note is not null;
+        var adviceOrNote = entry.Advice is not null || entry.Note is not null;
 
         // Message : Name
         this.consoleService.Write(diagnostic.Message);
@@ -60,12 +60,12 @@ public class Kimigayo
             this.consoleService.WriteLine($" --> {path}:@{diagnostic.Span.Start}");
         }
 
-        if (fixOrNote)
+        if (adviceOrNote)
         {
             this.consoleService.WriteLine();
-            if (entry.Fix is not null)
+            if (entry.Advice is not null)
             {
-                this.consoleService.WriteLine($"Fix: {entry.Fix}");
+                this.consoleService.WriteLine($"Advice: {entry.Advice}");
             }
 
             if (entry.Note is not null)

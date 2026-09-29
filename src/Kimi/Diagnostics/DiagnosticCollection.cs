@@ -8,7 +8,6 @@ public record class DiagnosticCollection
 {
     private readonly Kimigayo kimigayo;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
-    private static readonly DiagnosticEntry NotRegistered = new("NotRegistered_Kd", DiagnosticSeverity.Error, "Diagnostic not registered");
 
     public string Name { get; init; } = string.Empty;
 
@@ -43,10 +42,7 @@ public record class DiagnosticCollection
     /// <param name="location">The path of an input the diagnostic concerns when no source document exists, such as an unreadable file.</param>
     public void Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null, string? location = null)
     {
-        if (!DiagnosticEntries.TryGet(code, out var entry))
-        {
-            entry = NotRegistered;
-        }
+        var entry = Validate(range, code, obj, obj2, sourceDocument ?? this.SourceDocument);
 
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -60,19 +56,7 @@ public record class DiagnosticCollection
                 return;
             }
 
-            var message = entry.Message;
-            if (obj is not null)
-            {
-                if (obj2 is not null)
-                {
-                    message = string.Format(message, obj, obj2);
-                }
-                else
-                {
-                    message = string.Format(message, obj);
-                }
-            }
-
+            var message = entry.FormatMessage(obj, obj2);
             if (hint is not null)
             {
                 message = string.Concat(message, " ", hint);
@@ -140,5 +124,32 @@ public record class DiagnosticCollection
     {
         // A reference store is atomic; the parse hot path must not pay for the lock.
         Volatile.Write(ref this.sourceDocument, sourceDocument);
+    }
+
+    // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
+    private static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document)
+    {
+        if (DiagnosticEntries.Anomalies.Count != 0)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.Catalog, DiagnosticEntries.Anomalies[0]);
+        }
+
+        if (code == DiagnosticCode.Template_Kd || !DiagnosticEntries.TryGet(code, out var entry))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.UnknownCode, code.ToString());
+        }
+
+        var count = second is not null ? 2 : first is not null ? 1 : 0;
+        if (count != entry.Arity || (second is not null && first is null))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.Arity} arguments, not {count}.");
+        }
+
+        if (document is null ? range != default : range.Start < 0 || range.Length < 0 || range.Start > document.SourceText.Length - range.Length)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"{entry.Name} at {range} in {document?.Path ?? "no source"}.");
+        }
+
+        return entry;
     }
 }

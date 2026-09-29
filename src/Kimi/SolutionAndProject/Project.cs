@@ -423,8 +423,16 @@ public partial class Project
             {
                 if (exception is not null)
                 {
-                    var code = exception is DesynchronizedInputException ? DiagnosticCode.DocumentDesynchronized_Kd : DiagnosticCode.GenerationFailed_Kd;
-                    compilation.Kimigayo.GetOrAddDiagnosticCollection(path).Add(default, code, exception.Message, location: path);
+                    var collection = compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+                    if (exception is DesynchronizedInputException)
+                    {
+                        collection.Add(default, DiagnosticCode.DocumentDesynchronized_Kd, location: path);
+                    }
+                    else
+                    {
+                        collection.Add(default, DiagnosticCode.SourceReadFailed_Kd, exception.Message, location: path);
+                    }
+
                     return false;
                 }
 

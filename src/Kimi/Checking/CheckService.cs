@@ -88,12 +88,7 @@ internal static class CheckService
     public static CheckDiagnostic Create(DiagnosticCode code, SourceIdentity location, object? argument = null)
     {
         DiagnosticEntries.TryGet(code, out var entry);
-        var message = entry?.Message ?? code.ToString();
-        if (argument is not null)
-        {
-            message = string.Format(message, argument);
-        }
-
+        var message = entry?.FormatMessage(argument, null) ?? code.ToString();
         return new(code.ToString(), entry?.Severity ?? DiagnosticSeverity.Error, message, location, null);
     }
 

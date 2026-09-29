@@ -156,7 +156,7 @@ public sealed partial class Kotonoha
             this.sourceCompilerVersion != Compilation.CompilerVersion)
         {
             this.HasSourceErrors = true;
-            this.DiagnosticCollection.Add(default, DiagnosticCode.UnexpectedToken_Kd, "incompatible serialized source format, language version or compiler build");
+            this.DiagnosticCollection.Add(default, DiagnosticCode.IncompatibleSerializedSource_Kd);
             return;
         }
 

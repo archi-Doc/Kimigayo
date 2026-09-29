@@ -119,7 +119,7 @@ public sealed class CheckServiceTest : IDisposable
         }
 
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        var failure = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.GenerationFailed_Kd));
+        var failure = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.SourceReadFailed_Kd));
         Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), failure.Location);
         Assert.True(this.Run(project).Accepted);
     }
