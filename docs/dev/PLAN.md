@@ -103,12 +103,12 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. **P41 implementation units** (SPEC integrated 2026-09-29; U1–U5 done). Each unit is verified with `verify.ps1` and committed:
+1. **P41 implementation units** (SPEC integrated 2026-09-29; U1–U6 done). Each unit is verified with `verify.ps1` and committed:
    - U1 Type identity: an identity premise substitutes one Type parameter for the other in its scope (`FitsTypeCore`, member lookup, conditional-conformance blocks); no equation solver.
    - U2 Closed Contracts: `Position`/`PositionRange` refine Equatable and Utf8Format with `Self is Copy`/`Owned`; user conformance rejected; integers conform through a Kimi internal function bound by declaration id (as the built-in Equatable path); `PrimitiveInteger` implies `Position`.
    - U3 Value read: read Types in the adaptation table, operators and §7.3 owning receivers; the §10.2.1 inference exception.
    - U4/U5 (done 2026-09-30, one unit because the syntax switch is atomic): `FromEnd<T>`, `Start`, `End`, `Range<S, E>`/`ClosedRange<S, E>` with conditional iteration, boundary-wise literals, generic thin entries over internal `isize` operations, fixed-array read members, and removal of `Index`/`IndexRange`/`Range<T>` and the compiler Index operations. Integer, `^x` and directly written range keys use one merged bounds check. The range form of `tryGet` is `trySlice` (SPEC §4.6.6 corrected: Constraints alone never distinguish overloads, §9.1).
-   - U6 Iteration: measure both closed-iterator designs; keep the ResolvedRange cursor loop as an optimization with a property test.
+   - U6 (done 2026-09-30): the closed iterator iterates a half-open state unless its end is the maximum (2.15× faster than an exhausted flag, `artifacts/benchmarks/p41-closed-range-iterator`); the ResolvedRange cursor loop is checked against its entry by a property fixture.
    - U7 Indexing and lowering: whole-range inequality checks for saved ranges without a materialized `ResolvedRange`, receiver restriction removal.
    - U8 §17.4.4 warning and constant folding; U9 formatting; U10 LIBRARY, STATUS, examples, milestone re-spelling and Session verification.
 

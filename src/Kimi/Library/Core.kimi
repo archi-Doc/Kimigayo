@@ -335,36 +335,46 @@ public struct RangeIterator<T>
 /// The iterator of a closed integer range (SPEC 4.6.3.4).
 ///
 /// It yields `start` upward in unit steps and `end` last, and never adds past `end`, so it also ends at the maximum
-/// of `T`.
+/// of `T`. Unless `end` is that maximum it iterates the half-open `[start, end + 1)` with its flag unset, so a loop over
+/// it is a counted loop; only an end at the maximum is produced through the flag.
 public struct ClosedRangeIterator<T>
     T is PrimitiveInteger
     Self is Iterator
     associate Iterator.Item is T
     var current: T
     let end: T
-    var isExhausted: bool
+    var includesEnd: bool
 
-    init(current: T, end: T)
+    init(current: T, end: T, includesEnd: bool)
         self.current = current
         self.end = end
-        self.isExhausted = false
+        self.includesEnd = includesEnd
 
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
     internal func starting(start: T, end: T) -> ClosedRangeIterator<T>
-        require start <= end else => $abort("Reversed range")
-        return ClosedRangeIterator<T>.init(start, end)
+        require start <= end else => $abort("Reversed closed range")
+        if ClosedRangeIterator<T>.isMaximum(end) => return ClosedRangeIterator<T>.init(start, end, true)
+        return ClosedRangeIterator<T>.init(start, end + 1, false)
+
+    // Whether `value` is the maximum of T, decided without its width and without overflow: shifting a one in from the
+    // right leaves only an all-ones pattern unchanged, and the maximum is the nonnegative value whose shifted pattern is
+    // all ones and not above it (all ones for an unsigned T; a zero followed by ones for a signed T).
+    internal func isMaximum(value: T) -> bool
+        let shifted = (value << 1) | 1
+        return value >= 0 and shifted <= value and ((shifted << 1) | 1) == shifted
 
     /// Returns the next value, or None after `end`.
     public func next(self: uniq/Self) -> Option<T>
-        require not self.isExhausted else => return .None
         let value = self.current
         if value < self.end
             self.current = value + 1
-        else
-            self.isExhausted = true
-        return .Some(value)
+            return .Some(value)
+        if self.includesEnd
+            self.includesEnd = false
+            return .Some(value)
+        return .None
 
 // SPEC 4.6.2-4.6.4: prefix `^` and range syntax construct their Types through these functions, and a position or range
 // key of a built-in sequence selection that the compiler does not apply directly resolves through them. The compiler

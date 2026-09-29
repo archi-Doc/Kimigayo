@@ -63,8 +63,33 @@ public class IntegerRangeTest
         "require count(values.indices) == 5 and count(r) == 3 and count((2..2).resolve(5)) == 0 and count(0..4) == 4 and count(0..=4) == 5 else => $abort(\"generic\")\n" +
         "Console.writeLine(\"ok\")";
 
+    // SPEC 4.6.3.4: a closed range yields its end last and never computes past it, also at the maximum of its Type; the
+    // iterator iterates a half-open state unless the end is that maximum (measured design, P41 U6).
+    private const string ClosedEnds =
+        "func check<T>(first: T, last: T, count: i32) -> bool\n    T is PrimitiveInteger\n    var n: i32 = 0\n    var seen: T = first\n    for v in first..=last\n        seen = v\n        n += 1\n    return n == count and seen == last\n" +
+        "require check(120@i8, 127@i8, 8) and check(-128@i8, -126@i8, 3) and check(250@u8, 255@u8, 6) else => $abort(\"8\")\n" +
+        "require check(65534@u16, 65535@u16, 2) and check(32767@i16, 32767@i16, 1) else => $abort(\"16\")\n" +
+        "require check(2147483646, 2147483647, 2) and check(4294967295@u32, 4294967295@u32, 1) else => $abort(\"32\")\n" +
+        "require check(9223372036854775806@i64, 9223372036854775807@i64, 2) and check(18446744073709551614@u64, 18446744073709551615@u64, 2) else => $abort(\"64\")\n" +
+        "require check(9223372036854775807@isize, 9223372036854775807@isize, 1) and check(18446744073709551615@usize, 18446744073709551615@usize, 1) else => $abort(\"size\")\n" +
+        "require check(170141183460469231731687303715884105727@i128, 170141183460469231731687303715884105727@i128, 1) and check(340282366920938463463374607431768211455@u128, 340282366920938463463374607431768211455@u128, 1) else => $abort(\"128\")\n" +
+        "require check(0@u8, 0@u8, 1) and check(-1@i64, 1@i64, 3) and check(126@i8, 126@i8, 1) and check(254@u8, 254@u8, 1) else => $abort(\"near\")\n" +
+        "var it = (3..=5).iterate()\nvar total = 0\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nmatch it.next()\n    .Some(_) => $abort(\"exhausted\")\n    .None => ()\nrequire total == 12 else => $abort(\"explicit\")\n" +
+        "Console.writeLine(\"ok\")";
+
+    // SPEC 4.6.3.4, 4.6.8: a ResolvedRange loop runs the positions of its RangeIterator<isize> entries without forming an
+    // iterator; both are compared over every interval of a small target.
+    private const string ResolvedCursor =
+        "var checked = 0\nvar start: isize = 0\nwhile start <= 6\n    var end = start\n    while end <= 6\n" +
+        "        let r = (start..end).resolve(6)\n        var cursor: isize = 0\n        var cursorCount = 0\n        for i in r\n            cursor = cursor * 7 + i\n            cursorCount += 1\n" +
+        "        var entry: isize = 0\n        var entryCount = 0\n        for i in Kimi.Iteration.owning(r.intoIterator())\n            entry = entry * 7 + i\n            entryCount += 1\n" +
+        "        require cursor == entry and cursorCount == entryCount and cursorCount@isize == r.length else => $abort(\"cursor\")\n        checked += 1\n        end += 1\n    start += 1\n" +
+        "require checked == 28 else => $abort(\"count\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "ClosedEnds", ClosedEnds, "ok\n" },
+        { "ResolvedCursor", ResolvedCursor, "ok\n" },
         { "Iteration", Iteration, "ok\n" },
         { "Resolved", Resolved, "ok\n" },
         { "Slicing", Slicing, "Reversed refused.\nNegative refused.\nClosed end refused.\nTry negative refused.\nTry reversed refused.\nok\n" },
@@ -83,7 +108,16 @@ public class IntegerRangeTest
             "let r = 3..1\nConsole.writeLine(\"constructed\")\nfor i in r\n    Console.writeLine(\"body\")",
             "constructed\n",
             1,
-            LibrarySource.Location("Core.kimi", "$abort(\"Reversed range\")", "internal func starting(start: T, end: T) -> RangeIterator<T>") + ": abort KIMI_E_ABORT: Reversed range\n");
+            LibrarySource.Location("Core.kimi", "$abort(\"Reversed range\")") + ": abort KIMI_E_ABORT: Reversed range\n");
+
+    [Fact]
+    public void ReversedClosedIterationAbortsWhenItStarts()
+        => ScalarEmissionTest.EmitFixture(
+            "IntegerRangeClosedReversed",
+            "let r = 3..=2\nConsole.writeLine(\"constructed\")\nfor i in r\n    Console.writeLine(\"body\")",
+            "constructed\n",
+            1,
+            LibrarySource.Location("Core.kimi", "$abort(\"Reversed closed range\")") + ": abort KIMI_E_ABORT: Reversed closed range\n");
 
     [Theory]
     [InlineData("Reversed", "values[2..1]")]
