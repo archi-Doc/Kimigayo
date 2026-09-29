@@ -12,6 +12,15 @@ internal static partial class LlvmModuleWriter
           %enough = icmp sge i64 %capacity, %minimum
           br i1 %enough, label %done, label %grow
         grow:
+          %zero_sized = icmp eq i64 %stride, 0
+          br i1 %zero_sized, label %unbounded, label %sized
+        unbounded:
+          ; SPEC 4.5, 4.7.4: zero-sized elements need no bytes, so every count fits without allocation. The buffer is
+          ; a fixed nonnull substitute, aligned for any element, that __kimi_free never releases.
+          store ptr inttoptr (i64 ZERO_SIZED_BUFFER to ptr), ptr %handle, align 8
+          store i64 9223372036854775807, ptr %capacity_ptr, align 8
+          br label %done
+        sized:
           ; SPEC 4.7.4: optional growth rounding cannot reject a representable minimum.
           %maximum = udiv i64 9223372036854775807, %stride
           %unrepresentable = icmp ugt i64 %minimum, %maximum
@@ -91,7 +100,14 @@ internal static partial class LlvmModuleWriter
         shrink:
           %buffer = load ptr, ptr %handle, align 8
           %empty = icmp eq i64 %length, 0
-          br i1 %empty, label %release, label %heap
+          br i1 %empty, label %release, label %sized
+        sized:
+          ; Zero-sized elements keep the substitute buffer; only the recorded capacity shrinks.
+          %zero_sized = icmp eq i64 %stride, 0
+          br i1 %zero_sized, label %fit, label %heap
+        fit:
+          store i64 %length, ptr %capacity_ptr, align 8
+          br label %done
         heap:
           %process_heap = call ptr @GetProcessHeap()
           %no_heap = icmp eq ptr %process_heap, null
@@ -129,7 +145,8 @@ internal static partial class LlvmModuleWriter
 
     // SPEC 4.7.4, 4.7.7: the capacity routines, emitted only for modules that use Arrays so string-only modules keep no memcpy.
     private static readonly string ArrayRuntime =
-        WindowsLowering.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal) +
+        WindowsLowering.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal)
+            .Replace("ZERO_SIZED_BUFFER", Reason(WindowsLowering.ZeroSizedBuffer), StringComparison.Ordinal) +
         WindowsLowering.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentReason), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal) +
         WindowsLowering.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
 
@@ -231,7 +248,7 @@ internal static partial class LlvmModuleWriter
     // Requires 0 <= index < length, moves the element out and shifts the tail down (SPEC 4.7.2).
     private static void WriteArrayRemove(TextWriter output, ArrayHelper helper)
     {
-        var scalar = helper.ElementLayout is null && !helper.ElementIsString;
+        var scalar = helper.ElementIsScalar;
         output.Write("  %negative = icmp slt i64 %index, 0\n  %beyond = icmp sge i64 %index, %length\n  %invalid = or i1 %negative, %beyond\n  br i1 %invalid, label %bounds_failure, label %remove\nremove:\n  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %index, ");
         WriteNumber(output, Stride(helper));
         output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
@@ -253,7 +270,7 @@ internal static partial class LlvmModuleWriter
                 output.Write('\n');
             }
         }
-        else
+        else if (!helper.ElementIsZeroSized)
         {
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr %result, ptr %slot, i64 ");
             WriteNumber(output, Stride(helper));
@@ -272,6 +289,14 @@ internal static partial class LlvmModuleWriter
     // Requires both indices in [0, length) and exchanges the two element slots through a stack buffer (SPEC 4.7.2).
     private static void WriteArraySwap(TextWriter output, ArrayHelper helper)
     {
+        if (Stride(helper) == 0)
+        {
+            // Zero-sized elements have no bytes to exchange; the indices are still checked.
+            output.Write("  %first_negative = icmp slt i64 %first, 0\n  %first_beyond = icmp sge i64 %first, %length\n  %second_negative = icmp slt i64 %second, 0\n  %second_beyond = icmp sge i64 %second, %length\n  %first_invalid = or i1 %first_negative, %first_beyond\n  %second_invalid = or i1 %second_negative, %second_beyond\n  %invalid = or i1 %first_invalid, %second_invalid\n  br i1 %invalid, label %bounds_failure, label %done\ndone:\n  ret void\n");
+            WriteArrayBoundsFailure(output);
+            return;
+        }
+
         output.Write("  %scratch = alloca i8, i64 ");
         WriteNumber(output, Stride(helper));
         output.Write(", align 16\n  %first_negative = icmp slt i64 %first, 0\n  %first_beyond = icmp sge i64 %first, %length\n  %second_negative = icmp slt i64 %second, 0\n  %second_beyond = icmp sge i64 %second, %length\n  %first_invalid = or i1 %first_negative, %first_beyond\n  %second_invalid = or i1 %second_negative, %second_beyond\n  %invalid = or i1 %first_invalid, %second_invalid\n  br i1 %invalid, label %bounds_failure, label %check\ncheck:\n  %same = icmp eq i64 %first, %second\n  br i1 %same, label %done, label %exchange\nexchange:\n  %buffer = load ptr, ptr %handle, align 8\n  %first_offset = mul i64 %first, ");
@@ -312,11 +337,16 @@ internal static partial class LlvmModuleWriter
     // Moves an acquired payload slot into the next element of a literal whose capacity was reserved (SPEC 4.3).
     private static void WriteArrayPlace(TextWriter output, ArrayHelper helper)
     {
-        output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
-        WriteNumber(output, Stride(helper));
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %source, i64 ");
-        WriteNumber(output, Stride(helper));
-        output.Write(", i1 false)\n  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
+        if (!helper.ElementIsZeroSized)
+        {
+            output.Write("  %buffer = load ptr, ptr %handle, align 8\n  %offset = mul i64 %length, ");
+            WriteNumber(output, Stride(helper));
+            output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n  call void @llvm.memcpy.p0.p0.i64(ptr %slot, ptr %source, i64 ");
+            WriteNumber(output, Stride(helper));
+            output.Write(", i1 false)\n");
+        }
+
+        output.Write("  %next = add i64 %length, 1\n  store i64 %next, ptr %length_ptr, align 8\n  ret void\n");
     }
 
     // Destroys the elements in reverse index order and keeps the capacity; Drop then releases the buffer (SPEC 4.7.6).
@@ -342,7 +372,7 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteArrayElementStore(TextWriter output, ArrayHelper helper)
-        => WriteStoredArgument(output, helper.Element, helper.ElementLayout is null && !helper.ElementIsString, "%value", "%slot", "%stored");
+        => WriteStoredArgument(output, helper.Element, helper.ElementIsScalar, "%value", "%slot", "%stored");
 
     private static void WriteArrayReturn(TextWriter output, ArrayHelper helper, bool scalar)
     {

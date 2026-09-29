@@ -35,11 +35,10 @@ public sealed partial class Binding
 
             if (ReferenceTypes.IsPointer(receiver))
             {
-                // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form.
+                // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
                 var offset = this.RequireType(source.Right, scope, BoundType.ISize);
                 return offset is not null && FitsType(offset, BoundType.ISize) &&
-                    KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto) &&
-                    !this.HasZeroStride(receiver!.Components[0])
+                    KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
                     ? Complete(source, receiver!.Components[0]) : Fail(source, BindingFailure.TypeMismatch);
             }
 

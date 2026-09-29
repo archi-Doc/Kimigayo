@@ -59,7 +59,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
             SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.Ref, Components: [{ Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary] } receiverType ||
-            !this.TryGetArrayElement(dictionary.Components[0], out var key, allowEmpty: true) || !this.TryGetArrayElement(dictionary.Components[1], out var value, allowEmpty: true))
+            !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value))
         {
             return Fail("Dictionary operation requires a supported receiver, acquired arguments and entry layout.", out failure);
         }

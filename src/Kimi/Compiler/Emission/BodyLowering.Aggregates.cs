@@ -443,7 +443,15 @@ internal sealed partial class BodyLowering
                         var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
                         for (var i = 0; i < plan.PayloadCount; i++)
                         {
-                            function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.SlotAddress, plan.PayloadStart + i), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            // A zero-sized payload has no slot; its placement only counts the element.
+                            if (element.IsZeroSized)
+                            {
+                                function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            }
+                            else
+                            {
+                                function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.SlotAddress, plan.PayloadStart + i), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            }
                         }
                     }
                 }
@@ -594,7 +602,7 @@ internal sealed partial class BodyLowering
         FunctionAbi callee;
         if (dictionary)
         {
-            if (!this.TryGetArrayElement(arrayType.Components[0], out var key, allowEmpty: true) || !this.TryGetArrayElement(arrayType.Components[1], out var item, allowEmpty: true))
+            if (!this.TryGetArrayElement(arrayType.Components[0], out var key) || !this.TryGetArrayElement(arrayType.Components[1], out var item))
             {
                 return Fail("Dictionary destruction requires concrete entry storage.", out failure);
             }

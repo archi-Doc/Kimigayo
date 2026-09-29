@@ -531,8 +531,8 @@ internal sealed partial class BodyLowering
             {
                 if (source.CodeContext.Compilation.Binding.DictionaryComparison(receiverType) is not { } comparison ||
                     this.ComparisonHelpers?.GetValueOrDefault(comparison) is not { } equality ||
-                    !this.TryGetArrayElement(receiverType.Components[0], out var key, allowEmpty: true) ||
-                    !this.TryGetArrayElement(receiverType.Components[1], out var value, allowEmpty: true))
+                    !this.TryGetArrayElement(receiverType.Components[0], out var key) ||
+                    !this.TryGetArrayElement(receiverType.Components[1], out var value))
                 {
                     return Fail("Dictionary indexing requires a verified equality and concrete entry layout.", out failure);
                 }

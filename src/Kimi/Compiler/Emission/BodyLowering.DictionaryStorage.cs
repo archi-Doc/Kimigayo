@@ -29,7 +29,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
             source.Components is not [var keyType, var valueType] ||
             (borrow ? source.Kind != BoundTypeKind.Dictionary : source.Symbol?.LibraryDeclaration != (exclusive ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder)) ||
-            !this.TryGetArrayElement(keyType, out var key, allowEmpty: true) || !this.TryGetArrayElement(valueType, out var value, allowEmpty: true))
+            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value))
         {
             return Fail("Dictionary storage operation has an unsupported Dictionary or entry Type.", out failure);
         }
@@ -92,7 +92,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || target.Parameters.Count != 1 || plan.ArgumentToParameter is not [0] ||
             SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.FixedArray, Components: [var elementType] } array] } input ||
             plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
-            array.LengthExpression is not null || !this.TryGetArrayElement(elementType, out _, allowEmpty: true))
+            array.LengthExpression is not null || !this.TryGetArrayElement(elementType, out _))
         {
             return Fail("Fixed-array storage borrow needs a concrete borrowed array.", out failure);
         }
@@ -144,7 +144,7 @@ internal sealed partial class BodyLowering
         if (input is null || keyType is null || valueType is null ||
             (owning ? input.Kind != BoundTypeKind.Dictionary || plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value
                 : plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)) ||
-            !this.TryGetArrayElement(keyType, out var key, allowEmpty: true) || !this.TryGetArrayElement(valueType, out var value, allowEmpty: true))
+            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value))
         {
             return Fail("Owned Dictionary storage operation has an unsupported Dictionary or entry Type.", out failure);
         }

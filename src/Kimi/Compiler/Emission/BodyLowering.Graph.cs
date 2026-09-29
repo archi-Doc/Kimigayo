@@ -604,9 +604,9 @@ internal sealed partial class BodyLowering
         var operandType = ValueType(body, first)!;
         if (ReferenceTypes.IsPointer(operandType) && value.Operator is KotoKind.Plus or KotoKind.Minus)
         {
-            // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count.
-            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? 0;
-            if (value.Kind != OwnershipValueKind.Binary || stride <= 0 ||
+            // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count; a zero stride displaces by zero.
+            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? -1;
+            if (value.Kind != OwnershipValueKind.Binary || stride < 0 ||
                 !ReferenceEquals(type, operandType) || !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.ISize))
             {
                 return Fail("Unsupported pointer operation.", out failure);

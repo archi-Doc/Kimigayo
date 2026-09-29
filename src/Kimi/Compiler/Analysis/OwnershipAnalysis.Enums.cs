@@ -116,12 +116,11 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind == BoundTypeKind.Array)
         {
-            // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
-            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form. A zero-sized element
-            // has no stride-based storage plan yet and is refused here rather than at generation.
-            // A generic element is checked again by each instance under its substitution.
+            // SPEC 4.5: the handle owns its buffer; elements follow T, including zero-sized ones (stride zero, no
+            // allocation). A nested handle would need element destruction to release inner buffers, so it stays an
+            // explicit Unsupported form. A generic element is checked again by each instance under its substitution.
             var element = type.Components[0];
-            return element.Kind == BoundTypeKind.Parameter || (element.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && this.SupportsType(element) && !IsZeroSized(element));
+            return element.Kind == BoundTypeKind.Parameter || (element.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && this.SupportsType(element));
         }
 
         if (type.Kind == BoundTypeKind.Dictionary)

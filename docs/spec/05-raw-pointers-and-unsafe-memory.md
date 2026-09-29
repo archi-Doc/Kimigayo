@@ -81,7 +81,7 @@ For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic 
 
 `p += n` and `p -= n` apply these displacements through [compound assignment](13-operators-and-assignment.md#1372-compound-assignment), under the same unsafe conditions. Pointer increment and decrement are not supported. Pointer-from-pointer subtraction, integer-left addition (`n + p`) and all other pointer arithmetic are forbidden.
 
-`stride(T)` is the complete element spacing including padding (§21.1), the same quantity that fixed arrays and Slice use. There is no source `sizeof` operator. Arithmetic requires a known layout and a positive stride, so arithmetic and indexing on `unsafe/()` are invalid; holding, comparing and valid dereference of such a pointer are governed separately.
+`stride(T)` is the complete element spacing including padding (§21.1), the same quantity that fixed arrays and Slice use. There is no source `sizeof` operator. Arithmetic requires a known layout. When `stride(T)` is zero, as for `unsafe/()`, every displacement is zero, so `p + n` and `p - n` are `p` and `p[n]` is the Place `*p`; distinct zero-sized elements may share an address, as in fixed arrays (§4.1). A generic `unsafe/T` therefore needs no size Constraint.
 
 A zero displacement preserves the pointer, including null. A nonzero displacement requires live-allocation provenance, and both the source and the result must lie inside the allocation or one past its end. The result keeps the provenance; a matching address alone is not enough. A mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
 

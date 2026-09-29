@@ -206,8 +206,10 @@ done:
 
 define internal void @__kimi_free(ptr %memory, ptr %location, i64 %location_length) #0 {
 entry:
-  %null = icmp eq ptr %memory, null
-  br i1 %null, label %done, label %heap
+  ; Null and the zero-sized-element buffer substitute lie in the low 64 KiB, which Windows never maps for heap blocks.
+  %address = ptrtoint ptr %memory to i64
+  %reserved = icmp ult i64 %address, 65536
+  br i1 %reserved, label %done, label %heap
 heap:
   %process_heap = call ptr @GetProcessHeap()
   %no_heap = icmp eq ptr %process_heap, null

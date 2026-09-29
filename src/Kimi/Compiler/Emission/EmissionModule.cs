@@ -364,7 +364,15 @@ internal enum ArrayHelperKind : byte
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null);
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null)
+{
+    /// <summary>Gets a value indicating whether the element has no bytes (Unit or a zero-sized aggregate); its helpers take
+    /// no value or result pointer, because zero-sized values have no slot.</summary>
+    internal bool ElementIsZeroSized => this.Element.Layout.Size == 0;
+
+    /// <summary>Gets a value indicating whether the element travels as a scalar value rather than through a slot.</summary>
+    internal bool ElementIsScalar => this.ElementLayout is null && !this.ElementIsString && !this.ElementIsZeroSized;
+}
 
 internal enum DictionaryHelperKind : byte
 {

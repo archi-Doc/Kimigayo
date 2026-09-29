@@ -17,6 +17,9 @@ internal sealed partial class BodyLowering
     {
         internal bool IsScalar => this.Layout is null && !this.IsString && !ReferenceEquals(this.Type, BoundType.Unit);
 
+        // A zero-sized value (Unit or an empty aggregate) has no slot, so its helpers take no value or result pointer.
+        internal bool IsZeroSized => this.Value.Layout.Size == 0;
+
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
         internal long Stride => this.Value.Layout.Stride;
@@ -35,10 +38,12 @@ internal sealed partial class BodyLowering
             ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name : null;
     }
 
-    private bool TryGetArrayElement(BoundType type, out ArrayElement element, bool allowEmpty = false)
+    // SPEC 4.5: every complete element Type except a nested handle has a storage plan; a zero-sized element has stride zero,
+    // and its Array keeps the substitute buffer of the capacity routines.
+    private bool TryGetArrayElement(BoundType type, out ArrayElement element)
     {
         element = default;
-        if (allowEmpty && ReferenceEquals(type, BoundType.Unit))
+        if (ReferenceEquals(type, BoundType.Unit))
         {
             element = new(type, WindowsLowering.Unit, null, false);
             return true;
@@ -61,9 +66,8 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        // Nested handles and zero-sized elements wait for their own storage plans (PLAN P29).
-        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) ||
-            this.aggregateLayouts.Get(type) is not { } layout || (!allowEmpty && layout.Value.Layout.Stride <= 0))
+        // Nested handles wait for element destruction that releases inner buffers.
+        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Never) || this.aggregateLayouts.Get(type) is not { } layout)
         {
             return false;
         }
@@ -116,12 +120,17 @@ internal sealed partial class BodyLowering
         var indexParameter = kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex ? new AbiParameter("ptr", "index_value") : new("i64", "index");
         FunctionAbi abi = kind switch
         {
+            ArrayHelperKind.Append when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
+            ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
             ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
             ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
             ArrayHelperKind.Remove or ArrayHelperKind.RemoveIndex => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
+                : element.IsZeroSized
+                ? new(name, unit, [handle, indexParameter, location, length])
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
@@ -217,7 +226,11 @@ internal sealed partial class BodyLowering
                     return Fail("Array element argument is not an initialized acquired value.", out failure);
                 }
 
-                this.callOperands.Add(value);
+                if (!element.IsZeroSized)
+                {
+                    this.callOperands.Add(value);
+                }
+
                 break;
             case CompilerFunctionKind.ArrayPop:
                 if (this.aggregateLayouts.Get(returnType) is not { Cases.Length: 2 } option || !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
@@ -237,7 +250,15 @@ internal sealed partial class BodyLowering
                 }
 
                 this.callOperands.Add(removed);
-                if (element.IsScalar)
+                if (element.IsZeroSized)
+                {
+                    // A removed zero-sized value has no bytes and no slot: the helper returns nothing to place.
+                    if (!ReferenceTypes.StorageMatches(element.Type, returnType))
+                    {
+                        return Fail("Array remove result does not match its element Type.", out failure);
+                    }
+                }
+                else if (element.IsScalar)
                 {
                     if (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), element.Type) || !ReferenceEquals(returnType, element.Type))
                     {

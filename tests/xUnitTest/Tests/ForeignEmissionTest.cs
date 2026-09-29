@@ -282,7 +282,6 @@ public class ForeignEmissionTest
     [InlineData("let p: unsafe/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n")]
     [InlineData("var p: unsafe/i32 = null\nlet n: i32 = 1\nunsafe => p += n")]
     [InlineData("var p: unsafe/i32 = null\nunsafe => p *= 2")]
-    [InlineData("let p: unsafe/() = null\nlet q = unsafe => p + 1")]
     [InlineData("let p: unsafe/i32 = null\nlet q = unsafe => 1 + p")]
     [InlineData("let p: unsafe/i32 = null\nlet q: unsafe/i32 = null\nlet d = unsafe => p - q")]
     public void InvalidPointerArithmeticIsRejected(string body)
@@ -616,7 +615,6 @@ public class ForeignEmissionTest
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[0..1]")]
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[0...1]")]
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[true]")]
-    [InlineData("let p: unsafe/() = null\nunsafe\n    let v = p[0]")]
     public void PointerIndexingRejectsInvalidOffsets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -1331,6 +1329,43 @@ public class ForeignEmissionTest
     }
 
     [Fact]
+    public void ZeroStrideArithmeticAndIndexingKeepThePointer()
+    {
+        // SPEC 5.3: with stride(T) = 0 every displacement is zero, so p + n and p - n are p and p[n] is *p.
+        var source = """
+            struct Marker
+                public init() => ()
+                deinit => Console.writeLine("marker")
+            group Native
+                #LibraryImport("kernel32", "VirtualAlloc")
+                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                #LibraryImport("kernel32", "VirtualFree")
+                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+            func offset() -> isize
+                Console.writeLine("offset")
+                return 7
+            public func main()
+                var bytes: unsafe/u8 = null
+                unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
+                var units: unsafe/() = null
+                unsafe => units = bytes@unsafe/()
+                var moved: unsafe/() = null
+                unsafe => moved = units + offset() - 3
+                require moved == units else => $abort("displacement")
+                var markers: unsafe/Marker = null
+                unsafe => markers = bytes@unsafe/Marker
+                unsafe
+                    markers[offset()] = Marker.init() // Replacement destroys the value already at *markers.
+                    _ = markers[-2]                   // Moves out the new value, the same Place, and destroys it.
+                var freed: i32 = 0
+                unsafe => freed = Native.free(bytes, 0, 32768)
+                require freed != 0 else => $abort("free")
+                Console.writeLine("zero stride ok")
+            """;
+        ScalarEmissionTest.EmitFixture("ForeignPointerZeroStride", source, "offset\noffset\nmarker\nmarker\nzero stride ok\n");
+    }
+
+    [Fact]
     public void ZeroSizedPointerAccessRetainsEvaluationWithoutReadingBytes()
     {
         var source = """
@@ -1460,15 +1495,13 @@ public class ForeignEmissionTest
     [InlineData("Derived")]
     [InlineData("Box<()>")]
     [InlineData("[2 of Box<Empty>]")]
-    public void ZeroStridePointerOperationsAreLanguageErrors(string type)
+    public void ZeroStridePointerOperationsAreValid(string type)
     {
+        // SPEC 5.3: a zero stride makes every displacement zero; ZeroStrideArithmeticAndIndexingKeepThePointer executes it.
         foreach (var operation in new[] { "p + 0", "p - 0", "p += 0", "p -= 0", "p[0]" })
         {
             var c = MinimalEmissionTest.Analyze($"open struct Empty\nstruct Nested\n    public var value: (Empty, [4 of ()])\nstruct Derived: Empty\nstruct Box<T>\n    public var value: T\nfunc test()\n    var p: unsafe/{type} = null\n    unsafe => {operation}\npublic func main() => ()");
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
-            using var writer = new StringWriter();
-            Assert.False(c.Emission.WriteIr(writer, out _));
-            Assert.Empty(writer.ToString());
+            Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         }
     }
 

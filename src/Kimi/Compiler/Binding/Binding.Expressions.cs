@@ -1198,8 +1198,8 @@ public sealed partial class Binding
 
         if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
         {
-            // SPEC 5.3: even zero displacement requires a positive element stride.
-            return (ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)) && !this.HasZeroStride(left.Components[0])
+            // SPEC 5.3: an isize count; a zero element stride makes every displacement zero.
+            return ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)
                 ? Complete(binary, result)
                 : Fail(binary, BindingFailure.TypeMismatch);
         }

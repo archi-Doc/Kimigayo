@@ -12,6 +12,10 @@ public class DynamicArrayCostTest
         => WriteCostFixture("Empty", "var values: Array<isize> = []\nvalues@uniq.reserve(0)\nvalues@uniq.clear()\nvalues@uniq.shrinkToFit()\nmatch values@uniq.pop()\n    .None => ()\n    .Some(_) => $abort(\"empty\")\nfor value in values@move => $abort(\"iteration\")", 0, 0);
 
     [Fact]
+    public void ZeroSizedElementsNeverAllocate()
+        => WriteCostFixture("ZeroSized", "var units: Array<()> = [(), ()]\nvar i: isize = 0\nwhile i < 1024\n    units@uniq.append(())\n    units@uniq.insert(0, ())\n    units@uniq.remove(1)\n    i += 1\nunits@uniq.reserve(4096)\nunits@uniq.shrinkToFit()\nrequire units.length == 1026 else => $abort(\"length\")\nfor unit in units@move => ()", 0, 0);
+
+    [Fact]
     public void CapacityPreservingMutationAndChurnNeedOnlyTheInitialAllocation()
         => WriteCostFixture(
             "Churn",

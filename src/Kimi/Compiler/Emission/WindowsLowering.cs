@@ -35,6 +35,10 @@ internal static partial class WindowsLowering
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (SPEC 22.5.5).</summary>
     internal const int StaticReleaseKind = 0;
 
+    /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
+    /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
+    internal const int ZeroSizedBuffer = 4096;
+
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
     // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (SPEC 22.5.5).
