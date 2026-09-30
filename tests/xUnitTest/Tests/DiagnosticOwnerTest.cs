@@ -85,10 +85,11 @@ public sealed class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
         var kept = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "App.kimiproj", owner.Finalize());
-        Assert.Equal(["ProjectPreparationFailed_Kd", "CheckFaulted_Kd"], kept.Diagnostics.Select(static x => x.Code));
+        // Whole-input records at the same source follow code order, including an appended analysis fault.
+        Assert.Equal(["CheckFaulted_Kd", "ProjectPreparationFailed_Kd"], kept.Diagnostics.Select(static x => x.Code));
         Assert.Single(kept.Sources);
         Assert.All(kept.Diagnostics, static x => Assert.Equal(0, x.Source));
-        Assert.True(kept.Diagnostics[^1].Note!.Length <= 401);
+        Assert.True(kept.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);
     }
 
     [Fact]

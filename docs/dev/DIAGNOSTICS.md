@@ -34,12 +34,12 @@ Each rule replaces a family of special cases. A change that needs an exception t
 | Source | Holds |
 | --- | --- |
 | `src/Kimi/Diagnostics/DiagnosticCode.tinyhand` and `DiagnosticEntry` | Severity, category, and default Message, Label, Note and Advice |
-| Typed generator per code (C#) | Argument types, roles of related locations, conditional explanations |
+| Phase-specific reporting conversions (C#), checked against the catalog schemas | Argument and evidence values, roles of related locations, conditional explanations |
 | `DiagnosticRequirement` (C# enumeration) | The requirement's stable name (public vocabulary, like code names), its owning partition and its semantic order |
 | `DiagnosticRequirement.tinyhand` | A short description per stable name |
 
 - Enumerations are written by hand; a consistency test keeps enumeration, catalog and description table equal. No enumeration is generated.
-- The catalog is validated when it loads: unknown, duplicate and missing entries and a template whose placeholders differ from its generator's arity are catalog anomalies. Message templates are parsed once, at load.
+- The catalog is validated when it loads: unknown, duplicate and missing entries, invalid severities/categories, malformed or duplicate fact names and a template whose placeholders differ from its schema's arity are catalog anomalies. Message templates are parsed once, at load. Record-time checks reject nonnumeric Number values, undefined Enumeration values and non-Boolean Boolean values. The reporting APIs currently accept objects; this validation is not a claim that every recorder has a separate statically typed generator.
 - `PrerequisiteUnavailable_Kd` (Error, `Proof`): "The prerequisite of this requirement could not be established, so the requirement cannot be decided." Its Reason is `requirement` (a stable name) and `condition` (the condition and the fact it needs).
 - The former `Fix` field is Advice, with no alias. The former `hint` argument is gone; its content is a Note or Advice built by a typed generator.
 - Callers obey the definition: a serialized source in an incompatible format is an `Input` problem with its own code, never `UnexpectedToken_Kd` with prose.
@@ -66,7 +66,7 @@ DiagnosticFact
 - A requirement is distinct across phases: establishing a declaration's Type and a call's argument count are different requirements. The condition number distinguishes arguments, Contract conditions or Places within one requirement.
 - A Subject distinguishes source snapshots and analysis generations. A syntax error names a token or boundary; an input failure names the input. A synthesized node is identified by its original subject, its transformation role and its order within the transformation.
 - A problem with several subjects is normalized before it is recorded (SPEC §23.3.6.4).
-- Values that can change after recording (a rebound call, reused scratch storage) are captured as values; immutable analysis data may be referenced.
+- Values that can change after recording (a rebound call, reused scratch storage) are captured as values; immutable analysis data may be referenced. Prerequisite, evidence and related-location arrays are copied at the recording boundary, including the first report of a problem.
 - Analysis-specific failure enumerations remain; each converts to diagnostics in one place (Binding's `Check` switch, `OwnershipIssue.Code`, the control-flow conversion).
 
 ### 4.2. Owner, partitions and error state
@@ -103,7 +103,7 @@ DiagnosticFact
 - Explanations are formed once at finalization for published records (SPEC §23.3.6.5). Limits are constants in one place (`DiagnosticLimits`: excerpt lines and width, displayed value length, Note length, related locations); tests may replace them.
 - **Facts.** The catalog names every message argument (`Arguments="name:Kind"`, with Kind `Number`, `Enumeration`, `Boolean`, `Text` or `Type`) and the evidence a recorder may add (`Evidence`, all of it or none). The Reason is the arguments, then the evidence. A `Label` may reference them in that order and is omitted when a report lacks a referenced fact. A recorder may also name a primary location other than its subject (`at`) and related locations with roles.
 - One bounded formatter (`DiagnosticText`) serves Types, Constraints and long names; the two Types of a mismatch keep their differing parts and elide the common head and tail. Environment text is a bounded Note. The message and label display the bounded values.
-- Evidence and related locations are ordered by role rank, then location, then evidence value, with no per-generator comparer. What a limit drops is counted in the record's Omissions (related locations, excerpt lines).
+- Related evidence is unioned by its full captured value, then ordered by ordinal role name, consumed source order, span and full value, before display bounding or limiting. Locations without a source come last within a role. The final source table contains only published primary/related sources, in consumption order; related-location arrival cannot change source order. What a limit drops is counted in the record's Omissions (related locations, excerpt lines).
 - Order and equality follow SPEC §23.3.6.6 and rule 6. The semantic order compares subject, code name, requirement, condition and context, using the same information as identity.
 
 ## 6. Diagnostic contract and faults
@@ -132,7 +132,7 @@ The stages and their completion conditions are in [PLAN.md](PLAN.md). These rule
 
 ### 9.1. Snapshot harness
 
-One harness checks a fixed corpus through the check entry: milestone programs, rejection fixtures, examples and mutation cases. It writes normalized records, outcomes and acceptance as JSON under `artifacts/verify/`, and classifies differences against a baseline by kind: timing, order, attribution, code, location, text and acceptance. A stage lists the kinds it intends; any other difference needs review.
+One harness checks a fixed corpus through the check entry: milestone programs, rejection fixtures, examples and mutation cases. It writes normalized records, outcomes and acceptance as JSON under `artifacts/verify/`, and classifies differences against a baseline by kind: case, acceptance, code, severity, attribution, location, text and order. Timing belongs to the separate measurements (§9.4). A stage lists the kinds it intends; any other difference needs review.
 
 ### 9.2. Mutation tests
 
@@ -198,3 +198,7 @@ Repaired in D2b (ownership and finalization): ownership reports problem identiti
 Repaired in D3: records carry a typed Reason from the catalog's argument and evidence schemas, with Types bounded once (a mismatch keeps its differing parts) and omissions counted. `TypeMismatch_Kd` names both Types at the value that does not fit (returns, initializers, expression bodies, operands, conditions, branch results and untyped literals). A write names its target, with Advice for a `let` root. `NoApplicableOverload_Kd` counts and relates its candidates. `InvalidTry_Kd`, `NonExhaustiveMatch_Kd` and `PositionAlwaysFails_Kd` state facts instead of prose, and try has one code per requirement (operand, return, payload). Input and generation failures keep environment text in a bounded Note. A function expression spans from its `func` keyword (Program 26), and a missing closer is an insertion point after the grouping's last token. Cost review: naming the earlier Move or the conflicting Loan needs source locations threaded through ownership's dataflow state, so it is deferred.
 
 Ranges audit follow-up: mismatch recording keeps semantic Types even when short names agree, and display preserves generic arguments and qualifies the designated Kimi position/range identities. Bounded mismatches keep whole differing names. Non-iterable `for` ranges carry the selected entry and boundary Types with conditional repairs; range-shape overload failures retain their actual comparison and keep it in a Note when related candidates are omitted. Warning Advice distinguishes try failure from Abort. `RangeDiagnosticTest` checks public records, prerequisites, independent errors, limits, rebinding and both output adapters; [RANGES_REVIEW.md](RANGES_REVIEW.md) records the audit and verification.
+
+Contract audit follow-up (2026-09-30): `DiagnosticContractTest` covers mixed direct/unresolved and cyclic Errors at one prerequisite key; union, capture and consumption-order selection of related evidence; warning-only and invalidated prerequisites; same-path snapshots; malformed schemas/catalog values and numeric facts; related ranges; and exception record ordering and Note limits. Unit `20260930-114809-063-unit-diagnostics-contract-audit` passes a warning-free Release build, 247 related functional/allocation tests and an unchanged diagnostic snapshot. These fixes do not close the parser, flow-refinement or ownership-evidence items above.
+
+The same Release `Benchmark --diagnostics` workload before/after this unit is retained in `artifacts/benchmarks/diagnostics-audit/{before,after-core}.json` (seven fixed samples after warm-up). Warm rebind/report remains 120 bytes per operation. The 300-error check rises from 4,099,150 to 4,153,422 bytes (+1.3%) to capture and merge prerequisites/evidence and preserve their publication order. Median time is 8.43/8.08 ms; the single pair of runs is not evidence of a speedup.

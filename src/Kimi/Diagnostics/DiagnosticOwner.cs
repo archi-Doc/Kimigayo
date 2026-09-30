@@ -191,12 +191,43 @@ public sealed class DiagnosticOwner
             }
         }
 
+        // Select supplements before building the table. Its order is consumption order, never the order in which a
+        // related location happened to be reported; omitted locations do not introduce unused table entries.
+        var related = new DiagnosticRelatedFact[order.Count][];
+        var remap = new int[this.sources.Count];
+        Array.Fill(remap, -1);
+        for (var i = 0; i < order.Count; i++)
+        {
+            var fact = facts[order[i]];
+            related[i] = RelatedFacts(fact);
+            if (fact.Source >= 0)
+            {
+                remap[fact.Source] = 0;
+            }
+
+            foreach (var item in related[i].AsSpan(0, Math.Min(related[i].Length, DiagnosticLimits.Related)))
+            {
+                if (item.Source >= 0)
+                {
+                    remap[item.Source] = 0;
+                }
+            }
+        }
+
         var table = new List<DiagnosticSource>();
-        var remap = new Dictionary<int, int>();
+        for (var i = 0; i < remap.Length; i++)
+        {
+            if (remap[i] >= 0)
+            {
+                remap[i] = table.Count;
+                table.Add(new(this.sources[i].Path, this.sources[i].IsInput));
+            }
+        }
+
         var records = new CheckDiagnostic[order.Count];
         for (var i = 0; i < order.Count; i++)
         {
-            records[i] = this.CreateRecord(facts[order[i]], table, remap);
+            records[i] = this.CreateRecord(facts[order[i]], related[i], remap);
         }
 
         // SPEC 23.3.3: every rejected result publishes at least one Error; the fallbacks make this hold, so a violation is a defect.
@@ -208,7 +239,8 @@ public sealed class DiagnosticOwner
     }
 
     internal static object? Capture(object? value)
-        => value is null or string or int or long or bool or Enum ? value : value.ToString();
+        => value is null or string or bool or Enum or byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal or float or double
+            ? value : value.ToString();
 
     internal static object?[]? Capture(object?[]? values)
     {
@@ -224,6 +256,19 @@ public sealed class DiagnosticOwner
         }
 
         return captured;
+    }
+
+    internal static DiagnosticRelatedFact[] OrderRelated(DiagnosticRelatedFact[] related)
+    {
+        Array.Sort(related, static (x, y) =>
+        {
+            var order = string.CompareOrdinal(x.Role, y.Role);
+            order = order != 0 ? order : (x.Source < 0 ? int.MaxValue : x.Source).CompareTo(y.Source < 0 ? int.MaxValue : y.Source);
+            order = order != 0 ? order : (x.Length < 0 ? -1 : x.Start).CompareTo(y.Length < 0 ? -1 : y.Start);
+            order = order != 0 ? order : x.Length.CompareTo(y.Length);
+            return order != 0 ? order : string.CompareOrdinal(x.Label, y.Label);
+        });
+        return related;
     }
 
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
@@ -248,7 +293,7 @@ public sealed class DiagnosticOwner
                 Note = existing.Note ?? fact.Note,
                 Advice = existing.Advice ?? fact.Advice,
                 Evidence = existing.Evidence ?? fact.Evidence,
-                Related = existing.Related ?? fact.Related,
+                Related = fact.Related is { } related ? OrderRelated(Union(existing.Related, related)) : existing.Related,
                 DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
             };
 
@@ -378,22 +423,16 @@ public sealed class DiagnosticOwner
         return (values, message, entry.FormatLabel(shown));
     }
 
-    private static DiagnosticKey[] Union(DiagnosticKey[]? left, DiagnosticKey[] right)
+    private static T[] Union<T>(T[]? left, T[] right)
+        where T : struct
     {
         if (left is null)
         {
             return right;
         }
 
-        var union = new List<DiagnosticKey>(left);
-        foreach (var key in right)
-        {
-            if (!union.Contains(key))
-            {
-                union.Add(key);
-            }
-        }
-
+        var union = new HashSet<T>(left);
+        union.UnionWith(right);
         return union.Count == left.Length ? left : union.ToArray();
     }
 
@@ -433,13 +472,23 @@ public sealed class DiagnosticOwner
             return explained;
         }
 
-        var satisfied = new HashSet<DiagnosticKey>();
+        // A prerequisite denotes every Error at its check key, not just the first direct or explained Error. A key
+        // containing an unresolved or cyclic derived Error must never release any of its dependents.
+        var remaining = new Dictionary<DiagnosticKey, int>();
         var queue = new Queue<DiagnosticKey>();
         foreach (var fact in facts)
         {
-            if (fact.DerivedFrom is null && DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error && satisfied.Add(fact.Key))
+            if (DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
             {
-                queue.Enqueue(fact.Key);
+                remaining[fact.Key] = remaining.GetValueOrDefault(fact.Key) + (fact.DerivedFrom is null ? 0 : 1);
+            }
+        }
+
+        foreach (var (key, count) in remaining)
+        {
+            if (count == 0)
+            {
+                queue.Enqueue(key);
             }
         }
 
@@ -455,9 +504,10 @@ public sealed class DiagnosticOwner
                 if (--pending![index] == 0)
                 {
                     explained[index] = true;
-                    if (satisfied.Add(facts[index].Key))
+                    var completed = facts[index].Key;
+                    if (--remaining[completed] == 0)
                     {
-                        queue.Enqueue(facts[index].Key);
+                        queue.Enqueue(completed);
                     }
                 }
             }
@@ -467,7 +517,7 @@ public sealed class DiagnosticOwner
     }
 
     // SPEC 23.3.6.6: source table order, then span (none first), then the problem's identity: subject, code, requirement,
-    // condition and context. Facts of recorders not yet migrated (D2b) compare by code and then keep recording order.
+    // condition and context. Distinct problems with equal structural keys fault instead of using arrival order.
     private static int Compare(in DiagnosticFact left, in DiagnosticFact right)
     {
         var order = (left.Source < 0 ? int.MaxValue : left.Source).CompareTo(right.Source < 0 ? int.MaxValue : right.Source);
@@ -492,6 +542,26 @@ public sealed class DiagnosticOwner
         }
 
         return order == 0 ? left.Key.CompareCheck(right.Key) : order;
+    }
+
+    private static DiagnosticRelatedFact[] RelatedFacts(in DiagnosticFact fact)
+    {
+        if (fact.DerivedFrom is not { } prerequisites)
+        {
+            return fact.Related ?? [];
+        }
+
+        var locations = new HashSet<DiagnosticRelatedFact>();
+        foreach (var key in prerequisites)
+        {
+            if (!key.IsUnresolved && key.Source >= 0)
+            {
+                var label = DiagnosticRequirements.TryGetDescription(key.Requirement, out var description) ? description : key.Requirement.Name;
+                locations.Add(new("prerequisite", key.Source, key.Start, key.Length, label));
+            }
+        }
+
+        return OrderRelated(locations.ToArray());
     }
 
     private static int DisplayWidth(ReadOnlySpan<char> text)
@@ -602,24 +672,6 @@ public sealed class DiagnosticOwner
         return index;
     }
 
-    private int TableIndex(int source, List<DiagnosticSource> table, Dictionary<int, int> remap)
-    {
-        if (source < 0)
-        {
-            return -1;
-        }
-
-        if (!remap.TryGetValue(source, out var index))
-        {
-            index = table.Count;
-            remap.Add(source, index);
-            var entry = this.sources[source];
-            table.Add(new(entry.Path, entry.IsInput));
-        }
-
-        return index;
-    }
-
     private (SourceSpan? Span, SourceRange? Range) Locate(int source, int start, int length)
     {
         if (length < 0)
@@ -631,7 +683,7 @@ public sealed class DiagnosticOwner
         return (span, source >= 0 && this.sources[source].Document is { } document ? document.GetSourceRange(span) : null);
     }
 
-    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, List<DiagnosticSource> table, Dictionary<int, int> remap)
+    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, DiagnosticRelatedFact[] locations, int[] remap)
     {
         DiagnosticEntries.TryGet(fact.Code, out var found);
         var entry = found!; // Every recorded code was validated against the catalog.
@@ -668,7 +720,7 @@ public sealed class DiagnosticOwner
         DiagnosticRelated[]? related = null;
         string message;
         string? label;
-        if (fact.DerivedFrom is { } prerequisites)
+        if (fact.DerivedFrom is not null)
         {
             // SPEC 23.3.6.4: the requirement left undecided, what it needs, and where each prerequisite is.
             var requirement = fact.Key.Requirement;
@@ -677,38 +729,31 @@ public sealed class DiagnosticOwner
                 new("requirement", DiagnosticValueKind.Enumeration, requirement.Name),
                 new("condition", DiagnosticValueKind.Text, DiagnosticRequirements.TryGetDescription(requirement, out var description) ? description : requirement.Name),
             ];
-            var locations = new List<DiagnosticRelated>();
-            foreach (var key in prerequisites)
-            {
-                if (!key.IsUnresolved && key.Source >= 0)
-                {
-                    var (relatedSpan, relatedRange) = this.Locate(key.Source, key.Start, key.Length);
-                    var prerequisiteLabel = DiagnosticRequirements.TryGetDescription(key.Requirement, out var prerequisiteDescription) ? prerequisiteDescription : key.Requirement.Name;
-                    locations.Add(new("prerequisite", this.TableIndex(key.Source, table, remap), relatedSpan, relatedRange, prerequisiteLabel));
-                }
-            }
-
-            related = Limit(locations, ref omissions);
             message = entry.Message;
             label = entry.Label;
         }
         else
         {
             (reason, message, label) = Describe(entry, fact);
-            if (fact.Related is { } recorded)
-            {
-                var locations = new List<DiagnosticRelated>(recorded.Length);
-                foreach (var item in recorded)
-                {
-                    var (relatedSpan, relatedRange) = this.Locate(item.Source, item.Start, item.Length);
-                    locations.Add(new(item.Role, this.TableIndex(item.Source, table, remap), relatedSpan, relatedRange, item.Label is null ? null : DiagnosticText.Bound(item.Label).Text));
-                }
+        }
 
-                related = Limit(locations, ref omissions);
+        if (locations.Length > 0)
+        {
+            related = new DiagnosticRelated[Math.Min(locations.Length, DiagnosticLimits.Related)];
+            for (var i = 0; i < related.Length; i++)
+            {
+                var item = locations[i];
+                var (relatedSpan, relatedRange) = this.Locate(item.Source, item.Start, item.Length);
+                related[i] = new(item.Role, item.Source < 0 ? -1 : remap[item.Source], relatedSpan, relatedRange, item.Label is null ? null : DiagnosticText.Bound(item.Label).Text);
+            }
+
+            if (locations.Length > related.Length)
+            {
+                (omissions ??= []).Add(new("related locations", locations.Length - related.Length));
             }
         }
 
-        return new(entry.Name, entry.Severity, entry.Category, message, this.TableIndex(fact.Source, table, remap), span)
+        return new(entry.Name, entry.Severity, entry.Category, message, fact.Source < 0 ? -1 : remap[fact.Source], span)
         {
             Label = label,
             Reason = reason,
@@ -718,32 +763,6 @@ public sealed class DiagnosticOwner
             Omissions = omissions?.ToArray(),
             Display = display,
         };
-
-        // SPEC 23.3.6.5: related locations by role, then location, then value; the first ones up to the limit are kept.
-        static DiagnosticRelated[]? Limit(List<DiagnosticRelated> locations, ref List<DiagnosticOmission>? omissions)
-        {
-            if (locations.Count == 0)
-            {
-                return null;
-            }
-
-            locations.Sort(static (x, y) =>
-            {
-                var order = string.CompareOrdinal(x.Role, y.Role);
-                order = order != 0 ? order : x.Source.CompareTo(y.Source);
-                order = order != 0 ? order : (x.Span?.Start ?? -1).CompareTo(y.Span?.Start ?? -1);
-                order = order != 0 ? order : (x.Span?.Length ?? -1).CompareTo(y.Span?.Length ?? -1);
-                return order != 0 ? order : string.CompareOrdinal(x.Label, y.Label);
-            });
-
-            if (locations.Count > DiagnosticLimits.Related)
-            {
-                (omissions ??= []).Add(new("related locations", locations.Count - DiagnosticLimits.Related));
-                locations.RemoveRange(DiagnosticLimits.Related, locations.Count - DiagnosticLimits.Related);
-            }
-
-            return locations.ToArray();
-        }
     }
 
     private sealed class FactList

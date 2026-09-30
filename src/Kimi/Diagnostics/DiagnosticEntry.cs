@@ -124,6 +124,11 @@ public partial record class DiagnosticEntry
 
         this.ArgumentSchema = arguments;
         this.EvidenceSchema = evidence;
+        if (arguments.Concat(evidence).Select(static x => x.Name).Distinct(StringComparer.Ordinal).Count() != arguments.Length + evidence.Length)
+        {
+            return "fact names must be unique within the code.";
+        }
+
         if (arguments.Length != this.Arity)
         {
             return $"Arguments must name each message argument ({this.Arity}), not {arguments.Length}.";
@@ -140,6 +145,23 @@ public partial record class DiagnosticEntry
         }
 
         return null;
+    }
+
+    internal void ValidateValue(DiagnosticParameter parameter, object? value)
+    {
+        var valid = parameter.Kind switch
+        {
+            DiagnosticValueKind.Number => value is byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal ||
+                (value is double d && double.IsFinite(d)) || (value is float f && float.IsFinite(f)),
+            DiagnosticValueKind.Boolean => value is bool,
+            DiagnosticValueKind.Enumeration => value is Enum e && Enum.IsDefined(e.GetType(), e),
+            DiagnosticValueKind.Text => value is not null,
+            _ => false,
+        };
+        if (!valid)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{this.Name}: {parameter.Name} requires {parameter.Kind}.");
+        }
     }
 
     private static DiagnosticParameter[]? Parse(string? schema)
@@ -161,10 +183,15 @@ public partial record class DiagnosticEntry
 
             var name = parts[i][..separator];
             var kind = parts[i][(separator + 1)..];
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
             parameters[i] = kind switch
             {
                 "Type" => new(name, DiagnosticValueKind.Text, true),
-                _ when Enum.TryParse<DiagnosticValueKind>(kind, false, out var value) && Enum.IsDefined(value) => new(name, value, false),
+                _ when Enum.TryParse<DiagnosticValueKind>(kind, false, out var value) && Enum.IsDefined(value) && value.ToString() == kind => new(name, value, false),
                 _ => default,
             };
 

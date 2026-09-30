@@ -103,6 +103,16 @@ public sealed class DiagnosticCollection
             throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.Arity} arguments, not {count}.");
         }
 
+        if (count > 0)
+        {
+            entry.ValidateValue(entry.ArgumentSchema[0], first);
+        }
+
+        if (count > 1)
+        {
+            entry.ValidateValue(entry.ArgumentSchema[1], second);
+        }
+
         // Invariant: a problem is derived, reported as PrerequisiteUnavailable_Kd, exactly when it names prerequisites.
         if ((code == DiagnosticCode.PrerequisiteUnavailable_Kd) != (derivedFrom is { Length: > 0 }))
         {
@@ -153,11 +163,21 @@ public sealed class DiagnosticCollection
             throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.EvidenceSchema.Length} evidence facts, all of them or none.");
         }
 
+        if (evidence is not null)
+        {
+            for (var i = 0; i < evidence.Length; i++)
+            {
+                entry.ValidateValue(entry.EvidenceSchema[i], evidence[i]);
+            }
+        }
+
         var module = this.CurrentModule();
         var source = this.SourceOf(document);
         var isError = entry.Severity == DiagnosticSeverity.Error;
         var length = document is null ? -1 : range.Length;
-        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom, DiagnosticOwner.Capture(evidence), related), isError);
+        var causes = derivedFrom?.Distinct().ToArray();
+        var capturedRelated = related is null ? null : DiagnosticOwner.OrderRelated(related.Distinct().ToArray());
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, causes, DiagnosticOwner.Capture(evidence), capturedRelated), isError);
         return isError;
     }
 
@@ -168,7 +188,19 @@ public sealed class DiagnosticCollection
     /// <param name="label">A short description of the location.</param>
     /// <returns>The related location.</returns>
     internal DiagnosticRelatedFact Relate(string role, SourceSpan span, SourceDocument? document, string? label)
-        => new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
+    {
+        if (document is null ? span != default : span.Start < 0 || span.Length < 0 || span.Start > document.SourceText.Length - span.Length)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"Related {role} at {span} in {document?.Path ?? "no source"}.");
+        }
+
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, "A related location needs a role.");
+        }
+
+        return new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
+    }
 
     private int CurrentModule()
         => this.module >= 0 ? this.module : this.Owner.UnattributedModule();

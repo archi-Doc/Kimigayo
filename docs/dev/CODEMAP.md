@@ -60,7 +60,7 @@ Syntax changes also start in `Parser*` and the corresponding `Parsing/Koto` node
 
 For library-backed features, also inspect the corresponding `.kimi` declarations/bodies in [Library](../../src/Kimi/Library/) (for example `Iterator.kimi`, `Dictionary.kimi`, `Array.kimi`, `Slice.kimi`, `Formatting.kimi`) and the matching KimiLibrary validation files.
 
-For cross-cutting changes: project/dependency input starts with `DependencyResolutionTest` and `DependencyLockTest`; check/diagnostic publication with `CheckServiceTest`, `DiagnosticOwnerTest` and `DiagnosticRelationTest`; LSP with `LspProtocolTest` and `LspProjectDiagnosticTest`; edit invalidation with `SyntaxEditInvalidationTest`.
+For cross-cutting changes: project/dependency input starts with `DependencyResolutionTest` and `DependencyLockTest`; check/diagnostic publication with `CheckServiceTest`, `DiagnosticOwnerTest`, `DiagnosticContractTest` and `DiagnosticRelationTest`; LSP with `LspProtocolTest` and `LspProjectDiagnosticTest`; edit invalidation with `SyntaxEditInvalidationTest`.
 
 ## Use and maintenance
 

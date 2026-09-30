@@ -246,7 +246,7 @@ public static class DiagnosticEntries
 
         foreach (var entry in entries ?? [])
         {
-            if (!Enum.TryParse<DiagnosticCode>(entry.Name, false, out var code) || code == DiagnosticCode.Count || code.ToString() != entry.Name)
+            if (!Enum.TryParse<DiagnosticCode>(entry.Name, false, out var code) || code < 0 || code >= DiagnosticCode.Count || code.ToString() != entry.Name)
             {
                 anomalies.Add($"{entry.Name}: no DiagnosticCode has this name.");
                 continue;
@@ -261,6 +261,12 @@ public static class DiagnosticEntries
             if (!Enum.IsDefined(entry.Category))
             {
                 anomalies.Add($"{entry.Name}: the entry has no category.");
+                continue;
+            }
+
+            if (!Enum.IsDefined(entry.Severity))
+            {
+                anomalies.Add($"{entry.Name}: the entry has no valid severity.");
                 continue;
             }
 

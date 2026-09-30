@@ -11,8 +11,6 @@ internal static class DiagnosticFaults
     /// <summary>The message before the fault description; the catalog template is this text followed by <c>{0}</c>.</summary>
     internal const string MessagePrefix = "The compiler failed internally while checking: ";
 
-    private const int MaxNoteLength = 400;
-
     /// <summary>Describes a fault kind in the message.</summary>
     /// <param name="fault">The fault.</param>
     /// <returns>The description.</returns>
@@ -49,13 +47,29 @@ internal static class DiagnosticFaults
             }
         }
 
-        var note = detail is null ? null : detail.Length <= MaxNoteLength ? detail : string.Concat(detail.AsSpan(0, MaxNoteLength), "…");
+        // Keep the fault path independent of catalog formatting, with the same presentation limit as ordinary Notes.
+        var note = detail is null ? null : detail.Length <= DiagnosticLimits.NoteLength ? detail : string.Concat(detail.AsSpan(0, DiagnosticLimits.NoteLength - 1), "…");
         var record = new CheckDiagnostic(nameof(DiagnosticCode.CheckFaulted_Kd), DiagnosticSeverity.Error, DiagnosticCategory.Internal, MessagePrefix + Describe(fault), source, null)
         {
             Reason = [DiagnosticValue.Enumeration("fault", fault)],
             Note = note,
         };
 
-        return new([.. kept?.Diagnostics ?? [], record], sources);
+        var previous = kept?.Diagnostics ?? [];
+        var insertion = 0;
+        var orderSource = source < 0 ? int.MaxValue : source;
+        while (insertion < previous.Length)
+        {
+            var other = previous[insertion];
+            var otherSource = other.Source < 0 ? int.MaxValue : other.Source;
+            if (otherSource > orderSource || (otherSource == orderSource && (other.Span is not null || string.CompareOrdinal(other.Code, record.Code) > 0)))
+            {
+                break;
+            }
+
+            insertion++;
+        }
+
+        return new([.. previous.AsSpan(0, insertion), record, .. previous.AsSpan(insertion)], sources);
     }
 }
