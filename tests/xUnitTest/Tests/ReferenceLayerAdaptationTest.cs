@@ -17,6 +17,7 @@ public class ReferenceLayerAdaptationTest
     [InlineData("SharedBelowExclusive", "var n = 7\nlet r = n@ref\nvar holder: [1 of ref/i32] = [r]\nfor h in holder@uniq\n    let inner: ref/i32 = h\n    require inner == 7 else => $abort(\"inner\")\nConsole.writeLine(\"ok\")", "ok\n")]
     [InlineData("OptionPayload", Node + "func report(found: ref/Node? during a) -> i32\n    return match found\n        .Some(let hit) => validate(hit)\n        .None => 0\nvar total: i32 = 0\nlet third = Node.init(3)\nrequire validate(third@ref) == 3 else => $abort(\"direct\")\nConsole.writeLine(\"ok\")", "ok\n")]
     [InlineData("UniqTemporary", Node + "func pass(n: uniq/Node) -> uniq/Node => n\nvar a = Node.init(4)\nrequire validate(pass(a@uniq)) == 4 else => $abort(\"temporary\")\nConsole.writeLine(\"ok\")", "ok\n")]
+    [InlineData("DictionaryIndex", "func get(m: ref/Dictionary<i32, i32>) -> i32 => m[1]\nlet m = [1: 42]\nrequire get(m) == 42 else => $abort(\"value\")", "")]
     public void OneSharedReferenceThroughLayers(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ReferenceLayer" + name, source, stdout);
 
@@ -69,7 +70,7 @@ public class ReferenceLayerAdaptationTest
     }
 
     [Theory]
-    [InlineData("func get(m: ref/Dictionary<i32, i32>) -> i32 => m[1]")]
+    [InlineData("func get(m: ref/(ref/Dictionary<i32, i32> during b)) -> i32 => m[1]")]
     [InlineData("func at(a: ref/(ref/[2 of i32] during b)) -> i32 => a[1]")]
     public void IndexingThroughSeveralLayersReportsOnlyItsBoundary(string source)
     {
