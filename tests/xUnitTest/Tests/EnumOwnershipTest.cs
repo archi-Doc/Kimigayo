@@ -221,23 +221,31 @@ public class EnumOwnershipTest
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
+        var originalCases = body.Places[body.Constructions[0].Place].Type.StoredCases!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        var rebuilt = body.Places[Assert.Single(body.Constructions).Place].Type;
+        Assert.Single(originalCases);
+        Assert.NotSame(originalCases, rebuilt.StoredCases);
+        Assert.Equal(2, rebuilt.StoredCases!.Length);
+        var reference = Assert.Single(rebuilt.StoredCases[1].Components);
+        Assert.Equal(SemanticsKind.Ref, reference.Semantics);
+        Assert.Equal(OriginKind.Static, reference.Origin!.Kind);
     }
 
-    // Static borrowed payload storage remains outside this low-level ownership profile.
+    // SPEC 12.2, 15.2: complete shared-reference payloads retain their Origin, including Static.
     [Theory]
     [InlineData("func f(x: ref/i32 during static) -> Option<ref/i32 during static> => .Some(x)")]
-    public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
+    [InlineData("func f() -> Option<ref/i32 during static> => .None")]
+    public void StaticReferencePayloadsUseCompleteEnumStorage(string source)
     {
         var c = Parse(source);
         var result = c.Ownership.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.True(result.UnsupportedCount > 0, Describe(c));
+        Assert.True(result.IsVerified, Describe(c));
+        Assert.Equal(0, result.UnsupportedCount);
     }
 
     // SPEC 10.2, 12.2: implicit borrowed payloads use the ordinary borrow/reborrow acquisition and retain their Loans.
