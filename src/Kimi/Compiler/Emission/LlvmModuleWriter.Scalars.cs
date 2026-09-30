@@ -351,7 +351,6 @@ internal static partial class LlvmModuleWriter
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,
             ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
-            ArithmeticCheckKind.MissingKey => WindowsLowering.MissingKeyReason,
             ArithmeticCheckKind.Argument => WindowsLowering.ArgumentReason,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };

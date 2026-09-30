@@ -4,7 +4,7 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    private static void WriteDictionaryIteration(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
+    private static void WriteDictionaryIteration(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
         var operands = function.GetOperands(instruction);
         var address = operands[0];
@@ -146,40 +146,7 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        // DictionaryLocate: the slot of a found key, or Abort for a missing key.
-        output.Write("  %invalid");
-        WriteNumber(output, id);
-        output.Write(" = icmp eq i64 ");
-        WriteOperand(output, operands[1]);
-        output.Write(", 0\n");
-        WriteArithmeticFailure(output, constants, instruction, "%invalid");
-        output.Write("  %seqbase");
-        WriteNumber(output, id);
-        output.Write(" = load ptr, ptr ");
-        Address();
-        output.Write(", align 8\n  %slotindex");
-        WriteNumber(output, id);
-        output.Write(" = sub i64 ");
-        WriteOperand(output, operands[1]);
-        output.Write(", 1\n  %slotoffset");
-        WriteNumber(output, id);
-        output.Write(" = mul i64 %slotindex");
-        WriteNumber(output, id);
-        output.Write(", ");
-        WriteNumber(output, operands[2].Value);
-        output.Write("\n  %slot");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr %seqbase");
-        WriteNumber(output, id);
-        output.Write(", i64 %slotoffset");
-        WriteNumber(output, id);
-        output.Write("\n  %element");
-        WriteNumber(output, id);
-        output.Write(" = getelementptr i8, ptr %slot");
-        WriteNumber(output, id);
-        output.Write(", i64 ");
-        WriteNumber(output, operands[3].Value);
-        output.Write("\n");
+        throw new InvalidOperationException("Unknown Dictionary storage operation.");
 
         void Address()
         {

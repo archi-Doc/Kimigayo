@@ -237,13 +237,12 @@ internal sealed partial class BodyLowering
 
             if (source is IndexKoto)
             {
-                var keyType = source is IndexKoto { DictionaryKeyReference: { } keyReference } ? SignatureType(this, keyReference) : BoundType.ISize;
-                if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), keyType) ||
+                if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
                     !(ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax((IndexKoto)source))) ||
                         (body.Values[plan.Index].Kind == OwnershipValueKind.Convert && body.Values[plan.Index].Constant == OwnershipValue.PositionConversion && ReferenceEquals(body.Operations[plan.Index].Source, ((IndexKoto)source).Right))) ||
-                    (keyType == BoundType.ISize ? body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch) : body.Operations[plan.Index].Kind != OwnershipOperationKind.Borrow))
+                    body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch))
                 {
-                    return Fail("Element selection requires its evaluated isize index or Dictionary key borrow.", out failure);
+                    return Fail("Element selection requires its evaluated isize index.", out failure);
                 }
 
                 this.continuations[plan.Operation] = body.Operations.Count + plan.Operation;
@@ -446,15 +445,18 @@ internal sealed partial class BodyLowering
 
         var source = (BinaryKoto)body.Operations[plan.Operation].Source;
         var receiverType = SignatureType(this, source.Left.BoundType)!;
+        if (receiverType.Kind == BoundTypeKind.Dictionary)
+        {
+            return Fail("Dictionary selection must use its Indexable Place call.", out failure);
+        }
+
         var dynamicArray = receiverType.Kind == BoundTypeKind.Array;
-        var dictionary = receiverType.Kind == BoundTypeKind.Dictionary;
-        var dynamicElement = dynamicArray || dictionary;
         var layout = this.aggregateLayouts.Get(receiverType)!;
-        var field = layout.IsArray || dynamicElement ? 0 : plan.Element;
+        var field = layout.IsArray || dynamicArray ? 0 : plan.Element;
         // The Array layout describes its handle; the indexed storage has T's own layout.
-        var stored = dynamicElement ? receiverType.Components[dictionary ? 1 : 0] : null;
-        var representation = dynamicElement ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : layout.Fields[field];
-        var elementLayout = dynamicElement ? this.aggregateLayouts.GetStored(stored!) : layout.Children[field];
+        var stored = dynamicArray ? receiverType.Components[0] : null;
+        var representation = dynamicArray ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : layout.Fields[field];
+        var elementLayout = dynamicArray ? this.aggregateLayouts.GetStored(stored!) : layout.Children[field];
         if (representation is null)
         {
             return Fail("Array element has no supported storage representation.", out failure);
@@ -518,7 +520,7 @@ internal sealed partial class BodyLowering
         if (address)
         {
             var location = -1;
-            if ((layout.IsArray || dynamicElement) && !this.TryGetLocation(source, directory, constants, out location))
+            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, directory, constants, out location))
             {
                 return Fail("Element bounds check requires a source location.", out failure);
             }
@@ -528,22 +530,6 @@ internal sealed partial class BodyLowering
             var receiver = layout.Value.Layout.Size == 0 ? new EmissionOperand(EmissionOperandKind.NullAddress, 0)
                 : plan.Parent < 0 ? new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Root)
                 : new EmissionOperand(EmissionOperandKind.ElementAddress, body.Projections[plan.Parent].Operation);
-            if (dictionary)
-            {
-                if (source.CodeContext.Compilation.Binding.DictionaryComparison(receiverType) is not { } comparison ||
-                    this.ComparisonHelpers?.GetValueOrDefault(comparison) is not { } equality ||
-                    !this.TryGetArrayElement(receiverType.Components[0], out var key) ||
-                    !this.TryGetArrayElement(receiverType.Components[1], out var value))
-                {
-                    return Fail("Dictionary indexing requires a verified equality and concrete entry layout.", out failure);
-                }
-
-                var helper = this.GetDictionaryHelper(DictionaryHelperKind.Find, key, value, equality: equality);
-                function.AddCall(id, helper.Abi, [receiver, this.PhysicalOperand(body, plan.Index)]);
-                function.AddScalar(EmissionOpcode.Sequence, id, [receiver, new(EmissionOperandKind.Value, id), new(EmissionOperandKind.Integer, helper.Stride), new(EmissionOperandKind.Integer, helper.ValueOffset)], place: body.Operations.Count + id, location: location, op: "DictionaryLocate", check: ArithmeticCheckKind.MissingKey, representation: representation);
-                return true;
-            }
-
             if (dynamicArray)
             {
                 // A dynamic element retains the root-wide access Loan; resolving it never

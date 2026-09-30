@@ -119,11 +119,6 @@ internal sealed partial class BodyLowering
 
         if (plan.Kind == SequenceOperation.Borrow)
         {
-            if (receiver.Kind == BoundTypeKind.Dictionary)
-            {
-                return this.LowerDictionaryElementBorrow(body, function, constants, directory, id, receiver, address, receiverPlace.Type, out failure);
-            }
-
             var reference = ValueType(body, id);
             var originSource = Binding.PlaceOriginSource(syntaxReceiver);
             var sameOrigin = receiver.Kind == BoundTypeKind.Slice || borrowedArray

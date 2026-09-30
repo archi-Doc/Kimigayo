@@ -119,7 +119,7 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            if (!this.PrepareDictionaryProjections(compilation, module, layouts, body, null, out failure))
+            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure))
             {
                 return false;
             }
@@ -331,7 +331,7 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
-        if (!this.PrepareDictionaryProjections(compilation, module, layouts, template.Body, call, out failure, depth + 1))
+        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1))
         {
             return false;
         }

@@ -14,7 +14,7 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi> ComparisonHelpers => this.comparisonHelpers;
 
-    private bool PrepareDictionaryProjections(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
+    private bool PrepareDictionaryConstructions(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
     {
         failure = null;
         for (var i = 0; i < body.Constructions.Count; i++)
@@ -30,39 +30,6 @@ internal sealed partial class GenericStoragePlan
                 !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
             {
                 return Fail(failure ?? "Dictionary construction requires a finalized equality witness.", out failure);
-            }
-        }
-
-        foreach (var projection in body.Projections)
-        {
-            if (body.Operations[projection.Operation].Source is not IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } index)
-            {
-                continue;
-            }
-
-            var dictionary = context is null ? index.Left.BoundType : compilation.Binding.InstantiateStorageType(index.Left.BoundType, context);
-            if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
-                !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
-            {
-                return Fail(failure ?? "Dictionary indexing requires a finalized equality witness.", out failure);
-            }
-        }
-
-        for (var i = 0; i < body.Sequences.Count; i++)
-        {
-            var sequence = body.Sequences[i];
-            if (body.Operations[sequence.Operation].Source is not IndexKoto { DictionaryKeyReference: not null } index)
-            {
-                continue;
-            }
-
-            var receiver = body.Places[sequence.Receiver].Type;
-            var dictionary = ReferenceTypes.IsDictionary(receiver) ? receiver.Components[0] : receiver;
-            dictionary = context is null ? dictionary : compilation.Binding.InstantiateStorageType(dictionary, context);
-            if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
-                !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
-            {
-                return Fail(failure ?? "Dictionary element borrowing requires a finalized equality witness.", out failure);
             }
         }
 

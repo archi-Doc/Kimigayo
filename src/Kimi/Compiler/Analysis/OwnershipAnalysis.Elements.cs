@@ -281,8 +281,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var index = source is IndexKoto { DictionaryKeyReference: { } keyReference } ? this.Value(this.BorrowStruct(source.Right, keyReference))
-            : source is IndexKoto keyed ? this.Value(this.SelectionKey(keyed, root, parent, PlaceUseKind.Read)) : -1;
+        var index = source is IndexKoto keyed ? this.Value(this.SelectionKey(keyed, root, parent, PlaceUseKind.Read)) : -1;
         if (this.defaultFunction is not null && source is IndexKoto keyedRead &&
             this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead))))
         {

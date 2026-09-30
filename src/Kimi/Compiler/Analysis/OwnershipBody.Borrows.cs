@@ -430,25 +430,6 @@ public sealed partial class OwnershipBody
                     (operation.Kind == OwnershipOperationKind.StoreDictionaryEntry && this.OperationSteps[id] == place);
             }
 
-            // A Dictionary lookup's key is borrowed through replacement, including old-value
-            // destruction. Its final equality use alone cannot end that operation's Loan.
-            if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement &&
-                this.Projections[operation.Projection] is { Index: >= 0 } projection &&
-                this.Operations[projection.Operation].Source is IndexKoto { DictionaryKeyReference: not null } &&
-                ValuePlaceForBorrow(this.Operations[projection.Index]) == place)
-            {
-                return true;
-            }
-
-            // The same key lifetime applies when indexed replacement reaches the Dictionary through a reference.
-            if (operation.Kind == OwnershipOperationKind.StorePointer && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } store &&
-                this.ValueOperands[store.Start] is >= 0 and var address && this.Values[address] is { Kind: OwnershipValueKind.Sequence } located &&
-                ReferenceEquals(this.Operations[address].Source, operation.Source) && operation.Source is IndexKoto { DictionaryKeyReference: not null } &&
-                this.Sequences[(int)located.Constant].Index is >= 0 and var key && ValuePlaceForBorrow(this.Operations[key]) == place)
-            {
-                return true;
-            }
-
             if (this.Values[id] is { Kind: OwnershipValueKind.Formatting, Count: 1 } formatting &&
                 ValuePlaceForBorrow(this.Operations[this.ValueOperands[formatting.Start]]) == place)
             {
