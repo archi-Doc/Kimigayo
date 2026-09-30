@@ -7,22 +7,27 @@ namespace XunitTest;
 
 public class DictionaryStorageTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyConstructionAndZeroReserveAllocateNothing()
         => NativeAllocationAudit.WriteFixture("DictionaryStorageEmpty", "var entries: Dictionary<i32, i32> = [:]\nrequire entries.length == 0 and entries.capacity == 0 else => $abort(\"empty\")\nentries.reserve(0)", 0, 0, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SufficientReserveReusesTheBufferAndPreservesLength()
         => NativeAllocationAudit.WriteFixture("DictionaryStorageReserve", "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nlet capacity = entries.capacity\nentries.reserve(0)\nentries.reserve(3)\nrequire entries.length == 0 and entries.capacity == capacity and capacity >= 3 else => $abort(\"capacity\")", 1, 1, 96);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GrowthReleasesThePreviousBuffer()
         => NativeAllocationAudit.WriteFixture("DictionaryStorageGrowth", "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nentries.reserve(5)\nrequire entries.length == 0 and entries.capacity >= 5 else => $abort(\"growth\")", 2, 2, 288);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void OwnedArgumentsResultsAndReplacementReleaseExactlyOnce()
         => NativeAllocationAudit.WriteFixture("DictionaryStorageTransfer", "func forward(value: Dictionary<i32, i32>) -> Dictionary<i32, i32> => value@move\nvar entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nvar result = forward(entries@move)\nrequire result.capacity >= 3 and result.length == 0 else => $abort(\"move\")\nresult = [:]", 1, 1, 96);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowedMetadataReadsTheSameHandle()
         => NativeAllocationAudit.WriteFixture("DictionaryStorageBorrow", "func length(value: ref/Dictionary<i32, i32>) -> isize => value.length\nvar entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nrequire length(entries) == 0 else => $abort(\"borrow\")", 1, 1, 96);

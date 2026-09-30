@@ -91,6 +91,7 @@ public class DependentRequirementConstraintBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDependentRequirementProofsAllocateNothing()
     {

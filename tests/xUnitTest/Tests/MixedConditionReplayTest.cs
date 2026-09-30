@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class MixedConditionReplayTest
 {
     [Theory]
@@ -155,26 +154,6 @@ public class MixedConditionReplayTest
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
-    [Theory]
-    [InlineData("if truth(stop()) => counter.value else => counter.value")]
-    [InlineData("if c => counter.value else if truth(stop()) => counter.value else => counter.value")]
-    [InlineData("if truth(stop())\n                if c => return else => counter.value\n            else => counter.value")]
-    public void ReloadedTerminalConditionsAllocateNothingWhenWarm(string dead)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "let n = r.value") + Counter);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static string Source(string declaration, string dead, string use, string tail = "()")
         => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c => return else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(true)\nfunc truth(x: i32) -> bool => true\nfunc stopTake(s: string) -> Never => stop()";
 
@@ -188,4 +167,29 @@ public class MixedConditionReplayTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("if truth(stop()) => counter.value else => counter.value")]
+        [InlineData("if c => counter.value else if truth(stop()) => counter.value else => counter.value")]
+        [InlineData("if truth(stop())\n                if c => return else => counter.value\n            else => counter.value")]
+        public void ReloadedTerminalConditionsAllocateNothingWhenWarm(string dead)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "let n = r.value") + Counter);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

@@ -90,6 +90,7 @@ public class GenericConstraintCertificateBindingTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericCertificateChecksAllocateNothing()
     {

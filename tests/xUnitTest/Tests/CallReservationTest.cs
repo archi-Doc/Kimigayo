@@ -136,6 +136,7 @@ public class CallReservationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericValueReservationUsesTheReferenceValueAbi()
     {
@@ -159,6 +160,7 @@ public class CallReservationTest
         Assert.Contains(c.Ownership.Issues, x => x.Reservation >= 0 && x.Activation == activation);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmReservationAnalysisAndEmissionAllocateNothing()
     {

@@ -66,6 +66,7 @@ public class BorrowedTupleProjectionTest
         ScalarEmissionTest.EmitFixture("BorrowedTupleProjectionCleanup", Source, "read\ndrop\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmAnalysisPreserveLocalReborrowAncestry()
     {

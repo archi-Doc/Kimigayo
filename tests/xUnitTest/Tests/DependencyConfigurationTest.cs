@@ -272,6 +272,7 @@ public class DependencyConfigurationTest
         Assert.Empty(c.Project.BuildMetadata);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConfigurationValidationAllocatesNothing()
     {

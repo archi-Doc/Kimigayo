@@ -88,6 +88,7 @@ public class PendingRefinementDeclarationBindingTest
         Assert.True(c.Binding.GetConformanceDefinition(target.BoundType!, child.BoundSymbol!)!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAncestorPropagationAllocatesNothing()
     {

@@ -145,6 +145,7 @@ public class ElementPathEmissionTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPathAnalysisAndEmissionAllocateNothing()
     {

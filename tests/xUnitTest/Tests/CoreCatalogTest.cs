@@ -208,6 +208,7 @@ public class CoreCatalogTest
         Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCatalogValidationAndBindingReuseStorage()
     {

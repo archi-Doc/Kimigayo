@@ -182,6 +182,7 @@ public class IntegerEmissionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMixedIntegerAnalysisAndWritingAllocateNothing()
     {

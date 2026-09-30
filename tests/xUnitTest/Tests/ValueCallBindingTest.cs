@@ -46,6 +46,7 @@ public class ValueCallBindingTest
         Assert.Empty(output.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmBindingRetainValuePlan()
     {

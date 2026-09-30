@@ -167,6 +167,7 @@ public class Utf8BufferTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Fixed", "var storage = [8 of 0@u8]\nlet buffer = Text.fixed(storage@uniq)", 0, 0)]
     [InlineData("Empty", "let buffer = Text.heap(0)", 0, 0)]

@@ -81,6 +81,7 @@ public class AssociatedInputFormationBindingTest
         Assert.True(definition.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInputChecksAllocateNothing()
     {

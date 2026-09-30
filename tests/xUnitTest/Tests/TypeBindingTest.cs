@@ -148,6 +148,7 @@ public class TypeBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingOriginRichHeadersReusesAllScratchStorage()
     {

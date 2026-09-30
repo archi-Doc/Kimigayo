@@ -301,6 +301,7 @@ public class ContractBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmContractBindingReusesMetadataAndCallStorage()
     {

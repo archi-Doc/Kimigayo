@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class PatternBindingTest
 {
     [Theory]
@@ -229,20 +228,6 @@ public class PatternBindingTest
     }
 
     [Fact]
-    public void ProvisionalWarningsAreNotPublished()
-    {
-        var c = Parse("func f(x: i32) => match x\n    _ => ()\n    0 => ()");
-        c.Binding.Bind(BindingMode.Provisional);
-        c.Binding.ReportDiagnostics();
-        Assert.Empty(TestDiagnostics.Of(c));
-        Assert.True(c.Bind().IsComplete);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportDiagnostics();
-        Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-    }
-
-    [Fact]
     public void SharedAccessBindsAReferenceToTheCopyPayload()
     {
         // SPEC 15.1.6: a Place reached with shared access binds ref/T, also for a Copy T.
@@ -373,33 +358,6 @@ public class PatternBindingTest
         Assert.Equal(0, binding.ImplicitFollows);
     }
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmBindingAndFlowReusePatternStorage(int count)
-    {
-        var source = string.Join('\n', Enumerable.Range(0, count).Select(i => $"func matchExample{i}(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, _)) => n\n    .None => 0"));
-        var c = Parse(source);
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var match = Matches(c)[0];
-        Assert.True(c.Binding.TryGetMatch(match, out var plan));
-        var positions = plan!.Positions;
-        var symbol = positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol;
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
-        Assert.Empty(flow.PendingBinding);
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            flow.Reanalyze(c.Kotonoha.RootKoto);
-        }));
-        Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.True(c.Binding.TryGetMatch(match, out var rebound));
-        Assert.Same(plan, rebound);
-        Assert.Same(positions, rebound!.Positions);
-        Assert.Same(symbol, rebound.Positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol);
-    }
-
     private static Compilation Parse(string source, string target = "x86_64-pc-windows-msvc")
     {
         var c = Compilation.CreateForTest();
@@ -418,4 +376,50 @@ public class PatternBindingTest
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void ProvisionalWarningsAreNotPublished()
+        {
+            var c = Parse("func f(x: i32) => match x\n    _ => ()\n    0 => ()");
+            c.Binding.Bind(BindingMode.Provisional);
+            c.Binding.ReportDiagnostics();
+            Assert.Empty(TestDiagnostics.Of(c));
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.ReportDiagnostics();
+            c.Binding.ReportDiagnostics();
+            Assert.Single(TestDiagnostics.Of(c));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmBindingAndFlowReusePatternStorage(int count)
+        {
+            var source = string.Join('\n', Enumerable.Range(0, count).Select(i => $"func matchExample{i}(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, _)) => n\n    .None => 0"));
+            var c = Parse(source);
+            Assert.True(c.Bind().IsComplete, Describe(c));
+            var match = Matches(c)[0];
+            Assert.True(c.Binding.TryGetMatch(match, out var plan));
+            var positions = plan!.Positions;
+            var symbol = positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol;
+            var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+            Assert.Empty(flow.PendingBinding);
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                flow.Reanalyze(c.Kotonoha.RootKoto);
+            }));
+            Assert.True(c.Binding.Result.IsComplete, Describe(c));
+            Assert.True(c.Binding.TryGetMatch(match, out var rebound));
+            Assert.Same(plan, rebound);
+            Assert.Same(positions, rebound!.Positions);
+            Assert.Same(symbol, rebound.Positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol);
+        }
+    }
 }

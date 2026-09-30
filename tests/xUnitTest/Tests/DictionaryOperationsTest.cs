@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryOperationsTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void MilestonePrefixPreservesInputAndStoredEntryDestructionOrder()
     {
@@ -17,6 +18,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsMilestonePrefix", source[..end], 1, 1, 128, Output);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void InsertRejectReplaceLookupRemoveAndClearPreserveTheirResults()
     {
@@ -49,6 +51,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsScalar", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FullCapacityChurnReusesSlotsWithoutAllocations()
     {
@@ -76,6 +79,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsChurn", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SearchUsesStoredKeyAndReplacementRetainsIt()
     {
@@ -100,6 +104,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsDirection", Source, 1, 1, 128);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RemovalReinsertionAndClearKeepReverseInsertionCleanup()
     {
@@ -130,6 +135,7 @@ public class DictionaryOperationsTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void TupleKeyEqualityUsesTheContractIncludingNaNs()
     {
@@ -148,6 +154,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsTupleNaN", Source, 1, 1, 160);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void StringKeyTemporariesDoNotLimitTheReturnedValueBorrow()
     {

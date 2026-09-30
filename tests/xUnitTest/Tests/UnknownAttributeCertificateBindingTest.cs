@@ -75,6 +75,7 @@ public class UnknownAttributeCertificateBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInvalidAttributeBindingAllocatesNothing()
     {

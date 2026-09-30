@@ -119,6 +119,7 @@ public class StructEmissionTest
         Assert.Contains("{ i32 }", ir);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPassesPreserveStructPlans()
     {

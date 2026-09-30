@@ -85,6 +85,7 @@ public class BaseProjectionAccessBindingTest
         Assert.Equal(BindingFailure.Access, api.BindingFailure);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBaseAccessChecksAllocateNothing()
     {

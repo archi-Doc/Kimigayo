@@ -163,6 +163,7 @@ public class IteratorIndependenceTest
     public void IndependentCleanupAndAccessorsKeepEarlierItemsUsable()
         => ScalarEmissionTest.EmitFixture("AssociatedIteratorIndependentCleanup", CleanupProgram, "drop\ndrop\nindependent cleanup\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EffectCheckingReusesCallAndDestructionState()
     {

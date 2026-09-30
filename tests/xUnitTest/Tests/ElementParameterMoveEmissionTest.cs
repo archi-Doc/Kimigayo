@@ -186,6 +186,7 @@ public class ElementParameterMoveEmissionTest
     public void NonterminatingDeferPreventsRemainingDestructionAndReturnDelivery()
         => ScalarEmissionTest.EmitFixture("ElementParameterMoveDivergent", "func f(a: (string, string)) -> string\n    defer => loop => ()\n    return a.0@move\nConsole.writeLine(f((\"first\", \"last\")))", string.Empty, timeoutMilliseconds: 300);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmParameterMovesAllocateNothing()
     {

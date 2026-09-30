@@ -100,6 +100,7 @@ public class RuntimeTestFormationBindingTest
         Assert.Same(target, test.BoundRuntimeTest!.Value.TargetType);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFormationChecksAllocateNothing()
     {

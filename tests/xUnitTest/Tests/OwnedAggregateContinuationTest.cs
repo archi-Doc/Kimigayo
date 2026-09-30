@@ -103,6 +103,7 @@ public class OwnedAggregateContinuationTest
         StringEmissionTest.WriteAuditedFixture(Name, Source, ir, Output, "first=2;second=2;loopA=1;loopB=1;kept=1;dropped=1;none=0;n1=2;n2=2;n3=1");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadedOwnedPatternsReuseCheckingStorage()
     {

@@ -119,6 +119,7 @@ public class ReceiverShorthandTest
         Assert.Same(getter.Receiver, getter.Result);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmShorthandBindingAllocatesNothing()
     {

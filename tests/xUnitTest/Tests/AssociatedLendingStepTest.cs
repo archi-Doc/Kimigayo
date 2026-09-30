@@ -60,6 +60,7 @@ public class AssociatedLendingStepTest
         Assert.Empty(writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedLendingStepsReuseLoansAndAllocateNothing()
     {

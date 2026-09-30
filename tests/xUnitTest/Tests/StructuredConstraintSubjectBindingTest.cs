@@ -124,6 +124,7 @@ public class StructuredConstraintSubjectBindingTest
         Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmStructuredSubjectChecksAllocateNothing()
     {

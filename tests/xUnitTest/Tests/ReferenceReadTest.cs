@@ -60,6 +60,7 @@ public class ReferenceReadTest
         Assert.Single(c.Binding.Issues);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AggregateReferentReadsCopyTheCompleteValue()
     {

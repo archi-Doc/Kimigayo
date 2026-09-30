@@ -96,6 +96,7 @@ public class PatternTypeFormationBindingTest
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPatternFormationChecksAllocateNothing()
     {

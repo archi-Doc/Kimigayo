@@ -131,6 +131,7 @@ public class ProductTestMembershipTest
         Assert.False(compilation.Ownership.Result.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProductMembershipAllocatesNothing()
     {

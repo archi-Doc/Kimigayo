@@ -234,6 +234,7 @@ public class ConstraintBindingTest
         Assert.Equal(ConstraintKind.TypeIdentity, clause.BoundConstraint!.Kind);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConstraintPassesReusePropositionsAndFactStorage()
     {

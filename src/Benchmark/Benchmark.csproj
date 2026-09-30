@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kimi\Kimi.csproj" />
+    <Compile Include="..\..\tests\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
   </ItemGroup>
 
 </Project>

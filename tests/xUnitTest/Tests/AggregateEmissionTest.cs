@@ -46,6 +46,7 @@ public class AggregateEmissionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndEmissionAllocateNothing()
     {

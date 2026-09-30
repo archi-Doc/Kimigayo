@@ -198,6 +198,7 @@ public class ElementBorrowOwnerEmissionTest
     public void NonterminationCannotReleaseOrDeliverAnOwner(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowOwnerDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndOwnerBorrowEmissionAllocateNothing()
     {

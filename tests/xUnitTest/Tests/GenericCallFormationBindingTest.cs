@@ -93,6 +93,7 @@ public class GenericCallFormationBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericCallChecksAllocateNothing()
     {

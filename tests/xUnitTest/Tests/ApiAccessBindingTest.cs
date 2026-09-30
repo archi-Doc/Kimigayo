@@ -91,6 +91,7 @@ public class ApiAccessBindingTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmApiAccessChecksAllocateNothing()
     {

@@ -81,6 +81,7 @@ public class AssociatedRefinementCapabilityBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAssociatedRefinementProofsAllocateNothing()
     {

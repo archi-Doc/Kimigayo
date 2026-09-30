@@ -5,7 +5,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ScopedContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";

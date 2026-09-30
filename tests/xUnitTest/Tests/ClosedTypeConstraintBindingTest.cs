@@ -118,6 +118,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmClosedObligationChecksAllocateNothing()
     {

@@ -99,6 +99,7 @@ public class SignatureProjectionCertificateBindingTest
         Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSignatureProofsAllocateNothing()
     {

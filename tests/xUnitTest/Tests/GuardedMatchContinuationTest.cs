@@ -47,6 +47,7 @@ public class GuardedMatchContinuationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ManyFalseGuardsKeepACompactTargetHistory()
     {

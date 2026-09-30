@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedElementReadTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -26,6 +27,7 @@ public class SharedElementReadTest
         NativeAllocationAudit.WriteFixture("SharedElementCopy" + slice, source, 1, 1, 16);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -42,6 +44,7 @@ public class SharedElementReadTest
         NativeAllocationAudit.WriteFixture("SharedElementString" + slice, source, 1, 1, 96, "hello\nafter\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -59,6 +62,7 @@ public class SharedElementReadTest
         NativeAllocationAudit.WriteFixture("SharedElementReference" + exclusive, source, 1, 1, 32);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ImplicitBorrowsAtExpectedReferences()
     {

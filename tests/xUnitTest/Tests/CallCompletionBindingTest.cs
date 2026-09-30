@@ -78,6 +78,7 @@ public class CallCompletionBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCompletionChecksAllocateNothing()
     {

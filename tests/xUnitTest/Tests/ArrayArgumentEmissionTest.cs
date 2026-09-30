@@ -95,6 +95,7 @@ public class ArrayArgumentEmissionTest
         ScalarEmissionTest.EmitFixture("ArrayArgumentReload", Source, "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCandidateProbingAllocatesNothing()
     {

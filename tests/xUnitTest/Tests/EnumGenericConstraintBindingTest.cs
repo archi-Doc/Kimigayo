@@ -78,6 +78,7 @@ public class EnumGenericConstraintBindingTest
         Assert.Same(initial, restored);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNestedEnumChecksAllocateNothing()
     {

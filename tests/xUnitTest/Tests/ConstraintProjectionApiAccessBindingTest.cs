@@ -165,6 +165,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Assert.Equal(BindingFailure.Access, clause.BindingFailure);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConstraintProjectionChecksAllocateNothing()
     {

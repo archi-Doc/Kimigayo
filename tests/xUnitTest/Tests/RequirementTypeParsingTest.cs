@@ -136,6 +136,7 @@ public class RequirementTypeParsingTest
         Assert.False(MinimalEmissionTest.Analyze(source).Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTupleAndConstructedProjectionBindingAllocatesNothing()
     {

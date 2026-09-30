@@ -69,6 +69,7 @@ public class ConstraintContextBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmContextProofsAllocateNothing()
     {

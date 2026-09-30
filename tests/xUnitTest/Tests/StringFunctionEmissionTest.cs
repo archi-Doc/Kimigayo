@@ -217,6 +217,7 @@ public class StringFunctionEmissionTest
         Assert.Contains("(ptr %ret, ptr %a0, ptr %a2)", writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmStringFunctionPreparationAndWritingAllocateNothing()
     {

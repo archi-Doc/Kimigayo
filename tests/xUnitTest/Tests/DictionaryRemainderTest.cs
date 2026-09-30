@@ -176,6 +176,7 @@ public class DictionaryRemainderTest
 
     // Warm analysis and emission of an exclusive Dictionary loop through the Kimigayo entry allocate nothing (the shared and
     // owning loops are covered by DictionaryCostTest).
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]
@@ -207,6 +208,7 @@ public class DictionaryRemainderTest
     }
 
     // The owning remainder releases the transferred buffer exactly once, including after a partial enumeration.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void OwningIterationReleasesTheBufferOnce()
         => NativeAllocationAudit.WriteFixture(

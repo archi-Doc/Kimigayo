@@ -6,10 +6,12 @@ namespace XunitTest;
 
 public class AllocationMeasurementTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void DetectsAllocatingWork()
         => Assert.True(AllocationMeasurement.Measure(() => GC.KeepAlive(new byte[128])) >= 128 * 8);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void PropagatesWorkerFailure()
     {

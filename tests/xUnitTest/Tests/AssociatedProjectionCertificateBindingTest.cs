@@ -98,6 +98,7 @@ public class AssociatedProjectionCertificateBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAssociatedProofsAllocateNothing()
     {

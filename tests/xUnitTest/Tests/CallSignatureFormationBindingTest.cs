@@ -80,6 +80,7 @@ public class CallSignatureFormationBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSignatureChecksAllocateNothing()
     {

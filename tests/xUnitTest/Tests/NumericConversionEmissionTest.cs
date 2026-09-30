@@ -177,6 +177,7 @@ public class NumericConversionEmissionTest
         ScalarEmissionTest.WriteFixture("NumericConvertReload" + name, writer.ToString(), "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNumericAnalysisAndWritingAllocateNothing()
     {

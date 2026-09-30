@@ -84,6 +84,7 @@ public class PropertyCompletionBindingTest
         Assert.True(property.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPropertyCompletionAllocatesNothing()
     {

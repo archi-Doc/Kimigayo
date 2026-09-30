@@ -190,6 +190,7 @@ public class StringEmissionTest
         Assert.DoesNotContain("willreturn", ir);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmStringAnalysisAndWritingAllocateNothing()
     {

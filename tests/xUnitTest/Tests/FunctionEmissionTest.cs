@@ -202,6 +202,7 @@ public class FunctionEmissionTest
         Assert.NotSame(abi, pool.Get(0, Assert.Single(changed.Ownership.Bodies, x => !x.Function.IsGenerated).Function));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

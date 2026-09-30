@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class EnumOwnershipTest
 {
     [Theory]
@@ -265,33 +264,6 @@ public class EnumOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
     }
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmEnumAnalysisReusesStateAndPlans(int count)
-    {
-        var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
-        var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var body = Body(c, "use");
-        var plans = body.Constructions;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        }));
-        Assert.Same(body, Body(c, "use"));
-        Assert.Same(plans, body.Constructions);
-        Assert.Equal(count * 2, plans.Count);
-        c.Bind();
-        Assert.False(body.IsVerified);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        Assert.Equal(count * 2, body.Constructions.Count);
-    }
-
     private static void CheckConstruction(string declarations, string type, string expression, int count)
     {
         var c = Parse(declarations + $"let x: {type} = {expression}");
@@ -339,4 +311,36 @@ public class EnumOwnershipTest
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmEnumAnalysisReusesStateAndPlans(int count)
+        {
+            var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
+            var c = Parse(source);
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            var body = Body(c, "use");
+            var plans = body.Constructions;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            }));
+            Assert.Same(body, Body(c, "use"));
+            Assert.Same(plans, body.Constructions);
+            Assert.Equal(count * 2, plans.Count);
+            c.Bind();
+            Assert.False(body.IsVerified);
+            Assert.False(c.Ownership.Result.IsVerified);
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.Equal(count * 2, body.Constructions.Count);
+        }
+    }
 }

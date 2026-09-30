@@ -452,6 +452,7 @@ public class InheritedReceiverBindingTest
         Assert.Same(Call(c).BoundCall!.DeclaringType, Call(c).BoundCall!.BasePath!.Type);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

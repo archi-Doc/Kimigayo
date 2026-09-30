@@ -76,6 +76,7 @@ public class BaseInputFormationBindingTest
         Assert.True(definition.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBaseInputChecksAllocateNothing()
     {

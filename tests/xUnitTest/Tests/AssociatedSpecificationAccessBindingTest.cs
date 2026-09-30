@@ -89,6 +89,7 @@ public class AssociatedSpecificationAccessBindingTest
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSpecificationChecksAllocateNothing()
     {

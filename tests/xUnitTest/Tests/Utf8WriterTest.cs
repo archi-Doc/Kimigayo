@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class Utf8WriterTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar destination = Text.fixed(bytes@uniq)")]
     [InlineData("Heap", "var destination = Text.heap(0)")]
@@ -14,6 +15,7 @@ public class Utf8WriterTest
     public void CreatingAnAdapterDoesNotAllocateOrReserve(string name, string source)
         => NativeAllocationAudit.WriteFixture("Utf8WriterCreate" + name, source + "\nlet writer = Text.writer(destination@uniq)\nmatch writer.status()@move\n    .Ok(_) => ()\n    .Err(_) => $abort(\"initial status\")", 0, 0, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericFactoryUsesConcreteStandardDispatch()
     {

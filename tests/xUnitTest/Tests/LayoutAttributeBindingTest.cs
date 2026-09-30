@@ -169,6 +169,7 @@ public class LayoutAttributeBindingTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmLayoutBindingAllocatesNothing()
     {

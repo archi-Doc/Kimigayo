@@ -9,6 +9,7 @@ public class Utf8ConversionTest
 {
     private const string User = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"word\")\n";
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Integer", "123", "123", 1, 11)]
     [InlineData("Wide", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455", 1, 39)]
@@ -22,6 +23,7 @@ public class Utf8ConversionTest
     public void OwningBuiltinConversionAllocatesAtMostOnce(string name, string value, string expected, int allocations, int bytes)
         => NativeAllocationAudit.WriteFixture("Utf8Conversion" + name, "Console.writeLine(Text.toString(" + value + "))", allocations, allocations, bytes, expected + "\n");
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Builtin", "", "123", "123", 11)]
     [InlineData("User", User, "Value.init()", "word", 4)]
@@ -31,6 +33,7 @@ public class Utf8ConversionTest
         NativeAllocationAudit.WriteFixture("Utf8ConversionGeneric" + name, source, 1, 1, bytes, expected + "\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Integer", "", "123", 3, "123")]
     [InlineData("Empty", "", "\"\"", 0, "")]
@@ -42,6 +45,7 @@ public class Utf8ConversionTest
         NativeAllocationAudit.WriteFixture("Utf8ConversionFixed" + name, source, 0, 0, 0, expected + "\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FixedFailureLeavesOnlyTheCompletedPrefix()
     {
@@ -75,6 +79,7 @@ public class Utf8ConversionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void StringCopyHasIndependentHeapStorage()
     {

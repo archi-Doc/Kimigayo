@@ -94,6 +94,7 @@ public class UnresolvedCapabilityProofBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(bound, function));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPendingCapabilityQueriesAllocateNothing()
     {

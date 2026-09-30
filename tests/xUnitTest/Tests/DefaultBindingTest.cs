@@ -64,6 +64,7 @@ public class DefaultBindingTest
         Assert.True(flow.Nodes[function].CanCompleteNormally);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDefaultFlowAnalysisReusesStorage()
     {
@@ -216,6 +217,7 @@ public class DefaultBindingTest
         Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 1), restoredPlan.DefaultArguments[0].Parameter);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOmittedDefaultPlansReuseTheirStorage()
     {
@@ -302,6 +304,7 @@ public class DefaultBindingTest
         Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 0), restoredFunction.Parameters[1].DefaultValue!.BoundSymbol);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDefaultBindingAllocatesNothing()
     {

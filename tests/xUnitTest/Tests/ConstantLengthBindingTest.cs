@@ -129,6 +129,7 @@ public class ConstantLengthBindingTest
         Assert.NotSame(oldType, array.BoundType);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmRebindingPreserveConstantLengths()
     {

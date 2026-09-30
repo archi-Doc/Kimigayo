@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedGuardTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SelectedCopyBindingHasItsOwnStorageOrigin()
     {
@@ -26,6 +27,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardBodyStorageOrigin", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSharedGuardAnalysisAndEmissionAllocateNothing()
     {
@@ -46,6 +48,7 @@ public class SharedGuardTest
         }));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CompleteCopyCandidatesSupportFieldsAndBorrowedCalls()
     {
@@ -64,6 +67,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardCopyAggregate", Source, 0, 0, 0, "hello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AStoredReferenceCopyRetainsItsExternalOriginWhenReturnedFromAGuard()
     {
@@ -80,6 +84,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardStoredReference", Source, 0, 0, 0, "hello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CheckingReadsAfterATerminalGuardHaveFreshProtection()
     {
@@ -100,6 +105,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardCheckingRead", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -121,6 +127,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardComposite" + shared, source, 1, 1, 5, "cleanup\nhello\ndone\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WholeReferenceAndScalarLiteralCandidatesCanGuard()
     {

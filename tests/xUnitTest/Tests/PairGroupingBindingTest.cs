@@ -129,6 +129,7 @@ public class PairGroupingBindingTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGroupedPairBindingAllocatesNothing()
     {

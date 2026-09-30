@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class NeverContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
@@ -185,34 +184,39 @@ public class NeverContinuationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
-    [Theory]
-    [InlineData("stop()")]
-    [InlineData("loop => continue")]
-    [InlineData("value(stop())")]
-    [InlineData("value(stop()) + 1")]
-    [InlineData("do => loop => continue")]
-    [InlineData("do => stop()")]
-    [InlineData("(label scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope x\n)")]
-    public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
-    {
-        var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        var allocated = AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        });
-        Assert.Equal(0, allocated);
-        Assert.True(c.Ownership.Result.IsVerified);
-    }
-
 #if DEBUG
     private const string Configuration = "Debug";
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("stop()")]
+        [InlineData("loop => continue")]
+        [InlineData("value(stop())")]
+        [InlineData("value(stop()) + 1")]
+        [InlineData("do => loop => continue")]
+        [InlineData("do => stop()")]
+        [InlineData("(label scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope x\n)")]
+        public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
+        {
+            var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            var allocated = AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            });
+            Assert.Equal(0, allocated);
+            Assert.True(c.Ownership.Result.IsVerified);
+        }
+    }
 }

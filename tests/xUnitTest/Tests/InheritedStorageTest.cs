@@ -22,6 +22,7 @@ public class InheritedStorageTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BaseConstructionPrecedesOwnInitializersAndDestructionFollowsOwnFields()
     {
@@ -96,6 +97,7 @@ public class InheritedStorageTest
         ScalarEmissionTest.EmitFixture("InheritedStorageZero", Source, "base\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void MovingEveryOwnFieldStillDestroysTheCompleteBaseRemainder()
     {
@@ -118,6 +120,7 @@ public class InheritedStorageTest
         NativeAllocationAudit.WriteFixture("InheritedStoragePartial", Source, 0, 0, 0, "own\nbase\nbase\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void DynamicTypeTestsUseTheVerifiedBaseMapAndDestroyTheCompletePayload()
     {

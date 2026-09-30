@@ -184,6 +184,7 @@ public class StringComparisonEmissionTest
         ScalarEmissionTest.WriteFixture("StringComparisonHelpers", ir, "ok\n", 0, string.Empty);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

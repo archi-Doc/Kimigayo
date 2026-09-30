@@ -262,6 +262,7 @@ public class AggregateFunctionEmissionTest
         GC.KeepAlive(layouts);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBorrowedAndAggregateFunctionPreparationAllocatesNothing()
     {

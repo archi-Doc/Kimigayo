@@ -142,6 +142,7 @@ public class ParameterNameDefaultTest
         Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmBindingPreserveIndependentFlags()
     {
@@ -191,6 +192,7 @@ public class ParameterNameDefaultTest
         ScalarEmissionTest.EmitFixture("ParameterNameOmittedAbort", Source, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOwnershipAndEmissionReuseDefaultStorage()
     {

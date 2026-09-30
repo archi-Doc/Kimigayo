@@ -106,6 +106,7 @@ public class AssociatedSubjectConstraintBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

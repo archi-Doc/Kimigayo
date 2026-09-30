@@ -353,6 +353,7 @@ public class ConditionalConformanceBindingTest
         Assert.Same(path, Assert.Single(identity.Paths));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

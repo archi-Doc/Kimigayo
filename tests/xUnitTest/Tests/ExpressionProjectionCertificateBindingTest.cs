@@ -71,6 +71,7 @@ public class ExpressionProjectionCertificateBindingTest
         AssertCertificate(c, runtime, true);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmWitnessChecksAllocateNothing()
     {

@@ -8,6 +8,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--verification")
+        {
+            VerificationMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--lsp")
         {
             LspMeasurements.Run();

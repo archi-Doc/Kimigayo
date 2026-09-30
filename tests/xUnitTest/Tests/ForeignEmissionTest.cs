@@ -507,6 +507,7 @@ public class ForeignEmissionTest
         Assert.DoesNotContain("load i1,", ir);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("func update(p: unsafe/bool, n: unsafe/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
     [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: unsafe/R) -> R\n    unsafe => return *p\npublic func main() => ()")]

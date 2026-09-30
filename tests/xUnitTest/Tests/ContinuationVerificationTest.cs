@@ -1,14 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
-using System.Text;
 using Kimi.Compiler;
 using Tinyhand;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ContinuationVerificationTest
 {
     [Theory]
@@ -80,36 +78,6 @@ public class ContinuationVerificationTest
         ScalarEmissionTest.EmitFixture("VerificationContinuation" + Configuration + "SelectionCopy", Source, string.Empty);
     }
 
-    [Fact]
-    public void ReloadAndWarmAnalysisPreserveGuardHistories()
-    {
-        var c = MinimalEmissionTest.Analyze(MixedSource + "\nf(true)");
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            if (!c.Ownership.Analyze().IsVerified)
-            {
-                throw new InvalidOperationException("Reloaded guard verification failed.");
-            }
-        }));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            if (!c.Emission.WriteIr(TextWriter.Null, out _))
-            {
-                throw new InvalidOperationException("Reloaded guard emission failed.");
-            }
-        }));
-    }
-
     [Theory]
     [InlineData("Array", "[2 of i32]", "[2, 3]", "value[1]", "")]
     [InlineData("OwnedTuple", "(i32, string)", "(3, \"payload\")", "value.0", "payload=1")]
@@ -148,51 +116,6 @@ public class ContinuationVerificationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 
-    [Fact]
-    public void RetainedHistoriesGrowWithGuardCountAndReuseTheirCapacity()
-    {
-        var results = new List<object>();
-        var previous = 0;
-        foreach (var count in new[] { 4, 16, 64 })
-        {
-            var arms = new StringBuilder();
-            for (var i = 0; i < count; i++)
-            {
-                arms.Append("true if check(x = 2, c) => return\n                ");
-            }
-
-            var source = "func check(effect: (), value: bool) -> bool => value\nfunc stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            match c\n                " + arms + "_ => x = 3\n            x = 4\n        stop()\n    let y = x\nf(true)";
-            var c = MinimalEmissionTest.Analyze(source);
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-            var retained = c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count);
-            if (previous != 0)
-            {
-                Assert.InRange(retained, previous, previous * 5);
-            }
-
-            previous = retained;
-            for (var i = 0; i < 8; i++)
-            {
-                Assert.True(c.Ownership.Analyze().IsVerified);
-            }
-
-            var allocated = AllocationMeasurement.Measure(() => Assert.True(c.Ownership.Analyze().IsVerified));
-            Assert.Equal(0, allocated);
-            Assert.Equal(retained, c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count));
-            var start = Stopwatch.GetTimestamp();
-            for (var i = 0; i < 64; i++)
-            {
-                Assert.True(c.Ownership.Analyze().IsVerified);
-            }
-
-            results.Add(new { Guards = count, RetainedRecords = retained, AllocatedBytes = allocated, AnalysisIterations = 64, ElapsedSeconds = Stopwatch.GetElapsedTime(start).TotalSeconds });
-        }
-
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/benchmarks/continuation-verification"));
-        Directory.CreateDirectory(path);
-        File.WriteAllText(Path.Combine(path, Configuration + "-growth.json"), System.Text.Json.JsonSerializer.Serialize(results));
-    }
-
     private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            label choice: match \"subject\"\n                let text if (label guard: do\n                    x += 1\n                    exit to guard same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)@move\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
 
 #if DEBUG
@@ -200,4 +123,66 @@ public class ContinuationVerificationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void ReloadAndWarmAnalysisPreserveGuardHistories()
+        {
+            var c = MinimalEmissionTest.Analyze(MixedSource + "\nf(true)");
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            for (var i = 0; i < 8; i++)
+            {
+                Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            }
+
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                if (!c.Ownership.Analyze().IsVerified)
+                {
+                    throw new InvalidOperationException("Reloaded guard verification failed.");
+                }
+            }));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                if (!c.Emission.WriteIr(TextWriter.Null, out _))
+                {
+                    throw new InvalidOperationException("Reloaded guard emission failed.");
+                }
+            }));
+        }
+
+        [Fact]
+        public void RetainedHistoriesGrowWithGuardCountAndReuseTheirCapacity()
+        {
+            var previous = 0;
+            foreach (var count in new[] { 4, 16, 64 })
+            {
+                var source = VerificationWorkloads.GuardHistories(count);
+                var c = MinimalEmissionTest.Analyze(source);
+                Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+                var retained = c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count);
+                if (previous != 0)
+                {
+                    Assert.InRange(retained, previous, previous * 5);
+                }
+
+                previous = retained;
+                for (var i = 0; i < 8; i++)
+                {
+                    Assert.True(c.Ownership.Analyze().IsVerified);
+                }
+
+                var allocated = AllocationMeasurement.Measure(() => Assert.True(c.Ownership.Analyze().IsVerified));
+                Assert.Equal(0, allocated);
+                Assert.Equal(retained, c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count));
+            }
+        }
+    }
 }

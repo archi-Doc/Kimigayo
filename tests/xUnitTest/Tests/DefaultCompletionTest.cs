@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class DefaultCompletionTest
 {
     [Theory]
@@ -82,18 +81,6 @@ public class DefaultCompletionTest
         Assert.False(c.Ownership.Analyze().IsVerified);
     }
 
-    [Fact]
-    public void WarmDefaultFlowReanalysisAllocatesNothing()
-    {
-        var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
-        Assert.Empty(flow.Issues);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        Assert.Single(flow.Nodes, x => x.Key is InvocationKoto && !x.Value.CanCompleteNormally);
-    }
-
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();
@@ -108,4 +95,21 @@ public class DefaultCompletionTest
 #else
     private const string Prefix = "DefaultCompletionRelease";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void WarmDefaultFlowReanalysisAllocatesNothing()
+        {
+            var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
+            var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+            Assert.Empty(flow.Issues);
+            Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
+            Assert.Empty(flow.Issues);
+            Assert.Empty(flow.PendingBinding);
+            Assert.Single(flow.Nodes, x => x.Key is InvocationKoto && !x.Value.CanCompleteNormally);
+        }
+    }
 }

@@ -105,6 +105,7 @@ public class FunctionParameterIdentityBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCanonicalParameterListsAllocateNothing()
     {

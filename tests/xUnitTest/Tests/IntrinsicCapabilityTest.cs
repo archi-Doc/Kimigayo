@@ -397,6 +397,7 @@ public class IntrinsicCapabilityTest
         Assert.Same(core, c.Library.Copy);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

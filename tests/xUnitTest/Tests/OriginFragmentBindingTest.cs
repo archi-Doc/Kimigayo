@@ -100,6 +100,7 @@ public class OriginFragmentBindingTest
         Assert.NotSame(declarations[0].BoundSymbol!.Schema!.Origins[0].Origin, declarations[1].BoundSymbol!.Schema!.Origins[0].Origin);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFragmentBindingAllocatesNothing()
     {

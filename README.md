@@ -262,7 +262,7 @@ It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes t
 `artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled.
 Both build scripts resolve paths from their own location and stop on command failures.
 
-Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. Use the verification script for changes; a direct `dotnet build` is not verification evidence.
+Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. During edits, use an incremental test-project build and selected methods for feedback. Use the verification script at Unit completion; a direct `dotnet build` is not completion evidence. Unit builds Kimi + tests, while Session builds the whole solution. See [the verification workflow](docs/dev/VERIFICATION.md) for commands and the three test purposes.
 
 ```powershell
 # Focused verification for one change.
@@ -282,6 +282,8 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 Milestones use only original checked-in programs, building and directly executing each once at O0 and O2. Dedicated feature tests cover variants/rejections; CLI tests cover `run` and `--no-build`. Toolchain identity is checked at setup/update or by `kimi toolchain verify` (`--Report <path>` saves evidence). Add `-VerifyToolchain` to run it once before tests; ordinary verification records it as not performed.
 
 Both modes default to Release and use one compiler configuration for the build, tests, fixtures and milestone harnesses. Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain and retain O0/O2 coverage regardless of the compiler configuration. NativeAOT tests are separate and are not run by these commands.
+
+Functional and allocation/reuse regressions both run in every Session. Unit defaults to both; `-TestPurpose Functional` or `Allocation` narrows a focused check. Timing measurements live in Benchmark and run explicitly. Native fixtures run up to four at a time (`-NativeParallel 1` for serial execution), retaining per-fixture logs and completed O0/O2 results.
 
 LSP tests require directory-listing access from the OS temporary directory through every
 ancestor to the filesystem root: project discovery must distinguish an unreadable directory

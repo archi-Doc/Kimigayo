@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class LocalLoopContinuationTest
 {
     private const string Loop = "loop\n    var n = 1\n    n = 2\n";
@@ -48,25 +47,6 @@ public class LocalLoopContinuationTest
     }
 
     [Theory]
-    [InlineData(Loop)]
-    [InlineData("loop\n    var n = 1\n    if x == 1 => n += 1 else => n = 3\n    while n < 4\n        n++\n")]
-    [InlineData("loop\n    var n = label work: do\n        exit to work 1\n    n += 1\n")]
-    public void ReloadAndWarmProofReuseAllocateNothing(string loop)
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
-    [Theory]
     [InlineData("var n: i32\n    let y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let n = 1\n    n = 2", OwnershipFailure.ReassignedLet)]
     public void LoopLocalUsesStillRequireOrdinaryOwnershipChecks(string body, OwnershipFailure failure)
@@ -82,4 +62,28 @@ public class LocalLoopContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(Loop)]
+        [InlineData("loop\n    var n = 1\n    if x == 1 => n += 1 else => n = 3\n    while n < 4\n        n++\n")]
+        [InlineData("loop\n    var n = label work: do\n        exit to work 1\n    n += 1\n")]
+        public void ReloadAndWarmProofReuseAllocateNothing(string loop)
+        {
+            var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

@@ -103,6 +103,7 @@ public class UnresolvedConstraintBindingTest
         Assert.Equal(new[] { "Missing", "Other" }, diagnostics.OrderBy(x => x.Span.Start).Select(x => x.Text));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMissingConformanceBindingReusesDiagnosticCauseStorage()
     {
@@ -247,6 +248,7 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMissingNamePassesAllocateNothing()
     {

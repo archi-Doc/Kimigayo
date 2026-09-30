@@ -92,6 +92,7 @@ public class ArrayInferenceEmissionTest
         ScalarEmissionTest.WriteFixture("ArrayInferenceReload", writer.ToString(), "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmArrayInferenceAllocatesNothing()
     {

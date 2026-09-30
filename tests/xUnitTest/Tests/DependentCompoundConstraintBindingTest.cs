@@ -136,6 +136,7 @@ public class DependentCompoundConstraintBindingTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCompoundInputsAllocateNothing()
     {

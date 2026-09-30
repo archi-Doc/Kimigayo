@@ -114,6 +114,7 @@ public class ConditionalPremiseAccessBindingTest
         Assert.False(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConditionalAccessChecksAllocateNothing()
     {

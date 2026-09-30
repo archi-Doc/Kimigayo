@@ -157,6 +157,7 @@ public class ConversionEmissionTest
         Assert.DoesNotContain(" = add i32", writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConversionAnalysisAndWritingAllocateNothing()
     {
@@ -179,6 +180,7 @@ public class ConversionEmissionTest
         Assert.True(valid);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void OperandInferenceIsIndependentAndRebindingResetsClassification()
     {

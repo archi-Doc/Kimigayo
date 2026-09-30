@@ -77,6 +77,7 @@ public class ProvisionalContractPremiseBindingTest
         Assert.Equal(requirement == "not Copy" ? ConstraintProof.Refuted : ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProvenanceRevalidationAllocatesNothing()
     {

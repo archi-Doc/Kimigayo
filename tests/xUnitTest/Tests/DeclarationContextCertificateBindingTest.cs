@@ -91,6 +91,7 @@ public class DeclarationContextCertificateBindingTest
         Assert.False(Assert.IsType<PropertyKoto>(outer.Members.Single()).BoundSymbol!.Property!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmContextChecksAllocateNothing()
     {

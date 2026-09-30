@@ -213,6 +213,7 @@ public class ModuleBindingTest
         Assert.False(compilation.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmModuleBindingAndOwnershipAllocateNothing()
     {

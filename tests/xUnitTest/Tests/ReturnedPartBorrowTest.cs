@@ -40,6 +40,7 @@ public class ReturnedPartBorrowTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReanalysisReusesBorrowStorage()
     {

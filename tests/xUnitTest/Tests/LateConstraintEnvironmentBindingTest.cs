@@ -78,6 +78,7 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(c, false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEnvironmentRevalidationAllocatesNothing()
     {

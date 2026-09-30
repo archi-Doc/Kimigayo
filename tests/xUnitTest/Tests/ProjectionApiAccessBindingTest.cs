@@ -117,6 +117,7 @@ public class ProjectionApiAccessBindingTest
         Assert.Equal(BindingFailure.Access, function.BindingFailure);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProjectionApiChecksAllocateNothing()
     {

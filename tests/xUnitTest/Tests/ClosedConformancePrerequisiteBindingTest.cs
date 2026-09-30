@@ -50,6 +50,7 @@ public class ClosedConformancePrerequisiteBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFinitePrerequisiteVerificationAllocatesNothing()
     {

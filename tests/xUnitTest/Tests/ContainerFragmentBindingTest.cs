@@ -103,6 +103,7 @@ public class ContainerFragmentBindingTest
         Assert.Contains(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Duplicate);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMergedBindingAllocatesNothing()
     {

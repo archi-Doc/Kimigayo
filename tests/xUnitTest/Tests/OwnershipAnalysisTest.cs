@@ -7,8 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-// Keep the large retained-state workloads separate from other allocation measurements.
-[TestClass(DisableParallelization = true)]
 public class OwnershipAnalysisTest
 {
     [Theory]
@@ -228,41 +226,6 @@ public class OwnershipAnalysisTest
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmBindingAndBothAnalysesReuseStorage(int count)
-    {
-        var source = new System.Text.StringBuilder("func f(c: bool)\n");
-        for (var i = 0; i < count; i++)
-        {
-            source.Append("    var s").Append(i).Append(" = \"a\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n");
-        }
-
-        var c = Parse(source.ToString());
-        for (var i = 0; i < 8; i++)
-        {
-            c.Bind();
-            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        }
-
-        var phases = new long[16];
-        var phase = 0;
-        var allocated = AllocationMeasurement.Measure(
-            () =>
-            {
-                var before = GC.GetAllocatedBytesForCurrentThread();
-                c.Bind();
-                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
-                before = GC.GetAllocatedBytesForCurrentThread();
-                c.Ownership.Analyze();
-                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
-            },
-            4);
-        Assert.True(allocated == 0, $"Allocated {allocated}; warm and measured Binding/Ownership phases: {string.Join(',', phases)}");
-    }
-
-    [Theory]
     [InlineData("let x: i32\nx = 1", true)]
     [InlineData("let x = 1\nx = 2", false)]
     [InlineData("let s: string\nConsole.writeLine(s)", false)]
@@ -363,4 +326,44 @@ public class OwnershipAnalysisTest
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} {x.Source.GetType().Name} {x.Source.BoundType?.Kind}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmBindingAndBothAnalysesReuseStorage(int count)
+        {
+            var source = new System.Text.StringBuilder("func f(c: bool)\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    var s").Append(i).Append(" = \"a\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n");
+            }
+
+            var c = Parse(source.ToString());
+            for (var i = 0; i < 8; i++)
+            {
+                c.Bind();
+                Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            }
+
+            var phases = new long[16];
+            var phase = 0;
+            var allocated = AllocationMeasurement.Measure(
+                () =>
+                {
+                    var before = GC.GetAllocatedBytesForCurrentThread();
+                    c.Bind();
+                    phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                    before = GC.GetAllocatedBytesForCurrentThread();
+                    c.Ownership.Analyze();
+                    phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                },
+                4);
+            Assert.True(allocated == 0, $"Allocated {allocated}; warm and measured Binding/Ownership phases: {string.Join(',', phases)}");
+        }
+    }
 }

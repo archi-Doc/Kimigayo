@@ -72,6 +72,7 @@ public class GuardEmissionTest
         Assert.Contains(module.GetFunction(0).Slots, x => x.Place == body.Matches[0].Subject);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndWritingAllocateNothing()
     {
@@ -161,6 +162,7 @@ public class GuardEmissionTest
         Assert.True(c.Emission.Validate(out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingReusesDistinctCandidateIdentity()
     {

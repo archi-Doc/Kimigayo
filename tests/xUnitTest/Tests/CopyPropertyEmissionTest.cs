@@ -20,6 +20,7 @@ public class CopyPropertyEmissionTest
     public void CompoundRightSideCanInspectReceiverAfterGetterReturns()
         => ScalarEmissionTest.EmitFixture("CopyPropertyCompoundInspect", Meter + "var m = Meter.init()\nm.level += m.level\nrequire m.level == 6 else => $abort(\"value\")", "get\nget\nset\nget\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCopyAccessorPipelineAllocatesNothing()
     {

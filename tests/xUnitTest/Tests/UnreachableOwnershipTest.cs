@@ -8,7 +8,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class UnreachableOwnershipTest
 {
     [Theory]
@@ -135,33 +134,6 @@ public class UnreachableOwnershipTest
         Assert.Single(TestDiagnostics.Of(c));
     }
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmCheckingAndBindingAllocateNothing(int count)
-    {
-        var source = new StringBuilder("func f(c: bool)\n    return\n");
-        for (var i = 0; i < count; i++)
-        {
-            source.Append("    var s").Append(i).Append(" = \"s\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n    return\n");
-        }
-
-        var c = Parse(source.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
-        var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
-        var combinedBytes = AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        });
-        Assert.True(
-            bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
-            $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-        Assert.True(c.Ownership.Result.IsVerified, Describe(c));
-    }
-
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();
@@ -175,4 +147,36 @@ public class UnreachableOwnershipTest
     private static string Describe(Compilation c)
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
             string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(x => x.Message));
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmCheckingAndBindingAllocateNothing(int count)
+        {
+            var source = new StringBuilder("func f(c: bool)\n    return\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    var s").Append(i).Append(" = \"s\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n    return\n");
+            }
+
+            var c = Parse(source.ToString());
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
+            var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            var combinedBytes = AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            });
+            Assert.True(
+                bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
+                $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
+            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+        }
+    }
 }

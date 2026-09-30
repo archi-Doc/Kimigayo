@@ -66,6 +66,7 @@ public class FunctionApiCertificateBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmApiCertificateChecksAllocateNothing()
     {

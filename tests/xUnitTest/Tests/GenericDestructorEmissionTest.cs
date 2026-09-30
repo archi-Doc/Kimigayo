@@ -159,6 +159,7 @@ public class GenericDestructorEmissionTest
         ScalarEmissionTest.EmitFixture("GenericDestructorDeferredFormatting", source, "defer 11\nchild 3\nbody 12\ndefer 12\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {

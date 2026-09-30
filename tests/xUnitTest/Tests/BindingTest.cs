@@ -240,6 +240,7 @@ public class BindingTest
         Assert.Equal(KotoTree.Walk(compilation.Kotonoha.RootKoto), visitor.Nodes);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingReusesScratchAndDoesNotAllocatePerNode()
     {

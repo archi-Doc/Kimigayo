@@ -120,6 +120,7 @@ public class ClosedContractConstraintBindingTest
         Assert.True(c.Binding.GetConformanceDefinition(implementation.BoundType!, contract.BoundSymbol!)!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmClosedContractChecksAllocateNothing()
     {

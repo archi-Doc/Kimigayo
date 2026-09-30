@@ -6,6 +6,7 @@ namespace XunitTest;
 
 public class Utf8FormatTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("I8Min", "-128@i8", "-128")]
     [InlineData("U8Max", "255@u8", "255")]
@@ -31,6 +32,7 @@ public class Utf8FormatTest
     public void BuiltinFixedWritesHaveNoHeapAllocation(string name, string value, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8Format" + name, Program("try (writer@uniq).write(" + value + ")"), 0, 0, 0, expected + "\n");
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Number", "(123).format(writer@uniq)", "123")]
     [InlineData("String", "\"abc\".format(writer@uniq)", "abc")]
@@ -38,6 +40,7 @@ public class Utf8FormatTest
     public void DirectFormatCallsUseTheSameEncoder(string name, string expression, string expected)
         => NativeAllocationAudit.WriteFixture("Utf8FormatDirect" + name, Program("try " + expression), 0, 0, 0, expected + "\n");
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Integer", "123", "123")]
     [InlineData("String", "\"abc\"", "abc")]
@@ -54,6 +57,7 @@ public class Utf8FormatTest
         NativeAllocationAudit.WriteFixture("Utf8FormatRequirement" + name, Prefix + "\n" + Program("try Helpers.append(" + value + ", writer@uniq)"), 0, 0, 0, expected + "\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FailureIsStickyIncludingEmptyWrites()
     {

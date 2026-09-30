@@ -104,6 +104,7 @@ public class GenericTypeArgumentBindingTest
         Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNestedTypeArgumentBindingAllocatesNothing()
     {

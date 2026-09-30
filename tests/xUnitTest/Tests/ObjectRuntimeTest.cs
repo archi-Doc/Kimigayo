@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class ObjectRuntimeTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ExplicitBaseViewsPreserveTheOriginalOwnerAndCompleteDestruction()
     {
@@ -98,6 +99,7 @@ public class ObjectRuntimeTest
         Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void PayloadExchangePreservesRuntimeIdentityAndReleasesOneOriginalAllocation()
     {
@@ -128,6 +130,7 @@ public class ObjectRuntimeTest
         NativeAllocationAudit.WriteFixture("ObjectRuntimeExchange", Source, 1, 1, 20, "old\nnew\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EqualLayoutsAndDistinctInstantiationsRetainDifferentTypeIdentities()
     {
@@ -143,6 +146,7 @@ public class ObjectRuntimeTest
         NativeAllocationAudit.WriteFixture("ObjectRuntimeIdentity", Source, 2, 2, 32);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CallResultsAreEvaluatedOnceAndTemporaryOwnersAreDestroyed()
     {

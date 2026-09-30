@@ -24,14 +24,17 @@ public class SliceCostTest
         "    i += 1\n" +
         "require total == 51200 else => $abort(\"total\")";
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FixedArraySliceOperationsAllocateNothing()
         => NativeAllocationAudit.WriteFixture("SliceCostFixed", "let values: [4 of i32] = [10, 20, 30, 40]\n" + Operations, 0, 0, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ArraySliceOperationsAllocateOnlyTheBackingArray()
         => NativeAllocationAudit.WriteFixture("SliceCostArray", "let values: Array<i32> = [10, 20, 30, 40]\n" + Operations, 1, 1, 16);
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]

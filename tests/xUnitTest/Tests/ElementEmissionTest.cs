@@ -170,6 +170,7 @@ public class ElementEmissionTest
     public void BoundsChecksPrecedeLaterIndicesAndRemainForZeroByteValues(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("ElementBounds" + name, source, string.Empty, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmElementPreparationAllocatesNothing()
     {

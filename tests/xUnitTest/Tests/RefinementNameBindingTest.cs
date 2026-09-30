@@ -62,6 +62,7 @@ public class RefinementNameBindingTest
         Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRootQualifiedParentBindingAllocatesNothing()
     {

@@ -180,6 +180,7 @@ public class NamedArgumentBoundaryTest
         Assert.Equal("x", derived.BaseInitializer!.GetArgumentLabel(0));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(2)]
     [InlineData(16)]

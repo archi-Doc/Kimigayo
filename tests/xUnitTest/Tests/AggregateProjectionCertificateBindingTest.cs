@@ -85,6 +85,7 @@ public class AggregateProjectionCertificateBindingTest
         Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

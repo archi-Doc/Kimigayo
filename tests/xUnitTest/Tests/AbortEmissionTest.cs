@@ -95,6 +95,7 @@ public class AbortEmissionTest
         Assert.DoesNotContain("ret void", runtime);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
     {

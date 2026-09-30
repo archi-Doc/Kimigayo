@@ -6,6 +6,7 @@ namespace XunitTest;
 
 public class DictionaryEntryStorageTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void UnitKeysAndValuesUseLinksWithoutPayloadBytes()
     {
@@ -22,6 +23,7 @@ public class DictionaryEntryStorageTest
         NativeAllocationAudit.WriteFixture("DictionaryEntryStorageUnit", Source, 1, 1, 64);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BooleanKeysAndValuesUseByteStorage()
     {
@@ -39,6 +41,7 @@ public class DictionaryEntryStorageTest
         NativeAllocationAudit.WriteFixture("DictionaryEntryStorageBool", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericOperationsUseTheirConcreteEqualityWitness()
     {
@@ -55,6 +58,7 @@ public class DictionaryEntryStorageTest
         NativeAllocationAudit.WriteFixture("DictionaryEntryStorageGeneric", Source, 1, 1, 192, "value\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ZeroSizedValuesStillRunTheirDestructors()
     {

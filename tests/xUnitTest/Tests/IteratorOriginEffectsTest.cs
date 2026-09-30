@@ -123,6 +123,7 @@ public class IteratorOriginEffectsTest
     }
 
     // Warm rebinding reruns both effect bounds, through intersection items, generic callees and formatting, without allocating.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEffectBoundChecksDoNotAllocate()
     {

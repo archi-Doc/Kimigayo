@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ShortCircuitContinuationTest
 {
     private const string Helpers = "\nfunc take(x: string) -> bool => true\nfunc truth(x: i32) -> bool => true\nfunc effect(x: ()) -> bool => true";
@@ -144,26 +143,6 @@ public class ShortCircuitContinuationTest
         Assert.False(c.Emission.Validate(out _));
     }
 
-    [Theory]
-    [InlineData("if (c and c) or c => x = 3\n            return")]
-    [InlineData("let b = c and truth(stop())")]
-    [InlineData("let b = truth(stop()) and c")]
-    public void ReloadedLogicalReplayAllocatesNothingWhenWarm(string dead)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n                return", dead, "x = 2", "let y = x") + Helpers);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static string Source(string declaration, string early, string dead, string tail, string use, bool condition = true)
         => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
@@ -172,4 +151,29 @@ public class ShortCircuitContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("if (c and c) or c => x = 3\n            return")]
+        [InlineData("let b = c and truth(stop())")]
+        [InlineData("let b = truth(stop()) and c")]
+        public void ReloadedLogicalReplayAllocatesNothingWhenWarm(string dead)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n                return", dead, "x = 2", "let y = x") + Helpers);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

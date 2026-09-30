@@ -188,6 +188,7 @@ public class AggregateResultEmissionTest
         Assert.Contains("normal delivery", error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndResultEmissionAllocateNothing()
     {

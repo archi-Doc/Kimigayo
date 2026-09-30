@@ -366,6 +366,7 @@ public class RuntimeTypeTest
         Assert.NotNull(Test(refinement).BoundRuntimeTest);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

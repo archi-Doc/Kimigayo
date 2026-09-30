@@ -53,6 +53,7 @@ public class BorrowedArrayEmissionTest
             1,
             "Hello.kimi:1:38: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPlans()
     {

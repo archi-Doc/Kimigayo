@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class Utf8CompilationCostTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]

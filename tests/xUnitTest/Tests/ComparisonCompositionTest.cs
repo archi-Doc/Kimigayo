@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class ComparisonCompositionTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RecursiveGenericWitnessCompositionReusesThePreparedHelper()
     {
@@ -44,6 +45,7 @@ public class ComparisonCompositionTest
         ScalarEmissionTest.EmitFixture("ComparisonCompositionMilestone30", source, expected);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FloatingTupleOperatorsPreservePartialOrderingAndShortCircuit()
     {
@@ -70,6 +72,7 @@ public class ComparisonCompositionTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

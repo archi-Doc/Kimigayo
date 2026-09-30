@@ -85,6 +85,7 @@ public class EnumProjectionAccessBindingTest
         Assert.Equal(BindingFailure.Access, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").BindingFailure);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPayloadAccessChecksAllocateNothing()
     {

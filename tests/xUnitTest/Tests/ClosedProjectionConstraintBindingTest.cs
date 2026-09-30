@@ -97,6 +97,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmClosedProjectionProofsAllocateNothing()
     {

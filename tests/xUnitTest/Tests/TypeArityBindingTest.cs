@@ -133,6 +133,7 @@ public class TypeArityBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmArityBindingAllocatesNothing()
     {

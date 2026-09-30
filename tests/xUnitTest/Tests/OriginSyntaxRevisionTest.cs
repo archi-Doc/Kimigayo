@@ -147,6 +147,7 @@ public class OriginSyntaxRevisionTest
         ScalarEmissionTest.EmitFixture("AnonymousOriginSpecialization", Source, string.Empty);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AnonymousAggregateBorrowExecutesAndKeepsItsLoan()
     {

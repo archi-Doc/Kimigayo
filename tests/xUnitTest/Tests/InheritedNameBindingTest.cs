@@ -101,6 +101,7 @@ public class InheritedNameBindingTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInheritedNameChecksAllocateNothing()
     {

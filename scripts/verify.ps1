@@ -1,6 +1,6 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
-# Unit mode (per implementation unit): Release build with warnings as errors, the selected xUnit
+# Unit mode (per implementation unit): Kimi + tests Release build with warnings as errors, the selected xUnit
 # classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
 # selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
@@ -13,7 +13,7 @@
 #   ./scripts/verify.ps1 -DiagnosticSnapshot
 #   ./scripts/verify.ps1 -Class XunitTest.CheckServiceTest -DiagnosticSnapshot -DiagnosticBaseline artifacts/verify/<run>/diagnostic-snapshot.json -DiagnosticAllowed order,attribution
 #
-# Session mode (once at the end of a session): Release build and full suite, then
+# Session mode (once at the end of a session): whole-solution Release build and full suite, then
 # the selected native fixtures and milestone harnesses with the same compiler configuration.
 #   ./scripts/verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
 #
@@ -24,6 +24,8 @@
 #
 # Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
+# Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
+# Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
 #
@@ -34,6 +36,7 @@ param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
+    [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
     # One or more fixture patterns; each runs as its own native step over the same fixture directory.
     [string[]] $Fixtures = @(),
     [int[]] $Milestone = @(),
@@ -44,10 +47,13 @@ param(
     [switch] $VerifyToolchain,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
+    [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
+if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 $repo = Split-Path -Parent $PSScriptRoot
+$buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
 $label = if ($Name) { "$stamp-$($Mode.ToLowerInvariant())-$Name" } else { "$stamp-$($Mode.ToLowerInvariant())" }
 $evidence = Join-Path $repo "artifacts/verify/$label"
@@ -78,7 +84,7 @@ function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
-    & dotnet build (Join-Path $repo 'Kimigayo.slnx') --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
     $ok = $LASTEXITCODE -eq 0
     Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
     return $ok
@@ -134,9 +140,21 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
 $head = (& git -C $repo rev-parse --short HEAD).Trim()
 $dirty = [bool](& git -C $repo status --porcelain --untracked-files=no)
 $filters = @()
-foreach ($c in $Class) { $filters += @('-class', $c) }
-foreach ($m in $Method) { $filters += @('-method', $m) }
+foreach ($c in $Class) {
+    $filters += @('-class', $c)
+    # A trailing wildcard already includes nested classes; appending would put it in the middle.
+    if (-not $c.EndsWith('*') -and -not $c.EndsWith('+AllocationTests')) { $filters += @('-class', "$c+AllocationTests") }
+}
+foreach ($m in $Method) {
+    $filters += @('-method', $m)
+    # Preserve selections after allocation tests move into a nested, isolated class.
+    $separator = $m.LastIndexOf('.')
+    if ($separator -ge 0) { $filters += @('-method', ($m.Insert($separator, '+AllocationTests'))) }
+}
 if ($Mode -eq 'Session') { $filters = @() }
+$hasTestSelection = $filters.Count -gt 0
+if ($TestPurpose -eq 'Functional') { $filters += @('-trait-', 'Purpose=Allocation') }
+elseif ($TestPurpose -eq 'Allocation') { $filters += @('-trait', 'Purpose=Allocation') }
 
 # Check only selections that can include the implicit-source LSP fixtures. Method
 # filters use their declaring-class pattern; unqualified patterns may match any class.
@@ -144,7 +162,7 @@ $lspClasses = @('XunitTest.CheckSchedulerTest', 'XunitTest.LspProtocolTest', 'Xu
 $classPatterns = @($Class) + @($Method | ForEach-Object {
     if ($_.Contains('.')) { $_.Substring(0, $_.LastIndexOf('.')) } else { '*' }
 })
-$needsLspAccess = $Mode -eq 'Session'
+$needsLspAccess = $Mode -eq 'Session' -or (-not $hasTestSelection -and $TestPurpose -ne 'All')
 foreach ($pattern in $classPatterns) {
     foreach ($testClass in $lspClasses) {
         if ($testClass -like $pattern) { $needsLspAccess = $true }
@@ -165,7 +183,7 @@ if (-not $failed -and (Invoke-Build $Configuration)) {
 }
 if (-not $failed) {
     if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
-    elseif ($filters.Count -gt 0) { Invoke-Tests $Configuration $filters 'focused' }
+    elseif ($hasTestSelection -or $TestPurpose -ne 'All') { Invoke-Tests $Configuration $filters 'focused' }
 }
 
 if (-not $failed -and $DiagnosticSnapshot) {
@@ -197,7 +215,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
-        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") } $log
+        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel } $log
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
         Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
@@ -235,7 +253,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; configuration = $Configuration; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+[ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

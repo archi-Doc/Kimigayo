@@ -236,6 +236,7 @@ public class StringResultEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmResultAnalysisAndWritingAllocateNothing()
     {

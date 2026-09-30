@@ -93,6 +93,7 @@ public class AggregateArgumentInferenceTest
         StringEmissionTest.WriteAuditedFixture("AggregateArgumentCleanup", Source, ir, string.Empty, "owned=1", order: [0]);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAggregateCandidateInferenceAllocatesNothing()
     {

@@ -75,6 +75,7 @@ public class AssociatedOriginBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SerializedFamilyRetainsBindingAndWarmIdentity()
     {

@@ -68,6 +68,7 @@ public class UserIterationTest
     public void ConcreteEntryExecutes()
         => ScalarEmissionTest.EmitFixture("UserIterationCounter", Counter + Three + "var total: i32 = 0\nfor item in Three.init()\n    total += item\nrequire total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmUserIterationCompilationReusesItsPlans()
     {

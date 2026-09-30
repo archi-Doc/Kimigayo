@@ -113,6 +113,7 @@ public class ExpressionInputFormationBindingTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmExpressionInputChecksAllocateNothing()
     {

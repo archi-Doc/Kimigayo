@@ -84,6 +84,7 @@ public class ConstraintProjectionCertificateBindingTest
         AssertCertificate(c, 1, true);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

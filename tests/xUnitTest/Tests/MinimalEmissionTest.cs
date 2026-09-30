@@ -199,6 +199,7 @@ public class MinimalEmissionTest
         Assert.Equal("日本\\file.kimi", c.Kotonoha.SourceDocuments[0].Path);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmValidationDoesNotAllocate()
     {
@@ -215,6 +216,7 @@ public class MinimalEmissionTest
         Assert.Equal(0, allocated);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmIrWritingDoesNotAllocateIntermediateStrings()
     {

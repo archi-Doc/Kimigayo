@@ -112,6 +112,7 @@ public class ClosedConstraintLifecycleBindingTest
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProvisionalAndFinalTransitionsAllocateNothing()
     {

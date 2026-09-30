@@ -116,6 +116,7 @@ public class ConditionalMemberAccessBindingTest
         AssertMember(c, property, false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

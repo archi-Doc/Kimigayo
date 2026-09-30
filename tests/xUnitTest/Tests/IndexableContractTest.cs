@@ -132,6 +132,7 @@ public class IndexableContractTest
     // Qualified projections, per-reference requirement candidates and reference dispatch add no warm allocation: warm
     // Binding, ownership analysis and IR writing of the generic two-key program and its concrete counterpart allocate
     // nothing. Checking whether two conformances to one Contract declaration may collide reuses its scratch map.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericTwoKeyCompilationAddsNoAllocation()
     {

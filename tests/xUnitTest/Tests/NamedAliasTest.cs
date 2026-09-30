@@ -152,6 +152,7 @@ public class NamedAliasTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAliasResolutionAllocatesNothing()
     {

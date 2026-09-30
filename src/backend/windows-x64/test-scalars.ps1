@@ -3,7 +3,9 @@ param(
     [string] $ToolchainRoot = '', [string] $LlvmBin = '',
     [string] $FixturePattern = '*.ll',
     [string] $FixtureDirectory = '',
-    [string] $OutputDirectory = ''
+    [string] $OutputDirectory = '',
+    [string] $LogDirectory = '',
+    [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(4, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -12,7 +14,7 @@ if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $fixtures = if ($FixtureDirectory) { (Resolve-Path -LiteralPath $FixtureDirectory).Path } else { Join-Path $repo 'temp/scalar-fixtures' }
-$selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File)
+$selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File | Sort-Object Name)
 if ($selectedFixtures.Count -eq 0) { throw "No scalar fixtures match '$FixturePattern' in '$fixtures'." }
 $out = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath) } else { Join-Path $repo 'temp/scalar-native' }
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -29,67 +31,25 @@ foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Ski
     $symbol = $line.Trim()
     if ($symbol) { $null = $allowedSymbols.Add($symbol); $null = $allowedSymbols.Add("__imp_$symbol") }
 }
-function Invoke-Tool([string] $exe, [string[]] $arguments) {
-    & $exe @arguments
-    if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
+$logs = if ($LogDirectory) { [IO.Path]::GetFullPath($LogDirectory) } else { Join-Path $out 'logs' }
+New-Item -ItemType Directory -Force $logs | Out-Null
+$context = @{ tools = $tools; fixtures = $fixtures; output = $out; kernel = $kernel; archive = $archive; allowedSymbols = [string[]]@($allowedSymbols); logs = $logs }
+$worker = Join-Path $PSScriptRoot 'test-scalar-fixture.ps1'
+if ($Parallel -eq 1) {
+    $results = @($selectedFixtures | ForEach-Object { & $worker -Fixture $_ -Context $context })
 }
+else {
+    $results = @($selectedFixtures | ForEach-Object -Parallel {
+        & $using:worker -Fixture $_ -Context $using:context
+    } -ThrottleLimit $Parallel)
+}
+$results = @($results | Sort-Object fixture)
+$results | ConvertTo-Json -Depth 4 -AsArray | Set-Content -LiteralPath (Join-Path $logs 'results.json')
 $runs = 0
-$executionEncoding = [Text.UTF8Encoding]::new($false, $true)
-foreach ($fixture in $selectedFixtures) {
-    $stem = [IO.Path]::Combine($fixtures, $fixture.BaseName)
-    $expected = [IO.File]::ReadAllText("$stem.stdout")
-    $exit = [int][IO.File]::ReadAllText("$stem.exit")
-    $expectedError = [IO.File]::ReadAllText("$stem.stderr")
-    $timeout = if (Test-Path -LiteralPath "$stem.timeout") { [int][IO.File]::ReadAllText("$stem.timeout") } else { 0 }
-    foreach ($level in @('O0', 'O2')) {
-        $target = Join-Path $out ($fixture.BaseName + '.' + $level)
-        $ir = $fixture.FullName
-        Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $ir)
-        if ($level -eq 'O2') {
-            Invoke-Tool $tools.opt @('-S', '-passes=default<O2>', $ir, '-o', "$target.ll")
-            $ir = "$target.ll"
-            Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $ir)
-        }
-        Invoke-Tool $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir, '-o', "$target.obj")
-        $undefined = @(& $tools['llvm-nm'] --undefined-only --format=posix "$target.obj")
-        if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect scalar object dependencies' }
-        $undefined | Set-Content -LiteralPath "$target.undefined.txt" -Encoding utf8
-        foreach ($line in $undefined) {
-            $symbol = ($line -split '\s+', 2)[0]
-            if (-not $allowedSymbols.Contains($symbol)) { throw "Unexpected dependency in ${target}: $symbol" }
-        }
-        Invoke-Tool $tools['lld-link'] @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$target.exe")
-        $start = [Diagnostics.ProcessStartInfo]::new("$target.exe")
-        $start.UseShellExecute = $false
-        $start.CreateNoWindow = $true
-        $start.RedirectStandardOutput = $true
-        $start.RedirectStandardError = $true
-        # Kimi writes UTF-8 bytes regardless of the invoking console's code page.
-        # A hidden verification worker can otherwise decode these as legacy text.
-        $start.StandardOutputEncoding = $executionEncoding
-        $start.StandardErrorEncoding = $executionEncoding
-        $process = [Diagnostics.Process]::Start($start)
-        try {
-            $stdout = $process.StandardOutput.ReadToEndAsync()
-            $stderr = $process.StandardError.ReadToEndAsync()
-            if ($timeout -gt 0) {
-                if ($process.WaitForExit($timeout)) { throw "Divergent fixture returned: $target, exit=$($process.ExitCode)" }
-                $process.Kill($true)
-                $process.WaitForExit()
-            }
-            elseif (-not $process.WaitForExit(30000)) { throw "Timed out: $target" }
-            $actual = $stdout.GetAwaiter().GetResult()
-            $errorText = $stderr.GetAwaiter().GetResult()
-            if (($timeout -eq 0 -and $process.ExitCode -ne $exit) -or $actual -cne $expected -or $errorText -cne $expectedError) {
-                throw "Failed: $target, exit=$($process.ExitCode), stdout=$actual, stderr=$errorText"
-            }
-        }
-        finally {
-            if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
-            $process.Dispose()
-        }
-        $runs++
-    }
+$failures = @($results | Where-Object { -not $_.ok -or ($_.levels -join ',') -cne 'O0,O2' })
+foreach ($result in $results) {
+    $runs += $result.levels.Count
+    Write-Output "$($result.fixture): $(if ($result.ok) { 'PASS' } else { 'FAIL' }); $($result.log)"
 }
-if ($runs -eq 0) { throw 'No scalar fixtures; run ScalarEmissionTest first.' }
+if ($results.Count -ne $selectedFixtures.Count -or $failures.Count -gt 0) { throw "Native fixture verification failed; see $logs" }
 Write-Output "Passed $runs native scalar executions (O0/O2)."

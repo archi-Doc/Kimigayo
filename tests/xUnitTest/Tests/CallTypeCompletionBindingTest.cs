@@ -92,6 +92,7 @@ public class CallTypeCompletionBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInstantiatedCallChecksAllocateNothing()
     {

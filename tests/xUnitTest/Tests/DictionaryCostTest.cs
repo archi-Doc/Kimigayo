@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryCostTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(4, false)]
@@ -34,6 +35,7 @@ public class DictionaryCostTest
         NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedSearchAndSharedIterationAllocateNoEntryOrViewStorage()
     {
@@ -56,6 +58,7 @@ public class DictionaryCostTest
         NativeAllocationAudit.WriteFixture("DictionaryCostQueries", Source, 1, 1, 96, maxTransferredBytes: 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]

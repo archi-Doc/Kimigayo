@@ -98,6 +98,7 @@ public class SignatureInputFormationBindingTest
         Assert.Same(plan, Call(c).BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSignatureInputChecksAllocateNothing()
     {

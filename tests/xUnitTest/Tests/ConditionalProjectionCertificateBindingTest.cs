@@ -109,6 +109,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.False(ConditionalProperty(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConditionalProjectionChecksAllocateNothing()
     {
@@ -178,6 +179,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, ConditionalProperty(restored).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConditionalPropertyChecksAllocateNothing()
     {

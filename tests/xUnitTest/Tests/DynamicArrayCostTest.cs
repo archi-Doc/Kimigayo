@@ -7,14 +7,17 @@ namespace XunitTest;
 
 public class DynamicArrayCostTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyConstructionAndEmptyOperationsAllocateNothing()
         => WriteCostFixture("Empty", "var values: Array<isize> = []\nvalues@uniq.reserve(0)\nvalues@uniq.clear()\nvalues@uniq.shrinkToFit()\nmatch values@uniq.pop()\n    .None => ()\n    .Some(_) => $abort(\"empty\")\nfor value in values@move => $abort(\"iteration\")", 0, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ZeroSizedElementsNeverAllocate()
         => WriteCostFixture("ZeroSized", "var units: Array<()> = [(), ()]\nvar i: isize = 0\nwhile i < 1024\n    units@uniq.append(())\n    units@uniq.insert(0, ())\n    units@uniq.remove(1)\n    i += 1\nunits@uniq.reserve(4096)\nunits@uniq.shrinkToFit()\nrequire units.length == 1026 else => $abort(\"length\")\nfor unit in units@move => ()", 0, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CapacityPreservingMutationAndChurnNeedOnlyTheInitialAllocation()
         => WriteCostFixture(
@@ -23,10 +26,12 @@ public class DynamicArrayCostTest
             1,
             0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedSharedViewsAndIterationAllocateNoStorage()
         => WriteCostFixture("SharedViews", "let values: Array<isize> = [10, 20, 22, 30]\nvar i = 0\nwhile i < 1024\n    let view = values[1..3]\n    let copied = view[..]\n    let item = copied[0]@ref\n    require item == 20 else => $abort(\"borrow\")\n    var sum: isize = 0\n    for value in copied => sum += value\n    require sum == 42 else => $abort(\"iteration\")\n    i += 1", 1, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(4, false)]
@@ -48,6 +53,7 @@ public class DynamicArrayCostTest
         WriteCostFixture("Growth" + count + (reserve ? "Reserve" : "Append"), source, 1 + (int)Math.Ceiling(Math.Log2(count)), 16L * count, exactAllocations: false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -60,6 +66,7 @@ public class DynamicArrayCostTest
 
     // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without
     // building their names again.
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("var it = values.iterate()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit")]
     [InlineData("var it = values.iterateUniq()\nloop\n    match it.next()\n        .Some(let v) => v@follow += 1\n        .None => exit")]
@@ -78,6 +85,7 @@ public class DynamicArrayCostTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Emission.WriteIr(TextWriter.Null, out _)));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]

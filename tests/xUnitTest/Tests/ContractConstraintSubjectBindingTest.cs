@@ -92,6 +92,7 @@ public class ContractConstraintSubjectBindingTest
         Assert.Equal(BindingState.Invalid, Contract(c).BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmContractSubjectChecksAllocateNothing()
     {

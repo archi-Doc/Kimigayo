@@ -415,6 +415,7 @@ public class CompilationSpecificationTest
         Assert.Empty(TestDiagnostics.Of(c));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCaseSensitiveLookupDoesNotAllocate()
     {

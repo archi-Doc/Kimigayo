@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class MixedTargetContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
@@ -191,16 +190,6 @@ public class MixedTargetContinuationTest
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
-    [Theory]
-    [InlineData("return\n            exit")]
-    [InlineData("x = 3\n            return\n            x = 4\n            exit")]
-    public void ReloadedAndReusedMixedTargetsAllocateNothing(string dead)
-        => CheckReloadAndReuse(Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x"));
-
-    [Fact]
-    public void StoredLoanReplayReloadAndReuseAllocateNothing()
-        => CheckReloadAndReuse(Source("var counter = Counter.init()\n    let r = counter@ref", "loop\n            if c => return\n            else => exit\n            let n = counter.value", "()", "let n = r.value") + "\nstruct Counter\n    public var value: i32 = 0");
-
     private static void CheckReloadAndReuse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -225,4 +214,19 @@ public class MixedTargetContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("return\n            exit")]
+        [InlineData("x = 3\n            return\n            x = 4\n            exit")]
+        public void ReloadedAndReusedMixedTargetsAllocateNothing(string dead)
+            => CheckReloadAndReuse(Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x"));
+
+        [Fact]
+        public void StoredLoanReplayReloadAndReuseAllocateNothing()
+            => CheckReloadAndReuse(Source("var counter = Counter.init()\n    let r = counter@ref", "loop\n            if c => return\n            else => exit\n            let n = counter.value", "()", "let n = r.value") + "\nstruct Counter\n    public var value: i32 = 0");
+    }
 }

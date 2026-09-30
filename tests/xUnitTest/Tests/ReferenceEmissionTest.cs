@@ -164,6 +164,7 @@ public class ReferenceEmissionTest
         StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", Source, ir, "a\n", "a=1");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndEmissionAllocateNothing()
     {

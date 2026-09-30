@@ -86,6 +86,7 @@ public class DeferredEmissionTest
         Assert.True(body.DeferredPlans.Count >= 2);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -205,6 +206,7 @@ public class DeferredEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -214,9 +216,6 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
         var body = c.Ownership.Bodies[0];
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/benchmarks/deferred-growth"));
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, $"depth-{depth}.txt"), $"depth={depth}; operations={body.Operations.Count}; places={body.Places.Count}; defers={body.DeferredPlans.Count}; locals={body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local)}");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.Validate(out var error), error);
         Assert.InRange(body.Operations.Count, 1, OwnershipAnalysis.DeferredOperationLimit);

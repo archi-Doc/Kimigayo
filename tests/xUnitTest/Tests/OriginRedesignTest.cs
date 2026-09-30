@@ -154,6 +154,7 @@ public class OriginRedesignTest
         Assert.Equal(valid, c.Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRelationsAndCallsKeepAllocationsBounded()
     {

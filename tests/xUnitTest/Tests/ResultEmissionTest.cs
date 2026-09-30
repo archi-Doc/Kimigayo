@@ -73,6 +73,7 @@ public class ResultEmissionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNestedResultAnalysisAndWritingAllocateNothing()
     {

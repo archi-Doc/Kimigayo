@@ -86,6 +86,7 @@ public class NormalizedConstraintProofBindingTest
         AssertProof(c, ConstraintProof.Proven);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNormalizedProofsAndCallsAllocateNothing()
     {

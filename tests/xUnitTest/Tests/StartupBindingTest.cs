@@ -250,6 +250,7 @@ public class StartupBindingTest
         Assert.Throws<TinyhandException>(() => TinyhandSerializer.DeserializeFromUtf8<ProjectFile>("OutputKind = \"Unknown\""u8));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(32, false)]

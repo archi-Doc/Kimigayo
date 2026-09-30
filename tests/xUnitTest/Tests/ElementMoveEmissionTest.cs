@@ -230,6 +230,7 @@ public class ElementMoveEmissionTest
         ScalarEmissionTest.EmitFixture("ElementMoveDivergent", Source, string.Empty, timeoutMilliseconds: 300);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPartialMoveAnalysisAndEmissionAllocateNothing()
     {

@@ -112,6 +112,7 @@ public class ProjectedConstraintCallBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProjectedConstraintsAllocateNothing()
     {

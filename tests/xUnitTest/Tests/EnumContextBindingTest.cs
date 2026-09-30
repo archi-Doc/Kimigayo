@@ -76,6 +76,7 @@ public class EnumContextBindingTest
         Assert.True(c.Binding.TryGetEnumConstruction(Use(c), out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOwnerContextChecksAllocateNothing()
     {

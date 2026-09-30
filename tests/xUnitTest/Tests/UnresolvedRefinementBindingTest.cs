@@ -98,6 +98,7 @@ public class UnresolvedRefinementBindingTest
         Assert.Equal(BindingState.Unresolved, Container(restored, "Leaf").BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMissingParentBindingAllocatesNothing()
     {

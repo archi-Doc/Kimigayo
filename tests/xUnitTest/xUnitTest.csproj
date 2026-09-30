@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Kimi\Kimi.csproj" />
+    <Compile Include="..\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
     <EmbeddedResource Include="TestData\DocumentationMarkdown\*.json" />
   </ItemGroup>
 

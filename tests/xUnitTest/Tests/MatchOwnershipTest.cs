@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class MatchOwnershipTest
 {
     [Theory]
@@ -349,36 +348,6 @@ public class MatchOwnershipTest
         Assert.Empty(decompositions);
     }
 
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmMatchOwnershipAndBindingReuseStorage(int count)
-    {
-        var source = new System.Text.StringBuilder("func f()\n");
-        for (var i = 0; i < count; i++)
-        {
-            source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s))\n            Console.writeLine(s)\n        .Some(_)\n            ()\n        .None\n            ()\n");
-        }
-
-        var c = Parse(source.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var body = Body(c);
-        var plans = body.Matches;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        }));
-        Assert.Same(body, Body(c));
-        Assert.Same(plans, body.Matches);
-        Assert.Equal(count, plans.Count);
-        c.Bind();
-        Assert.False(body.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-    }
-
     private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)
@@ -393,4 +362,39 @@ public class MatchOwnershipTest
 
     private static string Describe(Compilation c) => string.Join("\n", c.Ownership.Issues.Select(i => $"{i.Failure} ({i.Source.GetType().Name}): {i.Source}")) +
         string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(i => i.Message));
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmMatchOwnershipAndBindingReuseStorage(int count)
+        {
+            var source = new System.Text.StringBuilder("func f()\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s))\n            Console.writeLine(s)\n        .Some(_)\n            ()\n        .None\n            ()\n");
+            }
+
+            var c = Parse(source.ToString());
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            var body = Body(c);
+            var plans = body.Matches;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            }));
+            Assert.Same(body, Body(c));
+            Assert.Same(plans, body.Matches);
+            Assert.Equal(count, plans.Count);
+            c.Bind();
+            Assert.False(body.IsVerified);
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        }
+    }
 }

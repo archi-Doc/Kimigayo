@@ -260,6 +260,7 @@ public class PairFollowTest
     }
 
     // PLAN P39, G25: warm rebinding, per-instance ownership analysis and emission of the Program 39 shape allocate nothing.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPairLayerCompilationAllocatesNothing()
     {

@@ -261,6 +261,7 @@ public class OptionalTryDiscardTest
     public void BothDiscardFormsDestroySuccessAtStatementEnd(string statement)
         => EmitChecked(statement[0] == '_' ? "OptionalTryExplicitPayloadCleanup" : "OptionalTryImplicitPayloadCleanup", $"struct Token\n    drop => Console.writeLine(\"destroy\")\nfunc source() -> Token? => .Some(Token.init())\nfunc run() -> ()?\n    {statement}\n    Console.writeLine(\"after\")\n    return .Some(())\n_ = run()", "destroy\nafter\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTryBindingAndFlowReuseStorage()
     {

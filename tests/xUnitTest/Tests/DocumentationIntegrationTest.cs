@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
@@ -165,6 +164,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CollectionWithoutCandidatesAllocatesNoExtraStorage()
     {
@@ -176,19 +176,18 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         var off = Measure(false);
         var on = Measure(true);
-        output.WriteLine($"32 parses without documentation: disabled={off.Bytes} bytes/{off.Milliseconds:F2} ms; enabled={on.Bytes} bytes/{on.Milliseconds:F2} ms");
-        Assert.Equal(off.Bytes, on.Bytes);
+        output.WriteLine($"32 parses without documentation: disabled={off} bytes; enabled={on} bytes");
+        Assert.Equal(off, on);
 
-        (long Bytes, double Milliseconds) Measure(bool collect)
+        long Measure(bool collect)
         {
-            var start = Stopwatch.GetTimestamp();
             var before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 32; i++)
             {
                 DocumentationCommentTest.Parse(source, collect);
             }
 
-            return (GC.GetAllocatedBytesForCurrentThread() - before, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            return GC.GetAllocatedBytesForCurrentThread() - before;
         }
     }
 
@@ -283,6 +282,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void DisabledCollectionAddsNoAllocationsWithDocumentation()
     {
@@ -301,15 +301,9 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         // Each measurement retires the allocation context first, so a runtime pause cannot charge its unused tail to one side.
         var baseline = AllocationMeasurement.Measure(() => Lex(ordinary, false), 64);
-        var start = Stopwatch.GetTimestamp();
         var bytes = AllocationMeasurement.Measure(() => Lex(source, false), 64);
-        var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         Assert.Equal(baseline, bytes);
-        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes/{elapsed:F2} ms with warm-up");
-        start = Stopwatch.GetTimestamp();
-        bytes = AllocationMeasurement.Measure(() => Lex(source, true), 64);
-        elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        output.WriteLine($"64 lexical passes, 256 documented declarations: enabled={bytes} bytes/{elapsed:F2} ms with warm-up");
+        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes");
 
         void Lex(SourceDocument input, bool collect)
         {

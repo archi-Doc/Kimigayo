@@ -31,6 +31,7 @@ public class SharedIterationTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -54,6 +55,7 @@ public class SharedIterationTest
         NativeAllocationAudit.WriteFixture("SharedIterationTuple" + dynamic, source, dynamic ? 1 : 0, dynamic ? 1 : 0, dynamic ? 32 : 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CopyComponentsKeepTheirOwnReferenceOrigins()
     {
@@ -70,6 +72,7 @@ public class SharedIterationTest
         NativeAllocationAudit.WriteFixture("SharedIterationReference", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CopyAggregateComponentUsesItsOwnSnapshot()
     {

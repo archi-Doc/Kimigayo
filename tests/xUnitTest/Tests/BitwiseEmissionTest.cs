@@ -154,6 +154,7 @@ public class BitwiseEmissionTest
         Assert.True(c.Emission.Validate(out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBitwiseAnalysisAndWritingAllocateNothing()
     {

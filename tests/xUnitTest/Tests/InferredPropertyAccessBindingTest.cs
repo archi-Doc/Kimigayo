@@ -55,6 +55,7 @@ public class InferredPropertyAccessBindingTest
         Assert.False(property.BoundSymbol!.Property!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInferredPropertyAccessAllocatesNothing()
     {

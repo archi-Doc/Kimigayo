@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class DefaultInitializationTest
 {
     private const string NeverDefault = "func f(y: i32 = (label scope: do\n    let n: i32 = loop => continue\n    exit to scope n + 1\n)) => ()\n";
@@ -52,33 +51,6 @@ public class DefaultInitializationTest
             "begin\n",
             timeoutMilliseconds: 200);
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ReloadAndWarmAnalysisCheckUnusedDefaults(bool invalid)
-    {
-        var source = invalid ? NeverDefault + "f(3)" : "func f(x: i32, y: i32 = (label scope: do\n    var n: i32\n    n = x + 1\n    exit to scope n\n)) -> i32 => y\nf(2)";
-        var c = MinimalEmissionTest.Analyze(source);
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
-        Assert.Equal(!invalid, c.Emission.Validate(out _));
-        if (invalid)
-        {
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        }
-
-        var allocated = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
-        Assert.Equal(0, allocated);
-        Assert.Equal(!invalid, c.Ownership.Result.IsVerified);
-        c.Bind();
-        Assert.False(c.Emission.Validate(out _));
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
-        Assert.Equal(!invalid, c.Emission.Validate(out _));
-    }
-
     private static void AssertUninitialized(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -96,4 +68,36 @@ public class DefaultInitializationTest
 #else
     private const string Prefix = "DefaultInitializationRelease";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ReloadAndWarmAnalysisCheckUnusedDefaults(bool invalid)
+        {
+            var source = invalid ? NeverDefault + "f(3)" : "func f(x: i32, y: i32 = (label scope: do\n    var n: i32\n    n = x + 1\n    exit to scope n\n)) -> i32 => y\nf(2)";
+            var c = MinimalEmissionTest.Analyze(source);
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
+            Assert.Equal(!invalid, c.Emission.Validate(out _));
+            if (invalid)
+            {
+                Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
+            }
+
+            var allocated = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            Assert.Equal(0, allocated);
+            Assert.Equal(!invalid, c.Ownership.Result.IsVerified);
+            c.Bind();
+            Assert.False(c.Emission.Validate(out _));
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.Equal(!invalid, c.Ownership.Analyze().IsVerified);
+            Assert.Equal(!invalid, c.Emission.Validate(out _));
+        }
+    }
 }

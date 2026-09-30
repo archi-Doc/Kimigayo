@@ -50,6 +50,7 @@ public class ScalarEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmScalarAnalysisAndWritingAllocateNothing()
     {

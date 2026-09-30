@@ -49,6 +49,7 @@ public class DeepRefinementPremiseBindingTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDeepRefinementBindingAllocatesNothing()
     {
@@ -67,6 +68,7 @@ public class DeepRefinementPremiseBindingTest
         }));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDeepConformanceVerificationAllocatesNothing()
     {

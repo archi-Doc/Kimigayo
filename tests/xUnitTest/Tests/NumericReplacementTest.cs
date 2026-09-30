@@ -97,6 +97,7 @@ public class NumericReplacementTest
         Assert.Equal("2.5000000000000000001", number.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRebindingAfterRelocationAllocatesNothing()
     {

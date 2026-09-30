@@ -48,6 +48,7 @@ public class ScalarDefaultEmissionTest
         Assert.True(c.Emission.Validate(out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPreparedElementReadsReuseStorage()
     {
@@ -84,6 +85,7 @@ public class ScalarDefaultEmissionTest
     public void NoncompletingUnitDefaultSkipsTheCallee()
         => ScalarEmissionTest.EmitFixture(Prefix + "UnitNever", "func f(x: () = (loop => continue)) => Console.writeLine(\"bad\")\nConsole.writeLine(\"begin\")\nf()", "begin\n", 0, timeoutMilliseconds: 250);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmUnitDefaultPlansReuseStorage()
     {
@@ -399,6 +401,7 @@ public class ScalarDefaultEmissionTest
         Assert.False(ScalarDefaults.SupportsValue(BoundType.String));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDefaultOwnershipAndEmissionReuseStorage()
     {

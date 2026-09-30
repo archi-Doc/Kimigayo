@@ -81,6 +81,7 @@ public class FunctionTypeConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFunctionConditionChecksAllocateNothing()
     {

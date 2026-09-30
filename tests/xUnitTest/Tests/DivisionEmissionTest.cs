@@ -212,6 +212,7 @@ public class DivisionEmissionTest
         Assert.Equal(KotoKind.Invalid, KotoHelper.CompoundOperation(KotoKind.Slash));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDivisionAnalysisAndWritingAllocateNothing()
     {
