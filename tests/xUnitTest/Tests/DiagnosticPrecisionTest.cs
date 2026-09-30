@@ -31,7 +31,6 @@ public class DiagnosticPrecisionTest
     // (expected Type, candidate signature, generic Name) is derived and published only through that failure.
     [Theory]
     [InlineData("func set(a: uniq/[3 of i32])\n    a[0] = 5\npublic func main() => ()", "UnsupportedBinding_Kd", "a[0] = 5")]
-    [InlineData("func set(a: uniq/Array<i32>)\n    a[0] += 5\npublic func main() => ()", "UnsupportedBinding_Kd", "a[0] += 5")]
     [InlineData("struct S\n    public let v: [2 of i32]\n    public init() => self.v = [1, 2]\nfunc set(s: uniq/S)\n    s.v[0] = 5\npublic func main() => ()", "InvalidAssignment_Kd", "s.v[0]")]
     [InlineData("func f(w: Weak<i32>) -> i32 => 0\npublic func main() => ()", "UnsupportedBinding_Kd", "Weak")]
     [InlineData("public func main()\n    let r = Kimi.Intrinsics.makeRc(1)", "UnsupportedBinding_Kd", "Kimi.Intrinsics.makeRc")]
@@ -48,6 +47,17 @@ public class DiagnosticPrecisionTest
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(code, error.Code);
         Assert.Equal(text, error.Text);
+    }
+
+    // SPEC 3.4.1: G35's dynamic Array case now executes; keep its original source as an acceptance regression.
+    [Fact]
+    public void DynamicArrayWriteNoLongerReportsAnImplementationLimit()
+    {
+        var c = MinimalEmissionTest.Analyze("func set(a: uniq/Array<i32>)\n    a[0] += 5\npublic func main() => ()");
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.True(c.Emission.Validate(out var error), error);
     }
 
     // SPEC 23.3.6.2: a mismatch names both Types, a write names its target, each at the smallest syntax that shows it.
