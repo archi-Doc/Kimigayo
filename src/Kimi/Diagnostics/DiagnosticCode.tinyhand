@@ -328,6 +328,36 @@
     Category="Language"
     Message="Type constraints for this struct are already defined in another declaration"
 
+  + Name="ArgumentBoundaryComma_Kd"
+    Category="Language"
+    Message="A comma cannot appear immediately before or after an argument-name boundary"
+    Label="comma is adjacent to the '!' boundary"
+    Advice="Remove this comma if '!' separates the positional and named parameter sections"
+
+  + Name="DuplicateArgumentBoundary_Kd"
+    Category="Language"
+    Message="A parameter list may contain only one argument-name boundary"
+    Label="additional '!' boundary"
+    Advice="Keep one '!' before the first parameter that requires its external name; separate subsequent parameters with commas"
+
+  + Name="ArgumentBoundaryContext_Kd"
+    Category="Language"
+    Message="Anonymous function and specialization parameter lists cannot declare an argument-name boundary"
+    Label="'!' is not permitted in this parameter list"
+    Advice="Remove the boundary; anonymous functions take positional arguments and specializations inherit the original name contract"
+
+  + Name="ParameterNameMarker_Kd"
+    Category="Language"
+    Message="A parameter name cannot have a '?' suffix"
+    Label="invalid parameter-name suffix"
+    Advice="Use an '= expression' default to permit omission, or an '!' boundary before the named parameter section"
+
+  + Name="EmptyNamedParameterSection_Kd"
+    Category="Language"
+    Message="An argument-name boundary must be followed by at least one ordinary parameter"
+    Label="named section has no ordinary parameter"
+    Advice="Remove the '!' boundary or add an ordinary parameter after it; a receiver does not count"
+
   + Name="IdentifierExpected_Kd"
     Category="Language"
     Message="Identifier expected"

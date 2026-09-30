@@ -245,14 +245,25 @@ public static partial class Parser
         List<FunctionParameterKoto>? parameters = default;
         var nameBoundary = -1;
         var afterComma = false;
+        var precedingComma = default(SourceSpan);
         while (reader.CanRead)
         {
             reader.SkipSeparators();
             if (reader.TryConsume(TokenKind.Exclamation, out var boundarySpan, false))
             {
-                if (afterComma || nameBoundary >= 0 || anonymous || specialization)
+                if (afterComma)
                 {
-                    reader.Diagnostic.Add(boundarySpan, DiagnosticCode.UnexpectedToken_Kd, "argument-name boundary");
+                    reader.Diagnostic.Add(precedingComma, DiagnosticCode.ArgumentBoundaryComma_Kd);
+                }
+
+                if (nameBoundary >= 0)
+                {
+                    reader.Diagnostic.Add(boundarySpan, DiagnosticCode.DuplicateArgumentBoundary_Kd);
+                }
+
+                if (anonymous || specialization)
+                {
+                    reader.Diagnostic.Add(boundarySpan, DiagnosticCode.ArgumentBoundaryContext_Kd);
                 }
 
                 if (nameBoundary < 0)
@@ -261,9 +272,9 @@ public static partial class Parser
                 }
 
                 reader.SkipSeparators();
-                if (reader.TryConsume(TokenKind.Comma))
+                if (reader.TryConsume(TokenKind.Comma, out var commaSpan, false))
                 {
-                    reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "comma after argument-name boundary");
+                    reader.Diagnostic.Add(commaSpan, DiagnosticCode.ArgumentBoundaryComma_Kd);
                 }
             }
 
@@ -291,9 +302,9 @@ public static partial class Parser
                 goto NextParameter;
             }
 
-            if (reader.TryConsume(TokenKind.Question))
+            if (reader.TryConsume(TokenKind.Question, out var markerSpan, false))
             {
-                reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "removed parameter-name marker; use an ! boundary");
+                reader.Diagnostic.Add(markerSpan, DiagnosticCode.ParameterNameMarker_Kd);
             }
 
             if (!anonymous && parameters is not null)
@@ -350,7 +361,7 @@ NextParameter:
             reader.SkipSeparators();
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
-                reader.Advance();
+                precedingComma = reader.Read().Span;
                 afterComma = true;
             }
             else if (reader.CurrentTokenKind == TokenKind.Exclamation)
@@ -372,7 +383,7 @@ NextParameter:
 
         if (nameBoundary >= 0 && nameBoundary == (parameters?.Count ?? 0))
         {
-            reader.Diagnostic.Add(closeParenthesisRange, DiagnosticCode.UnexpectedToken_Kd, "empty named-argument section");
+            reader.Diagnostic.Add(closeParenthesisRange, DiagnosticCode.EmptyNamedParameterSection_Kd);
         }
 
         Koto? returnType = default;

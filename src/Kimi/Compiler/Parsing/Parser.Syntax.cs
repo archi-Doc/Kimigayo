@@ -185,7 +185,7 @@ public static partial class Parser
             if (function.NameBoundaryIndex >= 0 && function.NameBoundaryIndex == function.Parameters.Count - 1 &&
                 ReferenceEquals(parameter, function.Parameters[^1]))
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "named section requires an ordinary parameter");
+                parameter.Type.AddDiagnostic(DiagnosticCode.EmptyNamedParameterSection_Kd);
             }
         }
     }
