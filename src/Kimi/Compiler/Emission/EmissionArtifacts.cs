@@ -75,8 +75,8 @@ public static class EmissionArtifacts
                 WriteManifest(json, settings, compilation.Binding.Startup.OutputKind, backend, foreign, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
             }
 
-            File.Move(tempIr, destination, true);
-            File.Move(tempManifest, manifest, true);
+            Replace(tempIr, destination);
+            Replace(tempManifest, manifest);
             irPath = destination;
             return true;
         }

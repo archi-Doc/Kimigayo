@@ -193,7 +193,7 @@ internal static partial class NativeToolchain
             link[^1] = "/out:" + temporary;
             await Tool("lld-link", link);
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporary, paths.Executable, true);
+            Replace(temporary, paths.Executable);
             record["status"] = "linked";
             record["executable"] = Path.GetFileName(paths.Executable);
             record["executableSha256"] = Hash(paths.Executable);
@@ -371,7 +371,7 @@ internal static partial class NativeToolchain
             var staged = Path.Combine(directory, hash + ".lib");
             if (!File.Exists(staged) || Hash(staged) != hash)
             {
-                File.Move(temporary, staged, true);
+                Replace(temporary, staged);
             }
 
             return staged;
@@ -472,7 +472,7 @@ internal static partial class NativeToolchain
         try
         {
             File.WriteAllText(temporary, record.ToJsonString(JsonOptions), new UTF8Encoding(false));
-            File.Move(temporary, path, true);
+            Replace(temporary, path);
         }
         finally
         {
