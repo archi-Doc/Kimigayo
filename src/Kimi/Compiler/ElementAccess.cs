@@ -175,10 +175,21 @@ internal static class ElementAccess
     /// that Binding recorded as the expression's adaptation.
     /// </summary>
     /// <param name="node">The expression read in place.</param>
+    /// <param name="exclusive">Whether the selected projection requires exclusive access.</param>
     /// <returns>The access Type.</returns>
-    internal static BoundType? AccessType(Koto node)
-        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
-            ? adaptation.Type : node.BoundType;
+    internal static BoundType? AccessType(Koto node, bool exclusive = false)
+    {
+        var binding = node.CodeContext.Compilation.Binding;
+        if (!binding.TryGetAdaptation(node, out var adaptation) || adaptation.Kind is not (ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow))
+        {
+            return node.BoundType;
+        }
+
+        // A synthesized shared receiver read does not decide an indexer's later projection capability.
+        // Only an already bound exclusive entry can supply the stronger acquisition.
+        return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow && IndexerCall(node, true) is not null
+            ? binding.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
+    }
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the

@@ -170,7 +170,7 @@ public sealed partial class OwnershipAnalysis
         if (left is MemberAccessKoto field && !Binding.IsGetterResult(field) && ElementAccess.BorrowedPathRoot(field) is { } root)
         {
             // The stored reference is loaded from the field for the Reborrow; it is not a Copy of an exclusive reference.
-            var receiver = this.Receiver(root);
+            var receiver = this.Receiver(root, mode == SemanticsKind.Uniq);
             if (receiver < 0)
             {
                 return -1;

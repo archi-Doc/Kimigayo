@@ -177,7 +177,7 @@ public sealed partial class OwnershipAnalysis
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
-            var receiver = this.Receiver(root);
+            var receiver = this.Receiver(root, type.Semantics == SemanticsKind.Uniq);
             if (receiver < 0)
             {
                 return -1;
@@ -224,9 +224,9 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
-    private int Receiver(Koto root)
+    private int Receiver(Koto root, bool exclusive = false)
         => this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow
-            ? this.BorrowStruct(root, adaptation.Type) : this.Expression(root, PlaceUseKind.Read);
+            ? this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!) : this.Expression(root, PlaceUseKind.Read);
 
     private int ReadBorrowedField(MemberAccessKoto field)
     {
@@ -257,7 +257,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7: secure the RHS, then replace the field through its exclusive address, borrowed through the receiver,
         // like a referent: the old value is destroyed by its Type's plan and the new one moves in.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (ElementAccess.AccessType(root) is not { Semantics: SemanticsKind.Uniq } receiverType || field.BoundType is not { } stored)
+        if (ElementAccess.AccessType(root, true) is not { Semantics: SemanticsKind.Uniq } receiverType || field.BoundType is not { } stored)
         {
             this.Unsupported(assignment);
             return -1;
@@ -284,7 +284,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = ElementAccess.AccessType(root);
+        var receiverType = ElementAccess.AccessType(root, true);
         if (receiverType?.Semantics != SemanticsKind.Uniq || !(this.Concrete(field.BoundType)?.IsNumeric == true || this.GenericInteger(field)) || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);
@@ -294,7 +294,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7.2: secure the RHS, then the receiver and old value. The receiver is read like that of a simple
         // write; nothing runs between reading the old value and storing the new one.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
-        var receiver = right < 0 ? -1 : this.Receiver(root);
+        var receiver = right < 0 ? -1 : this.Receiver(root, true);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)

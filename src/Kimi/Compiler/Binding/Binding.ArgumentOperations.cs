@@ -213,7 +213,7 @@ public sealed partial class Binding
                     break;
                 case MemberAccessKoto member when ElementAccess.BorrowedPathRoot(member) is { } root:
                     next = root;
-                    layer = ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
+                    layer = ElementAccess.IsUserIndex(root) ? null : ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
                     break;
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
@@ -327,6 +327,18 @@ public sealed partial class Binding
     // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
+        if (ElementAccess.PlaceCallReference(left) is { } published)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, published);
+            return;
+        }
+
+        if (ElementAccess.IsUserIndex(left) && element is not null)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(element, this.PlaceOrigin(left)));
+            return;
+        }
+
         // An owned Array element that stores a reference or handle is not an inline part either: its member is reached
         // through the stored view.
         // A Non-Copy element published by a user index (SPEC 4.6.9) is likewise read through one shared borrow of its Place.
