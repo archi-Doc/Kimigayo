@@ -1,6 +1,6 @@
 # Ranges review — 2026-09-30
 
-The audit resumed from the checkpoint in `03644ee3`, with a clean worktree. The checkpoint's full Session rerun now passes. The remaining proposal-to-specification audit and diagnostic repairs are complete; final Session verification of the repaired sources is pending below. The frozen proposal `draft/Changes/2026-09-29 Redesign Ranges B.md` was not edited.
+The audit resumed from the checkpoint in `03644ee3`, with a clean worktree. The checkpoint's full Session rerun and final Session verification of the repaired sources both pass. The remaining proposal-to-specification audit and diagnostic repairs are complete in `ae55e615`. The frozen proposal `draft/Changes/2026-09-29 Redesign Ranges B.md` was not edited.
 
 ## Repaired behavior
 
@@ -40,8 +40,9 @@ All paths below are under `artifacts/verify/`, ignored by Git and retained separ
 | `20260930-111848-972-unit-ranges-review-diagnostics-final` | Warning-free build, 392 tests and unchanged diagnostic snapshot passed; native step stopped because this checkout lacked `toolchain/windows_x64/kernel32.lib`. Retained as failed evidence. |
 | `ranges-review-resume-feedback/toolchain-setup.log` | The existing local setup script validated pinned LLVM identities, generated the shared import library and passed backend O0/O2 tests. No download or PATH change. |
 | `20260930-112258-944-unit-ranges-review-unit` | PASS on final compiler sources: warning-free non-incremental Release build, 393 tests, 122 native O0/O2 executions, Milestone 41 original-source O0/O2. Diagnostic snapshot: zero differences from the resumed checkpoint. The targeted new diagnostic changes are covered by their own public-record/output regressions. |
+| `20260930-112705-566-session-ranges-review-complete` | PASS on clean `ae55e615`: warning-free non-incremental whole-solution Release build; all 13,755 functional/allocation tests; diagnostic snapshot with zero differences; all 32 existing milestone harnesses (1–23, 27–32, 37, 39, 41), each building and directly running the original source at O0 and O2. |
 
-Final Session verification and its commit reference will be appended after completion. No NativeAOT tests were run.
+The Unit's `verified-change.patch` preserves the staged implementation and documentation delta; the final Session identifies the clean compiler/test commit. No NativeAOT tests were run.
 
 ## Product boundaries
 
