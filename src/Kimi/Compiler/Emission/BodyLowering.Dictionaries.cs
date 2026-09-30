@@ -60,8 +60,8 @@ internal sealed partial class BodyLowering
         var valuePlace = inserting ? body.OperationSteps[id] : -1;
         if ((uint)operation.Place >= (uint)body.Places.Count || (uint)operation.Input >= (uint)body.Places.Count ||
             body.Places[operation.Place] is not { Type: { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary, Source: DictionaryLiteralKoto } ||
-            !ReferenceEquals(body.Places[operation.Input].Type, dictionary.Components[0]) ||
-            (inserting && ((uint)valuePlace >= (uint)body.Places.Count || !ReferenceEquals(body.Places[valuePlace].Type, dictionary.Components[1]))) ||
+            !FitsValue(body.Places[operation.Input].Type, dictionary.Components[0], operation.Source) ||
+            (inserting && ((uint)valuePlace >= (uint)body.Places.Count || !FitsValue(body.Places[valuePlace].Type, dictionary.Components[1], operation.Source))) ||
             !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value) ||
             !this.TryGetLocation(operation.Source, directory, constants, out var location))
         {

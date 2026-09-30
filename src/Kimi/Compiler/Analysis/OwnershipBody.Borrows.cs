@@ -16,6 +16,7 @@ public sealed partial class OwnershipBody
     private int[] slicePaths = [];
     private bool[] inspectionBorrows = [];
     private bool[] borrowedPlaces = [];
+    private Dictionary<(int Place, int Root), int>? dictionaryBorrowStarts;
 
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
     internal int BorrowDependencyCapacity => this.borrowDependencies.Length;
@@ -36,6 +37,7 @@ public sealed partial class OwnershipBody
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
     {
+        this.dictionaryBorrowStarts?.Clear();
         var count = this.Places.Count;
         var dependent = false;
         for (var p = 0; p < count && !dependent; p++)
@@ -90,6 +92,21 @@ public sealed partial class OwnershipBody
         }
 
         this.RetainBorrowAuthority(count);
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.StoreDictionaryEntry } entry)
+            {
+                for (var root = 0; root < count; root++)
+                {
+                    if (this.borrowDependencies[(entry.Input * count) + root] != LoanRequirement.None ||
+                        this.borrowDependencies[(this.OperationSteps[id] * count) + root] != LoanRequirement.None)
+                    {
+                        (this.dictionaryBorrowStarts ??= new()).TryAdd((entry.Place, root), id);
+                    }
+                }
+            }
+        }
+
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
         Grow(ref this.borrowDefinitions, count);
@@ -223,6 +240,8 @@ public sealed partial class OwnershipBody
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore || exclusiveElement ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
+                                (value.Kind != OwnershipValueKind.PointerStore || sourcePlace == root ||
+                                    this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
                                 (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
                             {
                                 conflict = true;
@@ -395,6 +414,12 @@ public sealed partial class OwnershipBody
         bool Uses(int id, int place)
         {
             var operation = this.Operations[id];
+            if (operation.Kind is OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry)
+            {
+                return operation.Place == place || operation.Input == place ||
+                    (operation.Kind == OwnershipOperationKind.StoreDictionaryEntry && this.OperationSteps[id] == place);
+            }
+
             // A Dictionary lookup's key is borrowed through replacement, including old-value
             // destruction. Its final equality use alone cannot end that operation's Loan.
             if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement &&
@@ -498,7 +523,7 @@ public sealed partial class OwnershipBody
                 }
             }
 
-            if (ObjectTypes.IsOwner(type) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+            if (ObjectTypes.IsOwner(type) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
             {
                 for (var i = 0; i < type.Components.Count; i++)
                 {
@@ -725,6 +750,10 @@ public sealed partial class OwnershipBody
                         break;
                     case OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.PayloadPlacement:
                         Merge(operation.Place, operation.Input);
+                        break;
+                    case OwnershipOperationKind.StoreDictionaryEntry:
+                        Merge(operation.Place, operation.Input);
+                        Merge(operation.Place, this.OperationSteps[id]);
                         break;
                     case OwnershipOperationKind.Call:
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)

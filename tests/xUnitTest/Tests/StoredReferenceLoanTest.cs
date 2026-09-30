@@ -47,6 +47,7 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     [InlineData("let first = value@follow@ref\n    let found = first", "change(value)")]
     [InlineData("let first = value@follow@uniq\n    let found = first@follow@ref", "change(first)")]
     [InlineData("let found = value@follow@ref\n    let moved = value@move", "change(moved)")]
+    [InlineData("let found = value@follow@ref\n    let moved = value@move", "moved@follow = 99")]
     public void ParentRestrictionsFollowAcquisitionAndCopies(string acquisition, string mutation)
     {
         var source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    " + acquisition + "\n    " + mutation + "\n    require found == 42 else => $abort(\"value\")";
@@ -61,6 +62,16 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     {
         const string source = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    let found = value@follow@ref\n    let moved = value@move\n    require found == 42 else => $abort(\"value\")\n    change(moved)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";
         ScalarEmissionTest.EmitFixture("StoredReferenceLoanTransferred", source, string.Empty);
+    }
+
+    [Fact]
+    public void SplitIteratorValuesStillProtectTheirOwnChildren()
+    {
+        const string source = "var entries = [1: 42]\nvar iterator = entries.iterateUniq()\nmatch iterator.next()\n    .Some((let key, let value))\n        let child = value@follow@ref\n        value@follow = 99\n        require child == 42 and key == 1 else => $abort(\"child\")\n    .None => $abort(\"missing\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
     }
 
     [Theory]

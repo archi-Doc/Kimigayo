@@ -10,12 +10,6 @@ public sealed partial class OwnershipAnalysis
     {
         // The partial Dictionary is a live temporary throughout construction. Each successful insertion transfers
         // just that pair to it; a return while acquiring a later key/value uses the ordinary temporary cleanup order.
-        if (source.Entries.Count != 0 && this.compilation.Binding.ProveOwned(this.Concrete(source.BoundType)!, source) != ConstraintProof.Proven)
-        {
-            this.Unsupported(source);
-            return -1;
-        }
-
         var dictionary = this.ConstructAggregate(source, []);
         if (source.Entries.Count != 0)
         {

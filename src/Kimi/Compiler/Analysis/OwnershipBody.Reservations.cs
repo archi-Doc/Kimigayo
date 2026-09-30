@@ -105,6 +105,16 @@ public sealed partial class OwnershipBody
 
     private LoanRequirement BorrowModeAt(int place, int root, int point, LoanRequirement mode)
     {
+        if (mode != LoanRequirement.None && this.Places[place].Source is DictionaryLiteralKoto)
+        {
+            // A literal's handle is initialized while still empty. Its final Type can name later entries' Origins;
+            // only a completed placement starts the handle's dependency on a particular referent.
+            if (this.dictionaryBorrowStarts is null || !this.dictionaryBorrowStarts.TryGetValue((place, root), out var placement) || point <= placement)
+            {
+                return LoanRequirement.None;
+            }
+        }
+
         var reservation = this.reservationPlaces[place];
         return mode == LoanRequirement.Uniq && reservation >= 0 && this.ReservationMode(reservation, point) == LoanRequirement.Ref &&
             this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root) ? LoanRequirement.Ref : mode;

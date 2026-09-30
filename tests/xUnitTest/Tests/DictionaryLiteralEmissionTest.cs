@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
-using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -127,15 +126,12 @@ public class DictionaryLiteralEmissionTest
     }
 
     [Fact]
-    public void DependentLiteralStorageKeepsAnExplicitImplementationBoundary()
+    public void DependentLiteralStorageUsesTheOrdinaryConstructionPath()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1\nlet entries = [1: value@ref]");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        c.Ownership.ReportDiagnostics();
-        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal("UnsupportedOwnership_Kd", record.Code);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var error), error);
     }
 
     [Fact]
