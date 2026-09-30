@@ -9,8 +9,39 @@ using Xunit;
 
 namespace XunitTest;
 
-public class BorrowedDictionaryIndexTest
+public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
 {
+    // SPEC 4.6.9, 10.2: K may itself be ref/i32, so the search argument is ref/(ref/i32).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReferenceKeyFailuresKeepTheirActualCause(bool independent)
+    {
+        const string Prefix = "let key = 1\nlet entries = [key@ref: 42]\n";
+        var source = Prefix + "let found = entries[key@ref]\n" + (independent ? "let missing = absent\n" : string.Empty);
+        var path = Path.GetFullPath("DictionaryReferenceKey.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ControlFlow!.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(independent ? 2 : 1, errors.Length);
+        var error = Assert.Single(errors, static x => x.Code == "NoApplicableOverload_Kd");
+        Assert.Equal("entries[key@ref]", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.DoesNotContain(errors, static x => x.Code == "IncompatibleResult_Kd" || x.Code.StartsWith("Unsupported", StringComparison.Ordinal));
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("entries[key@ref]", console.Text, StringComparison.Ordinal);
+        testOutput.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity];
+        Assert.Equal(error.Display!.Range, Assert.Single(sent, static x => x.Code == "NoApplicableOverload_Kd").Range);
+        var valid = MinimalEmissionTest.Analyze(Prefix + "let search = key@ref\nrequire entries[search@ref] == 42 else => $abort(\"key\")");
+        Assert.True(valid.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(valid, null));
+    }
+
     [Theory]
     [InlineData("Read", "func read(values: ref/Dictionary<i32, i32>) -> i32 => values[1]\nlet values = [1: 42]\nrequire read(values) == 42 else => $abort(\"value\")")]
     [InlineData("SharedValue", "func read(values: ref/Dictionary<i32, string>) -> ref/string during values => values[1]@ref\nlet values = [1: \"ok\"]\nConsole.writeLine(read(values))", "ok\n")]
@@ -68,17 +99,36 @@ public class BorrowedDictionaryIndexTest
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-        var record = Assert.Single(errors, x => x.Code == code);
+        var record = Assert.Single(errors);
+        Assert.Equal(code, record.Code);
         Assert.DoesNotContain(errors, static x => x.Code.StartsWith("Unsupported", StringComparison.Ordinal));
         Assert.Contains("values[1]", record.Label, StringComparison.Ordinal);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(code, console.Text, StringComparison.Ordinal);
+        testOutput.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, result);
         var sent = Assert.Single(WorkspaceCheck.Place(output, [identity], identity, true)[identity], x => x.Code == code);
         Assert.Equal(record.Display!.Range, sent.Range);
         Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Fact]
+    public void FailedValueReadKeepsIndependentInitializationErrors()
+    {
+        const string Source = "func read(values: ref/Dictionary<i32, string>) -> string\n    var number: i32\n    let copy = number\n    return values[1]";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Ownership.ReportDiagnostics();
+        var result = c.Diagnostics.Finalize();
+        var errors = result.Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(2, errors.Length);
+        Assert.Single(errors, static x => x.Code == "TransferRequired_Kd");
+        var uninitialized = Assert.Single(errors, static x => x.Code == "UninitializedPlace_Kd");
+        Assert.Equal("number", Source.Substring(uninitialized.Span!.Value.Start, uninitialized.Span.Value.Length));
+        Assert.False(c.Ownership.Result.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
 

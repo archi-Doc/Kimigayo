@@ -280,14 +280,16 @@ public sealed partial class OwnershipAnalysis
         {
             if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
             {
-                this.body.ReportIssue(new(call, OwnershipFailure.TransferRequired));
+                var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
+                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                // Keep checking the call and its typed result after this rejected acquisition, as for a bare local.
+                // Dropping the result would invent an uninitialized return and hide independent argument/Loan errors.
             }
             else
             {
                 this.Unsupported(call);
+                return -1;
             }
-
-            return -1;
         }
 
         var reference = this.PlaceCallReference(call);

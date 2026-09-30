@@ -241,7 +241,7 @@ public sealed partial class OwnershipBody
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             // Lending the slot that stores a reference does not access its external referent. The
                             // subsequent reborrow/store checks that separate capability, including call activation.
-                            var referenceSlot = value.Kind == OwnershipValueKind.Sequence && operation.Place >= 0 &&
+                            var referenceSlot = value.Kind is OwnershipValueKind.Sequence or OwnershipValueKind.Address && operation.Place >= 0 &&
                                 ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
                                 ReferenceTypes.IsBorrow(this.Places[operation.Place].Type.Components[0]) && this.IsExclusiveBorrowInput(root) &&
                                 !ReferenceEquals(this.Places[root].Type.Components[0], this.Places[operation.Place].Type.Components[0]);
@@ -1117,6 +1117,8 @@ public sealed partial class OwnershipBody
                         this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type) => operation.Place,
                     OwnershipOperationKind.AcquirePattern => this.PayloadSubject(operation.Place),
                     OwnershipOperationKind.InitializeSubject => operation.Input,
+                    OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Copy && operation.Place >= 0 &&
+                        this.Places[operation.Place].Type.Semantics == SemanticsKind.Ref => operation.Place,
                     OwnershipOperationKind.CallEntry => operation.Place,
                     OwnershipOperationKind.Produce when operation.Place >= 0 => operation.Place,
                     _ => -1,

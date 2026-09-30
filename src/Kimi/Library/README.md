@@ -87,11 +87,11 @@ and transfers its complete key/value Types into the optional pair through ordina
 handle and entry stride, and shares typed reverse destruction with the owning remainder. The projection acquires no entries
 and exposes no public ABI. The three iteration entries also use Kimigayo.
 Dictionary declares `UniqIndexable<K>` with ordinary `index` and `indexUniq` bodies over those remainders.
-Direct and generic Contract calls share these bodies; catalog metadata adds a private caller-location pair to their
+Subscripts, direct calls and generic Contract calls share these bodies; catalog metadata adds a private caller-location pair to their
 physical ABI so the missing-key primitive reports the access rather than the embedded source.
 The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
 still contains compiler-recognized mutation signatures. Generic mutation/result
-dispatch and ordinary Dictionary subscript routing remain compiler code.
+dispatch remains compiler code.
 Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified

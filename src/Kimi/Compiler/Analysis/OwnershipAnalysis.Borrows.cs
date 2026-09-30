@@ -59,6 +59,12 @@ public sealed partial class OwnershipAnalysis
             return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
         }
 
+        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped) || IsDictionaryElement(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
+            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
+        {
+            return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
+        }
+
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
             return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
@@ -69,12 +75,6 @@ public sealed partial class OwnershipAnalysis
             // SPEC 7.1.1: a borrow of a published Place is a Reborrow through the reference the call returns; the call is
             // evaluated as that reference below, and the borrowed address is its value.
             this.referenceCalls.Add(placeCall);
-        }
-
-        if (IsDictionaryElement(unwrapped) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
-            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
-        {
-            return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
         }
 
         if (unwrapped is ConversionKoto storedFollow && this.ReadsStoredReference(storedFollow))

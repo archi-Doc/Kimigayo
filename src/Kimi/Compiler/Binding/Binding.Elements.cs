@@ -36,7 +36,8 @@ public sealed partial class Binding
                 }
 
                 ((IndexKoto)source).DictionaryKeyReference = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: this.PlaceOrigin(source.Right));
-                return Complete(source, dictionary.Components[1]);
+                return this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexedDictionary)
+                    ? indexedDictionary : this.Fail(source, BindingFailure.Unsupported);
             }
 
             if (ReferenceTypes.IsPointer(receiver))
