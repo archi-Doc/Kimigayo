@@ -44,6 +44,36 @@
     Label="another Origin annotation is already present"
     Advice="Use one annotation for this Type; if both Origins are required, write their intersection in parentheses after one 'during'."
 
+  + Name="BorrowOriginIntersection_Kd"
+    Category="Language"
+    Message="An Origin intersection after 'during' requires parentheses"
+    Label="intersection is outside parentheses"
+    Advice="If these Origins form the annotation, group them as 'during (a and b)'."
+
+  + Name="OriginRelationOperator_Kd"
+    Category="Language"
+    Message="An Origin relation requires '==' or 'outlives' between its operands"
+    Label="expected an Origin relation operator here"
+    Advice="Use '==' to require equal Origins, or 'outlives' to require that the left Origin outlive the right one."
+
+  + Name="AttachedOriginRelation_Kd"
+    Category="Language"
+    Message="This declaration-attached block admits only Origin relation clauses"
+    Label="expected 'origin' followed by a relation"
+    Advice="If this is an Origin contract, write an 'origin' clause; place ordinary statements in an executable body."
+
+  + Name="CallableOriginList_Kd"
+    Category="Language"
+    Message="A callable declaration has no Origin parameter list"
+    Label="Origin list is not permitted on this callable"
+    Advice="If the callable needs quantified Origins, introduce their names in permitted signature borrow annotations."
+
+  + Name="OriginSchemaRelation_Kd"
+    Category="Language"
+    Message="An Origin schema header contains names, not relation clauses"
+    Label="relation is not permitted in the schema header"
+    Advice="If a relation between these Origins is required, write an 'origin' clause under the declaration."
+
   + Name="HiddenNamedAlias_Kd"
     Severity="Warning"
     Category="Language"

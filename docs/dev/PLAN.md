@@ -128,8 +128,8 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. Continue parser explanations with Origin relations/binding sets and callable Origin lists; suffix attachment/order diagnostics are verified (183 tests and six native executions, DIAGNOSTICS_REVIEW.md). The historical D0–D4 checkpoints do not certify every recorder; ownership evidence and per-recorder condition/Place multiplicity remain open (DIAGNOSTICS.md §11), and flow-refinement codes go with P33.
-2. Resume §4 with P31, P40 and P26. Independent P31 source work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
+1. Resume §4 with P31, P40 and P26. Next independent source work: Array `sort()` using the existing heapsort, then `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
+2. Continue parser explanations with Origin binding-set braces and the remaining declaration/expression families. Origin suffixes, relations and callable lists are verified (334 tests and six native executions, DIAGNOSTICS_REVIEW.md). The historical D0–D4 checkpoints do not certify every recorder; ownership evidence and per-recorder condition/Place multiplicity remain open (DIAGNOSTICS.md §11), and flow-refinement codes go with P33.
 
 Concurrent sessions use separate worktrees and stage only their own paths. Library bodies reached only through generic dispatch are collected through `CollectWitnesses`; keep that path in view when a body has no verified generic instance.
 

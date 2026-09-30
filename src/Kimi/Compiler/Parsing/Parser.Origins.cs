@@ -59,7 +59,14 @@ public static partial class Parser
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "expected == or outlives in Origin relation");
+                reader.AddDiagnostic(DiagnosticCode.OriginRelationOperator_Kd);
+                // A misspelled relation operator is the cause; preserve the right operand for recovery.
+                // A missing operator before an Origin atom does not consume that atom.
+                if (reader.CurrentTokenKind is TokenKind.Equals or TokenKind.ExclamationEquals or
+                    TokenKind.LessThan or TokenKind.LessThanEquals or TokenKind.GreaterThan or TokenKind.GreaterThanEquals)
+                {
+                    reader.Advance();
+                }
             }
         }
 
@@ -91,7 +98,7 @@ public static partial class Parser
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "expected declaration-attached Origin relation");
+                reader.AddDiagnostic(DiagnosticCode.AttachedOriginRelation_Kd);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.SkipCurrentBlock(false);
@@ -121,7 +128,13 @@ public static partial class Parser
         var expression = ParseOriginAtom(ref reader);
         if (reader.CurrentTokenKind == TokenKind.And && !reader.ConstraintRequirement)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "an Origin intersection requires parentheses: 'during (a and b)'");
+            reader.AddDiagnostic(DiagnosticCode.BorrowOriginIntersection_Kd);
+            // Recover the whole malformed intersection here, retaining the first annotation. The enclosing
+            // parameter/Type delimiter is still available and is not itself missing.
+            while (reader.TryConsume(TokenKind.And))
+            {
+                _ = ParseOriginAtom(ref reader);
+            }
         }
 
         var span = SourceSpan.FromBounds(keyword.Span.Start, Math.Max(keyword.Span.End, expression.Span.End));
@@ -165,7 +178,7 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.OpenBrace)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "callable Origin lists were removed; introduce names in borrow annotations");
+            reader.AddDiagnostic(DiagnosticCode.CallableOriginList_Kd);
             _ = ParseOriginParameters(ref reader);
         }
 

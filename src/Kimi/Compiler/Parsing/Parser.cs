@@ -557,9 +557,9 @@ Exit:
             }
 
             list.Add(reader.GetIdentifier(token), token.Span);
-            if (reader.TryConsume(TokenKind.Colon))
+            if (reader.TryConsume(TokenKind.Colon, out var relationToken, false))
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "write an Origin relation under the declaration");
+                reader.Diagnostic.Add(relationToken, DiagnosticCode.OriginSchemaRelation_Kd);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.EndBlock);
             }
 
