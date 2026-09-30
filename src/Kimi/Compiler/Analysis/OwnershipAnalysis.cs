@@ -138,7 +138,11 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code, evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null);
+            issue.Source.Report(
+                DiagnosticRequirement.Ownership(issue.Failure),
+                issue.Code,
+                evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
+                related: issue.LoanSource is { } loan ? [("loan", loan, "value retaining the conflicting loan")] : null);
         }
 
         // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
