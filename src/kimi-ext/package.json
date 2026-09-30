@@ -3,7 +3,7 @@
   "publisher": "archi-Doc",
   "displayName": "Kimi Extension",
   "description": "Kimi language diagnostics, build, run, and check commands for Visual Studio Code.",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "license": "MIT",
   "repository": {
     "type": "git",
