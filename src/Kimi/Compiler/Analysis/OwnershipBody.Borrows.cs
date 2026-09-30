@@ -1425,7 +1425,8 @@ public sealed partial class OwnershipBody
             return -1;
         }
 
-        if (target.ReturnType?.BoundType is not { Kind: BoundTypeKind.Semantics, Origin: { Kind: OriginKind.Input } origin } || !ReferenceEquals(origin.Binder, target))
+        var inputSlot = -1;
+        if (target.ReturnType?.BoundType is not { } declaredResult || !FindInput(declaredResult) || inputSlot < 0)
         {
             var entry = this.ReceiverEntry(call);
             if (target.Parameters.Count == 1 && entry >= 0 && this.Operations[call].Place >= 0 &&
@@ -1458,16 +1459,70 @@ public sealed partial class OwnershipBody
         if (plan.Receiver is not null)
         {
             offset = 1;
-            index = plan.ReceiverOperation.ParameterIndex == origin.Slot ? 0 : -1;
+            index = plan.ReceiverOperation.ParameterIndex == inputSlot ? 0 : -1;
         }
 
         var mapping = plan.ArgumentToParameter;
         for (var i = 0; i < mapping.Length && index < 0; i++)
         {
-            index = mapping[i] == origin.Slot ? offset + i : -1;
+            index = mapping[i] == inputSlot ? offset + i : -1;
         }
 
         return index < 0 ? -1 : call - entries + index;
+
+        // A contract may wrap its borrowed result in Option, a Tuple or another dependent Type.
+        // Follow one explicitly named input through every layer, never choose between inputs
+        // because their instantiated Origins happen to be equal.
+        bool FindInput(BoundType type)
+        {
+            if (type.Origin is { } origin && !VisitOrigin(origin))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (!VisitOrigin(type.OriginArguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!FindInput(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool VisitOrigin(BoundOrigin origin)
+        {
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (!VisitOrigin(origin.Operands[i]))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, target))
+            {
+                if (inputSlot >= 0 && inputSlot != origin.Slot)
+                {
+                    return false;
+                }
+
+                inputSlot = origin.Slot;
+            }
+
+            return true;
+        }
     }
 
     private bool ResultOriginsFromInput(BoundType result, BoundType input, out bool retained)

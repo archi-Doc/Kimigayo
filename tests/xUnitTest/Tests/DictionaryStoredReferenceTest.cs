@@ -14,6 +14,68 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     private const string Header = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = entries.tryInsert(1, value@move)\n";
 
     [Theory]
+    [InlineData("Tuple", "entries[1].0@follow@ref")]
+    [InlineData("OptionalTuple", "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
+    [InlineData("GenericOptionalTuple", "match lookup(entries@ref, 1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
+    public void CompoundStoredReferencesOutliveTheContainer(string name, string selection)
+    {
+        var source = "func lookup<T>(entries: ref/Dictionary<i32, T>, key: ref/i32) -> Option<ref/T during entries> => entries.tryGet(key)\n" +
+            "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = " + selection +
+            "\n    entries.clear()\n    require found == 42 else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
+        ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceCompound" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OptionalTupleSlotsRetainTheContainerUntilLastUse(bool independent)
+    {
+        var source = "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n" +
+            "    match entries.tryGet(1)\n        .Some(let item)\n            entries.clear()\n" +
+            (independent ? "            entries.clear()\n" : string.Empty) +
+            "            require item.0 == 42 else => $abort(\"value\")\n        .None => ()";
+        var path = Path.GetFullPath("optional-tuple-slot.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == "entries.clear()");
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Source.ToString() == "item.0" || x.Source.ToString() == "item.0@follow");
+        Assert.False(c.Emission.Validate(out _));
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
+        foreach (var error in result.Diagnostics)
+        {
+            Assert.Equal("CallActivationConflict_Kd", error.Code);
+            Assert.Equal("entries.clear()", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.NotEmpty(error.Related!);
+        }
+
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity];
+            Assert.Equal(result.Diagnostics.Length, sent.Length);
+            for (var i = 0; i < sent.Length; i++)
+            {
+                Assert.Equal(result.Diagnostics[i].Display!.Range, sent[i].Range);
+                if (related)
+                {
+                    Assert.NotEmpty(sent[i].RelatedInformation!);
+                }
+                else
+                {
+                    Assert.Contains("value retaining the conflicting loan", sent[i].Message, StringComparison.Ordinal);
+                }
+            }
+        }
+    }
+
+    [Theory]
     [InlineData("Shared", "index", "ref", "require found == 42 else => $abort(\"value\")")]
     [InlineData("Exclusive", "indexUniq", "uniq", "found@follow = 99")]
     public void DirectPlaceEntriesPreserveTheStoredCapability(string name, string entry, string mode, string use)
@@ -171,10 +233,14 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void StoredInputAnalysisReusesItsStorage()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StoredInputAnalysisReusesItsStorage(bool optionalTuple)
     {
-        var c = MinimalEmissionTest.Analyze(Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
+        var c = MinimalEmissionTest.Analyze(optionalTuple
+            ? "func run(value: uniq/i32 during a)\n    var entries = [1: (value@move, 7)]\n    let found = match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")\n    entries.clear()\n    require found == 42 else => $abort(\"value\")"
+            : Header + "    let found = entries[1]@follow@ref\n    entries.clear()\n    require found == 42 else => $abort(\"value\")");
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);
