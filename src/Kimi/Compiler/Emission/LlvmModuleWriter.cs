@@ -97,7 +97,7 @@ internal static partial class LlvmModuleWriter
 
         if (module.NeedsDictionaryRuntime)
         {
-            output.Write(DictionaryRuntime);
+            WriteDictionaryCapacity(module, output, append: false);
             WriteDictionaryShrink(module, output);
             WriteDictionaryStorage(module, output);
             WriteDictionaryHelpers(module, output);

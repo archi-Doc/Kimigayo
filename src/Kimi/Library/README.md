@@ -75,7 +75,7 @@ ObjectOwnership ID is reserved; ownership-family completeness is a separate quer
 [DictionaryStorage.kimi](DictionaryStorage.kimi) is compiled through ordinary
 Binding, ownership analysis and generation. It implements initialization, ordered
 search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
-and shrink-to-fit decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
+and shrink-to-fit, reserve, checked capacity growth and append decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
 C layout to agree with the backend; they do not define a public collection ABI.
 Callbacks use the ordinary Function Type ABI with stack handles, without heap
 allocation. The compiler passes the selected equality witness and typed entry
@@ -83,7 +83,7 @@ destruction, preserving comparison direction and value-before-key cleanup.
 
 The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
 still contains compiler-recognized public signatures. Generic mutation/result
-dispatch, reserve/growth and typed index/iteration access remain compiler code.
+dispatch and typed index/iteration access remain compiler code.
 Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified
@@ -92,6 +92,9 @@ operation's Abort location when bridging platform failures. Nonempty literals in
 and check each key before acquiring its value, and transfer each completed pair through the same typed placement bridge
 as insertion. The partial handle and pending key use ordinary temporary cleanup on an early return. The duplicate-key
 Abort callback retains the later key's location; it and the equality adapter use stack handles only.
+Capacity callbacks provide checked allocation, release, byte transfer and source-located failure. Growth copies the high-water slot range,
+including free links, and publishes the new buffer only after allocation succeeds. Geometric rounding saturates at the representable
+entry count; it never rejects an otherwise representable minimum. The shrink path keeps its separate nullable-allocation contract.
 
 `DictionaryLibraryTest` checks ordinary source compilation, private access,
 symbol identity, record layout and omission from programs that do not use

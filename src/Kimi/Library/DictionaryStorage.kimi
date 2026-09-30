@@ -17,6 +17,71 @@ group DictionaryStorage
         public var previous: isize
         public var next: isize
 
+    // Private callback ABI codes; the platform adapter supplies the original operation's location and Abort code.
+    group CapacityFailure
+        public let argument: i32 = 0
+        public let countOverflow: i32 = 1
+        public let sizeLimit: i32 = 2
+
+    unsafe func reserve(
+        handle: unsafe/Handle, stride: isize, additional: isize, maximumSize: isize,
+        allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (),
+        transfer: (unsafe/u8, unsafe/u8, isize) -> (), fail: (i32) -> ()
+    ) -> isize
+        unsafe
+            if additional < 0
+                fail(CapacityFailure.argument)
+                return 0
+            let length = (*handle).length
+            if additional > maximumSize - length
+                fail(CapacityFailure.countOverflow)
+                return 0
+            let minimum = length + additional
+            grow(handle, stride, minimum, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            return minimum
+
+    unsafe func grow(
+        handle: unsafe/Handle, stride: isize, minimum: isize, maximumSize: isize,
+        allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (),
+        transfer: (unsafe/u8, unsafe/u8, isize) -> (), fail: (i32) -> ()
+    )
+        unsafe
+            let capacity = (*handle).capacity
+            if capacity >= minimum
+                return
+            // Every entry has links, even when K and V have zero size: stride is positive.
+            let maximum = maximumSize / stride
+            if minimum > maximum
+                fail(CapacityFailure.sizeLimit)
+                return
+            // Optional geometric rounding must never reject a representable minimum.
+            var target = maximum
+            if capacity <= maximum / 2
+                target = capacity * 2
+            if target < 4
+                target = 4
+            if target < minimum
+                target = minimum
+            if target > maximum
+                target = maximum
+            let memory = allocate(target * stride)
+            let buffer = (*handle).buffer
+            let used = (*handle).used
+            if used != 0
+                transfer(memory, buffer, used * stride)
+            release(buffer)
+            (*handle).buffer = memory
+            (*handle).capacity = target
+
+    unsafe func append(
+        handle: unsafe/Handle, stride: isize, maximumSize: isize,
+        allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (),
+        transfer: (unsafe/u8, unsafe/u8, isize) -> (), fail: (i32) -> ()
+    ) -> unsafe/u8
+        unsafe
+            let needed = reserve(handle, stride, 1, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            return appendSlot(handle, stride, needed)
+
     // Literal construction checks before evaluating the corresponding value.
     // The backend supplies the failure callback solely to retain the key's source location.
     func requireAbsent(link: isize, duplicate: () -> ())

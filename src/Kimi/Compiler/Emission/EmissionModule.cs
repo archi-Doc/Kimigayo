@@ -244,6 +244,10 @@ internal sealed class EmissionModule
 
     internal FunctionAbi? DictionaryRequireAbsent { get; set; }
 
+    internal FunctionAbi? DictionaryReserveStorage { get; set; }
+
+    internal FunctionAbi? DictionaryAppend { get; set; }
+
     internal FunctionAbi? DictionaryInitialize { get; set; }
 
     internal FunctionAbi? DictionaryClearLinks { get; set; }
@@ -296,6 +300,8 @@ internal sealed class EmissionModule
         this.DictionaryUnlink = null;
         this.DictionaryAppendSlot = null;
         this.DictionaryRequireAbsent = null;
+        this.DictionaryReserveStorage = null;
+        this.DictionaryAppend = null;
         this.DictionaryInitialize = null;
         this.DictionaryClearLinks = null;
         this.DictionaryFind = null;

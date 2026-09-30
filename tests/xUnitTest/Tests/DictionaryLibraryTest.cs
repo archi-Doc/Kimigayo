@@ -9,6 +9,18 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void CapacityDecisionsCompileFromOrdinarySource()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
+        Assert.True(c.Library.IsValid, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains(c.Ownership.Bodies, static body => body.Function.Name == "grow" && body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
+        var wrapper = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@__kimi_dictionary_reserve\([^\n]*\n.*?^\}").Value;
+        Assert.NotEmpty(wrapper);
+        Assert.DoesNotContain("__kimi_array_grow", wrapper, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UserHelperNamesDoNotReplaceTheLibraryAlgorithms()
     {
         const string Source = """

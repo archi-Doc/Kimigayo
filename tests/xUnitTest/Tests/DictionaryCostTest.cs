@@ -32,7 +32,7 @@ public class DictionaryCostTest
             bytes += capacity * 24L;
         }
 
-        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L);
+        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L, minTransferredBytes: (capacity - 4) * 24L);
     }
 
     [Trait("Purpose", "Allocation")]
