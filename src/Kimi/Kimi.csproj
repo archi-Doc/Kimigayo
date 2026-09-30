@@ -33,6 +33,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Library\*.kimi" LogicalName="Kimi.Library.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
+    <EmbeddedResource Include="Diagnostics\DiagnosticRequirement.tinyhand" />
     <EmbeddedResource Include="Compiler\Emission\WindowsRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Emission\Utf8BufferRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Emission\Utf8FormatRuntime.ll.in" />

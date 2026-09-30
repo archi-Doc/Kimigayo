@@ -617,3 +617,8 @@
   + Name="SourceReadFailed_Kd"
     Category="Input"
     Message="The source file cannot be read: {0}"
+
+  + Name="PrerequisiteUnavailable_Kd"
+    Category="Proof"
+    Message="This requirement cannot be decided because its prerequisite could not be established"
+    Label="this cannot be decided"

@@ -22,6 +22,15 @@ public enum DiagnosticFault : byte
 
     /// <summary>Collecting or finalizing diagnostics failed.</summary>
     Collection,
+
+    /// <summary>One problem was reported twice with different locations or facts.</summary>
+    ConflictingProblem,
+
+    /// <summary>Two distinct problems have no defined order.</summary>
+    UndefinedOrder,
+
+    /// <summary>A rejected result publishes no Error.</summary>
+    UnexplainedRejection,
 }
 
 /// <summary>Signals a violation of the diagnostic contract (SPEC 23.3.6.7). It is a compiler defect, never a property of the checked source.</summary>

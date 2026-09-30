@@ -286,10 +286,12 @@ public class DirectiveConditionValidationTest
     {
         var compilation = Parse("#if false and missing\nvar incomplete =");
         var bytes = TinyhandSerializer.Serialize(compilation.Kotonoha);
-        var restored = new Kotonoha(compilation);
+        var target = Compilation.CreateForTest();
+        Assert.True(target.Prepare("x86_64-pc-windows-msvc"));
+        var restored = new Kotonoha(target);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
-        restored!.OnDeserialized(compilation);
-        restored.OnDeserialized(compilation);
+        restored!.OnDeserialized(target);
+        restored.OnDeserialized(target);
         var diagnostic = Assert.Single(TestDiagnostics.Of(restored));
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Code);
         Assert.Contains("missing", diagnostic.Message);

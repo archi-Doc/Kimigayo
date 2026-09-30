@@ -65,6 +65,14 @@ public sealed record DiagnosticDisplay(SourceRange? Range, DiagnosticExcerptLine
         => HashCode.Combine(this.Range, this.Excerpt.Length);
 }
 
+/// <summary>A location related to a record, with its role (SPEC 23.3.6.2).</summary>
+/// <param name="Role">The role, such as <c>prerequisite</c> or <c>declaration</c>.</param>
+/// <param name="Source">The source table index, or -1 without a source.</param>
+/// <param name="Span">The span, or <see langword="null"/> for the whole input.</param>
+/// <param name="Range">The span as lines and UTF-16 characters, for display; <see langword="null"/> without a span.</param>
+/// <param name="Label">A short description of the location.</param>
+public sealed record DiagnosticRelated(string Role, int Source, SourceSpan? Span, SourceRange? Range, string? Label);
+
 /// <summary>One published problem with its explanation (SPEC 23.3.6.2). No compiler object escapes into it.</summary>
 /// <param name="Code">The code name.</param>
 /// <param name="Severity">The severity.</param>
@@ -80,6 +88,9 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets the code's typed facts.</summary>
     public DiagnosticValue[]? Reason { get; init; }
 
+    /// <summary>Gets the related locations with their roles.</summary>
+    public DiagnosticRelated[]? Related { get; init; }
+
     /// <summary>Gets further explanation.</summary>
     public string? Note { get; init; }
 
@@ -93,7 +104,7 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Category == other.Category &&
             this.Message == other.Message && this.Source == other.Source && this.Span == other.Span && this.Label == other.Label &&
             this.Note == other.Note && this.Advice == other.Advice && Equals(this.Display, other.Display) &&
-            (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []);
+            (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []);
 
     public override int GetHashCode()
         => HashCode.Combine(this.Code, this.Source, this.Span, this.Message);

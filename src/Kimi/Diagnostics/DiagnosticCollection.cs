@@ -5,9 +5,9 @@ using Kimi.Compiler;
 namespace Kimi.Diagnostics;
 
 /// <summary>
-/// A recording target of a <see cref="DiagnosticOwner"/>: facts reported through it belong to its module's syntax
-/// partition unless a phase names its own partition. Its name is the former collection name, which only the
-/// transitional start-offset filter of D2a uses (docs/dev/DIAGNOSTICS.md §8).
+/// A recording target of a <see cref="DiagnosticOwner"/>, bound to one module and optionally one document. Lexical and
+/// syntax reports are problems whose subject is their span; an analysis reports keyed problems. The name is the former
+/// collection name, which only the transitional start-offset filter uses (docs/dev/DIAGNOSTICS.md §8).
 /// </summary>
 public sealed class DiagnosticCollection
 {
@@ -22,14 +22,17 @@ public sealed class DiagnosticCollection
         this.Document = document;
     }
 
-    /// <summary>Gets the document a report without an explicit document belongs to, fixed when the target is created.</summary>
-    public SourceDocument? Document { get; }
-
     /// <summary>Gets the owner.</summary>
     public DiagnosticOwner Owner { get; }
 
     /// <summary>Gets the name, which also names sources parsed from text through this target.</summary>
     public string Name { get; }
+
+    /// <summary>Gets the document a report without an explicit document belongs to, fixed when the target is created.</summary>
+    public SourceDocument? Document { get; }
+
+    /// <summary>Gets the key of the last lexical or syntax Error reported through this target; parser recovery names it as the cause of what it synthesizes.</summary>
+    internal DiagnosticKey? LastError { get; private set; }
 
     internal int Unit { get; }
 
@@ -43,49 +46,64 @@ public sealed class DiagnosticCollection
             return this;
         }
 
-        var module = this.module >= 0 ? this.module : this.Owner.UnattributedModule();
+        var module = this.CurrentModule();
         this.Owner.DocumentSource(document, module);
         return new(this.Owner, this.Name, this.Unit, module, document);
     }
 
-    /// <summary>Reports a lexical or syntax problem of this target's module.</summary>
+    /// <summary>Reports a lexical or syntax problem of this target's module; its subject is its span.</summary>
     /// <param name="range">The span; it must be the default value when no source applies.</param>
     /// <param name="code">The code.</param>
     /// <param name="obj">The first message argument.</param>
     /// <param name="obj2">The second message argument.</param>
-    /// <param name="sourceDocument">The source the span belongs to.</param>
-    /// <param name="hint">Text appended to the message; removed in D2b.</param>
+    /// <param name="sourceDocument">The source the span belongs to; the target's document by default.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
-        => this.Add(DiagnosticPartition.Syntax, range, code, obj, obj2, sourceDocument, hint);
+    public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null)
+    {
+        sourceDocument ??= this.Document;
+        var source = this.SourceOf(sourceDocument);
+        var length = sourceDocument is null ? -1 : range.Length;
 
-    /// <summary>Reports a problem of one phase.</summary>
+        // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
+        var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
+        var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
+        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, false);
+        if (isError)
+        {
+            this.LastError = key;
+        }
+
+        return isError;
+    }
+
+    /// <summary>Reports a problem of an analysis phase that is not yet migrated to problem identities (D2b).</summary>
     /// <param name="partition">The phase's partition.</param>
     /// <param name="range">The span; it must be the default value when no source applies.</param>
     /// <param name="code">The code.</param>
     /// <param name="obj">The first message argument.</param>
     /// <param name="obj2">The second message argument.</param>
-    /// <param name="sourceDocument">The source the span belongs to.</param>
-    /// <param name="hint">Text appended to the message; removed in D2b.</param>
+    /// <param name="sourceDocument">The source the span belongs to; the target's document by default.</param>
+    /// <param name="note">A Note formed from the facts.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    public bool Add(DiagnosticPartition partition, SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? hint = null)
+    public bool Add(DiagnosticPartition partition, SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null)
     {
         sourceDocument ??= this.Document;
-        var entry = Validate(range, code, obj, obj2, sourceDocument);
-        var module = this.module >= 0 ? this.module : this.Owner.UnattributedModule();
-        var source = sourceDocument is null ? -1 : this.Owner.DocumentSource(sourceDocument, module);
-        var isError = entry.Severity == DiagnosticSeverity.Error;
-        var length = sourceDocument is null ? -1 : range.Length;
-        this.Owner.Record(partition, module, new(code, source, range.Start, length, DiagnosticOwner.Capture(obj), DiagnosticOwner.Capture(obj2), hint, this.Unit), isError);
-        return isError;
+        return this.Report(partition, default, range, code, obj, obj2, note, null, null, sourceDocument, true);
     }
 
     // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
-    internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document)
+    internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document, DiagnosticKey[]? derivedFrom)
     {
         if (DiagnosticEntries.Anomalies.Count != 0)
         {
             throw new DiagnosticContractException(DiagnosticFault.Catalog, DiagnosticEntries.Anomalies[0]);
+        }
+
+        if (DiagnosticRequirements.Anomalies.Count != 0)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.Catalog, DiagnosticRequirements.Anomalies[0]);
         }
 
         if (code == DiagnosticCode.Template_Kd || !DiagnosticEntries.TryGet(code, out var entry))
@@ -99,6 +117,12 @@ public sealed class DiagnosticCollection
             throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.Arity} arguments, not {count}.");
         }
 
+        // Invariant: a problem is derived, reported as PrerequisiteUnavailable_Kd, exactly when it names prerequisites.
+        if ((code == DiagnosticCode.PrerequisiteUnavailable_Kd) != (derivedFrom is { Length: > 0 }))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} is derived exactly when it names prerequisites.");
+        }
+
         if (document is null ? range != default : range.Start < 0 || range.Length < 0 || range.Start > document.SourceText.Length - range.Length)
         {
             throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"{entry.Name} at {range} in {document?.Path ?? "no source"}.");
@@ -106,4 +130,48 @@ public sealed class DiagnosticCollection
 
         return entry;
     }
+
+    /// <summary>Gets the key of a check whose subject is a syntax node.</summary>
+    /// <param name="node">The subject.</param>
+    /// <param name="span">The subject's span.</param>
+    /// <param name="document">The node's document.</param>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="condition">The condition within the requirement.</param>
+    /// <returns>The key.</returns>
+    internal DiagnosticKey KeyOf(object node, SourceSpan span, SourceDocument? document, DiagnosticRequirement requirement, ushort condition = 0)
+    {
+        document ??= this.Document;
+        return new(node, this.SourceOf(document), span.Start, document is null ? -1 : span.Length, requirement, condition);
+    }
+
+    /// <summary>Reports one problem of a migrated recorder.</summary>
+    /// <param name="partition">The partition of the requirement's phase.</param>
+    /// <param name="key">The check key.</param>
+    /// <param name="range">The primary span.</param>
+    /// <param name="code">The code; <c>PrerequisiteUnavailable_Kd</c> exactly when <paramref name="derivedFrom"/> is not empty.</param>
+    /// <param name="first">The first message argument.</param>
+    /// <param name="second">The second message argument.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    /// <param name="advice">Conditional advice formed from the facts.</param>
+    /// <param name="derivedFrom">The unmet prerequisites.</param>
+    /// <param name="document">The source the span belongs to; the target's document by default.</param>
+    /// <param name="legacy">Whether the transitional start-offset filter still applies.</param>
+    /// <returns><see langword="true"/> when the report is an Error.</returns>
+    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, bool legacy)
+    {
+        document ??= this.Document;
+        var entry = Validate(range, code, first, second, document, derivedFrom);
+        var module = this.CurrentModule();
+        var source = this.SourceOf(document);
+        var isError = entry.Severity == DiagnosticSeverity.Error;
+        var length = document is null ? -1 : range.Length;
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom, this.Unit, legacy), isError);
+        return isError;
+    }
+
+    private int CurrentModule()
+        => this.module >= 0 ? this.module : this.Owner.UnattributedModule();
+
+    private int SourceOf(SourceDocument? document)
+        => document is null ? -1 : this.Owner.DocumentSource(document, this.CurrentModule());
 }

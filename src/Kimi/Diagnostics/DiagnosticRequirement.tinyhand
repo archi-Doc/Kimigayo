@@ -1,0 +1,212 @@
+// The description of every requirement (docs/dev/DIAGNOSTICS.md §3), keyed by its stable name. PrerequisiteUnavailable_Kd
+// states which requirement could not be decided and what it needs. A consistency test keeps this table equal to the requirements.
+
+  + Name="Input"
+    Description="the inputs and the configuration are established"
+
+  + Name="Syntax"
+    Description="the source follows the grammar"
+
+  + Name="Binding.MissingName"
+    Description="a Name or member resolves to a declaration"
+
+  + Name="Binding.MissingType"
+    Description="the Type is established"
+
+  + Name="Binding.Ambiguous"
+    Description="exactly one declaration or operation applies"
+
+  + Name="Binding.Duplicate"
+    Description="the declaration is unique in its scope"
+
+  + Name="Binding.TypeMismatch"
+    Description="the value has the required Type"
+
+  + Name="Binding.NotCallable"
+    Description="the selected value is callable"
+
+  + Name="Binding.NoApplicableCandidate"
+    Description="an overload applies to the arguments"
+
+  + Name="Binding.Cycle"
+    Description="Type inference has no cyclic dependency"
+
+  + Name="Binding.Unsupported"
+    Description="the form lies inside the implemented subset"
+
+  + Name="Binding.InvalidAssignment"
+    Description="the target permits assignment"
+
+  + Name="Binding.InvalidLiteral"
+    Description="the literal fits its Type"
+
+  + Name="Binding.Access"
+    Description="the declaration is accessible here"
+
+  + Name="Binding.Capture"
+    Description="the binding may cross this function boundary"
+
+  + Name="Binding.InvalidOrigin"
+    Description="the Origin binding is valid in this position"
+
+  + Name="Binding.MissingOrigin"
+    Description="the Origin is bound"
+
+  + Name="Binding.InvalidTypeFormation"
+    Description="the declaration can form this Type"
+
+  + Name="Binding.InvalidConstraint"
+    Description="the Constraint is well formed"
+
+  + Name="Binding.InvalidSelfClause"
+    Description="the Self clause is well formed"
+
+  + Name="Binding.NotObjectPayload"
+    Description="the Type can be an object target or payload"
+
+  + Name="Binding.UnprovenConstraint"
+    Description="the Constraint is proven by its deadline"
+
+  + Name="Binding.UnsatisfiedConstraint"
+    Description="the Types satisfy the Constraint"
+
+  + Name="Binding.InvalidKimi"
+    Description="the Kimi library declarations match the compiler"
+
+  + Name="Binding.MissingImplementation"
+    Description="an implementation matches the Contract requirement"
+
+  + Name="Binding.IncompatibleImplementation"
+    Description="the implementation satisfies the Contract"
+
+  + Name="Binding.InvalidAssociatedType"
+    Description="the associated Type binding is valid"
+
+  + Name="Binding.InvalidPattern"
+    Description="the Pattern fits the matched Type"
+
+  + Name="Binding.NonExhaustiveMatch"
+    Description="the match covers every value"
+
+  + Name="Binding.InvalidTestDefinition"
+    Description="the Test definition is valid"
+
+  + Name="Binding.InvalidLayoutAttribute"
+    Description="the Layout Attribute is valid"
+
+  + Name="Binding.ConflictingLayout"
+    Description="the struct fragments agree on their Layout"
+
+  + Name="Binding.InvalidLibraryImport"
+    Description="the LibraryImport is well formed"
+
+  + Name="Binding.MissingNativeRequirement"
+    Description="the native requirement is configured"
+
+  + Name="Binding.UnsupportedImportSignature"
+    Description="the imported signature is supported"
+
+  + Name="Binding.ConflictingImportSignature"
+    Description="the imports of one symbol agree on their signature"
+
+  + Name="Binding.ConflictingRuntimeSymbol"
+    Description="the runtime symbol import matches the reserved supply"
+
+  + Name="Binding.ConflictingImportSupply"
+    Description="the imports of one symbol agree on their supply"
+
+  + Name="Binding.UnsafeFunctionValue"
+    Description="the unsafe function is only called directly"
+
+  + Name="Binding.UnavailableReservedImport"
+    Description="the reserved import is available"
+
+  + Name="Binding.SplitCLayoutStorage"
+    Description="the C-layout storage lies in one fragment"
+
+  + Name="Binding.InvalidCLayout"
+    Description="the C layout is valid"
+
+  + Name="Binding.InvalidInlineLayout"
+    Description="the Type has a finite inline layout"
+
+  + Name="Binding.TransferRequired"
+    Description="the transfer is written explicitly"
+
+  + Name="Binding.ExclusiveBorrowRequired"
+    Description="the exclusive borrow is written explicitly"
+
+  + Name="Binding.SharedBindingAssignment"
+    Description="the shared binding permits the assignment"
+
+  + Name="Binding.ExclusiveBindingAssignment"
+    Description="the exclusive binding permits the assignment"
+
+  + Name="Binding.SharedPathAccess"
+    Description="the path grants the requested capability"
+
+  + Name="Binding.ExclusivePathTake"
+    Description="the path grants Take"
+
+  + Name="Binding.PlaceRequired"
+    Description="the Place result is a Place"
+
+  + Name="Binding.ReceiverShapeMismatch"
+    Description="the functions of one Name share a receiver shape"
+
+  + Name="Binding.BareOwningShorthand"
+    Description="the owning shorthand names a Type"
+
+  + Name="Binding.NonCopyOperand"
+    Description="the @copy operand is proven Copy"
+
+  + Name="Binding.MissingSpecializationTarget"
+    Description="a generic function matches the specialization"
+
+  + Name="Binding.SpecializationInputMismatch"
+    Description="the specialization matches its generic function"
+
+  + Name="Binding.DuplicateDictionaryKey"
+    Description="the Dictionary literal keys are distinct"
+
+  + Name="Startup"
+    Description="the program has a valid startup"
+
+  + Name="ControlFlow"
+    Description="the control flow and the operand Types are valid"
+
+  + Name="Ownership.UninitializedUse"
+    Description="the value is initialized on every incoming path"
+
+  + Name="Ownership.PossiblyMovedUse"
+    Description="the value is not moved on any incoming path"
+
+  + Name="Ownership.ReassignedLet"
+    Description="the let binding is initialized once"
+
+  + Name="Ownership.Unsupported"
+    Description="the operation lies inside the analyzed subset"
+
+  + Name="Ownership.ExpansionLimit"
+    Description="the deferred cleanup expansion stays within its limit"
+
+  + Name="Ownership.ComparisonLoanConflict"
+    Description="the operation does not conflict with an active loan"
+
+  + Name="Ownership.DefaultArgumentMove"
+    Description="the default expression does not move a prepared argument"
+
+  + Name="Ownership.Internal"
+    Description="the analysis keeps its invariants"
+
+  + Name="Ownership.TransferRequired"
+    Description="the transfer is written explicitly"
+
+  + Name="Ownership.UnprovenOrigin"
+    Description="the Origin obligation is proven"
+
+  + Name="Ownership.EffectBound"
+    Description="the implementation's destructions stay within its effect bound"
+
+  + Name="Emission"
+    Description="generation succeeds"

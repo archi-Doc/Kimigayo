@@ -445,7 +445,9 @@ public ref struct TokenReader
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
     public TokenKind SkipUnexpectedUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
     {
-        if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3)
+        // Recovery from an error this reader just reported at the same token reports nothing again.
+        if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3 &&
+            this.Diagnostic.LastError?.Start != this.currentToken.Span.Start)
         {
             this.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, this.GetSpan(this.currentToken).ToString());
         }
@@ -610,7 +612,7 @@ public ref struct TokenReader
     /// </summary>
     /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
-        => new ErrorKoto(ref this, this.currentToken.Span);
+        => new ErrorKoto(ref this, this.currentToken.Span) { Cause = this.Diagnostic.LastError };
 
     /// <summary>
     /// Gets the source text represented by the specified token.

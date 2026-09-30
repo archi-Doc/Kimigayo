@@ -532,22 +532,22 @@ public abstract class Koto
         this.VisitChildrenCore(visitor);
     }
 
-    /// <summary>Adds a diagnostic for this node.</summary>
+    /// <summary>Reports a syntax problem at this node's span.</summary>
     /// <param name="code">The diagnostic code.</param>
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
-    /// <param name="hint">An optional context-specific explanation appended to the message.</param>
-    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
+    /// <param name="note">A Note formed from the facts.</param>
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? note = null)
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, note);
 
-    /// <summary>Reports a problem of one analysis phase at this node.</summary>
+    /// <summary>Reports a problem of an analysis phase that is not yet migrated to problem identities (D2b).</summary>
     /// <param name="partition">The phase's partition.</param>
     /// <param name="code">The code.</param>
     /// <param name="obj">The first message argument.</param>
     /// <param name="obj2">The second message argument.</param>
-    /// <param name="hint">Text appended to the message; removed in D2b.</param>
-    public void AddDiagnostic(DiagnosticPartition partition, DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
-        => this.DiagnosticCollection?.Add(partition, this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
+    /// <param name="note">A Note formed from the facts.</param>
+    public void AddDiagnostic(DiagnosticPartition partition, DiagnosticCode code, object? obj = null, object? obj2 = null, string? note = null)
+        => this.DiagnosticCollection?.Add(partition, this.Span, code, obj, obj2, this.CodeContext.SourceDocument, note);
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
@@ -586,6 +586,28 @@ public abstract class Koto
 
         return false;
     }
+
+    /// <summary>Gets the key of a check of this node.</summary>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="condition">The condition within the requirement.</param>
+    /// <returns>The key, or the unresolved mark when the node records nowhere.</returns>
+    internal DiagnosticKey KeyOf(DiagnosticRequirement requirement, ushort condition = 0)
+        => this.DiagnosticCollection is { } diagnostics ? diagnostics.KeyOf(this, this.Span, this.CodeContext.SourceDocument, requirement, condition) : DiagnosticKey.Unresolved;
+
+    /// <summary>Reports a directly established problem of this node.</summary>
+    /// <param name="requirement">The requirement that failed.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="first">The first message argument.</param>
+    /// <param name="second">The second message argument.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null)
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, code, first, second, note, null, null, this.CodeContext.SourceDocument, false);
+
+    /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
+    /// <param name="requirement">The requirement left undecided.</param>
+    /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
+    internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument, false);
 
     /// <summary>Attaches an attribute chain and links its parents.</summary>
     /// <param name="attributeChain">The attribute chain, or <see langword="null"/>.</param>

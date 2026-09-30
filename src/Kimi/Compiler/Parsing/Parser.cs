@@ -2664,7 +2664,7 @@ CloseParameters:
                     reader.Diagnostic.Add(
                         reader.CurrentTokenRange,
                         DiagnosticCode.UnexpectedTrailingToken_Kd,
-                        hint: "If this is a borrow annotation, keep 'during' on the Type's line or enclose the Type and annotation in parentheses.");
+                        advice: "If this is a borrow annotation, keep 'during' on the Type's line or enclose the Type and annotation in parentheses.");
                 }
 
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);

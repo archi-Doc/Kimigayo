@@ -149,7 +149,7 @@ public class BorrowOriginSuffixTest
         Assert.False(c.Binding.Result.IsComplete);
         var failures = c.Binding.Issues.ToArray();
         c.Binding.ReportDiagnostics();
-        var messages = TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message).ToArray();
+        var messages = TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Explanation).ToArray();
         Assert.True(messages.Any(x => x.Contains(hint, StringComparison.Ordinal)), string.Join("\n", messages));
         Assert.Equal(failures, c.Binding.Issues);
     }
@@ -161,7 +161,7 @@ public class BorrowOriginSuffixTest
     [InlineData("func f<T>(x: ref/i32 during a)\n    T is Box<ref/i32 during a and b>\n    ()", "parentheses in Type arguments", "parentheses")]
     public void SyntaxErrorsSuggestLocalCorrections(string source, string description, string hint)
     {
-        var messages = TestDiagnostics.Of(ParseTestHelper.Parse(source)).Select(x => x.Message);
+        var messages = TestDiagnostics.Of(ParseTestHelper.Parse(source)).Select(x => x.Explanation);
         Assert.True(messages.Any(x => x.Contains(hint, StringComparison.Ordinal)), description);
     }
 

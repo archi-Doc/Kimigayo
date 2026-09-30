@@ -240,11 +240,12 @@ public sealed class EmissionArtifactsTest : IDisposable
         diagnostics.Invalidate(DiagnosticPartition.Emission);
         Assert.False(diagnostics.HasErrors);
 
-        // Two Errors at one offset: the transitional filter publishes one, and the error state keeps both.
+        // SPEC 23.3.6.4: two problems at one offset are both published, and a repeated report of one merges.
         var document = new SourceDocument("main.kimi", "x");
         c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: document);
         c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
-        Assert.Single(TestDiagnostics.Of(c));
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
+        Assert.Equal(["InvalidCharacter_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
         Assert.True(diagnostics.HasSyntaxErrors(c.Kotonoha));
         diagnostics.InvalidateSyntax(c.Kotonoha);
         Assert.False(diagnostics.HasErrors);

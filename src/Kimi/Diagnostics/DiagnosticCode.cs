@@ -171,6 +171,7 @@ public enum DiagnosticCode
     PositionAlwaysFails_Kd,
     IncompatibleSerializedSource_Kd,
     SourceReadFailed_Kd,
+    PrerequisiteUnavailable_Kd,
 
     Count, // Last sentinel
 }

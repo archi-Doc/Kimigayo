@@ -101,4 +101,88 @@ public sealed class DiagnosticOwnerTest
         Assert.Contains("\"label\":\"This comparison requires explicit grouping\"", json, StringComparison.Ordinal);
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
+
+    [Fact]
+    public void TheRequirementTableDescribesEveryRequirementOnce()
+    {
+        Assert.Empty(DiagnosticRequirements.Anomalies);
+        Assert.All(DiagnosticRequirements.All, static x => Assert.True(DiagnosticRequirements.TryGetDescription(x, out _), x.Name));
+        var text = """
+              + Name="Syntax"
+                Description="a"
+
+              + Name="Syntax"
+                Description="b"
+
+              + Name="Nope"
+                Description="c"
+            """;
+        var (_, anomalies) = DiagnosticRequirements.Load(System.Text.Encoding.UTF8.GetBytes(text));
+        Assert.Contains("Syntax: the entry is duplicated.", anomalies);
+        Assert.Contains("Nope: no requirement has this name.", anomalies);
+        Assert.Contains("Input: the requirement has no entry.", anomalies);
+    }
+
+    [Fact]
+    public void ARepeatedProblemMergesAndAConflictingOneIsAContractViolation()
+    {
+        var owner = new DiagnosticOwner();
+        var target = owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "abc"));
+        target.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "a");
+        target.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "a", note: "a note");
+        var record = Assert.Single(owner.Finalize().Diagnostics);
+        Assert.Equal("a note", record.Note);
+
+        var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Startup);
+        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
+        var exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(1, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false); });
+        Assert.Equal(DiagnosticFault.ConflictingProblem, exception.Fault);
+        exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, null, null, false); });
+        Assert.Equal(DiagnosticFault.InvalidArgument, exception.Fault);
+    }
+
+    [Fact]
+    public void ADerivedProblemIsSuppressedOnlyWhenItsPrerequisitesLeadToPublishedDirectErrors()
+    {
+        var owner = new DiagnosticOwner();
+        var target = owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "a b c d e"));
+        var cause = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Syntax, 0, "a");
+        target.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "a");
+        var chained = Key(2);
+        Derive(chained, [cause]);
+        Derive(Key(4), [chained]);
+        Derive(Key(6), [DiagnosticKey.Unresolved]);
+        var first = Key(8);
+        var second = new DiagnosticKey(null, 0, 8, 1, DiagnosticRequirement.Emission);
+        Derive(first, [second]);
+        target.Report(DiagnosticPartition.Emission, second, new(8, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [first], null, false);
+
+        // The chain resolves to the direct error; the unresolved mark and the cycle are published.
+        var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
+        Assert.Equal(["InvalidCharacter_Kd", "PrerequisiteUnavailable_Kd", "PrerequisiteUnavailable_Kd", "PrerequisiteUnavailable_Kd"], result.Diagnostics.Select(static x => x.Code));
+        var unresolved = result.Diagnostics[1];
+        Assert.Equal(new SourceSpan(6, 1), unresolved.Span);
+        Assert.Equal("Startup", unresolved.Reason![0].Value);
+        Assert.Equal("the program has a valid startup", unresolved.Reason[1].Value);
+        Assert.Null(unresolved.Related);
+        var cyclic = result.Diagnostics[2];
+        Assert.Equal(new DiagnosticRelated("prerequisite", 0, new(8, 1), new SourceRange(new(0, 8), new(0, 9)), "generation succeeds"), Assert.Single(cyclic.Related!));
+
+        DiagnosticKey Key(int start) => new(null, 0, start, 1, DiagnosticRequirement.Startup);
+
+        void Derive(DiagnosticKey key, DiagnosticKey[] prerequisites)
+            => target.Report(DiagnosticPartition.Startup, key, new(key.Start, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, null, false);
+    }
+
+    [Fact]
+    public void DistinctProblemsWithoutADefinedOrderAreAContractViolation()
+    {
+        var owner = new DiagnosticOwner();
+        var target = owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "abc"));
+        var first = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
+        var second = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
+        target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
+        target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
+        Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
+    }
 }

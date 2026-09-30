@@ -7,8 +7,8 @@ namespace Kimi.Diagnostics;
 
 /// <summary>
 /// Owns the diagnostic facts of one check request and finalizes them into records (SPEC 23.3.6, docs/dev/DIAGNOSTICS.md §4).
-/// Facts are recorded in partitions; recording an Error sets the error state before any suppression, and
-/// finalization forms explanations only for published records. Analysis is single-threaded, so nothing is locked.
+/// Facts are recorded in partitions and aggregated by problem; recording an Error sets the error state before any
+/// suppression, and finalization forms explanations only for published records. Analysis is single-threaded, so nothing is locked.
 /// </summary>
 public sealed class DiagnosticOwner
 {
@@ -22,10 +22,9 @@ public sealed class DiagnosticOwner
     private readonly Dictionary<Kotonoha, int> modules = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, int> units = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Name, int Module), DiagnosticCollection> targets = [];
-    private readonly List<DiagnosticFact>[] partitions = new List<DiagnosticFact>[(int)DiagnosticPartition.Emission + 1];
+    private readonly FactList[] partitions = new FactList[(int)DiagnosticPartition.Emission + 1];
     private readonly int[] partitionErrors = new int[(int)DiagnosticPartition.Emission + 1];
-    private readonly List<List<DiagnosticFact>> syntax = [];
-    private readonly List<int> syntaxErrors = [];
+    private readonly List<FactList> syntax = [];
     private int unattributed = -1;
 
     /// <summary>Initializes a new instance of the <see cref="DiagnosticOwner"/> class.</summary>
@@ -33,7 +32,7 @@ public sealed class DiagnosticOwner
     {
         for (var i = 0; i < this.partitions.Length; i++)
         {
-            this.partitions[i] = [];
+            this.partitions[i] = new();
         }
     }
 
@@ -96,7 +95,7 @@ public sealed class DiagnosticOwner
     /// <param name="module">The module.</param>
     /// <returns><see langword="true"/> when the module has a lexical or syntax Error.</returns>
     public bool HasSyntaxErrors(Kotonoha module)
-        => this.modules.TryGetValue(module, out var index) && index < this.syntaxErrors.Count && this.syntaxErrors[index] != 0;
+        => this.modules.TryGetValue(module, out var index) && index < this.syntax.Count && this.syntax[index].Errors != 0;
 
     /// <summary>Records a problem that concerns a whole input, or no source, such as a configuration or generation failure.</summary>
     /// <param name="partition">The partition of the phase that reports it.</param>
@@ -104,13 +103,15 @@ public sealed class DiagnosticOwner
     /// <param name="path">The input it concerns, or <see langword="null"/> for none.</param>
     /// <param name="first">The first message argument.</param>
     /// <param name="second">The second message argument.</param>
+    /// <remarks>The observed failure, its arguments, is the context of the problem (SPEC 23.3.4): two failures of one input are two problems.</remarks>
     public void Report(DiagnosticPartition partition, DiagnosticCode code, string? path, object? first = null, object? second = null)
     {
-        var entry = DiagnosticCollection.Validate(default, code, first, second, null);
+        var entry = DiagnosticCollection.Validate(default, code, first, second, null, null);
         var source = path is null ? -1 : this.PathSource(path);
-        var unit = this.UnitOf(path ?? string.Empty);
         var module = partition == DiagnosticPartition.Syntax ? this.UnattributedModule() : -1;
-        this.Record(partition, module, new(code, source, 0, -1, Capture(first), Capture(second), null, unit), entry.Severity == DiagnosticSeverity.Error);
+        var context = first is null ? null : second is null ? first.ToString() : string.Concat(first.ToString(), "\u001f", second.ToString());
+        var key = new DiagnosticKey(null, source, 0, -1, new(partition, 0), 0, context);
+        this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), null, null, null, this.UnitOf(path ?? string.Empty), false), entry.Severity == DiagnosticSeverity.Error);
     }
 
     /// <summary>Discards a partition's facts and error state; syntax is discarded for every module.</summary>
@@ -150,65 +151,54 @@ public sealed class DiagnosticOwner
         }
     }
 
-    /// <summary>Finalizes the valid facts of a range of partitions into records (SPEC 23.3.6.5, 23.3.6.6).</summary>
+    /// <summary>
+    /// Finalizes the valid facts of a range of partitions into records (SPEC 23.3.6.4–23.3.6.6): derived problems whose
+    /// prerequisites all lead to published direct Errors are suppressed, and the rest are ordered by source table, span and identity.
+    /// </summary>
     /// <param name="first">The first partition.</param>
     /// <param name="last">The last partition.</param>
     /// <returns>The records in result order and their source table.</returns>
+    /// <exception cref="DiagnosticContractException">Two distinct problems have no defined order.</exception>
     public DiagnosticResult Finalize(DiagnosticPartition first = DiagnosticPartition.Input, DiagnosticPartition last = DiagnosticPartition.Ownership)
     {
-        // D2a: the former start-offset suppression per collection, keeping the first fact in recording order
-        // (partitions in phase order, then arrival). It is replaced by prerequisites in D2b.
-        var published = new List<DiagnosticFact>();
-        var seen = new HashSet<(int Unit, int Start)>();
-        for (var partition = first; partition <= last; partition++)
-        {
-            if (partition == DiagnosticPartition.Syntax)
-            {
-                foreach (var list in this.syntax)
-                {
-                    Publish(list, published, seen);
-                }
-            }
-            else
-            {
-                Publish(this.partitions[(int)partition], published, seen);
-            }
-        }
-
-        if (published.Count == 0)
+        var facts = this.Candidates(first, last);
+        if (facts.Count == 0)
         {
             return DiagnosticResult.Empty;
         }
 
-        // Stable: equal keys keep recording order until problem identities order them (D2b).
-        var order = new int[published.Count];
-        for (var i = 0; i < order.Length; i++)
+        var explained = Explain(facts);
+        var order = new List<int>(facts.Count);
+        for (var i = 0; i < facts.Count; i++)
         {
-            order[i] = i;
+            if (!explained[i])
+            {
+                order.Add(i);
+            }
         }
 
-        Array.Sort(order, (x, y) =>
+        order.Sort((x, y) =>
         {
-            var comparison = Compare(published[x], published[y]);
+            var comparison = Compare(facts[x], facts[y]);
             return comparison != 0 ? comparison : x.CompareTo(y);
         });
 
+        for (var i = 1; i < order.Count; i++)
+        {
+            var previous = facts[order[i - 1]];
+            var current = facts[order[i]];
+            if (!previous.Legacy && !current.Legacy && Compare(previous, current) == 0)
+            {
+                throw new DiagnosticContractException(DiagnosticFault.UndefinedOrder, $"{previous.Code} and {current.Code} at {current.Start} have no defined order.");
+            }
+        }
+
         var table = new List<DiagnosticSource>();
         var remap = new Dictionary<int, int>();
-        var records = new CheckDiagnostic[order.Length];
-        for (var i = 0; i < order.Length; i++)
+        var records = new CheckDiagnostic[order.Count];
+        for (var i = 0; i < order.Count; i++)
         {
-            var fact = published[order[i]];
-            var source = -1;
-            if (fact.Source >= 0 && !remap.TryGetValue(fact.Source, out source))
-            {
-                source = table.Count;
-                remap.Add(fact.Source, source);
-                var entry = this.sources[fact.Source];
-                table.Add(new(entry.Path, entry.IsInput));
-            }
-
-            records[i] = this.CreateRecord(fact, source);
+            records[i] = this.CreateRecord(facts[order[i]], table, remap);
         }
 
         return new(records, table.ToArray());
@@ -219,26 +209,43 @@ public sealed class DiagnosticOwner
 
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
     {
-        if (partition == DiagnosticPartition.Syntax)
+        var list = partition == DiagnosticPartition.Syntax ? this.syntax[module] : this.partitions[(int)partition];
+        if (!fact.Legacy)
         {
-            this.syntax[module].Add(fact);
-            if (isError)
+            // One problem, one fact: a repeated report merges its prerequisites and must agree on location and facts.
+            list.Problems ??= [];
+            if (list.Problems.TryGetValue((fact.Key, fact.Code), out var index))
             {
-                this.syntaxErrors[module]++;
-                if (fact.Source >= 0)
+                var existing = list.Facts[index];
+                // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
+                if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
+                    !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice))
                 {
-                    this.sources[fact.Source].SyntaxErrors++;
+                    throw new DiagnosticContractException(DiagnosticFault.ConflictingProblem, $"{fact.Code} was reported twice with different locations or facts: [{existing.Start}+{existing.Length}] {existing.First} {existing.Second} {existing.Note} and [{fact.Start}+{fact.Length}] {fact.First} {fact.Second} {fact.Note}.");
                 }
+
+                list.Facts[index] = existing with
+                {
+                    Note = existing.Note ?? fact.Note,
+                    Advice = existing.Advice ?? fact.Advice,
+                    DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
+                };
+
+                return;
             }
-        }
-        else
-        {
-            this.partitions[(int)partition].Add(fact);
+
+            list.Problems.Add((fact.Key, fact.Code), list.Facts.Count);
         }
 
+        list.Facts.Add(fact);
         if (isError)
         {
+            list.Errors++;
             this.partitionErrors[(int)partition]++;
+            if (partition == DiagnosticPartition.Syntax && fact.Source >= 0)
+            {
+                this.sources[fact.Source].SyntaxErrors++;
+            }
         }
     }
 
@@ -297,18 +304,98 @@ public sealed class DiagnosticOwner
     internal int UnattributedModule()
         => this.unattributed >= 0 ? this.unattributed : this.unattributed = this.AddModule();
 
-    private static void Publish(List<DiagnosticFact> facts, List<DiagnosticFact> published, HashSet<(int Unit, int Start)> seen)
+    private static bool Conflicts(string? left, string? right)
+        => left is not null && right is not null && left != right;
+
+    private static DiagnosticKey[] Union(DiagnosticKey[]? left, DiagnosticKey[] right)
     {
-        foreach (var fact in facts)
+        if (left is null)
         {
-            if (seen.Add((fact.Unit, fact.Length < 0 ? 0 : fact.Start)))
+            return right;
+        }
+
+        var union = new List<DiagnosticKey>(left);
+        foreach (var key in right)
+        {
+            if (!union.Contains(key))
             {
-                published.Add(fact);
+                union.Add(key);
             }
         }
+
+        return union.Count == left.Length ? left : union.ToArray();
     }
 
-    // SPEC 23.3.6.6: source table order, then span (none first), then an order that never uses text or arrival.
+    // SPEC 23.3.6.4: a derived fact is explained when every prerequisite leads, without an unresolved link or a cycle, to a
+    // direct Error. The least fixed point is computed without recursion: a cycle never becomes explained.
+    private static bool[] Explain(List<DiagnosticFact> facts)
+    {
+        var explained = new bool[facts.Count];
+        var derivedCount = 0;
+        Dictionary<DiagnosticKey, int>? directErrors = null;
+        Dictionary<DiagnosticKey, List<int>>? derivedByKey = null;
+        for (var i = 0; i < facts.Count; i++)
+        {
+            var fact = facts[i];
+            if (fact.Legacy)
+            {
+                continue;
+            }
+
+            if (fact.DerivedFrom is not null)
+            {
+                derivedCount++;
+                derivedByKey ??= [];
+                if (!derivedByKey.TryGetValue(fact.Key, out var list))
+                {
+                    derivedByKey.Add(fact.Key, list = []);
+                }
+
+                list.Add(i);
+            }
+            else if (DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
+            {
+                (directErrors ??= [])[fact.Key] = i;
+            }
+        }
+
+        if (derivedCount == 0)
+        {
+            return explained;
+        }
+
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            for (var i = 0; i < facts.Count; i++)
+            {
+                if (explained[i] || facts[i].DerivedFrom is not { } prerequisites)
+                {
+                    continue;
+                }
+
+                var satisfied = true;
+                foreach (var key in prerequisites)
+                {
+                    if (key.IsUnresolved || !(directErrors?.ContainsKey(key) == true || (derivedByKey!.TryGetValue(key, out var derived) && derived.Exists(x => explained[x]))))
+                    {
+                        satisfied = false;
+                        break;
+                    }
+                }
+
+                if (satisfied)
+                {
+                    explained[i] = changed = true;
+                }
+            }
+        }
+
+        return explained;
+    }
+
+    // SPEC 23.3.6.6: source table order, then span (none first), then the problem's identity: subject, code, requirement,
+    // condition and context. Facts of recorders not yet migrated (D2b) compare by code and then keep recording order.
     private static int Compare(in DiagnosticFact left, in DiagnosticFact right)
     {
         var order = (left.Source < 0 ? int.MaxValue : left.Source).CompareTo(right.Source < 0 ? int.MaxValue : right.Source);
@@ -322,7 +409,17 @@ public sealed class DiagnosticOwner
             order = left.Length.CompareTo(right.Length);
         }
 
-        return order == 0 ? string.CompareOrdinal(left.Code.ToString(), right.Code.ToString()) : order;
+        if (order == 0 && !left.Legacy && !right.Legacy)
+        {
+            order = left.Key.CompareSubject(right.Key);
+        }
+
+        if (order == 0)
+        {
+            order = string.CompareOrdinal(left.Code.ToString(), right.Code.ToString());
+        }
+
+        return order == 0 && !left.Legacy && !right.Legacy ? left.Key.CompareCheck(right.Key) : order;
     }
 
     private static int DisplayWidth(ReadOnlySpan<char> text)
@@ -380,6 +477,41 @@ public sealed class DiagnosticOwner
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
     }
 
+    // D2a's start-offset suppression per former collection, kept for recorders not yet migrated (docs/dev/DIAGNOSTICS.md §8):
+    // in recording order, a legacy fact is dropped when an earlier fact occupies its offset; migrated facts are never dropped.
+    private List<DiagnosticFact> Candidates(DiagnosticPartition first, DiagnosticPartition last)
+    {
+        var candidates = new List<DiagnosticFact>();
+        HashSet<(int Unit, int Start)>? seen = null;
+        for (var partition = first; partition <= last; partition++)
+        {
+            if (partition == DiagnosticPartition.Syntax)
+            {
+                foreach (var list in this.syntax)
+                {
+                    Add(list.Facts, candidates, ref seen);
+                }
+            }
+            else
+            {
+                Add(this.partitions[(int)partition].Facts, candidates, ref seen);
+            }
+        }
+
+        return candidates;
+
+        static void Add(List<DiagnosticFact> facts, List<DiagnosticFact> candidates, ref HashSet<(int Unit, int Start)>? seen)
+        {
+            foreach (var fact in facts)
+            {
+                if ((seen ??= []).Add((fact.Unit, fact.Length < 0 ? 0 : fact.Start)) || !fact.Legacy)
+                {
+                    candidates.Add(fact);
+                }
+            }
+        }
+    }
+
     private int UnitOf(string name)
     {
         if (!this.units.TryGetValue(name, out var unit))
@@ -393,15 +525,13 @@ public sealed class DiagnosticOwner
 
     private int AddModule()
     {
-        this.syntax.Add([]);
-        this.syntaxErrors.Add(0);
+        this.syntax.Add(new());
         return this.syntax.Count - 1;
     }
 
     private void InvalidateSyntax(int module)
     {
-        this.partitionErrors[(int)DiagnosticPartition.Syntax] -= this.syntaxErrors[module];
-        this.syntaxErrors[module] = 0;
+        this.partitionErrors[(int)DiagnosticPartition.Syntax] -= this.syntax[module].Errors;
         this.syntax[module].Clear();
         foreach (var entry in this.sources)
         {
@@ -424,49 +554,114 @@ public sealed class DiagnosticOwner
         return index;
     }
 
-    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, int source)
+    private int TableIndex(int source, List<DiagnosticSource> table, Dictionary<int, int> remap)
     {
-        DiagnosticEntries.TryGet(fact.Code, out var entry);
-        var message = entry!.FormatMessage(fact.First, fact.Second);
-        if (fact.Hint is not null)
+        if (source < 0)
         {
-            message = string.Concat(message, " ", fact.Hint);
+            return -1;
         }
 
-        SourceSpan? span = fact.Length < 0 ? null : new SourceSpan(fact.Start, fact.Length);
-        DiagnosticDisplay? display = null;
-        if (span is { } primary && fact.Source >= 0 && this.sources[fact.Source].Document is { } document)
+        if (!remap.TryGetValue(source, out var index))
         {
-            var range = document.GetSourceRange(primary);
-            var lastLine = range.End.Line;
-            if (lastLine > range.Start.Line && range.End.Character == 0)
+            index = table.Count;
+            remap.Add(source, index);
+            var entry = this.sources[source];
+            table.Add(new(entry.Path, entry.IsInput));
+        }
+
+        return index;
+    }
+
+    private (SourceSpan? Span, SourceRange? Range) Locate(int source, int start, int length)
+    {
+        if (length < 0)
+        {
+            return (null, null);
+        }
+
+        var span = new SourceSpan(start, length);
+        return (span, source >= 0 && this.sources[source].Document is { } document ? document.GetSourceRange(span) : null);
+    }
+
+    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, List<DiagnosticSource> table, Dictionary<int, int> remap)
+    {
+        DiagnosticEntries.TryGet(fact.Code, out var entry);
+        var (span, range) = this.Locate(fact.Source, fact.Start, fact.Length);
+        DiagnosticDisplay? display = null;
+        if (range is { } primary && this.sources[fact.Source].Document is { } document)
+        {
+            var lastLine = primary.End.Line;
+            if (lastLine > primary.Start.Line && primary.End.Character == 0)
             {
                 lastLine--;
             }
 
             var lines = new List<DiagnosticExcerptLine>();
-            for (var line = range.Start.Line; line <= lastLine && line < document.LineCount; line++)
+            for (var line = primary.Start.Line; line <= lastLine && line < document.LineCount; line++)
             {
                 if (lines.Count == MaxExcerptLines - 1 && line < lastLine)
                 {
                     line = lastLine; // Keep the first lines and the last one.
                 }
 
-                var start = line == range.Start.Line ? range.Start.Character : 0;
-                var end = line == range.End.Line ? range.End.Character : int.MaxValue;
+                var start = line == primary.Start.Line ? primary.Start.Character : 0;
+                var end = line == primary.End.Line ? primary.End.Character : int.MaxValue;
                 lines.Add(ExcerptLine(document, line, start, end));
             }
 
             display = new(range, lines.ToArray());
         }
 
-        return new(entry.Name, entry.Severity, entry.Category, message, source, span)
+        DiagnosticValue[]? reason = null;
+        DiagnosticRelated[]? related = null;
+        if (fact.DerivedFrom is { } prerequisites)
+        {
+            // SPEC 23.3.6.4: the requirement left undecided, what it needs, and where each prerequisite is.
+            var requirement = fact.Key.Requirement;
+            reason =
+            [
+                new("requirement", DiagnosticValueKind.Enumeration, requirement.Name),
+                new("condition", DiagnosticValueKind.Text, DiagnosticRequirements.TryGetDescription(requirement, out var description) ? description : requirement.Name),
+            ];
+            var locations = new List<DiagnosticRelated>();
+            foreach (var key in prerequisites)
+            {
+                if (!key.IsUnresolved && key.Source >= 0)
+                {
+                    var (relatedSpan, relatedRange) = this.Locate(key.Source, key.Start, key.Length);
+                    var label = DiagnosticRequirements.TryGetDescription(key.Requirement, out var prerequisiteDescription) ? prerequisiteDescription : key.Requirement.Name;
+                    locations.Add(new("prerequisite", this.TableIndex(key.Source, table, remap), relatedSpan, relatedRange, label));
+                }
+            }
+
+            related = locations.Count == 0 ? null : locations.ToArray();
+        }
+
+        return new(entry!.Name, entry.Severity, entry.Category, entry.FormatMessage(fact.First, fact.Second), this.TableIndex(fact.Source, table, remap), span)
         {
             Label = entry.Label,
-            Note = entry.Note,
-            Advice = entry.Advice,
+            Reason = reason,
+            Related = related,
+            Note = fact.Note ?? entry.Note,
+            Advice = fact.Advice ?? entry.Advice,
             Display = display,
         };
+    }
+
+    private sealed class FactList
+    {
+        public List<DiagnosticFact> Facts { get; } = [];
+
+        public Dictionary<(DiagnosticKey Key, DiagnosticCode Code), int>? Problems { get; set; }
+
+        public int Errors { get; set; }
+
+        public void Clear()
+        {
+            this.Facts.Clear();
+            this.Problems?.Clear();
+            this.Errors = 0;
+        }
     }
 
     private sealed class SourceEntry(string path, bool isInput, SourceDocument? document, int module)
@@ -482,14 +677,3 @@ public sealed class DiagnosticOwner
         public int SyntaxErrors { get; set; }
     }
 }
-
-/// <summary>One recorded fact (docs/dev/DIAGNOSTICS.md §4.1). Problem identities and prerequisites arrive in D2b.</summary>
-/// <param name="Code">The code.</param>
-/// <param name="Source">The source table index, or -1.</param>
-/// <param name="Start">The span start.</param>
-/// <param name="Length">The span length, or -1 without a span.</param>
-/// <param name="First">The first message argument, captured as a value.</param>
-/// <param name="Second">The second message argument, captured as a value.</param>
-/// <param name="Hint">Text appended to the message until D2b moves it into Notes and Advice.</param>
-/// <param name="Unit">The former collection, for the transitional start-offset filter.</param>
-internal readonly record struct DiagnosticFact(DiagnosticCode Code, int Source, int Start, int Length, object? First, object? Second, string? Hint, int Unit);

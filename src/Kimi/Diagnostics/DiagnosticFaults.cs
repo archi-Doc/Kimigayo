@@ -23,6 +23,9 @@ internal static class DiagnosticFaults
         DiagnosticFault.InvalidLocation => "a diagnostic named an invalid location",
         DiagnosticFault.InvalidArgument => "a diagnostic did not match its definition",
         DiagnosticFault.Exception => "an exception ended the analysis",
+        DiagnosticFault.ConflictingProblem => "one problem was reported with different facts",
+        DiagnosticFault.UndefinedOrder => "two problems have no defined order",
+        DiagnosticFault.UnexplainedRejection => "a rejection has no explaining error",
         _ => "diagnostics could not be collected",
     };
 
