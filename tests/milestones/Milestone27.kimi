@@ -39,10 +39,10 @@ public func main()
     let bounds = startBound()..endBound()
     let resolved = bounds.resolve(grid[1].length)
     require resolved.start == 1 and resolved.end == 3 else => $abort("Range resolution failed")
-    let middle: Slice<i32> = selection: do
+    let middle: Slice<i32> = label selection: do
         let rows: Slice<[4 of i32]> = grid[1..]
         let row = rows[0][..]
-        exit to selection: row[resolved] // Retain grid, not either local Slice handle.
+        exit to selection row[resolved] // Retain grid, not either local Slice handle.
     let last = ^1
     require middle.length == 2 and middle[0] == 20 and middle[last] == 30 else => $abort("Nested view failed")
     let parts = middle.splitAt(1)
@@ -65,9 +65,9 @@ public func main()
     Console.writeLine(text[1])
     let number: i32 = 42
     let refs: [1 of ref/i32] = [number@ref]
-    let copied: ref/i32 = reference: do
+    let copied: ref/i32 = label reference: do
         let handles: Slice<ref/i32> = refs[..]
-        exit to reference: handles[0] // Copy the inner reference, not a reference to the handle.
+        exit to reference handles[0] // Copy the inner reference, not a reference to the handle.
     require copied == 42 else => $abort("Element Origin was lost")
     Console.writeLine("Slice Origins preserved.")
 

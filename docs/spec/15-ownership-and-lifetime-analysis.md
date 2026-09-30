@@ -86,10 +86,10 @@ let all = pair     // Complete again.
 
 A Non-Copy referent reached through `ref`, `uniq`, `objref` or `objuniq`, or any part of it, is never Moved in a way that leaves the borrowed Place Moved or Uninitialized, even if reinitialization is planned: exclusive access does not transfer ownership. A Copy leaves its source Initialized and is not extraction.
 
-**Partial Move and destructors.** A Move leaves its path Moved, and initialization restores it. Completeness is required immediately before every whole-value use (§15.1.2), including a call that receives the whole value, and before a user-defined `deinit` runs. An ancestor's `deinit` does not by itself forbid a Partial Move. Instead, the same state analysis must prove that completeness is restored on every path that reaches such a point, including normal completion, `return`, `try` propagation, `exit`, `continue`, `yield`, `defer` bodies and the cleanup of abandoned construction. Planned assignments and optimization results are not proof.
+**Partial Move and destructors.** A Move leaves its path Moved, and initialization restores it. Completeness is required immediately before every whole-value use (§15.1.2), including a call that receives the whole value, and before a user-defined `drop` runs. An ancestor's `drop` does not by itself forbid a Partial Move. Instead, the same state analysis must prove that completeness is restored on every path that reaches such a point, including normal completion, `return`, `try` propagation, `exit`, `continue`, `yield`, `defer` bodies and the cleanup of abandoned construction. Planned assignments and optimization results are not proof.
 
 ```kimi
-// Box.value is a mutable Resource; Box has a deinit that needs a complete Box.
+// Box.value is a mutable Resource; Box has a drop that needs a complete Box.
 var box = Box.init(Resource.init())
 let saved = box.value@move  // Partial Move.
 // inspect(box)             // Error: a whole-value shared borrow of an incomplete Box.
@@ -111,7 +111,7 @@ Consume
 │  ├─ supported place kind and ownership path
 │  ├─ trackable Move Path
 │  ├─ required Field declaration and storage properties
-│  └─ structural Partial Move / deinit restrictions
+│  └─ structural Partial Move / drop restrictions
 └─ Legality: may this use site perform it?
    ├─ required accessibility
    ├─ target Initialized on every incoming path; complete if an aggregate
@@ -122,7 +122,7 @@ Consume
 
 The declaration kind is structural, while accessibility depends on the use site. Constraints can prove structural facts, but not current initialization or the absence of Loans. Unknown structural facts follow [generic Access Effect resolution](08-generics-constraints-and-contracts.md#89-generic-access-effects); there is no Consume contract syntax.
 
-An ancestor of the target may be incomplete if the target itself is Initialized and complete and can be located without whole-value access to that ancestor. A user-defined `deinit` can make a path structurally ineligible, so the actual ancestors are also checked at each use. Moving a complete value as a whole is not a Partial Move.
+An ancestor of the target may be incomplete if the target itself is Initialized and complete and can be located without whole-value access to that ancestor. A user-defined `drop` can make a path structurally ineligible, so the actual ancestors are also checked at each use. Moving a complete value as a whole is not a Partial Move.
 
 Per-path state, destruction responsibility, the first initialization of a `let`, construction completion and current completeness are tracked across branches, loops, transfers and `defer`, and [destruction lifetime checks](#1566-destruction-lifetime-checking) apply. Raw-pointer operations need not recover or repair the responsibility of an untracked original owner.
 
@@ -809,23 +809,23 @@ func bad(x: ref/i32) -> ref/i32 during x
 
 ### 15.6.6. Destruction lifetime checking
 
-The [destruction rules](16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit) and [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) determine responsibility and order. Destruction lifetime checking requires every Origin and Loan that destruction may observe to be valid at each such observation:
+The [destruction rules](16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop) and [Scope Exit](16-scope-exit-and-destruction.md#162-scope-exit-destruction) determine responsibility and order. Destruction lifetime checking requires every Origin and Loan that destruction may observe to be valid at each such observation:
 
 ```text
 DestructorUsePoints(value, origin) ⊆ region(origin)
 ```
 
-Destruction that observes no Origin or Loan adds no lifetime requirement. Every user-defined `deinit` is assumed to observe all reachable Origins, even if its body does not use them, and the same check applies recursively to field destruction. No relaxation mechanism is defined.
+Destruction that observes no Origin or Loan adds no lifetime requirement. Every user-defined `drop` is assumed to observe all reachable Origins, even if its body does not use them, and the same check applies recursively to field destruction. No relaxation mechanism is defined.
 
 ```kimi
 struct Logger {sink}
     let out: uniq/Writer during sink
 
-    deinit
+    drop
         observe(self.out)
 ```
 
-Here `observe` accepts `ref/Writer`, and passing `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during destruction, even if the `deinit` body were `()`.
+Here `observe` accepts `ref/Writer`, and passing `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during destruction, even if the `drop` body were `()`.
 
 ### 15.6.7. Call borrow reservations
 
@@ -902,7 +902,7 @@ These operations cannot repair Uninitialized, Moved or partially moved storage; 
 
 Argument evaluation, target reservation and activation follow §15.6.7, including textual order for named arguments. Acquisition and fitting finish before any update. If an argument does not complete, no update occurs; earlier effects remain, and the ordinary cleanup and Abort rules apply.
 
-`replace` destroys the complete old value in its original location in the normal `deinit`, field and base order. Abort or divergence during that destruction prevents placement, and no rollback is promised. Placement transfers the preconstructed new value without rerunning constructors, initializers or setters. The transfers of `exchange` and `swap` execute no user code, destruction or Abort-producing operation. Their internal empty state is unobservable, and no inter-thread atomicity is promised.
+`replace` destroys the complete old value in its original location in the normal `drop`, field and base order. Abort or divergence during that destruction prevents placement, and no rollback is promised. Placement transfers the preconstructed new value without rerunning constructors, initializers or setters. The transfers of `exchange` and `swap` execute no user code, destruction or Abort-producing operation. Their internal empty state is unobservable, and no inter-thread atomicity is promised.
 
 ```kimi
 var p: i32 = 0

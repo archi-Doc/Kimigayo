@@ -46,6 +46,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 - [13. Operators and assignment](spec/13-operators-and-assignment.md)
   - [Pair layers](spec/13-operators-and-assignment.md#pair-layers): a pair `s/T` or `s/U` whose admitted set lies in `value or valueborrow` is a safe value-reference layer that may or may not exist; `@follow` selects its direct target, and every operation applies the rule of each admitted Semantics, taking the weakest capability and mode and keeping each case's dependencies conditionally.
 - [14. Control flow](spec/14-control-flow.md)
+  - [Contextual labels](spec/14-control-flow.md#144-labels) and [named transfers](spec/14-control-flow.md#1451-syntax-and-operands): `label name: do` and `exit to name value`.
 
 ### Part V. Ownership, cleanup, and failure
 
@@ -54,6 +55,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
   - [Subject rule](spec/15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a `match` or `for` Subject is acquired as written, like any other expression, except that a bare Place is borrowed in place. The Subject mode is Shared for a shared borrow or a `ref`/`objref` value, Exclusive for an exclusive borrow or a `uniq`/`objuniq` value, and ByValue for an owned value, such as a temporary, `E@copy` or `E@move` of an owned Place; a transferred or returned reference keeps its own mode. Shared and exclusive paths bind `ref/T` and `uniq/T`, an owned Subject transfers its parts, and guard candidates are `ref/T`.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): reservation, preparation, activation and abandoned calls.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
+  - [Drop declarations and obligations](spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop); `defer` registers cleanup in the enclosing execution scope.
 - [17. Failure handling](spec/17-failure-handling.md)
 
 ### Part VI. Programs, compilation, and runtime

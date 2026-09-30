@@ -37,7 +37,7 @@ Expressions
 │  ├─ Simple Assignment
 │  └─ Compound Assignment
 ├─ Selection Expression: if / match
-├─ Iteration / Do Expression: for / while / loop / do / Label: do
+├─ Iteration / Do Expression: for / while / loop / do / label Label: do
 └─ Control Transfer Expression: return / exit / continue / yield
 
 Related Syntax

@@ -67,7 +67,7 @@ A **Place** is storage, such as a local or an element. `T` (= `owner/T`) owns a 
   invalidates the source even for Copy Types. Temporaries transfer as values without spelling `@move`.
 - Scalars, Unit, shared references, raw pointers and Slice handles are Copy. Tuples/fixed arrays are Copy
   when all parts are. User structs/enums opt in with `Self is Copy`; all storage must qualify and no user
-  `deinit` is allowed. `string`, `Array`, `Dictionary`, exclusive references and owning object handles are Non-Copy.
+  `drop` is allowed. `string`, `Array`, `Dictionary`, exclusive references and owning object handles are Non-Copy.
 - `x@ref` / `x@uniq` borrow the **written slot**. `r@follow` selects one safe reference's referent.
   Thus `r@ref` adds a layer; `r@follow@ref` borrows its target; `r@follow += 1` updates its target.
   `r@move` transfers the reference, never the referent. `r@follow@copy` copies a proven-Copy referent.
@@ -80,7 +80,7 @@ A **Place** is storage, such as a local or an element. `T` (= `owner/T`) owns a 
 - Borrows cannot outlive their source or conflict with mutation, Move or destruction. Temporaries normally
   end with the full expression: retain an owner before saving its view. Copying a view extends no lifetime.
 - Cannot Move out through a borrow or from dynamic collection indexing; use removal or consuming iteration.
-  Partial Moves require trackable owned paths and obey `deinit` restrictions. A Moved `let` cannot be restored.
+  Partial Moves require trackable owned paths and obey `drop` restrictions. A Moved `let` cannot be restored.
 
 ## 4. Functions and control flow
 
@@ -97,12 +97,12 @@ let answer = do => 42
 
 - Named functions without `-> T` return Unit. `=>` supplies an expression result unless Unit is fixed.
   Indented bodies discard **every** direct expression, including the last: use `return` for a function,
-  `yield` for a value-producing `if`/`match`, or `exit to label: value` for a labeled `do`.
+  `yield` for a value-producing `if`/`match`, or `exit to target value` for a labeled `do`.
 - `!` replaces the comma before required-name parameters. Before it, arguments may be positional or named;
   after it, names are required. `external => internal` renames a parameter. Defaults control omission separately.
 - `while condition`, `for item in source`, `loop` repeat; `exit` leaves a loop, `continue` advances it.
   `for`/`while` return Unit; a value-used `loop` gets its result from `exit value`.
-  Labels: `outer: loop`, `exit to outer`, `continue to outer`, `yield to choice: value`.
+  Labels: `label outer: loop`, `exit to outer`, `continue to outer`, `yield to choice value`. The introducer `label` is contextual; named transfer operands have no colon.
   Unnamed `yield` targets the nearest `if`/`match`, even inside another selection; label outer targets.
 - `match` must be exhaustive. Patterns: `_`, literals, `let x` / `var x`, tuples, enum Cases; guards use `if`.
   There is no `if let`, bare-name binding Pattern or `case` keyword in runtime arms.
@@ -231,7 +231,7 @@ struct View<T> {source}
   Abort terminates without guaranteed cleanup; recoverable failure uses ordinary returns.
 - `_ = expression` intentionally acquires and discards a value; ignored Result otherwise warns.
 - `defer => cleanup()` runs on normal scope exit and transfers. Defers and remaining owned locals clean up
-  in reverse combined declaration order. `deinit` adds struct cleanup; automatic field destruction follows.
+  in reverse combined declaration order. `drop` adds struct cleanup; automatic field destruction follows.
 - Tests use `#Test` on eligible parameterless Unit functions; `$expect(condition)` records a failure and
   continues; `$require(condition)` Aborts the test case without unwinding. Both statements are test-only.
 
@@ -264,7 +264,7 @@ elsewhere its conventions are recommended.
 - UpperCamelCase Types, Contracts, groups, Cases and files; lowerCamelCase functions, Properties and locals.
   Type parameters `T`, `Key`; length `N`; Semantics `s`; Origins `source`. Acronyms are words: `Utf8Writer`.
 - Keep lines within 120 columns; short bodies use `=>`; separate declarations with one blank line.
-  Order: constraints, associated Types, Cases, stored/computed Properties, constructors/deinit, functions,
+  Order: constraints, associated Types, Cases, stored/computed Properties, constructors/drop, functions,
   nested Types. Preserve storage order; keep overloads adjacent, shared variants first.
 - Use `sorted`/`sort`, shared/exclusive `tryGet`/`tryGetUniq`, conversion `toString`, Boolean `isEmpty`.
   Use required argument names for ambiguous inputs. Defaults should be cheap and free of observable effects.

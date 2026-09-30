@@ -84,7 +84,7 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
 2. Associated Types.
 3. enum Cases.
 4. Stored Properties, then computed Properties or Contract Property requirements.
-5. Constructors, then `deinit`.
+5. Constructors, then `drop`.
 6. Functions grouped by operation, with public API groups before helper-only groups. Keep overloads adjacent
    and shared variants before exclusive variants.
 7. Nested Types.
@@ -95,7 +95,7 @@ across fragments for style: logical order controls initializer effects and rever
 [§16.3.2](spec/16-scope-exit-and-destruction.md#1632-field-cleanup)).
 
 - `[Kimi]` Separate declaration groups with one blank line. Use one blank line between constructors,
-  `deinit`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
+  `drop`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
   signatures or simple stored declarations may stay consecutive.
 - `[Advice]` Inside a body, separate logical steps with a blank line.
 

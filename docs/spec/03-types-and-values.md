@@ -168,7 +168,7 @@ A **Function Value** is a callable value. Its concrete Type differs from a commo
 | Concrete Closure Type | One anonymous-function expression and instantiation; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
 | Common Function Type | A shared calling contract and an owned, type-erased environment | Non-Copy, even for an empty or Copy environment |
 
-Each evaluation of the same anonymous-function expression with the same Type arguments produces the same anonymous Core; distinct expressions have distinct Types, even with identical text and signatures. Each value keeps its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct, and the generated Type cannot receive a user-defined `deinit`.
+Each evaluation of the same anonymous-function expression with the same Type arguments produces the same anonymous Core; distinct expressions have distinct Types, even with identical text and signatures. Each value keeps its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct, and the generated Type cannot receive a user-defined `drop`.
 
 The initial common Function Type requires an `Owned` environment, exposes only Shared call, and cannot return a borrow that depends on its hidden environment receiver. Its arguments and results need not all be owned values. Concrete Closures keep their actual receiver and lifetime contracts ([function expressions](07-functions-and-callable-values.md#76-function-expressions), [Callable constraints](08-generics-constraints-and-contracts.md#86-callable-constraints)).
 
@@ -187,7 +187,7 @@ An empty environment or `func []` implies neither purity, a function-pointer ABI
 
 `Kimi.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, `S` must be a complete `rc/T` or `arc/T` satisfying the object View Target rules. In a generic definition, `S` is either `rc/X` or `arc/X` over an [Object Target](08-generics-constraints-and-contracts.md#8472-objectpayload) `X`, or a pair's own `s/T` whose [admitted Semantics set](08-generics-constraints-and-contracts.md#87-constraint-proof-system) is contained in {`rc`, `arc`}, which also supplies the target's pair evidence. A bare payload Core, `obj`, an object borrow, or `Weak` itself is not a valid `S`.
 
-A Weak owns one responsibility for a particular weak management area; it never owns the payload strongly. Its outer Semantics is ordinary `owner`, and `ref/Weak<S>` borrows the Weak slot. Like any Non-Copy value, a Weak is transferred with `@move` or as a temporary (§3.5); `Kimi.Intrinsics.clone` explicitly duplicates its weak responsibility. Users cannot replace its fields or `deinit`.
+A Weak owns one responsibility for a particular weak management area; it never owns the payload strongly. Its outer Semantics is ordinary `owner`, and `ref/Weak<S>` borrows the Weak slot. Like any Non-Copy value, a Weak is transferred with `@move` or as a temporary (§3.5); `Kimi.Intrinsics.clone` explicitly duplicates its weak responsibility. Users cannot replace its fields or `drop`.
 
 Every Weak has a target management area. **There is no empty Weak and no zero-argument Weak constructor**; use `Option<Weak<S>>` with `None` for absence. An expired Weak is a present value whose target cannot be upgraded; it stays Non-Copy (§3.5.1). No niche or one-word Option representation is promised.
 
@@ -556,7 +556,7 @@ Complete Types are classified by Core, Semantics and stored components:
 
 Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
 
-`Copy` is compiler-checked. A struct opts in with `Self is Copy`, or conditionally with `Self is Copy when P` (§8.4.8). Under the Type Constraints and any declared conformance condition, every complete own Field Type and the direct base must be Copy, and the struct must have no user `deinit`. Checking the inline base covers inherited storage and destruction. Each derived struct opts in separately; open structs follow the same rules. Computed members contribute no fields. All-Copy fields alone do not opt in, users cannot define Copy bodies, and Copy preserves the exact owning Type without slicing.
+`Copy` is compiler-checked. A struct opts in with `Self is Copy`, or conditionally with `Self is Copy when P` (§8.4.8). Under the Type Constraints and any declared conformance condition, every complete own Field Type and the direct base must be Copy, and the struct must have no user `drop`. Checking the inline base covers inherited storage and destruction. Each derived struct opts in separately; open structs follow the same rules. Computed members contribute no fields. All-Copy fields alone do not opt in, users cannot define Copy bodies, and Copy preserves the exact owning Type without slicing.
 
 ```kimi
 struct Point
@@ -648,7 +648,7 @@ Temporary Value
 
 Materialization neither reevaluates the expression nor adds a Copy, resource duplication, reference-count increment, heap allocation or lifetime extension. It keeps the same value and destruction responsibility. It must not turn a failed Consume into a Read or restore a Moved source.
 
-A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Temporaries owning a getter result have the additional restrictions of [getter results](11-properties.md#1123-getter-results-and-temporaries). Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring read-only parts, or bypassing Loans, Origins, construction or `deinit` conditions.
+A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Temporaries owning a getter result have the additional restrictions of [getter results](11-properties.md#1123-getter-results-and-temporaries). Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring read-only parts, or bypassing Loans, Origins, construction or `drop` conditions.
 
 ### 3.6.2. Lifetime and borrowing
 

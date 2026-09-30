@@ -2,7 +2,7 @@
 struct Resource
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Resource 1 destroyed.")
             2 => Console.writeLine("Resource 2 destroyed.")
@@ -13,7 +13,7 @@ struct Resource
 struct Box<T>
     let value: T
     public init(value: T) => self.value = value@move
-    // No user deinit: an owned receiver may transfer its stored value.
+    // No user drop: an owned receiver may transfer its stored value.
     public func take(self: Self) -> T => self.value@move
 
 enum Delivery<T>

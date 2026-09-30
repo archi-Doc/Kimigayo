@@ -10,7 +10,7 @@ open struct Device
     protected init(name: string, level: i32)
         self.name = name@move
         self.level = level
-    deinit => Console.writeLine("Device \(self.name) released.")
+    drop => Console.writeLine("Device \(self.name) released.")
 
 struct Lamp : Device
     Self is Utf8Format
@@ -19,7 +19,7 @@ struct Lamp : Device
         self.watts = watts
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return $tryWrite(writer, "\(self.name) (\(self.watts) W, level \(self.level))")
-    deinit => Console.writeLine("Lamp \(self.name) destroyed.")
+    drop => Console.writeLine("Lamp \(self.name) destroyed.")
 
 struct Sensor : Device
     public init(name: string) : base(name@move, 50) => ()

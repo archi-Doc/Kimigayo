@@ -177,15 +177,28 @@ A pending transfer or result is delivered only after all required cleanup comple
 
 Forced process termination and undefined behavior provide no cleanup guarantee. Abort skips or abandons cleanup under [Abort Termination](17-failure-handling.md#173-abort-termination). This specification provides no cleanup guarantee for cancellation; if cancellation is ever introduced, it needs separate common rules for Deferred Blocks, destruction and secured results.
 
-## 16.3. Aggregate destruction and deinit
+## 16.3. Aggregate destruction and drop
 
-`deinit` may be declared only directly in a structure body, including a fragment produced by a Mod. It is invalid in a group, enum, contract, extension, constructor, function, accessor or another `deinit`. After conditional selection and merging, each concrete structure has at most one such declaration. A common Body (§14.2) is required; `deinit => ()` or an indented `()` is an explicit no-op body, which still counts as a user-defined `deinit` for the Copy and Partial Move restrictions.
+`drop` defines destruction work; it is not a callable release operation. `init` and `defer` keep their distinct construction and deferred-registration rules. The old spelling `deinit` is not a destruction declaration.
 
-Its single-item expression is discarded, an explicit `return` must fit Unit (§14.2), and unsafe operations need an inner Unsafe Block. Automatic component cleanup applies with or without a `deinit`. Each derived layer may define its own body, and each layer is processed separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
+The following table summarizes the existing obligations; the linked rules own their detail. Even `drop => ()` is a user-defined destruction declaration.
+
+| Obligation | Reason | Owning rule |
+| --- | --- | --- |
+| A Type with a user-defined drop cannot be Copy; whole-value Move remains permitted. | Copy must not duplicate destruction responsibility. | [Copy capability](03-types-and-values.md#351-copy-capability-and-explicit-duplication) |
+| Partial Moves require restored completeness on every path to whole-value use or that layer's drop. | The body must not observe missing fields. | [Move paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move), [field cleanup](#1632-field-cleanup) |
+| A user drop observes every reachable Origin; Origin and Loan validity is also checked recursively for component destruction. | Client obligations do not depend on unused code in the body. | [Destruction lifetimes](15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) |
+| Whole-self Copy, Move, replacement, exchange, swap, ordinary exclusive passing and escape are forbidden; field operations and whole-self shared borrowing keep their usual rules. | Destruction retains control of the value and its remaining cleanup. | [Special receiver](#1631-special-receiver) |
+| At most one declaration per selected, merged concrete struct; no parameters, generics, Origin schema, result annotation or modifiers; no explicit or indirect call or function value. | Destruction has one controlled entry per layer. | Declaration rules below and [special receiver](#1631-special-receiver) |
+| Normal completion, including return, is followed by automatic field and base cleanup. An unfinished construction layer instead cleans its initialized components without invoking its own drop. | Responsibility is completed according to each layer's construction state. | [Field cleanup](#1632-field-cleanup) |
+
+`drop` may be declared only directly in a structure body, including a fragment produced by a Mod. It is invalid in a group, enum, contract, extension, constructor, function, accessor or another `drop`. After conditional selection and merging, each concrete structure has at most one such declaration. A common Body (§14.2) is required; `drop => ()` or an indented `()` is an explicit no-op body, which still counts as a user-defined `drop` for the Copy and Partial Move restrictions.
+
+Its single-item expression is discarded, an explicit `return` must fit Unit (§14.2), and unsafe operations need an inner Unsafe Block. Automatic component cleanup applies with or without a `drop`. Each derived layer may define its own body, and each layer is processed separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
 
 ### 16.3.1. Special receiver
 
-`deinit` is a dedicated destruction declaration with no parameters, generics, Origins, result annotation or modifiers; unavailable modifiers follow §2.5.1. Only the destruction machinery invokes it: explicit calls, indirect calls and obtaining its function value are compile-time errors. User-callable finishing work requires a separate API.
+`drop` is a dedicated destruction declaration with no parameters, generics, Origins, result annotation or modifiers; unavailable modifiers follow §2.5.1. Only the destruction machinery invokes it: explicit calls, indirect calls and obtaining its function value are compile-time errors. User-callable finishing work requires a separate API.
 
 Its `self` has exclusive access equivalent to `uniq/Self` for access and Loan checks, but it is a special destruction receiver, not an ordinary borrow value or a second owner, and cannot be Copied or Moved.
 
@@ -194,7 +207,7 @@ The whole receiver cannot be an assignment, exchange or swap target, or be passe
 A destruction receiver cannot become an owning or counting handle, be stored for later use, or escape, and helper borrows must end before their storage is destroyed. During the destruction of layer `D`, `Self` is `D`, and already cleaned derived layers are unavailable. Non-escape and compliance with the [object lifetime restrictions](#164-closure-and-object-lifetime-boundaries) are proven from ownership and call effects, and unknown callees that could violate them are rejected. Runtime counts and unchecked assertions cannot replace the proof.
 
 ```text
-During deinit (conceptual storage operations):
+During drop (conceptual storage operations):
     Kimi.Intrinsics.exchange(self, replacement)       // Error: whole-self replacement.
     self.reset()                     // Error if reset requires uniq/Self.
     observe(sharedBorrow(field))     // Allowed for an initialized field.
@@ -203,34 +216,34 @@ During deinit (conceptual storage operations):
 
 ### 16.3.2. Field cleanup
 
-A complete struct layer is destroyed by running its own `deinit`, completing that body's Scope Exit, then destroying its own Fields in reverse **logical** declaration order, and finally destroying the direct base recursively. The Fields and base are complete and Initialized when `deinit` starts, and a normal `return` does not skip them. Computed Properties add no components, and cleanup invokes no accessors. Splitting, generated declarations and physical layout cannot change this order except through the defined logical ordering.
+A complete struct layer is destroyed by running its own `drop`, completing that body's Scope Exit, then destroying its own Fields in reverse **logical** declaration order, and finally destroying the direct base recursively. The Fields and base are complete and Initialized when `drop` starts, and a normal `return` does not skip them. Computed Properties add no components, and cleanup invokes no accessors. Splitting, generated declarations and physical layout cannot change this order except through the defined logical ordering.
 
 ```kimi
 struct ResourcePair
     var first: Resource
     var second: Resource
-    deinit
+    drop
         if skipCustomWork()
             return
         inspect(self.first)
 // Either normal exit destroys second, then first.
 ```
 
-An incomplete structure layer does not run its own `deinit`; its remaining initialized own fields are destroyed in the same reverse order, and then its base subobject if any part of it still carries responsibility. Completion and completeness are checked separately for each component: a complete field or completed base runs its own `deinit`, even if the containing derived layer never completed construction. A partly constructed base recursively cleans its initialized components without running that unfinished base layer's body. Uninitialized and Moved parts are skipped. Field assignment order and later Replacement do not reorder this cleanup.
+An incomplete structure layer does not run its own `drop`; its remaining initialized own fields are destroyed in the same reverse order, and then its base subobject if any part of it still carries responsibility. Completion and completeness are checked separately for each component: a complete field or completed base runs its own `drop`, even if the containing derived layer never completed construction. A partly constructed base recursively cleans its initialized components without running that unfinished base layer's body. Uninitialized and Moved parts are skipped. Field assignment order and later Replacement do not reorder this cleanup.
 
 Tuple elements and array elements are destroyed in decreasing element-index order, from the last logical element to index zero. This covers fixed-length arrays, the initialized elements of a partly built array, and owning array storage used by array literals; spare capacity is not an initialized element. A partially initialized element is cleaned recursively before the preceding element. Unit and empty arrays have no components to destroy.
 
 Enum values destroy only the active Case's remaining initialized payloads, in reverse declaration order. Inactive Cases, and payloads transferred by [owned decomposition](15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime), have no remaining responsibility. Other library containers must define the destruction order of their owned elements in their own contracts.
 
-| Aggregate state at the destruction point | Own `deinit` | Field destruction |
+| Aggregate state at the destruction point | Own `drop` | Field destruction |
 | --- | --- | --- |
 | Complete | Run if declared | All fields afterward |
 | Wholly Moved | Never run | Nothing |
 | Construction not completed | Never run | Initialized fields only |
-| Incomplete after a Partial Move, no own `deinit` | None | Remaining fields only |
-| Incomplete after a Partial Move, own `deinit` declared | Error: the path must restore completeness before this point (§15.1.3) | Not reached |
+| Incomplete after a Partial Move, no own `drop` | None | Remaining fields only |
+| Incomplete after a Partial Move, own `drop` declared | Error: the path must restore completeness before this point (§15.1.3) | Not reached |
 
-The table applies per structure layer; any base cleanup follows the own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.deinit`, `Derived`'s fields in reverse order, `Base.deinit`, `Base`'s fields in reverse order, recursively. If `Derived`'s construction is incomplete but `Base` completed, `Derived.deinit` is omitted, while the remaining `Derived`-field cleanup and the complete `Base` cleanup still run. A layer that completed construction and is then partially Moved keeps its restoration obligation; incompleteness never excuses the `deinit` of an already completed layer.
+The table applies per structure layer; any base cleanup follows the own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.drop`, `Derived`'s fields in reverse order, `Base.drop`, `Base`'s fields in reverse order, recursively. If `Derived`'s construction is incomplete but `Base` completed, `Derived.drop` is omitted, while the remaining `Derived`-field cleanup and the complete `Base` cleanup still run. A layer that completed construction and is then partially Moved keeps its restoration obligation; incompleteness never excuses the `drop` of an already completed layer.
 
 ```text
 Declaration order: a, b, c
@@ -244,7 +257,7 @@ Cleanup: c, then a
 
 `owner/T` is destroyed as exactly `T`. For `obj/T`, the object is destroyed and then its original storage released if required. Destroying `rc/T` or `arc/T` releases one strong reference; exactly the release that reaches zero performs object destruction and storage release, including under atomic `arc` ownership.
 
-Destruction uses the actual owned Type's complete derived-to-base cleanup, including automatic fields and bases and user `deinit`. Base views keep that dynamic identity and the single destruction responsibility. Original storage is released by its original mechanism, never through an adjusted view pointer with a base size. No delayed garbage-collection finalizer or finalizer thread is implied.
+Destruction uses the actual owned Type's complete derived-to-base cleanup, including automatic fields and bases and user `drop`. Base views keep that dynamic identity and the single destruction responsibility. Original storage is released by its original mechanism, never through an adjusted view pointer with a base size. No delayed garbage-collection finalizer or finalizer thread is implied.
 
 Destruction claims the target's remaining responsibility. Until it completes, only its special receiver and authorized field operations may observe live parts; the target is neither an ordinary owner nor an empty replacement destination. Reentrant destruction, whole-value use and callback replacement are rejected. Normal completion removes the responsibility and leaves surviving storage Uninitialized, after which its owning operation may install a secured replacement. This internal transition provides no source destroy/reset operation and does not reset `let` initialization history.
 
@@ -256,7 +269,7 @@ Destroying a non-owning borrow or raw pointer ends that value's capability or li
 
 **Closure environments.** Initialized captures with remaining responsibility are destroyed in reverse environment-initialization order, and consumed captures are not destroyed twice. In a Consuming call, the implicit environment binding precedes the explicit parameters, so its remaining captures are cleaned up last, after body locals, `defer` and parameters, and before result delivery. Shared and Exclusive calls do not own the environment's destruction. A failure during capture construction follows the ordinary temporary, partial-initialization, cleanup and Abort rules, without rollback of completed Moves or effects. Dependencies observed by captured destructors are kept, including for zero-sized captures.
 
-**Objects under construction.** Construction completes the base layers before the derived fields under the constructor rules. Until the complete object is initialized, its ordinary object views are not formed or published, and no runtime dispatch, Type test or checked cast is performed on it; having metadata is not proof of completion. A failure cleans up only initialized components with remaining responsibility, including completed base layers; `deinit` is not called for an incomplete layer, and no cleanup is promised on Abort.
+**Objects under construction.** Construction completes the base layers before the derived fields under the constructor rules. Until the complete object is initialized, its ordinary object views are not formed or published, and no runtime dispatch, Type test or checked cast is performed on it; having metadata is not proof of completion. A failure cleans up only initialized components with remaining responsibility, including completed base layers; `drop` is not called for an incomplete layer, and no cleanup is promised on Abort.
 
 **Objects under destruction.** During destruction, new ordinary views, runtime dispatch, Type tests, checked casts and resurrection of that object are prohibited, including through helper calls. An operation remains semantically a runtime dispatch even if optimization resolves it to a direct call. No new owning handle is acquired and no count is incremented to revive the object. The special destruction receiver keeps its authorized direct field operations and shared value borrows, without conversion into ordinary object views. Base cleanup never dispatches back into an already destroyed derived layer. These restrictions concern the object being constructed or destroyed, not independent live objects used by that code.
 

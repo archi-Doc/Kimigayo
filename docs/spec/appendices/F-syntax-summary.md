@@ -250,7 +250,7 @@ Declaration          := AttributePrefix? UnattributedDeclaration
 UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
                       | StructureDeclaration | ContractDeclaration
                       | FunctionDefinition | SpecializationDeclaration | StoredPropertyDeclaration | ComputedDeclaration
-                      | ConstructorDeclaration | DeinitDeclaration
+                      | ConstructorDeclaration | DropDeclaration
                       | EnumDeclaration | ForeignFunctionDeclaration
 ```
 
@@ -258,7 +258,7 @@ Modifier placement and compound-access combinations are constrained by [accessib
 
 `ReceiverShorthand` is permitted only for an instance function receiver under [§7.3](../07-functions-and-callable-values.md#73-explicit-receivers), including Contract requirements and full specializations, and expands to `self: ref/Self` at its written position. The shared Parameter grammar does not permit it on constructors, local functions or group/rootgroup functions. That the functions with receivers in one member group share one receiver shape, and that a Receiver Expression is acquired without a spelling, are semantic rules of §7.3, not grammar.
 
-AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit or explicit specializations. Attribute-bearing functions in executable and enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions of [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures). Unavailable declaration modifiers use the diagnostic recognition of §2.5.1, not grammar productions.
+AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, drop or explicit specializations. Attribute-bearing functions in executable and enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions of [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures). Unavailable declaration modifiers use the diagnostic recognition of §2.5.1, not grammar productions.
 
 `SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access or unsafe modifiers, attributes, defaults or `!` boundaries. Its body uses ordinary executable syntax, and it inherits the original function's contract under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
@@ -268,13 +268,13 @@ Ordinary parameter bindings are immutable under §7. A ParameterList permits at 
 
 Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
 
-`AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters, a formation Type and attached `origin` clauses (§8.4.3.1); a formation Type requires Origin parameters and no fixed Type. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is followed by `ref` or `uniq` and a slash (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, deinit, nested Types and nested conformances. Intrinsics keep their own rules.
+`AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters, a formation Type and attached `origin` clauses (§8.4.3.1); a formation Type requires Origin parameters and no fixed Type. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is followed by `ref` or `uniq` and a slash (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, drop, nested Types and nested conformances. Intrinsics keep their own rules.
 
 Constraint subjects follow their declaration context. In a nested Contract, conditions on inherited arguments are reference inputs, conditions on the conforming `Self` are implementation requirements, and closed conditions are declaration obligations (§6.1.3.1). Functions constrain their generic parameters, the generic parameters of their declaring Type (conditional members, §7.4) and projections rooted in them; Types use their ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
 
 `ContractReference` resolves a user-defined Contract with all inherited bindings. A Contract may declare its own Type parameters (§8.4) but no Origin or length parameters, and built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, a parameter, `Self` or an associated-Type projection, not to a value or a Semantics-applied expression. The Parser keeps bound paths and distinguishes declarations, specifications, Type positions and Constraints-only regions by context. Binding resolves the Contract and associated-Type roles and rejects distinct successful interpretations; neither expected results nor value-member fallback disambiguates them. The same rules apply after ordinary compile-time selection.
 
-`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructors keep the containing Type's Origins and may introduce implicit per-call scalar Origins in borrow annotations. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+`ConstructorDeclaration` and `DropDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructors keep the containing Type's Origins and may introduce implicit per-call scalar Origins in borrow annotations. See [constructors](../06-declarations-and-containers.md#623-constructors) and [destruction declarations](../16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop).
 
 Alias targets follow [§18.1](../18-modules-and-dependencies.md#181-external-references-and-aliases): `ContainerReference` is an optionally root-qualified reference, valid under the Container rules with their required arguments, and a named target must be a Kotonoha or group. `=>` in this production introduces a reference, never an executable Body. There is no `alias Name = Type` production.
 
@@ -328,7 +328,7 @@ Argument             := (Name ":")? Expression
 Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
                       | BoundContainerExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
-                      | IfExpression | MatchExpression | LabeledSelection | Iteration | DoExpression
+                      | LabelPrefix? LabelableConstruct
                       | Transfer | CompositionRootExpression | ConstructionExpression
                       | InferredCaseExpression
 BoundContainerExpression := BoundContainerQualifier
@@ -379,9 +379,10 @@ UnsafeStatement      := "unsafe" ExecutableBody
 DeferStatement       := "defer" ExecutableBody
 RequireStatement     := "require" Expression RequireJoin "else" ExecutableBody
 RequireJoin          := ? same-line or next effective aligned line, §2.2.1 ?
-DoExpression         := (Name ":")? "do" ExecutableBody
-LabeledSelection     := Name ":" (IfExpression | MatchExpression)
-Iteration            := (Name ":")? (ForExpression | WhileExpression | LoopExpression)
+LabelPrefix          := "label" Name ":"
+LabelableConstruct   := IfExpression | MatchExpression | ForExpression
+                      | WhileExpression | LoopExpression | DoExpression
+DoExpression         := "do" ExecutableBody
 ForExpression        := "for" ForBinding "in" Expression ExecutableBody
 ForBinding           := ForSlot | "(" List<ForSlot> ")"
 ForSlot              := Name | "var" Name | "_"
@@ -407,13 +408,15 @@ LiteralPattern       := BooleanLiteral | "-"? IntegerLiteral
 BooleanLiteral       := "true" | "false"
 NonInterpolatedStringLiteral := ? ordinary or raw StringLiteral without interpolation ?
 Transfer             := "return" Expression?
-                      | "exit" (Expression? | "to" Name (":" Expression)?)
+                      | "exit" (Expression? | "to" Name Expression?)
                       | "continue" ("to" Name)?
-                      | "yield" (Expression? | "to" Name (":" Expression)?)
-DeinitDeclaration    := "deinit" ExecutableBody
+                      | "yield" (Expression? | "to" Name Expression?)
+DropDeclaration    := "drop" ExecutableBody
 ```
 
-Conditions and guards must fit `bool`. Body headers, operand starts, delimiter regions and required grouping follow §2.2 and §14.5. A label and its construct share a physical line. The keyword `do` is reserved; `to` is contextual immediately after `exit`, `continue` or `yield`. SingleItem includes no declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar. `for` bindings accept only ForSlot forms, not general Patterns (§14.6.1).
+Optional transfer operands obey the mandatory omission boundaries of §14.5.1, not a trial parse or an expression-start test; `:` does not omit an operand. Named operands require token separation by spaces or a same-line block comment.
+
+Conditions and guards must fit `bool`. Body headers, operand boundaries, delimiter regions and required grouping follow §2.2 and §14.5. The label introducer, Name, colon and construct keyword share a physical line. The keyword `do` is reserved; `label` is contextual at a Primary start before same-line `Name :` (§14.4), and `to` is contextual immediately after `exit`, `continue` or `yield`. These forms commit before ordinary Names, without lookup. A named target consumes one Name, never a computed destination. Labels add no grouping requirement; existing operator grouping and delimiter regions remain in force. SingleItem includes no declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar. `for` bindings accept only ForSlot forms, not general Patterns (§14.6.1).
 
 CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types keep complete Type information. Case existence, expected-Type resolution, payload presence and count, access and Semantics follow §6.3.2. Payload Cases require parentheses, and payload-free Cases prohibit them. Binding and acquisition follow §14.8 and the subject rule of §15.1.6. Match arm lists and enum bodies remain nonempty after selection.
 

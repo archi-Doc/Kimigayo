@@ -17,7 +17,7 @@ if same(make().0, ("held", 0).0)
 if conditional(true) and not conditional(false)
     Console.writeLine("conditional lifetime")
 
-if (work: do
-    exit to work: ("held", 0)
+if (label work: do
+    exit to work ("held", 0)
 ).0 == "held"
     Console.writeLine("delivered result")

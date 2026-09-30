@@ -42,7 +42,7 @@ Body := "=>" (Expression | Statement)
 
 A **single-item body** contains one expression or statement starting on the header's ending physical line; it may span more lines through ordinary expression continuation or a match arm list. An **indented body** (also called a Block body) contains declarations, expressions, statements and permitted compile-time directives, evaluated in order. Its direct expressions, including the last, are discarded, and structural arrival at its end supplies Unit where the owner uses the body result. For an iteration body, completion instead starts the next iteration.
 
-Both forms apply to selection clauses and arms, iterations, do expressions, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions and Closures, specializations, accessors, `init` and `deinit`. Declarations and directives require the indented form. Each position keeps its declaration restrictions; explicit function Constraints stay at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors keep their own rules.
+Both forms apply to selection clauses and arms, iterations, do expressions, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions and Closures, specializations, accessors, `init` and `drop`. Declarations and directives require the indented form. Each position keeps its declaration restrictions; explicit function Constraints stay at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors keep their own rules.
 
 | Concept | Question |
 | --- | --- |
@@ -61,12 +61,12 @@ Discarding a general expression destroys its result at the normal lifetime; it i
 | `if` / `match` / `do` | Inherit the owner's context: use the value in Value Context; discard it and complete with Unit in Discard Context. | `yield` for selections; named `exit` for `do` |
 | `for` / `while` / `loop` | Discard and continue the iteration. | `exit` |
 | `unsafe` / `defer` | Discard and complete the body with Unit; `defer` executes later during cleanup. | `exit` for `defer`; `unsafe` has no target |
-| `set` / `init` / `deinit` | Discard and complete the body with Unit. | `return` |
+| `set` / `init` / `drop` | Discard and complete the body with Unit. | `return` |
 | `require` failure | Discard; normal continuation after `require`, including after cleanup, is forbidden. | No target of its own |
 
 Statements in single-item bodies supply Unit only if they structurally complete normally. Values discarded directly inside a body need no common Type, but values supplied to a target must fit its Target Result Type, even when the target's result is discarded.
 
-The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `deinit`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. Receiving a transfer does not also supply an implicit body result.
+The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `drop`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. Receiving a transfer does not also supply an implicit body result.
 
 ```kimi
 if ready => visited.insert(id)        // A bool result may be discarded.
@@ -118,9 +118,9 @@ A selection that removes a needed transfer may expose structural end arrival, an
 Each test evaluates its condition once, secures the `bool` result, destroys the remaining condition temporaries in reverse creation order, ends guard-local temporary Loans, and then branches using the secured `bool`. Cleanup effects update state but do not reevaluate the `bool`. A transfer, divergence or Abort during evaluation or cleanup prevents the test's continuation on that path. Match Subjects, iterators and explicit bindings keep their own owning scopes, and Moved values follow their destination's lifetime.
 
 ```kimi
-if (test: do
+if (label test: do
     let ready = check() // check returns bool; this declaration belongs to the do body.
-    exit to test: ready
+    exit to test ready
 )
     work()
 
@@ -157,7 +157,7 @@ Explicitly ignoring a `Result` destroys its error payload normally, and executio
 
 | Construct | Category | Execution |
 | --- | --- | --- |
-| `do` / `Label: do` | Expression | Executes immediately; receives a named `exit` when labeled. |
+| `do` / `label Label: do` | Expression | Executes immediately; receives a named `exit` when labeled. |
 | `unsafe` | Statement | Executes immediately with lexical unsafe permission. |
 | `defer` | Statement | Registers immediately; executes at Scope Exit (§16.1). |
 
@@ -178,9 +178,9 @@ defer => return  // Error: cannot return from the outer function.
 `do Body` executes once and uses the result rules of §14.2. An optional label permits a self-targeted `exit to Label`. An unlabeled `exit` skips do expressions, so an unlabeled `do` with an indented body cannot supply a non-Unit result of its own. Outward transfers and divergence are permitted.
 
 ```kimi
-let result = work: do
-    if cached() => exit to work: cachedValue()
-    exit to work: compute()
+let result = label work: do
+    if cached() => exit to work cachedValue()
+    exit to work compute()
 
 let direct = do => compute()
 do
@@ -208,18 +208,28 @@ unsafe
 
 ## 14.4. Labels
 
-An optional `Label:` may prefix `if`, `match`, `for`, `while`, `loop` or `do` on the same physical line. Labels use a namespace separate from variables and Types. Equal label names whose active scopes overlap in one function are rejected.
+An optional `label Label:` prefix names one `if`, `match`, `for`, `while`, `loop` or `do` construct. The introducer `label`, the Label Name, `:` and the construct keyword must all be on the same physical line. The prefix attaches one label to the immediately following construct; it introduces neither an executable Body nor an additional scope or value binding. A label cannot prefix another label, a parenthesized expression, a declaration or any other statement or expression.
 
-A label is active only inside its construct's bodies, not in its own conditions, Subject or guards. A transfer may target only an enclosing construct in the same function, never a sibling, inner or finished construct. A label names a construct, not an instruction address.
+**Contextual recognition.** At a Primary expression start (including operator operands and transfer operands), the same-line token sequence `label Name :` commits to a label prefix. Recognition uses only these tokens, never name lookup, Types or whether a later construct succeeds. The following token must start one of the six permitted constructs on that same physical line; otherwise the label syntax is invalid and is not retried as a value expression. Recognition never scans across a physical newline, including inside delimiters. Elsewhere `label` is an ordinary Name: it can name a variable, function, member, argument or label. In particular, `label(...)`, `object.label`, `consume(label: value)` and a lone `label` expression do not introduce a label prefix.
 
-Group a labeled expression where its colon would conflict with a named argument or Dictionary separator. A labeled `return`/`exit`/`yield` operand must be parenthesized, whether or not the transfer itself names a target.
+Labels use a namespace separate from variables and Types. Equal label names whose active scopes overlap in one function are rejected. A label is active only inside its construct's bodies, not in its own conditions, Subject or guards. A transfer may target only an enclosing construct in the same function, never a sibling, inner or finished construct. A label names a construct, not an instruction address, runtime value or callable; ordinary Name expressions do not resolve labels.
+
+No parentheses are required solely because an expression has a label, including an argument, Dictionary key or value, or a `return`/`exit`/`yield` operand. Ordinary grouping and Body rules still apply: a body-bearing expression inside a header must be grouped, and a labeled nested `if` still follows the nested-if rule of §2.2.1. A label prefix does not start a delimiter region or change a header's indentation baseline. Syntax rewrites preserve existing parentheses; removing them requires preserving operator grouping and the meaning of delimiter regions. For example, `return (label choice: if ready => a else => b) + 1` adds on both paths; without the parentheses only the else path adds.
 
 ```kimi
-consume(value: if ready => 1 else => 0)       // Named argument.
-consume((choice: if ready => 1 else => 0))    // Labeled expression.
-return (work: do => compute())
-yield to outer: (inner: if ready => 1 else => 0)
+consume(value: if ready => 1 else => 0)             // Named argument.
+consume(label choice: if ready => 1 else => 0)      // Labeled positional argument.
+consume(value: label choice: if ready => 1 else => 0)
+return label work: do => compute()
+yield to outer label inner: if ready => 1 else => 0
+let table = [label key: do => 1: label item: do => 2]
+
+let label: bool = true
+let accepted: bool = label label: do
+    exit to label label // Target in the Label namespace; value in the Value namespace.
 ```
+
+Only `label Label:` introduces a label. A bare `Name:` retains its ordinary meaning where another grammar supplies it, such as an argument name or Dictionary separator; it never labels a construct.
 
 ## 14.5. Control transfers
 
@@ -227,20 +237,28 @@ yield to outer: (inner: if ready => 1 else => 0)
 
 ```text
 return [Expression]
-exit [Expression] | exit to Label [: Expression]
+exit [Expression] | exit to Label [Expression]
 continue [to Label]
-yield [Expression] | yield to Label [: Expression]
+yield [Expression] | yield to Label [Expression]
 ```
 
 Brackets mark optional syntax. An omitted `return`, `exit` or `yield` operand means `()` and is checked against the target's Target Result Type (§14.2). `continue` has no operand, and `return` has no named form.
 
-The operand, and `to Label` when present, start on the transfer keyword's physical line. A named value follows `:`; the colon is omitted when the value is omitted. Normal continuation is allowed after the expression starts. `to` is contextual only immediately after `exit`, `continue` or `yield`; write `exit (to)` to use a variable of that name. Postfix `value to Label` and `value{Label}` are not transfer syntax.
+The operand, and both `to` and the Label when present, start on the transfer keyword's physical line. Normal continuation is allowed after the operand expression starts; a later physical line cannot start an operand, even inside delimiters. `to` is contextual only immediately after `exit`, `continue` or `yield`, and commits to the named form there; write `exit (to)` to use a variable of that name. `return` has no such recognition, so `return to` returns the value named `to`.
+
+**Target and operand boundary.** After `to`, consume exactly one Name as the Label, even when spelled `label` or `to`. A target is never an expression, qualified name, call or computed destination.
+
+For `return`, `exit` and `yield`, the operand is omitted only when no token follows on the same physical line, or the next token is an enclosing separator: `,`, `)`, `]`, `else`, `=>`, a parameter-list boundary `!`, a layout boundary or end of file. Each separator must be legal in its enclosing grammar. Otherwise a full expression is required under §13.1; invalid syntax or Types never cause a retry with an omitted operand. In particular, `:` and `and` cannot omit an operand: `[exit: value]`, `[exit to work: value]` and `exit to work and ready` are syntax errors.
+
+A named target and its operand's first token must be separated by spaces or a same-line block comment (§2.3). `exit to work(x)`, `exit to work.value`, `exit to work[0]` and `exit to work..end` are invalid; `exit to work (x)` and `exit to work/* result */(x)` are valid syntax. Formatting uses one space without removing comments. The separated forms `-1`, `(value)`, `()`, `[1, 2]`, `.Some(1)` and `..end` are operands, never calls, members or indices of the label.
+
+A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. A repair for a colon at the operand start may remove it and insert any required space to supply the following expression, or insert `()` to express a Unit key. It must state that intent and cannot claim unconditional semantic preservation. Postfix `value to Label` and `value{Label}` are not transfer syntax.
 
 ```kimi
-exit to search: score(item)
-exit to outer: -1
+exit to search score(item)
+exit to outer -1
 continue to outer
-yield to choice: match mode
+yield to choice match mode
     .Fast => 1
     _ => 0
 ```
@@ -262,18 +280,18 @@ A construct acts as a target or barrier only inside its bodies. `unsafe` and `re
 
 ### 14.5.3. Function boundaries
 
-Function Boundaries include named functions, methods, anonymous functions, Closures, explicit specializations, accessors, `init` and `deinit`. A function declared inside `defer` keeps its own return target. A constructor's Unit control result is distinct from the owned constructed value, and a `return` in `deinit` does not skip automatic field destruction (§16.3.2). Named functions keep their declared or default Unit result even if their bodies never finish (§7.1).
+Function Boundaries include named functions, methods, anonymous functions, Closures, explicit specializations, accessors, `init` and `drop`. A function declared inside `defer` keeps its own return target. A constructor's Unit control result is distinct from the owned constructed value, and a `return` in `drop` does not skip automatic field destruction (§16.3.2). Named functions keep their declared or default Unit result even if their bodies never finish (§7.1).
 
 ### 14.5.4. Label and nesting examples
 
 ```kimi
-let result = choice: if enabled
-    if cached() => yield to choice: cachedValue()
+let result = label choice: if enabled
+    if cached() => yield to choice cachedValue()
     yield compute()
 else => 0
 // Omitting 'to choice' in the conditional yield targets the discarded inner if: error.
 
-outer: for row in rows
+label outer: for row in rows
     for cell in row
         if skipRow(cell) => continue to outer
         if done(cell) => exit to outer
@@ -373,9 +391,9 @@ for (key, _) in pairs => use(key)
 In Value Context, the loop's result is inferred from all self-targeted exits under §14.9; in Discard Context, its Target Result Type is Unit.
 
 ```kimi
-let found: i32 = search: loop
+let found: i32 = label search: loop
     for item in items[..]
-        if accepts(item) => exit to search: score(item)
+        if accepts(item) => exit to search score(item)
     exit -1
 // score returns i32. An unnamed exit inside for would have to fit Unit.
 
@@ -419,13 +437,13 @@ Condition evaluation follows §14.2.3; clause joins and nested-`if` grouping fol
 `yield` ends its resolved selection, not a function or iteration; its lookup and barriers follow §14.5.2. To end a discarded selection early, name the target and supply Unit. A conditional transfer should name an outer selection when the nearest `if` is not the intended target.
 
 ```kimi
-let result = selection: if enabled
+let result = label selection: if enabled
     for item in items[..]
-        if accepts(item) => yield to selection: score(item)
+        if accepts(item) => yield to selection score(item)
     yield -1
 else => 0
 
-action: match event@ref
+label action: match event@ref
     .Save
         if readOnly => yield to action
         save()
@@ -737,7 +755,7 @@ let typed = loop
     exit 1 // Still a result source: initializer Type i32, despite no normal path.
 ```
 
-Named functions keep their declared or default Unit return Type (§14.5.3). An anonymous function without a declared or fixed expected result infers its return Type by these source and Never rules; the function value itself keeps its Function Item or Closure Type. A constructor's Unit control result and a `deinit`'s `return` keep the separate obligations of §14.5.3.
+Named functions keep their declared or default Unit return Type (§14.5.3). An anonymous function without a declared or fixed expected result infers its return Type by these source and Never rules; the function value itself keeps its Function Item or Closure Type. A constructor's Unit control result and a `drop`'s `return` keep the separate obligations of §14.5.3.
 
 ### 14.9.2. Reachability
 
@@ -780,9 +798,9 @@ loop
     if boundPort > 0 => exit
 use(boundPort) // Valid: every delivered exit follows initialization.
 
-let stopped: i32 = work: do
+let stopped: i32 = label work: do
     defer => loop => ()
-    exit to work: 1
+    exit to work 1
 // Expression Type remains i32; Runtime Reachability stops at cleanup, before delivery.
 ```
 

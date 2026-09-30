@@ -54,7 +54,7 @@ User-defined Types, Contracts and Declaration Containers conventionally use Pasc
 | `@` | An explicit operation: Type/Semantics adaptation, transfer (`@move`), copy (`@copy`) or follow (`@follow`); see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
 | `->` | Introduces the result Type of a function declaration or Function Type. |
 | `=>` | Introduces a single-item executable Body, a parameter-name mapping or a Container-alias target, depending on context. |
-| `:` | Separates names from Types, argument names from values, Dictionary keys from values, labels from constructs, and named transfer targets from values. Also introduces structure bases, Contract parents and constructor `: base(...)`; never an executable Body. |
+| `:` | Separates names from Types, argument names from values, Dictionary keys from values, and declared labels from constructs (`label Name: Construct`). Also introduces structure bases, Contract parents and constructor `: base(...)`; never an executable Body. |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects a language-provided Composition Root operation; see [§13.8](13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | `;` | Forbidden outside comments and literals; never a statement or Type separator. |

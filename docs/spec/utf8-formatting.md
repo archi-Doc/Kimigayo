@@ -190,7 +190,7 @@ Only a contiguous prefix known to be valid may be recorded as validated, using e
 
 Appending only through an adapter to an empty or validated buffer needs no further validation. `validate()` does not reset adapter failure. Safe code, together with unsafe operations that satisfy their existing obligations, cannot expose uninitialized bytes or invalid UTF-8 as a string/view merely by violating formatting or Window laws. This does not constrain user side effects, termination or Abort.
 
-FixedBuffer, WriteWindow and Utf8Writer have no `deinit` and do not observe their borrow at destruction. Their Loans may end after last use, unless a later use or `defer` keeps them live. HeapBuffer frees its allocation once. FixedBuffer never frees its source. General destructor rules are unchanged.
+FixedBuffer, WriteWindow and Utf8Writer have no `drop` and do not observe their borrow at destruction. Their Loans may end after last use, unless a later use or `defer` keeps them live. HeapBuffer frees its allocation once. FixedBuffer never frees its source. General destructor rules are unchanged.
 
 ### 3.4. Optional in-place shrinking
 

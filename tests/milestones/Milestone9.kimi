@@ -10,7 +10,7 @@ group Demo
             public func view(self: ref/Self) -> ref/T during self
                 return self.value@ref/T
 
-            deinit => Console.writeLine("Batch destroyed.")
+            drop => Console.writeLine("Batch destroyed.")
 
     public group Search
         public enum Hit<T>

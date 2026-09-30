@@ -18,7 +18,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone1](Milestone1.kimi) | Hello World, top-level startup, owned string argument |
 | [Milestone2](Milestone2.kimi) | `let`/`var`, `i32`, arithmetic, `while`, `if`/`else`, `$abort` |
 | [Milestone3](Milestone3.kimi) | Explicit `main`, function calls, arguments/results, `return`, `defer` |
-| [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `deinit` |
+| [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `drop` |
 | [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes |
 | [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
 | [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
@@ -193,7 +193,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | --- | --- | --- |
 | 15 | Ownership and control-flow joins | Initialization, Move and Loans across branches, backedges and continue |
 | 16 | General Origins | Multiple Origins, returned references, reborrowing and aggregate/enum dependencies |
-| 17 | Ownership, cleanup and updates | Partial Move, repair, defer/deinit, whole-value updates and call effects |
+| 17 | Ownership, cleanup and updates | Partial Move, repair, defer/drop, whole-value updates and call effects |
 | 18 | Generic value operations | Composite and Non-Copy arguments, results, temporaries and destruction |
 | 19 | Contracts and associated Types | Constraints, conditional conformance, associated Types and requirement calls |
 | 20 | Generic inference and defaults | Type/length/Origin inference, ordinary optional arguments and forwarding; no specialization |
@@ -424,7 +424,7 @@ Reports and source/compiler/build identities remain in
 ## Milestone 4: struct ownership and destruction
 
 `Counter.init()` initializes its field. `finish(counter)` transfers the entire
-Non-Copy struct into an owned parameter. Move does not rerun `init` or `deinit`.
+Non-Copy struct into an owned parameter. Move does not rerun `init` or `drop`.
 The parameter is destroyed once when `finish` exits, after its defer; the moved
 source in `main` has no remaining destruction responsibility.
 
@@ -437,12 +437,12 @@ Done.
 ```
 
 As a separate rejection exercise, add `counter.value` after `finish(counter)`:
-reading a moved value must be rejected. A struct with user-defined `deinit`
+reading a moved value must be rejected. A struct with user-defined `drop`
 cannot opt into Copy or permit Partial Move that makes it incomplete.
 
 Focus: [construction](../../docs/spec/06-declarations-and-containers.md#623-constructors),
 [Move](../../docs/spec/15-ownership-and-lifetime-analysis.md#1515-movable-places), and
-[destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+[destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop).
 
 Reproduce Milestone 4 with the pinned Windows x64 toolchain:
 
@@ -456,7 +456,7 @@ copies at O0/O2, verifies LLVM through the normal pipeline, and compares native 
 both CLI `run` forms against exact output and exit status. Successful runs print
 the five lines above, have empty stderr, and exit 0. A separate loop-limit-9 variant
 prints only `Counter created.`, reports Abort at 14:9 and exits 1 without either
-defer or deinit. A destructor-inspection variant verifies the value is still 55
+defer or drop. A destructor-inspection variant verifies the value is still 55
 at destruction. Twelve invalid inputs must fail before IR/executable publication.
 Variants never edit the checked-in program. Reports and build/source/compiler
 identities are under `artifacts/verify/milestone4/<configuration>/<run-id>/`; Debug is supported.
@@ -479,7 +479,7 @@ Counter destroyed.
 Done.
 ```
 
-The `do` scope destroys `view` before mutation resumes. Its deinit observes the
+The `do` scope destroys `view` before mutation resumes. Its drop observes the
 borrowed Counter, keeping that shared Loan active through destruction even after
 the last explicit `view.read()` call. Destroying a shared reference does not
 destroy its referent. After the view's cleanup, another exclusive borrow and
@@ -511,7 +511,7 @@ unchanged input, byte-identical renamed O0/O2 copies, alternate numeric values,
 immediate temporary borrows, two Abort paths and fourteen rejected inputs.
 Normal output is exactly the five lines above, with empty stderr and exit 0.
 The Abort variants exit 1 with the expected diagnostic and no termination cleanup.
-Invalid cases include mutation/Move/replacement while deinit needs the borrow,
+Invalid cases include mutation/Move/replacement while drop needs the borrow,
 temporary escape, shared writes, exclusive aliasing and parent access during a
 required reborrow. Reports and source/compiler/build identities are retained under
 `artifacts/verify/milestone5/<configuration>/<run-id>/`. The script does not run NativeAOT.
@@ -635,7 +635,7 @@ fixed i32 array field Copies out. The examples exercise both cases. Explicit
 public members make the paths accessible from outside their declaring groups.
 
 As separate rejection exercises, reuse `selected` after `selected.take()`, or
-add a `deinit` to Box while retaining its generic extracting `take`: the latter
+add a `drop` to Box while retaining its generic extracting `take`: the latter
 cannot permit a Non-Copy field Move that makes a destructor-bearing Box incomplete.
 
 Focus: [nested containers](../../docs/spec/06-declarations-and-containers.md#611-root-and-nested-containers),
@@ -884,7 +884,7 @@ the accepted-count check then Aborts and skips ordinary cleanup.
 Focus: [object creation](../../docs/spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing),
 [object calls](../../docs/spec/12-expressions.md#1243-object-member-calls),
 [Callable contracts](../../docs/spec/08-generics-constraints-and-contracts.md#86-callable-constraints),
-and [destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-deinit).
+and [destruction](../../docs/spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop).
 
 Verified program-14 reproduction (build the selected compiler configuration first):
 
@@ -999,8 +999,8 @@ and [reborrowing](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reb
 
 ## Milestone 17: repair, replacement and ordered cleanup
 
-The fixed array has no user deinit. Moving its complete Resource element is
-permitted even though Resource itself has deinit; moving one of Resource's
+The fixed array has no user drop. Moving its complete Resource element is
+permitted even though Resource itself has drop; moving one of Resource's
 Non-Copy fields would be a different operation. Repair restores array completeness.
 Exchange transfers Resource 2 into old without destroying it, swap transfers
 Resources 3/4 without destruction, and replace destroys Resource 3 at its target.
@@ -1092,7 +1092,7 @@ Separate rejection exercises:
 - Use selected after selected.take(), or delivered after its consuming match.
 - Return `(value, value)` from an unconstrained generic duplicate function:
   selected Copy instantiations cannot justify a universally invalid definition.
-- Add a Box deinit while retaining extraction of its Non-Copy field.
+- Add a Box drop while retaining extraction of its Non-Copy field.
 - Add a deferred read of pending in relay: the return may Move that storage.
 
 The [native harness](../../src/backend/windows-x64/test-milestone18.ps1) checks the
@@ -1394,8 +1394,8 @@ and [standard witnesses](../../docs/spec/11-properties.md#1142-standard-operatio
 and constructor body. The base's private `resource` and the derived Field of the
 same Name remain distinct. An inherited standard Property reads and writes the
 base slot, and the inherited Type function keeps its declaring identity. Moving
-the complete derived value transfers both layers; cleanup runs derived `deinit`,
-derived Fields, base `deinit`, then base Fields, exactly once.
+the complete derived value transfers both layers; cleanup runs derived `drop`,
+derived Fields, base `drop`, then base Fields, exactly once.
 
 Expected stdout (specification-derived; native execution is blocked):
 
@@ -1406,9 +1406,9 @@ Derived field initialized.
 Derived constructor finished.
 Inherited access finished.
 Derived value moved.
-Derived deinit.
+Derived drop.
 Derived resource destroyed.
-Base deinit.
+Base drop.
 Base resource destroyed.
 Inheritance finished.
 ```
@@ -1418,7 +1418,7 @@ generic base substitution, protected/private access, incomplete construction and
 ordinary transfers before construction starts. Abort during base/derived
 construction must not promise unwinding. Reject accessible inherited-Name
 redeclarations, derivation from a sealed Type, invalid base calls, use after Move
-and Partial Moves across a user-`deinit` layer. Inspect base offsets, distinct
+and Partial Moves across a user-`drop` layer. Inspect base offsets, distinct
 Field identities and each layer's construction/cleanup state. Inherited standard
 storage and Type members require no ObjectCallCompatible publication; borrowed
 method/custom-accessor projection remains subject to that separate deferred proof
@@ -1735,14 +1735,14 @@ Expected stdout (specification-derived; native execution is blocked):
 Base view refined to Leaf.
 Type-test operand evaluated.
 Complete payload replaced.
-Leaf deinit.
+Leaf drop.
 Original resource destroyed.
-Base deinit.
+Base drop.
 Updated object remains a Leaf.
 Owning base view retains the complete Leaf.
-Leaf deinit.
+Leaf drop.
 Replacement resource destroyed.
-Base deinit.
+Base drop.
 Exclusive object run finished.
 ```
 

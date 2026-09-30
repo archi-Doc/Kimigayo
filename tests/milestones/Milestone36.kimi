@@ -2,7 +2,7 @@
 struct Resource
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Static resource 1 destroyed.")
             3 => Console.writeLine("Static resource 3 destroyed.")

@@ -83,7 +83,7 @@ Slot immutability is not deep immutability: a stored reference or object handle 
 
 ### 11.1.2. Move paths and inherited fields
 
-A safe storage Move requires an owned struct Place, an eligible static Move Path, completed construction, an Initialized and complete target, and valid access, Origins, Loans and ancestor `deinit` conditions. Borrowed and object receivers and static storage cannot supply safe extraction. Raw-pointer operations keep their Unsafe rules.
+A safe storage Move requires an owned struct Place, an eligible static Move Path, completed construction, an Initialized and complete target, and valid access, Origins, Loans and ancestor `drop` conditions. Borrowed and object receivers and static storage cannot supply safe extraction. Raw-pointer operations keep their Unsafe rules.
 
 Inherited lookup selects a Field identity and a unique base path, substituting Type and Origin arguments. Following the path acquires no intermediate bases and implies no `ref/Derived`-to-`ref/Base` conversion. The original receiver category is preserved, and inheritance grants no private access. State and Loans are tracked by base path and Field identity. A base subobject itself cannot be independently Moved, replaced or reconstructed.
 
@@ -101,7 +101,7 @@ object.position = next      // OK: calls the setter.
 Standard access may use a complete remaining Place after a sibling Move. A custom accessor or computed call needs a complete receiver and keeps its declared function footprint; callers cannot infer disjointness from its body. Initial-construction restrictions still apply even when all slots are initialized (§11.3.1).
 
 ```kimi
-// Both fields have standard accessors; partial Move/deinit conditions hold.
+// Both fields have standard accessors; partial Move/drop conditions hold.
 let item = object.resource@move
 let count = object.count       // OK: complete remaining storage.
 let shown = object.displayCount // Error if this getter borrows incomplete object.
@@ -207,7 +207,7 @@ struct Holder
             return self.item@ref/Resource
     public computed result: Resource
         get(self: Self) -> Resource
-            return self.item@move // Only with valid partial Move/deinit conditions.
+            return self.item@move // Only with valid partial Move/drop conditions.
 ```
 
 Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter or setter consumes the complete receiver, so unless `Self` is Copy an owned Place receiver is written `holder@move.result` or `holder@move.item = value` (§7.3), and a later setter cannot reuse a consumed receiver. No hidden duplication, restoration or get/set round-trip equality is promised.

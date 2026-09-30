@@ -6,7 +6,7 @@ struct Counter
         self.value = 0
         Console.writeLine("Counter created.")
 
-    deinit => Console.writeLine("Counter destroyed.")
+    drop => Console.writeLine("Counter destroyed.")
 
 func finish(counter: Counter)
     defer => Console.writeLine("Leaving finish.")

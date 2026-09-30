@@ -2,7 +2,7 @@
 struct Item
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit => Console.writeLine("Item destroyed.")
+    drop => Console.writeLine("Item destroyed.")
 
 struct Node
     public let selfWeak: Weak<rc/Node>
@@ -10,7 +10,7 @@ struct Node
     public init(selfWeak: Weak<rc/Node>, value: i32)
         self.selfWeak = selfWeak@move
         self.value = value
-    deinit => Console.writeLine("Node destroyed.")
+    drop => Console.writeLine("Node destroyed.")
 
 func expired() -> Weak<rc/Item>
     let strong = Kimi.Intrinsics.makeRc(Item.init(7))

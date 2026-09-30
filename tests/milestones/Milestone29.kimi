@@ -2,7 +2,7 @@
 struct Task
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Task 1 destroyed.")
             2 => Console.writeLine("Task 2 destroyed.")

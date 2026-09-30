@@ -1,10 +1,10 @@
 var value: i32 = 1
-let saved = work: do
+let saved = label work: do
     defer => value = 2
     defer
         defer => Console.writeLine("cleanup")
         exit
-    exit to work: value
+    exit to work value
 
 if saved == 1 and value == 2
     Console.writeLine("ok")

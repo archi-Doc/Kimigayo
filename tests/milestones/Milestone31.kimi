@@ -8,7 +8,7 @@ struct Key
         self.tag = tag
     // Equality is stable and ignores the tag identifying this particular key value.
     public func equals(self: ref/Self, other: ref/Self) -> bool => self.code == other.code
-    deinit
+    drop
         match self.tag
             0 => () // Quiet temporary search key.
             1 => Console.writeLine("Key 1 destroyed.")
@@ -22,7 +22,7 @@ struct Key
 struct Item
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             10 => Console.writeLine("Item 10 destroyed.")
             11 => Console.writeLine("Item 11 destroyed.")

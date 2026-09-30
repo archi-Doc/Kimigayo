@@ -119,7 +119,7 @@ options(count: 3) // Uses mode's default.
 options(3)        // Error: 3 supplies mode, not count.
 ```
 
-Function Types keep no argument names, name contracts or defaults: a call through a function value supplies every parameter positionally, with no named or omitted arguments (§7.6). The boundary is not available in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls, or dedicated attribute and built-in argument syntax. Special restrictions, such as those of `deinit`, still apply. Foreign declarations permit the boundary but not defaults (§22.3).
+Function Types keep no argument names, name contracts or defaults: a call through a function value supplies every parameter positionally, with no named or omitted arguments (§7.6). The boundary is not available in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls, or dedicated attribute and built-in argument syntax. Special restrictions, such as those of `drop`, still apply. Foreign declarations permit the boundary but not defaults (§22.3).
 
 ### 7.2.3. Default evaluation and ownership
 
@@ -447,7 +447,7 @@ The internal call signature keeps the complete receiver, parameter and result Ty
 
 ### 7.6.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `deinit` cannot be acquired as values.
+A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y

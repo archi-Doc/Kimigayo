@@ -12,13 +12,13 @@ public func main()
         .Data((-1, true)), .Data((7, true)), .Stop, .Data((100, true)),
     ]
     var total: i32 = 0
-    let answer: i32 = scan: loop
+    let answer: i32 = label scan: loop
         for command in commands@move
             let amount: i32 = match command
                 .Data((let value, true)) if value > 0 => value
                 .Data(_) => continue
                 .Skip => continue
-                .Stop => exit to scan: total
+                .Stop => exit to scan total
             total = total + amount
         exit total // Exhaustion also supplies the loop result.
 

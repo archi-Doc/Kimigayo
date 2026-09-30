@@ -77,7 +77,7 @@ alignment(S) = aggregateAlignment
 size(S) = stride(S) = checkedAlignUp(cursor, aggregateAlignment)
 ```
 
-C layout is rejected on open or derived structs, empty structs, direct zero-sized Fields (including Unit and zero-length arrays) and multiple storage-bearing fragments. Methods, constructors, computed members and `deinit` do not by themselves prevent C layout; foreign construction and destruction are a separate contract. C layout describes the owned payload, not an object handle, allocation header or reference count.
+C layout is rejected on open or derived structs, empty structs, direct zero-sized Fields (including Unit and zero-length arrays) and multiple storage-bearing fragments. Methods, constructors, computed members and `drop` do not by themselves prevent C layout; foreign construction and destruction are a separate contract. C layout describes the owned payload, not an object handle, allocation header or reference count.
 
 `NativeRecord` above has offsets 0, 8 and 16, size and stride 24, and alignment 8:
 
@@ -157,7 +157,7 @@ C layout and C-exchangeable storage are different judgments. Initially, the elig
 
 Kimigayo-layout structs, Tuples, enums, `string`, dynamic collections, `bool`, `char`, `i128`/`u128`, `isize`/`usize`, safe borrows, object handles, and function and Closure values are excluded until their C correspondence is specified. A C-layout struct may contain a `string` if layout succeeds, but it is then not C-exchangeable. For example, C-layout `Pair<i32>` and `Pair<u64>` have different layouts, `Pair<()>` violates the zero-sized Field restriction, and `Pair<string>` gains no marshalling.
 
-A pointer guarantees only its value representation; its pointee may remain opaque. Foreign reads and writes require a separate pointee-layout and validity contract. Foreign construction or overwriting of values received by Kimigayo initially also requires no user `deinit`, recursively. Constructors, lifetimes, ownership transfer, active Loans and accessor bypass still require the unsafe contract. No automatic Copy capability, raw-storage initialization API or safe-to-raw conversion follows.
+A pointer guarantees only its value representation; its pointee may remain opaque. Foreign reads and writes require a separate pointee-layout and validity contract. Foreign construction or overwriting of values received by Kimigayo initially also requires no user `drop`, recursively. Constructors, lifetimes, ownership transfer, active Loans and accessor bypass still require the unsafe contract. No automatic Copy capability, raw-storage initialization API or safe-to-raw conversion follows.
 
 For ABI comparison, the target ABI, recursively eligible Field Types, merged order and content, and layout options are kept. Aggregate arguments and results remain excluded from LibraryImport (§22.3), even when the storage is C-exchangeable. Packed and transparent layouts, explicit alignment and offsets, unions, bit-fields, flexible array members, external enum representations and public layout queries remain extensions.
 
@@ -198,7 +198,7 @@ An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj
 
 Equal runtime identity implies neither equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins nor Loans; it neither authorizes code sharing nor skips validation. Equal names, layouts, member sets or descriptor addresses alone do not define identity either. Fixed-array Type structure keeps the evaluated length and the element-Type key; general Const arguments beyond function lengths are not introduced. Other identity and key purposes are separated under [generation keys](#2132-identity-and-generation-keys).
 
-Declared base and conformance relationships are fixed by validated definitions; no unrelated extension, module search or runtime registration changes them. Dependent artifacts are revalidated under §21.3.4 before metadata is generated, and their identities, bases and verified mappings must agree independently of load order. Receiver adjustment cannot bypass the public ObjectCallCompatible, access, Type, Origin or Loan checks. ObjectCallCompatible is compile-time interface information, not a required descriptor field. A destruction entry does not make `deinit` a source-level function value.
+Declared base and conformance relationships are fixed by validated definitions; no unrelated extension, module search or runtime registration changes them. Dependent artifacts are revalidated under §21.3.4 before metadata is generated, and their identities, bases and verified mappings must agree independently of load order. Receiver adjustment cannot bypass the public ObjectCallCompatible, access, Type, Origin or Loan checks. ObjectCallCompatible is compile-time interface information, not a required descriptor field. A destruction entry does not make `drop` a source-level function value.
 
 An extension that introduces runtime implementation selection defines its own additional selection information. The current descriptor has no runtime member-dispatch slots; its Windows storage is specified below, independently of the function ABI.
 
@@ -219,9 +219,9 @@ The following immutable, module-local records belong to windows-x64-v1. They def
 | 32 | `destroyValues: ptr` | Null exactly when no value of the full Type needs runtime destruction |
 | 40 | `typeContext: ptr` | Immutable required Type information; null when unnecessary |
 
-There is no separate stride or Copy/Move entry. All current Copy Types have no user `deinit` and recursively cleanup-free components, so HasCopy implies a null `destroyValues`; the converse is false. Zero size, or the current enum Case, does not prove the full Type cleanup-free. Never has no value metadata, although its static identity and constraints remain meaningful.
+There is no separate stride or Copy/Move entry. All current Copy Types have no user `drop` and recursively cleanup-free components, so HasCopy implies a null `destroyValues`; the converse is false. Zero size, or the current enum Case, does not prove the full Type cleanup-free. Never has no value metadata, although its static identity and constraints remain meaningful.
 
-`destroyValues(first, count, metadata, location)` is the sole metadata destruction entry; a single value uses `count = 1`. For `count = 0` or a null entry, the call and its address calculation are skipped. Otherwise `first` is nonnull, aligned and live, pointing to `count` complete initialized values at `metadata.size` stride. The caller checks the count, range and offset arithmetic, and excludes moved, partial and spare storage. Values are destroyed in reverse logical order, `count - 1` down to zero; a zero stride still requires every logical destruction. Each value's `deinit` and component cleanup complete before the preceding value is destroyed. Abort or nontermination stops subsequent work. This entry destroys values but never frees the enclosing storage.
+`destroyValues(first, count, metadata, location)` is the sole metadata destruction entry; a single value uses `count = 1`. For `count = 0` or a null entry, the call and its address calculation are skipped. Otherwise `first` is nonnull, aligned and live, pointing to `count` complete initialized values at `metadata.size` stride. The caller checks the count, range and offset arithmetic, and excludes moved, partial and spare storage. Values are destroyed in reverse logical order, `count - 1` down to zero; a zero stride still requires every logical destruction. Each value's `drop` and component cleanup complete before the preceding value is destroyed. Abort or nontermination stops subsequent work. This entry destroys values but never frees the enclosing storage.
 
 Partial cleanup may batch only contiguous complete segments compatible with the required logical order. Dictionary reverse-insertion value/key cleanup is not an address sort, so it uses separate calls, including `count = 1`, where needed. A range of strings can use one indirect entry and a reverse loop, without eliminating each value's required free or nested dynamic dispatch.
 
@@ -315,7 +315,7 @@ A borrow of a proven Sealed payload selected with `@follow` uses the ordinary `r
 
 #### 21.2.5.1. Concrete environment
 
-A concrete Closure environment `E` is a direct aggregate of its complete captured Types. Binding Identity, logical capture order, mutability, Move Paths and Origin/Loan information are kept separate from physical offsets, and the alignment-sorted aggregate layout of §21.1.3 applies. `E` has no embedded call pointer or header, user `deinit`, public fields or reflection members. Parameters, results and aggregate storage do not force it onto the heap. `E` is Copy exactly when all captured complete Types are Copy. An empty `E` and Function Items have size, alignment and stride 0/1/0; zero-sized captures keep their maximum alignment. Function Item identity, bound arguments and the selected implementation are static information.
+A concrete Closure environment `E` is a direct aggregate of its complete captured Types. Binding Identity, logical capture order, mutability, Move Paths and Origin/Loan information are kept separate from physical offsets, and the alignment-sorted aggregate layout of §21.1.3 applies. `E` has no embedded call pointer or header, user `drop`, public fields or reflection members. Parameters, results and aggregate storage do not force it onto the heap. `E` is Copy exactly when all captured complete Types are Copy. An empty `E` and Function Items have size, alignment and stride 0/1/0; zero-sized captures keep their maximum alignment. Function Item identity, bound arguments and the selected implementation are static information.
 
 Calls use the Shared `ref/E`, Exclusive `uniq/E` or Consuming `owner/E` receiver of §7.6.3. An owning Callable contract acquires `E` normally before adapting to a weaker implementation requirement. Shared and Exclusive calls neither own nor destroy `E` and cannot Move owned captures. Consuming calls clean up only the remaining initialized captures, in reverse logical acquisition order. The implicit owned `E` binding precedes the explicit parameters, so the result is secured first, then body locals and `defer` are cleaned up, then the parameters, and finally the remaining `E`. Partial environments use CFG state, with flags only where joins require them, not a mandatory per-Closure bitmap; an incomplete `E` can never be acquired, erased or called. Zero-sized captures still run every required destructor.
 
@@ -351,7 +351,7 @@ For a conversion directly from Closure syntax, the uninitialized final `F` and e
 
 In the `makeAdder` example of §7.6.4, the `i32` capture occupies four inline bytes and the common function handle 16 bytes. Repeated Shared calls keep that environment, and moving the handle transfers its ownership.
 
-Known Function Items and Closures call their selected entries directly, and `F` uses `callEntry`. A shared generic Callable call uses the compile-time witness plan's selected entry/context pair, without constructing `F` or a runtime witness table. Definitions, calls and adapters share one FunctionAbi mapping for the logical receiver, arguments, result and context; matching `ptr` signatures alone are insufficient. Adapters never reevaluate source arguments, add a language Copy or reselect overloads or specializations. Shared destruction, free and adapter cleanup keep the original operation's source location, while failures in user `deinit` bodies keep their own locations.
+Known Function Items and Closures call their selected entries directly, and `F` uses `callEntry`. A shared generic Callable call uses the compile-time witness plan's selected entry/context pair, without constructing `F` or a runtime witness table. Definitions, calls and adapters share one FunctionAbi mapping for the logical receiver, arguments, result and context; matching `ptr` signatures alone are insufficient. Adapters never reevaluate source arguments, add a language Copy or reselect overloads or specializations. Shared destruction, free and adapter cleanup keep the original operation's source location, while failures in user `drop` bodies keep their own locations.
 
 Allocation count and location are not language guarantees. Elision need not reproduce the failure of a removed allocation or free, but must preserve acceptance, required checks, captures, user effects and destruction order; surviving resource operations keep their Abort and source-location contracts. Promoting a heap environment to the stack requires tracing all uses and cleanup and replacing the entries with matching direct code. Stack storage is never passed to a heap-freeing entry, and no operation-table variants are added just for promotion; otherwise the heap representation is kept. Physical ABI choices remain compiler-controlled under §21.4.2.
 
@@ -750,9 +750,9 @@ var useOriginal = true
 var pair = ("old", 1)
 pair = if useOriginal => pair else => ("new", 2)
 
-let saved = work: do
+let saved = label work: do
     defer => pair = ("later", 3)
-    exit to work: pair
+    exit to work pair
 // saved receives the pair secured before defer. pair holds ("later", 3).
 ```
 

@@ -498,7 +498,7 @@ Self is C when T is A and B, U is D
 // Requires T is A, T is B, and U is D.
 ```
 
-An optional indented implementation block declares members in the enclosing Type's namespace. It is a condition scope, not a new Type or Value namespace. It allows functions, computed members where the Type kind permits them (enums still forbid them), and associated-Type specifications; it rejects Fields, enum Cases, constructors, `deinit`, nested Types and nested conformance declarations. Conditional conformance never changes storage layout or Case structure.
+An optional indented implementation block declares members in the enclosing Type's namespace. It is a condition scope, not a new Type or Value namespace. It allows functions, computed members where the Type kind permits them (enums still forbid them), and associated-Type specifications; it rejects Fields, enum Cases, constructors, `drop`, nested Types and nested conformance declarations. Conditional conformance never changes storage layout or Case structure.
 
 ```kimi
 contract Describe
@@ -754,7 +754,7 @@ specialize func process<i32>(value: i32) -> ()
 
 All of the function's own generic slots are supplied in declaration order, with their original kinds; ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core and Semantics component must be fixed: no unbound Type or Semantics parameter, unresolved projection or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with an unbound `T` is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately (§8.8.2). These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
 
-The target must be a named generic Type function or instance method with an ordinary implementation; constructors, `deinit`, accessors and dedicated operator declarations are excluded. There is no partial or conditional specialization, omitted argument, placeholder, priority rule, general Const argument, specialization of a generic Container's arguments, specialization of a method with unbound outer generic parameters, or explicit target-identity syntax.
+The target must be a named generic Type function or instance method with an ordinary implementation; constructors, `drop`, accessors and dedicated operator declarations are excluded. There is no partial or conditional specialization, omitted argument, placeholder, priority rule, general Const argument, specialization of a generic Container's arguments, specialization of a method with unbound outer generic parameters, or explicit target-identity syntax.
 
 Duplicate ordinary declarations are rejected first. Then the original function is identified:
 

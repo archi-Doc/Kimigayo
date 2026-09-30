@@ -819,7 +819,7 @@ Generic summaries expose parameter-dependent equality and recursive destruction.
 
 After normal acquisition, the operation resolves bounds or searches, then decides absence, duplicate, replacement or addition. Rejection and absence leave the collection unchanged before any capacity work. Replacement and removal do not run addition limits: duplicate rejection and replacement work even at maximum length. Only addition checks the increased length, required byte sizes and allocation, with checked arithmetic.
 
-Relocation calls no user Copy, Move or `deinit`. Equality sees a consistent structure; no partially moved state or conflicting reentry is exposed. These are operation invariants, not source concurrency guarantees.
+Relocation calls no user Copy, Move or `drop`. Equality sees a consistent structure; no partially moved state or conflicting reentry is exposed. These are operation invariants, not source concurrency guarantees.
 
 A normal transfer during argument evaluation secures its transfer result and then cleans up previously acquired caller arguments and temporaries as required; the operation is not called. Abort supplies no result, rollback or later cleanup. Nontermination prevents later work and delivery.
 

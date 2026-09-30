@@ -5,7 +5,7 @@ struct Packet
     public init(text: string, number: i32)
         self.text = text@move
         self.number = number
-    deinit => Console.writeLine("Packet destroyed.")
+    drop => Console.writeLine("Packet destroyed.")
 
 func shared<F>(action: ref/F) -> i32
     F is Callable<ref, () -> i32>

@@ -32,10 +32,10 @@ func run(useFirst: bool)
     var first = Cell.init(10)
     var second = Cell.init(20)
     do
-        let selected: ref/Cell = selection: do
+        let selected: ref/Cell = label selection: do
             let pair = Pair.init(first@ref, second@ref)
             let result = pair.choose(useFirst)
-            exit to selection: match result@move
+            exit to selection match result@move
                 .Found(let value) => value
                 .Missing => $abort("Expected a selected Cell")
         // pair and the enum Subject are gone; their external sources remain.

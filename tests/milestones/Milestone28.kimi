@@ -2,7 +2,7 @@
 struct Item
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Item 1 destroyed.")
             2 => Console.writeLine("Item 2 destroyed.")

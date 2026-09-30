@@ -135,7 +135,7 @@ Eligible targets are declaration items directly in declaration or executable lis
 | Target | Included forms |
 | --- | --- |
 | Containers | group, rootgroup, struct, enum, contract |
-| Functions | Named functions and requirements, explicit specializations, init, deinit |
+| Functions | Named functions and requirements, explicit specializations, init, drop |
 | Properties/bindings | let/var/computed Properties, Contract property requirements, local let/var |
 | Cases | Each enum Case, including its payload description |
 | Associated Types | Contract associate declarations and implementation-side specifications |
@@ -275,13 +275,14 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Bindings and functions | `let`, `var`, `func` |
 | Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `try`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
 | Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
-| Dedicated forms | `Self`, `init`, `deinit`, `base` |
+| Dedicated forms | `Self`, `init`, `drop`, `base` |
 | Compile-time selection | `switch`; used after `#`. There is no runtime switch construct. |
 | Reserved future syntax | `as` |
 
 | Contextual class | Spellings and recognizing context |
 | --- | --- |
 | Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
+| Control labels | `label` at a Primary expression start when followed by a Name and `:` on the same physical line; commits to the label-prefix rules of §14.4. Elsewhere it is an ordinary Name. |
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
 | Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1). |
 | Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
@@ -295,11 +296,11 @@ Further notes on individual keywords:
 
 - After `@`, a built-in Semantics name selects a shorthand target (§13.5.1). There is no prefix `move` operator and no `*` operator for safe references.
 - The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
-- `init`, `deinit` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
+- `init`, `drop` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).
 - `specialize` introduces an [explicit specialization declaration](08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) and reserves nothing in other contexts.
 
-**Unavailable modifiers.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the declaration introducer of the same logical header. This applies to Type, function and Property declarations, Contract requirements, constructors, `deinit` and accessors, even where access and `open` modifiers are otherwise forbidden. Recognition does not scan across a newline, indent or dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override deinit` and `abstract get` all receive the unavailable-feature diagnostic. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`, and a standalone `abstract` expression must not consume the declaration on the next line. This recognition adds no valid declaration form and no globally reserved word.
+**Unavailable modifiers.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the declaration introducer of the same logical header. This applies to Type, function and Property declarations, Contract requirements, constructors, `drop` and accessors, even where access and `open` modifiers are otherwise forbidden. Recognition does not scan across a newline, indent or dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override drop` and `abstract get` all receive the unavailable-feature diagnostic. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`, and a standalone `abstract` expression must not consume the declaration on the next line. This recognition adds no valid declaration form and no globally reserved word.
 
 ## 2.6. Number literals
 
