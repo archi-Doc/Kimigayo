@@ -181,6 +181,8 @@ AGENTS.md lists the required steps. This section gives their detail.
 
 ## 11. Audit findings (D1)
 
+Origin suffix annotation sites now use factual catalog messages and conditional Advice, with focused recovery and output checks (`OriginSyntaxDiagnosticTest`; DIAGNOSTICS_REVIEW.md). The parser finding below remains open for the other reporting sites; its counts describe the original D1 audit.
+
 The [2026-09-30 conformance review](DIAGNOSTICS_REVIEW.md) maps these rules to the formal specification, records the repaired shared-path violations and keeps the remaining recorder gaps explicit. The historical migration checkpoints below do not certify all individual reporting sites.
 
 The D1 audit of the catalog and its reporting sites. Each item names the common rule it breaks and the stage that repairs it; remove an item when it is repaired.

@@ -115,7 +115,7 @@ public static partial class Parser
         var keyword = reader.Read();
         if (reader.GetSpan(keyword) is "from")
         {
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "borrow annotations use 'during', not 'from'");
+            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd);
         }
 
         var expression = ParseOriginAtom(ref reader);
@@ -130,7 +130,7 @@ public static partial class Parser
             target.SetBorrowOrigin(expression, span);
             if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Unsafe)
             {
-                reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "during requires safe borrow Semantics");
+                reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginSemantics_Kd);
             }
         }
         else if (type is TypeSemanticsKoto { IsNamedType: true, HasOrigin: false } named)
@@ -140,20 +140,20 @@ public static partial class Parser
         }
         else
         {
-            var detail = type is TypeSemanticsKoto { IsNamedType: true }
-                ? "a named Type takes a binding set or a single-slot during, not both"
-                : "during requires the first explicit Semantics or a named Type in the same Type; use 'ref/T? during a', not '(ref/T)? during a'";
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, detail);
+            var code = type is TypeSemanticsKoto { IsNamedType: true }
+                ? DiagnosticCode.BorrowOriginBindingSet_Kd
+                : DiagnosticCode.BorrowOriginTarget_Kd;
+            reader.Diagnostic.Add(keyword.Span, code);
         }
 
         // Consume malformed repetitions locally without changing the first annotation.
         while (reader.IsCurrentIdentifier("during") || reader.CurrentTokenKind == TokenKind.Question)
         {
             var extra = reader.Read();
-            var detail = extra.Kind == TokenKind.Question
-                ? "optional '?' must precede 'during'; group the annotated Type for a later '?'"
-                : "only one 'during' annotation is permitted in this Type";
-            reader.Diagnostic.Add(extra.Span, DiagnosticCode.UnexpectedToken_Kd, detail);
+            var code = extra.Kind == TokenKind.Question
+                ? DiagnosticCode.BorrowOriginSuffixOrder_Kd
+                : DiagnosticCode.DuplicateBorrowOrigin_Kd;
+            reader.Diagnostic.Add(extra.Span, code);
             if (extra.Kind != TokenKind.Question)
             {
                 _ = ParseOriginAtom(ref reader);

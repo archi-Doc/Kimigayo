@@ -46,6 +46,8 @@ The final 300-error workload allocates 4,156,054 bytes and warm rebind/report re
 
 ## Remaining work and confidence boundary
 
+Origin suffix follow-up: `BorrowOriginKeyword_Kd`, `BorrowOriginSemantics_Kd`, `BorrowOriginTarget_Kd`, `BorrowOriginBindingSet_Kd`, `BorrowOriginSuffixOrder_Kd` and `DuplicateBorrowOrigin_Kd` replace repair prose passed as token facts. The primary span selects the invalid keyword or suffix; fixed messages and labels explain attachment/order, with conditional Advice. `OriginSyntaxDiagnosticTest` covers valid counterparts, independent errors, first-annotation preservation through Binding/rebinding and both CLI/LSP adapters. Unit `20260930-145310-260-unit-origin-suffix-diagnostics` passes its warning-free build, 183 tests and diagnostic snapshot. Its native step was denied by the sandbox; unchanged generated fixtures pass all six O0/O2 executions in `20260930-234644-implementation-session/origin-native-retry`. Reproducer failures and inspected adapter output are retained in that session directory. Other parser sites remain open.
+
 The previously documented §11 gaps are still real and are not weakened out of the formal specification:
 
 - Parser reporting sites still pass syntax descriptions or repair prose as an UnexpectedToken token argument. Convert those sites to factual token/construct explanations and conditional Advice, with per-requirement recovery and output tests.

@@ -8,6 +8,42 @@
     Advice="Conditional repair advice; no edit is inferred from it"
     Note="Additional information about the diagnostic"
 
+  + Name="BorrowOriginKeyword_Kd"
+    Category="Language"
+    Message="Borrow Origin annotations start with 'during'"
+    Label="expected 'during' here"
+    Advice="If this is a borrow Origin annotation, replace 'from' with 'during'."
+
+  + Name="BorrowOriginSemantics_Kd"
+    Category="Language"
+    Message="A borrow Origin annotation requires safe-borrow Semantics"
+    Label="this Semantics cannot carry a borrow Origin"
+    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, unsafe/(ref/T during a)."
+
+  + Name="BorrowOriginTarget_Kd"
+    Category="Language"
+    Message="This Origin annotation has no syntactic target"
+    Label="no annotation target outside this grouping or Type"
+    Advice="If the annotation belongs to a borrow inside parentheses, write it inside those parentheses. An annotation can target only the first explicit Semantics or a directly written named Type with one Origin slot."
+
+  + Name="BorrowOriginBindingSet_Kd"
+    Category="Language"
+    Message="A named Type cannot combine a binding set with a single-slot Origin annotation"
+    Label="this Type already has a binding set"
+    Advice="If the binding set is needed, relate its slot in an attached origin clause; otherwise use only the single-slot 'during' form."
+
+  + Name="BorrowOriginSuffixOrder_Kd"
+    Category="Language"
+    Message="An optional suffix cannot follow an Origin annotation in the same Type"
+    Label="optional suffix follows the annotation"
+    Advice="To make the annotated Type optional, place '?' before 'during', or group the complete annotated Type before '?'."
+
+  + Name="DuplicateBorrowOrigin_Kd"
+    Category="Language"
+    Message="Only one Origin annotation is permitted in the same Type"
+    Label="another Origin annotation is already present"
+    Advice="Use one annotation for this Type; if both Origins are required, write their intersection in parentheses after one 'during'."
+
   + Name="HiddenNamedAlias_Kd"
     Severity="Warning"
     Category="Language"
