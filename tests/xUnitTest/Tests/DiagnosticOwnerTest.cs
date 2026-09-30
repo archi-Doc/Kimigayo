@@ -119,12 +119,34 @@ public sealed class DiagnosticOwnerTest
         }
     }
 
+    // SPEC 23.3.6.3: the project file is consumed before every source, so a fault at it that no kept record names takes the
+    // first source table entry, and the kept records keep their own sources.
+    [Fact]
+    public void AFaultAtTheProjectFileKeepsConsumptionOrder()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "let x = 1\n");
+        owner.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.UnmatchedToken_Kd, "x");
+        var result = DiagnosticFaults.Create(DiagnosticFault.Exception, "detail", "App.kimiproj", owner.Finalize());
+        Assert.Equal(["App.kimiproj", "main.kimi"], result.Sources.Select(static x => x.Path));
+        Assert.Equal(["CheckFaulted_Kd", "UnmatchedToken_Kd"], result.Diagnostics.Select(static x => x.Code));
+        Assert.Equal([0, 1], result.Diagnostics.Select(static x => x.Source));
+
+        // A project file registered when the check starts keeps its place before later sources in ordinary records too.
+        var ordered = new DiagnosticOwner();
+        ordered.RegisterPath("App.kimiproj");
+        ordered.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.UnmatchedToken_Kd, "x");
+        ordered.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "late");
+        Assert.Equal(["App.kimiproj", "main.kimi"], ordered.Finalize().Sources.Select(static x => x.Path));
+    }
+
     [Fact]
     public void TheFaultRecordMatchesTheCatalogAndReplacesOrKeepsRecords()
     {
         Assert.True(DiagnosticEntries.TryGet(DiagnosticCode.CheckFaulted_Kd, out var entry));
         Assert.Equal(DiagnosticSeverity.Error, entry.Severity);
         Assert.Equal(DiagnosticCategory.Internal, entry.Category);
+        Assert.Equal(new DiagnosticParameter("fault", DiagnosticValueKind.Enumeration, false), Assert.Single(entry.ArgumentSchema));
         foreach (var fault in Enum.GetValues<DiagnosticFault>())
         {
             var record = Assert.Single(DiagnosticFaults.Create(fault, "detail", "App.kimiproj").Diagnostics);

@@ -35,10 +35,23 @@ public class PositionContractTest
     [Theory]
     [InlineData("struct S\n    Self is Position\n    public func tryResolve(self: Self, length: isize) -> Option<isize> => .None\n()")]
     [InlineData("struct W<T>\n    let value: T\n    Self is PositionRange when T is Copy\n()")]
+    [InlineData("struct N\n    Self is PrimitiveInteger\n()")]
+    // A user Contract that refines a closed Contract grants no conformance to it either (SPEC 8.4.7).
+    [InlineData("contract MyPos: Position\nstruct S\n    Self is Copy\n    Self is MyPos\n    public func tryResolve(self: Self, length: isize) -> Option<isize> => .Some(0)\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\n    public init() => ()\nlet values: Array<i32> = [1, 2, 3]\nlet b = values[S.init()]")]
+    [InlineData("contract MyRange: PositionRange\nstruct W<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n    Self is Copy when T is Copy\n    Self is MyRange when T is Copy and Owned\n        public func tryResolve(self: Self, length: isize) -> Option<ResolvedRange> => (0..1).tryResolve(length)\n        public func equals(self: ref/Self, other: ref/Self) -> bool => true\n        public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => .Ok(())\nlet values: Array<i32> = [1, 2, 3]\nlet b = values[W<i32>.init(value: 3)]")]
     public void UserTypesCannotConform(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidSelfClause_Kd);
+        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ClosedContractConformance_Kd);
+    }
+
+    // A user Contract may refine a closed one as a Constraint; the closed Types still satisfy it only through their own conformance.
+    [Fact]
+    public void ARefiningContractIsAnOrdinaryConstraint()
+    {
+        var c = MinimalEmissionTest.Analyze("contract MyPos: Position\nfunc f<P>(p: P) -> bool\n    P is MyPos\n    return p == p\n()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

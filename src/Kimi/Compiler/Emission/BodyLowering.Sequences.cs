@@ -57,7 +57,7 @@ internal sealed partial class BodyLowering
         }
 
         var address = new EmissionOperand(EmissionOperandKind.SlotAddress, plan.Receiver);
-        var borrowedArray = ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver);
+        var borrowedArray = ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver);
         if (!borrowedArray && value.Count != 0)
         {
             return Fail("Owned sequence metadata must not carry a reference operand.", out failure);
@@ -250,8 +250,10 @@ internal sealed partial class BodyLowering
             function.AddScalar(EmissionOpcode.Sequence, id, bounds, place: operation.Place, location: sliceLocation, op: "SliceRange", check: ArithmeticCheckKind.Bounds, representation: sliceElement);
             return true;
 
+            // An isize boundary is used as evaluated, so its producer is the boundary's value source (parentheses, labels and
+            // identity conversions removed); a boundary of another integer Type is converted at the written syntax.
             bool Endpoint(Koto? syntax, int producer) => syntax is null ? producer == -1 :
-                (uint)producer < (uint)id && ReferenceEquals(body.Operations[producer].Source, syntax) &&
+                (uint)producer < (uint)id && (ReferenceEquals(body.Operations[producer].Source, syntax) || ReferenceEquals(body.Operations[producer].Source, ElementAccess.ValueSource(syntax))) &&
                 ReferenceEquals(ValueType(body, producer), BoundType.ISize) && (!body.IsReachable(id) || this.Dominates(producer, id));
         }
 

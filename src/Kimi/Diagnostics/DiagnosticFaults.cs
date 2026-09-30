@@ -36,26 +36,33 @@ internal static class DiagnosticFaults
     internal static DiagnosticResult Create(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
     {
         var sources = kept?.Sources ?? [];
+        var previous = kept?.Diagnostics ?? [];
         var source = -1;
         if (location is not null)
         {
             source = Array.FindIndex(sources, x => x.Path == location);
             if (source < 0)
             {
-                source = sources.Length;
-                sources = [.. sources, new(location, !location.StartsWith(Checking.SourceIdentity.BuiltInPrefix, StringComparison.Ordinal))];
+                // SPEC 23.3.6.3: the project file is consumed before every kept source, so its new entry comes first.
+                source = 0;
+                sources = [new(location, !location.StartsWith(Checking.SourceIdentity.BuiltInPrefix, StringComparison.Ordinal)), .. sources];
+                previous = Array.ConvertAll(previous, static x => x with
+                {
+                    Source = x.Source < 0 ? x.Source : x.Source + 1,
+                    Related = x.Related is { } related ? Array.ConvertAll(related, static r => r with { Source = r.Source < 0 ? r.Source : r.Source + 1 }) : null,
+                });
             }
         }
 
         // Keep the fault path independent of catalog formatting, with the same presentation limit as ordinary Notes.
-        var note = detail is null ? null : detail.Length <= DiagnosticLimits.NoteLength ? detail : string.Concat(detail.AsSpan(0, DiagnosticLimits.NoteLength - 1), "…");
+        var note = detail is null ? null : detail.Length <= DiagnosticLimits.NoteLength ? detail :
+            string.Concat(detail.AsSpan(0, DiagnosticText.HeadLength(detail, DiagnosticLimits.NoteLength - 1)), DiagnosticText.Elision);
         var record = new CheckDiagnostic(nameof(DiagnosticCode.CheckFaulted_Kd), DiagnosticSeverity.Error, DiagnosticCategory.Internal, MessagePrefix + Describe(fault), source, null)
         {
             Reason = [DiagnosticValue.Enumeration("fault", fault)],
             Note = note,
         };
 
-        var previous = kept?.Diagnostics ?? [];
         var insertion = 0;
         var orderSource = source < 0 ? int.MaxValue : source;
         while (insertion < previous.Length)

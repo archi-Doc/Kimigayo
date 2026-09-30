@@ -22,10 +22,10 @@ public sealed partial class Binding
     private static bool IsIntegerPosition(BoundType? type, BindingSymbol contract)
         => type is { IsInteger: true, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration == KimiDeclarationId.Position;
 
-    // SPEC 8.4.7: only the Kimi Types that §22.1 names conform to Position and PositionRange; a declaration elsewhere is an
-    // error rather than a conformance.
+    // SPEC 8.4.7: only the Kimi Types that §22.1 names conform to Position and PositionRange; a declaration elsewhere, including
+    // one of a user Contract that refines either, is an error rather than a conformance.
     private bool IsClosedContractGrant(BindingSymbol contract, BindingSymbol type)
-        => contract.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange &&
+        => (IsRefinement(contract, this.Library.Position) || IsRefinement(contract, this.Library.PositionRange)) &&
             !ReferenceEquals(type.Declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
 
     // The witness of the integer conformance: the one generic `tryResolve` of the Kimi group, whose explicit

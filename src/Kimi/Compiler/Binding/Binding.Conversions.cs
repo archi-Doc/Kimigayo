@@ -36,6 +36,11 @@ public sealed partial class Binding
     internal static bool IsCopyOperation(ConversionKoto conversion)
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
 
+    // A Kimi position or range Type other than an integer (SPEC 4.6.2, 4.6.3).
+    private static bool IsPositionOrRangeType(BoundType type)
+        => type.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or KimiDeclarationId.Range or
+            KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange;
+
     // SPEC 13.5: a bare Semantics name or operation directly after @ completes the operation. A grouped target is a Type,
     // so a grouped bare name such as (ref) is bound, and rejected, as a Type; grouping stays transparent for complete targets.
     // A bare owning shorthand names no Core wherever it is written and keeps its own diagnostic (SPEC 13.5.3).
@@ -468,6 +473,14 @@ public sealed partial class Binding
             {
                 return this.CompleteIdentity(conversion, target);
             }
+        }
+
+        // SPEC 13.5.3: only a numeric conversion changes an owned Core, so an owned Core that is primitive on one side only, or a
+        // different position or range Type, has no defined operation: a Type error, not an unimplemented form.
+        if (!ReferenceEquals(source, target) && source.Semantics == SemanticsKind.Owner && target.Semantics == SemanticsKind.Owner &&
+            ((source.Kind == BoundTypeKind.Primitive) != (target.Kind == BoundTypeKind.Primitive) || (IsPositionOrRangeType(source) && IsPositionOrRangeType(target))))
+        {
+            return this.FailMismatch(conversion, conversion, source, target);
         }
 
         // Other ownership/borrow adaptations require their own verified paths.

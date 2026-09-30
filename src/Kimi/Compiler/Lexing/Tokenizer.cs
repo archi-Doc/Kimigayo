@@ -1378,7 +1378,7 @@ EndOfFile:
     private SourceSpan NewRange(int length)
         => new(this.position, length);
 
-    // A lexical problem of this document; the target need not be bound to it, so lexing allocates no target.
+    // A lexical problem of this document, recorded through the target the parser also uses, so its recovery can rest on it.
     private void Report(SourceSpan range, DiagnosticCode code, object? argument = null)
         => this.diagnostics.Add(range, code, argument, null, this.sourceDocument);
 

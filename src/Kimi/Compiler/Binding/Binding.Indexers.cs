@@ -205,6 +205,8 @@ public sealed partial class Binding
             ResetSynthetic(key);
         }
 
+        // Like every synthesized call, its own failure is a published fact that the index expression rests on.
+        this.nodes.Add(call);
         return this.BindCall(call, scope, null) is null ? null : call;
     }
 }

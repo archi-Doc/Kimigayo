@@ -31,6 +31,11 @@ internal static class CheckService
         var accepted = false;
         var outcome = CheckOutcome.Completed;
         var location = project.FilePath;
+        if (location is not null)
+        {
+            context.Diagnostics.RegisterPath(location); // SPEC 23.3.6.3: the project file is consumed before every source.
+        }
+
         Exception? failure = null;
         try
         {

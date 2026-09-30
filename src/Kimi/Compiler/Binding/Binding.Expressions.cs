@@ -550,6 +550,8 @@ public sealed partial class Binding
                 return this.BindRangeValue(range, scope, expected); // SPEC 4.6.3: range syntax outside an index position.
             case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
                 return this.BindElement(tupleElement, scope);
+            case MemberAccessKoto { Right: ErrorKoto missing } incomplete:
+                return this.CompleteDependent(incomplete, missing); // SPEC 23.3.6.4: a member name that failed to parse explains the access.
             case MemberAccessKoto member:
                 if (this.BindSequenceMember(member, scope, out var sequenceType))
                 {

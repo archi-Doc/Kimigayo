@@ -42,6 +42,53 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(2, 1), result.Diagnostics[^1].Span);
     }
 
+    // SPEC 23.3.6.5: a mismatch keeps its differing parts; a Type lying wholly inside the other, as T in ref/T, is bounded on
+    // its own rather than shown as a bare elision mark.
+    [Fact]
+    public void AMismatchedTypeInsideTheOtherStaysReadable()
+    {
+        var inner = "(Long" + new string('A', 120) + ", i32)";
+        var (first, second) = DiagnosticText.BoundPair(inner, "ref/" + inner);
+        Assert.StartsWith("(LongAAA", first.Text, StringComparison.Ordinal);
+        Assert.EndsWith(", i32)", first.Text, StringComparison.Ordinal);
+        Assert.StartsWith("ref/(LongAAA", second.Text, StringComparison.Ordinal);
+        Assert.True(first.Elided && second.Elided);
+        Assert.True(first.Text.Length <= DiagnosticLimits.ValueLength && second.Text.Length <= DiagnosticLimits.ValueLength);
+    }
+
+    // SPEC 23.3.6.5: bounding and pair elision never split a surrogate pair, so displayed values stay valid UTF-16.
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(150)]
+    public void BoundingKeepsSurrogatePairsWhole(int offset)
+    {
+        var text = new string('a', offset) + "\U0001F600" + new string('b', 200 - offset);
+        Assert.True(IsValidUtf16(DiagnosticText.Bound(text).Text));
+        var other = new string('a', offset) + "\U0001F601" + new string('b', 200 - offset);
+        var (first, second) = DiagnosticText.BoundPair(text, other);
+        Assert.True(IsValidUtf16(first.Text) && IsValidUtf16(second.Text));
+        Assert.Contains("\U0001F600", first.Text, StringComparison.Ordinal);
+        Assert.Contains("\U0001F601", second.Text, StringComparison.Ordinal);
+
+        static bool IsValidUtf16(string value)
+        {
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (char.IsHighSurrogate(value[i]) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+                {
+                    i++;
+                }
+                else if (char.IsSurrogate(value[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
     [Fact]
     public void ADirectErrorDoesNotBreakACyclicPrerequisiteAtItsKey()
     {

@@ -486,7 +486,7 @@ public sealed partial class Binding
             }
             else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
             {
-                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
@@ -496,9 +496,13 @@ public sealed partial class Binding
             {
                 this.Fail(use, BindingFailure.InvalidConstraint);
             }
-            else if (constraint.Contract?.Intrinsic is IntrinsicKind.ObjectPayload or IntrinsicKind.PrimitiveInteger)
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
             {
-                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2-3: users cannot grant ObjectPayload or PrimitiveInteger.
+                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2: users cannot grant ObjectPayload.
+            }
+            else if (constraint.Contract?.Intrinsic == IntrinsicKind.PrimitiveInteger)
+            {
+                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.4.7.3: exactly the twelve integer Types conform.
             }
             else if (constraint.Kind == ConstraintKind.Not)
             {

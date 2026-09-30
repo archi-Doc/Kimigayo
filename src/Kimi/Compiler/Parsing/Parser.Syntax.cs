@@ -262,13 +262,16 @@ public static partial class Parser
             return name;
         }
 
-        reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
-        if (reader.CanRead && !IsExpressionBoundary(ref reader))
+        // A name missing at a boundary is an insertion point after the preceding token, not the next line's token.
+        var boundary = !reader.CanRead || IsExpressionBoundary(ref reader);
+        var missing = boundary ? new SourceSpan(reader.PreviousSyntaxEnd, 0) : token.Span;
+        reader.Diagnostic.Add(missing, DiagnosticCode.IdentifierExpected_Kd);
+        if (!boundary)
         {
             reader.Advance();
         }
 
-        return new ErrorKoto(ref reader, token.Span);
+        return new ErrorKoto(ref reader, missing) { Cause = reader.Diagnostic.LastError };
     }
 
     private static Koto ParseRootName(ref TokenReader reader, bool type)

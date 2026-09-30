@@ -127,6 +127,21 @@ public sealed class DiagnosticCollection
         return entry;
     }
 
+    /// <summary>Makes the lexical Error that rejected a token of this target's document the cause of the parser's recovery, without
+    /// reporting the token again (SPEC 23.3.6.4).</summary>
+    /// <param name="range">The rejected token's span.</param>
+    /// <returns><see langword="true"/> when such an Error was recorded; it is then <see cref="LastError"/>.</returns>
+    internal bool RecallError(SourceSpan range)
+    {
+        if (this.Document is null || this.Owner.SyntaxErrorAt(this.CurrentModule(), this.SourceOf(this.Document), range) is not { } key)
+        {
+            return false;
+        }
+
+        this.LastError = key;
+        return true;
+    }
+
     /// <summary>Gets the key of a check whose subject is a syntax node.</summary>
     /// <param name="node">The subject.</param>
     /// <param name="span">The subject's span.</param>

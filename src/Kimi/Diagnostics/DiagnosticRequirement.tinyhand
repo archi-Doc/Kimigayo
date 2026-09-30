@@ -172,6 +172,12 @@
   + Name="Binding.DuplicateDictionaryKey"
     Description="the Dictionary literal keys are distinct"
 
+  + Name="Binding.ClosedContractConformance"
+    Description="only the Types the language designates conform to the closed Contract"
+
+  + Name="Binding.NotIndexable"
+    Description="the receiver can be indexed by the key"
+
   + Name="Startup"
     Description="the program has a valid startup"
 
@@ -210,6 +216,9 @@
 
   + Name="Ownership.EffectBound"
     Description="the implementation's destructions stay within its effect bound"
+
+  + Name="Ownership.StaticMovePathRequired"
+    Description="a moved element has a static Move Path"
 
   + Name="Emission"
     Description="generation succeeds"

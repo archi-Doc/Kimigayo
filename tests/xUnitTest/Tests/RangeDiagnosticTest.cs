@@ -36,6 +36,21 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
     }
 
+    // SPEC 4.6.3.4, 8.3: boundary Types not proven to be one integer Type in a generic context are reported once, at the
+    // Subject, with the requirement and a conditional repair.
+    [Theory]
+    [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q", "require A is PrimitiveInteger and B is A")]
+    [InlineData("func f<P>(p: P, q: P)\n    P is Position\n    for x in p..q => ()", "p..q", "require P is PrimitiveInteger")]
+    public void UnprovenRangeIterationIsExplainedOnce(string source, string text, string repair)
+    {
+        var c = Analyze(source);
+        var error = Assert.Single(Errors(c));
+        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
+        Assert.Equal(text, error.Text);
+        Assert.Contains("one integer Type", error.Note, StringComparison.Ordinal);
+        Assert.Contains(repair, error.Advice, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("for i in (1..^1).resolve(5) => ()")]
     [InlineData("for i in (..3).resolve(5) => ()")]

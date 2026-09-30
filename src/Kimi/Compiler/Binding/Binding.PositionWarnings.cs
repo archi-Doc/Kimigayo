@@ -13,7 +13,8 @@ public sealed partial class Binding
 {
     private readonly List<(Koto Node, string Kind, long FixedLength)> positionWarnings = new();
 
-    private static long FixedLength(BoundType? core) => core is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } ? core.Length : -1;
+    // A length parameter N is unknown here: only a constant fixed length is judged (a symbolic one keeps Length 0).
+    private static long FixedLength(BoundType? core) => core is { Kind: BoundTypeKind.FixedArray, LengthExpression: null, Length: >= 0 } ? core.Length : -1;
 
     private static Int128 SignedLiteral(UInt128 bits, int width) => unchecked((Int128)(bits << (128 - width))) >> (128 - width);
 

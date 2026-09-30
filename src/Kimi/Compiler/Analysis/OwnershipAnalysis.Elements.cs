@@ -170,7 +170,16 @@ public sealed partial class OwnershipAnalysis
                 this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
             }
 
-            if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
+            if (allowMove && acquisition == AcquisitionKind.Move && this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
+                (this.body.Projections[projection].Path != projection || !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
+            {
+                // SPEC 15.1.3: an explicit Move of an element without a static Move Path is rejected. The element is then not
+                // taken, so later uses of the array are explained by this failure rather than by a Move.
+                this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+                var produce = this.body.Operations.Count - 1;
+                this.body.OperationStorage[produce] = this.body.OperationStorage[produce] with { Acquisition = AcquisitionKind.None };
+            }
+            else if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
                 (!allowMove || this.body.Places[result].Acquisition is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || this.body.Projections[projection].Path != projection ||
                     !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
             {

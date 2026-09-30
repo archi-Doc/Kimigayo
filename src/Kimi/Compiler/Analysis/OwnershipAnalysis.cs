@@ -785,7 +785,8 @@ public sealed partial class OwnershipAnalysis
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
                 return this.ReadPointer(element, use);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
-                (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))):
+                (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))) ||
+                (member.Right is IdentifierNameKoto { IdentifierName: "length" or "isEmpty" or "indices" } && ReferenceTypes.IsSlice(member.Left.BoundType)):
                 return this.SequenceMember(member);
             case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || ObjectTypes.IsBorrow(member.Left.BoundType) ||
                 ElementAccess.BorrowedPathRoot(member) is not null:
@@ -1883,8 +1884,9 @@ public sealed partial class OwnershipAnalysis
             if (node is FunctionKoto function)
             {
                 this.owner.CheckDefaultDeclarations(function);
-                // Requirement declarations and foreign imports have no body to verify.
-                if (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || Parser.HasLibraryImport(function.AttributeChain)))
+                // Requirement declarations and foreign imports have no body to verify, and a body missing because of a syntax Error
+                // is explained by that Error (SPEC 23.3.6.4).
+                if (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || function.MissingBody || Parser.HasLibraryImport(function.AttributeChain)))
                 {
                     this.owner.Build(function);
                 }

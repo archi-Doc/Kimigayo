@@ -189,6 +189,10 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
     public Koto? ExpressionBody { get; private set; }
 
+    /// <summary>Gets or sets a value indicating whether the body is missing because of a syntax Error; the checks of a body skip the function,
+    /// since that Error explains everything its body would have established (SPEC 23.3.6.4).</summary>
+    internal bool MissingBody { get; set; }
+
     private List<string>? origins;
 
     private List<Koto>? typeConstraints;
@@ -384,6 +388,7 @@ public sealed class FunctionKoto : DeclarationKoto
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
             reader.Diagnostic.Add(this.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
+            this.MissingBody = true;
             return;
         }
 

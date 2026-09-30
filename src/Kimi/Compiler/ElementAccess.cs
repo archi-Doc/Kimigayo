@@ -110,7 +110,9 @@ internal static class ElementAccess
                     source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
                     break;
                 default:
-                    return source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
+                    // A constructed `^x` or range value is produced by its synthesized construction call (SPEC 4.6.2, 4.6.3).
+                    var binding = source.CodeContext.Compilation.Binding;
+                    return binding.RangeValueCall(source) ?? binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }
         }
     }

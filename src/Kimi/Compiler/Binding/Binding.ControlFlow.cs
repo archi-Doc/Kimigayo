@@ -104,6 +104,19 @@ public sealed partial class Binding
 
     // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
+    // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
+    // result sources reaches no syntax the survey cannot bind yet.
+    private static bool SurveyablePosition(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return node switch
+        {
+            FromEndIndexKoto fromEnd => SurveyablePosition(fromEnd.Operand),
+            RangeKoto range => (range.Start is null || SurveyablePosition(range.Start)) && (range.End is null || SurveyablePosition(range.End)),
+            _ => IsUnfittedLiteral(node) || node.BindingState == BindingState.Resolved || node is IdentifierNameKoto,
+        };
+    }
+
     private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
     {
         BoundType? scalar = null;
@@ -256,6 +269,10 @@ public sealed partial class Binding
             case InvocationKoto { Method: IdentifierNameKoto callee }:
                 var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
                 return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? function.Type : null;
+            case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
+                // SPEC 4.6.3.1, 14.9.1: a written `^x` or range with a typed operand has an independent Type, which a
+                // literal-only source such as `0..3` beside `0..n` then fits.
+                return this.BindNode(source, this.NodeScope(source, scope));
             default:
                 return null;
         }

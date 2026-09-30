@@ -146,6 +146,10 @@ public enum OwnershipFailure : byte
     // SPEC 8.4.5, 22.1.2.4: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
     // published effect bound of its Contract.
     EffectBound,
+
+    // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
+    // owned fixed array.
+    StaticMovePathRequired,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -202,6 +206,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
+        OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
 }

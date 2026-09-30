@@ -447,7 +447,7 @@ public ref struct TokenReader
     {
         // Recovery from an error this reader just reported at the same token reports nothing again.
         if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3 &&
-            this.Diagnostic.LastError?.Start != this.currentToken.Span.Start)
+            this.Diagnostic.LastError?.Start != this.currentToken.Span.Start && !(this.currentToken.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(this.currentToken.Span)))
         {
             this.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, this.GetSpan(this.currentToken).ToString());
         }
@@ -578,7 +578,15 @@ public ref struct TokenReader
     /// </summary>
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
-        => this.Diagnostic.Add(token.Span, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
+    {
+        // A token the lexer rejected is explained by its lexical Error; recovery rests on that Error (SPEC 23.3.6.4).
+        if (token.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(token.Span))
+        {
+            return;
+        }
+
+        this.Diagnostic.Add(token.Span, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
+    }
 
     /// <summary>
     /// Adds a diagnostic for the current token.

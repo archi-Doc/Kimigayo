@@ -102,6 +102,8 @@ public class PositionWarningTest
     [InlineData("let a = values.tryGet<i8>((-16) * 9)")]
     [InlineData("let a = values.tryGet<i128>(170141183460469231731687303715884105728)")]
     [InlineData("let a = values.tryGet<u128>(340282366920938463463374607431768211455 + 1)")]
+    [InlineData("func info<length N>(items: [N of i32]) -> i32 => items[1..^1].length@i32 + items[^1] + items[1]")]
+    [InlineData("func tail<length N>(items: ref/[N of i32]) -> isize => items[3..].length")]
     public void ResolvableOrNonLiteralKeysAreNotWarned(string statement)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);

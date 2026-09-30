@@ -362,7 +362,10 @@ public sealed partial class Binding
                     candidates[c] = ("candidate", candidate.Function, label);
                 }
 
-                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null);
+                // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
+                // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
+                var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
+                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
             }
             else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
             {
@@ -380,6 +383,16 @@ public sealed partial class Binding
                 var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
                     "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
                 issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+            }
+            else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
+            {
+                // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
+                var start = DiagnosticTypeName(unproven.Subject.Components[0]);
+                var end = DiagnosticTypeName(unproven.Subject.Components[1]);
+                var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
+                    ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
+                    : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
+                issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
             }
             else
             {
@@ -649,6 +662,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
                     BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
+                    BindingFailure.ClosedContractConformance => DiagnosticCode.ClosedContractConformance_Kd,
+                    BindingFailure.NotIndexable => DiagnosticCode.NotIndexable_Kd,
                     BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,

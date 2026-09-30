@@ -220,6 +220,7 @@ public partial class Compilation
         {
             this.TargetTriple = TargetTriple.Invalid;
             this.IrTarget = IrTarget.Invalid;
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedTarget_Kd, this.Project.FilePath, target);
             return false;
         }
 

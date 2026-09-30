@@ -101,10 +101,11 @@ public struct Array<T>
     /// - abort: `index` does not resolve to an element position.
     public func swapRemove<P>(self: uniq/Self, index: P) -> T
         P is Position
+        // As remove: swapAt's one check rejects -1, the end boundary and an empty Array, so pop then has an element.
         let count = self.length
-        let position = PositionSyntax.resolved(index, count)
-        require position >= 0 and position < count else => $abort("Array index out of range")
-        self.swapAt(first: position, second: count - 1)
+        match index.tryResolve(count)
+            .Some(let position) => self.swapAt(first: position, second: count - 1)
+            .None => self.swapAt(first: -1, second: count - 1)
         match self.pop()
             .Some(let removed) => return removed@move
             .None => $abort("Array index out of range")

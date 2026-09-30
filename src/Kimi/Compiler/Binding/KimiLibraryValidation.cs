@@ -788,7 +788,7 @@ public sealed partial class KimiLibrary
         => this.PositionSyntax is { } group && FindDeclaration(group, name, true) is FunctionKoto { IsSpecialization: false, NameBoundaryIndex: < 0 } function &&
         ReferenceEquals(function.Parent, group);
 
-    // SPEC 4.6.3.4: public struct ResolvedRange with isize start and end; its init(! start, end) is internal, because only
+    // SPEC 4.6.3.3: public struct ResolvedRange with isize start and end; its init(! start, end) is internal, because only
     // indices, resolve and tryResolve produce a validated interval.
     private bool ValidResolvedRange(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&

@@ -69,7 +69,25 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
     public int CompareSubject(in DiagnosticKey other)
     {
         var order = Depth(this.Subject).CompareTo(Depth(other.Subject));
-        return order != 0 ? order : ((this.Subject as Koto)?.Akind ?? 0).CompareTo((other.Subject as Koto)?.Akind ?? 0);
+        if (order == 0)
+        {
+            order = ((this.Subject as Koto)?.Akind ?? 0).CompareTo((other.Subject as Koto)?.Akind ?? 0);
+        }
+
+        if (order == 0 && this.Subject is InvocationKoto left && other.Subject is InvocationKoto right && !ReferenceEquals(left, right))
+        {
+            // The synthesized calls of one transformation, such as the writes of an interpolation, share its span; their
+            // order within it is the source order of their operands.
+            order = left.ArgumentNodes.Count.CompareTo(right.ArgumentNodes.Count);
+            for (var i = 0; order == 0 && i < left.ArgumentNodes.Count; i++)
+            {
+                var x = left.ArgumentNodes[i].Span;
+                var y = right.ArgumentNodes[i].Span;
+                order = x.Start != y.Start ? x.Start.CompareTo(y.Start) : x.Length.CompareTo(y.Length);
+            }
+        }
+
+        return order;
     }
 
     /// <summary>Compares the requirement, condition and context of two keys; the context of an input failure is its observed failure.</summary>

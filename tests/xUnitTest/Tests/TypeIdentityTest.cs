@@ -61,6 +61,17 @@ public class TypeIdentityTest
         ScalarEmissionTest.EmitFixture("TypeIdentityRange", Source, "ok\n");
     }
 
+    // SPEC 8.3: an expression Type with an identity premise substituted keeps its stored fields, so a field of a substituted
+    // range keeps its substituted Type in every instance.
+    [Fact]
+    public void SubstitutedTypesKeepTheirFields()
+    {
+        const string Source = "func last<A, B>(r: Range<A, B>) -> B\n    A is PrimitiveInteger\n    B is A\n    return r.end\n" +
+            "func first<A, B>(r: ClosedRange<A, B>) -> A\n    A is PrimitiveInteger\n    B is A\n    let copy = r\n    return copy.start\n" +
+            "require last(1..4) == 4 and last(2@u8..9@u8) == 9 and first(3@i64..=5) == 3 else => $abort(\"fields\")\nConsole.writeLine(\"ok\")";
+        ScalarEmissionTest.EmitFixture("TypeIdentityFields", Source, "ok\n");
+    }
+
     [Fact]
     public void IdentityChainsAreNotLimitedToSixteenSteps()
     {

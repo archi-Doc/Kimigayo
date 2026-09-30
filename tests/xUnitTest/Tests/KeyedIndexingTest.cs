@@ -92,8 +92,36 @@ public class KeyedIndexingTest
         "var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[2]@move\nConsole.writeLine(taken)\nConsole.writeLine(names[1])\nnames[2] = \"d\"\nConsole.writeLine(names[2])\n" +
         "var matrix: [2 of [3 of i32]] = [[1, 2, 3], [4, 5, 6]]\nmatrix[^1][^1] = 9\nrequire matrix[1][2] == 9 and matrix[^2][..^1].length == 2 and matrix[1][1@u8..][0] == 5 else => $abort(\"chain\")\nConsole.writeLine(\"ok\")";
 
+    // SPEC 4.6.3.1, 4.6.4: a parenthesized `^x` boundary and an isize boundary written with parentheses, an operation or an
+    // explicit `@` apply directly, and fields and metadata of range, `^x` and `indices` temporaries and of a borrowed Slice
+    // are read in place.
+    private const string BoundaryForms =
+        "func tail(v: Slice<i32>, n: isize) -> isize\n    return v[^(n + 1)..].length\n" +
+        "func size(v: ref/Slice<i32>) -> isize => v.length\n" +
+        "var values: Array<i32> = [1, 2, 3, 4, 5]\nlet fixed: [5 of i32] = [1, 2, 3, 4, 5]\nlet a: isize = 1\nlet n8: u8 = 1\n" +
+        "require values[(^1)..].length == 1 and values[..(^1)].length == 4 and values[(1)..=(^1)].length == 4 and values[(^n8)..(5)].length == 1 else => $abort(\"parenthesized from-end\")\n" +
+        "require values[(a)..].length == 4 and values[..=^(a)].length == 5 and values[(a)..3].length == 2 and values[^(a + 1)..].length == 2 else => $abort(\"isize forms\")\n" +
+        "require values[1@isize..].length == 4 and values[..^(a@isize)].length == 4 and fixed[(a)..^(a)].length == 3 and fixed[(^2)..].length == 2 and tail(values[..], 1) == 2 else => $abort(\"more forms\")\n" +
+        "require values.indices.end == 5 and fixed.indices.start == 0 and values[1..].indices.end == 4 else => $abort(\"indices fields\")\n" +
+        "require (1..^1).start == 1 and (a..).start == 1 and (2..=^3).end.offset == 3 and (^a).offset == 1 and (0..3).end == 3 else => $abort(\"range fields\")\n" +
+        "var view = values[1..]\nlet borrowed = view@ref\nrequire borrowed.length == 4 and size(view@ref) == 4 and borrowed.indices.end == 4 and not borrowed.isEmpty else => $abort(\"borrowed slice\")\n" +
+        "Console.writeLine(\"ok\")";
+
+    // SPEC 4.6.3.1, 14.9.1: a literal-only boundary takes the S or E of a call candidate's range and the Type of the other
+    // result sources.
+    private const string RangeInference =
+        "func take(r: Range<i64, u8>) -> i64 => r.start + r.end@i64\n" +
+        "func same<A, B>(r: ClosedRange<A, B>) -> A\n    A is PrimitiveInteger\n    B is A\n    return r.end\n" +
+        "func show(r: Range<i64, i64>) -> i64 => r.end\n" +
+        "let n: i64 = 5\nlet m: u16 = 4\nlet flag = true\n" +
+        "require take(n..10) == 15 and take((n)..(10)) == 15 and same(1..=4@u8) == 4 and show(n..10) == 10 else => $abort(\"arguments\")\n" +
+        "let x: Range<i64, i64> = if flag => 0..n else => 0..3\nlet y = if flag => ^m else => ^1\nlet z: FromEnd<u16> = y\n" +
+        "require x.end == 5 and z.offset == 4 else => $abort(\"results\")\nConsole.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "BoundaryForms", BoundaryForms, "ok\n" },
+        { "RangeInference", RangeInference, "ok\n" },
         { "ReceiverForms", ReceiverForms, "ok\n" },
         { "ReadApis", ReadApis, "ok\n" },
         { "PartialMoveAndChains", PartialMoveAndChains, "c\nb\nd\nok\n" },
@@ -122,8 +150,8 @@ public class KeyedIndexingTest
     // SPEC 4.6.1, 4.6.6, 15.1.3: a position other than an integer literal is no static Move Path, like a runtime isize;
     // a dynamic position may select a moved element; and an Array read result keeps the receiver shared-borrowed.
     [Theory]
-    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[^1]@move", DiagnosticCode.UnsupportedOwnership_Kd)]
-    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet i: isize = 2\nlet taken = names[i]@move", DiagnosticCode.UnsupportedOwnership_Kd)]
+    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[^1]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
+    [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet i: isize = 2\nlet taken = names[i]@move", DiagnosticCode.StaticMovePathRequired_Kd)]
     [InlineData("var names: [3 of string] = [\"a\", \"b\", \"c\"]\nlet taken = names[0]@move\nConsole.writeLine(names[^1])", DiagnosticCode.MovedPlace_Kd)]
     [InlineData("var array: Array<i32> = [1, 2]\nlet first = array.tryGet(0)\narray.append(3)\nlet again = first", DiagnosticCode.CallActivationConflict_Kd)]
     [InlineData("var array: Array<i32> = [1, 2]\nlet part = array.trySlice(..1)\narray.append(3)\nlet again = part", DiagnosticCode.CallActivationConflict_Kd)]
@@ -132,5 +160,19 @@ public class KeyedIndexingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Code == code);
+    }
+
+    // SPEC 15.1.3: an explicit Move without a static Move Path is one Language error, and the rejected Move takes nothing, so
+    // later uses of the array report no Move. The eligible counterpart moves.
+    [Fact]
+    public void IneligibleMovesAreExplainedOnce()
+    {
+        var c = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet n: isize = 0\nlet a = names[n]@move\nlet b = names[0@isize]@move\nlet d = names[1 + 0]@move\nlet e = names[2]@move");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(4, c.Ownership.Issues.Count);
+        Assert.All(c.Ownership.Issues, static x => Assert.Equal(DiagnosticCode.StaticMovePathRequired_Kd, x.Code));
+
+        var valid = MinimalEmissionTest.Analyze("var names: [2 of string] = [\"a\", \"b\"]\nlet a = names[(0)]@move\nlet b = names[0x1]@move");
+        Assert.True(valid.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(valid, null));
     }
 }

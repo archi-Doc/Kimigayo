@@ -111,6 +111,12 @@ public sealed class DiagnosticOwner
         this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), note, null, null), entry.Severity == DiagnosticSeverity.Error);
     }
 
+    /// <summary>Registers an input that a check consumes before its sources, such as its project file, in the source table
+    /// (SPEC 23.3.6.3); a later record that names it keeps that consumption order. An entry no record names is not published.</summary>
+    /// <param name="path">The input path.</param>
+    public void RegisterPath(string path)
+        => this.PathSource(path);
+
     /// <summary>Discards a partition's facts and error state; syntax is discarded for every module.</summary>
     /// <param name="partition">The partition.</param>
     public void Invalidate(DiagnosticPartition partition)
@@ -345,6 +351,33 @@ public sealed class DiagnosticOwner
     /// <returns><see langword="true"/> when lexing or parsing the document recorded an Error.</returns>
     internal bool HasSyntaxErrors(SourceDocument document)
         => this.documentSources.TryGetValue(document, out var index) && this.sources[index].SyntaxErrors != 0;
+
+    /// <summary>Finds the key of a lexical or syntax Error recorded for exactly one span of a module's document, so parser recovery at a
+    /// token the lexer rejected rests on that Error instead of reporting the token again (SPEC 23.3.6.4).</summary>
+    /// <param name="module">The module.</param>
+    /// <param name="source">The source table index of the document.</param>
+    /// <param name="range">The span.</param>
+    /// <returns>The key, or <see langword="null"/> when no such Error was recorded.</returns>
+    internal DiagnosticKey? SyntaxErrorAt(int module, int source, SourceSpan range)
+    {
+        if ((uint)module >= (uint)this.syntax.Count)
+        {
+            return null;
+        }
+
+        var facts = this.syntax[module].Facts;
+        for (var i = 0; i < facts.Count; i++)
+        {
+            var key = facts[i].Key;
+            if (key.Subject is null && key.Source == source && key.Start == range.Start && key.Length == range.Length && key.Requirement == DiagnosticRequirement.Syntax &&
+                DiagnosticEntries.TryGet(facts[i].Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
+            {
+                return key;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>Finds a registered document by path; tests read the text under a record's span through it.</summary>
     /// <param name="path">The display path.</param>

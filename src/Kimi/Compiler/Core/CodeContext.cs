@@ -124,12 +124,14 @@ public sealed class CodeContext
         }
 
         this.Compilation.BeginSourceParsing();
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
+        var diagnostics = this.DiagnosticCollection.For(sourceDocument);
+        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         try
         {
             tokenizer.ReadAll();
             // Nodes retain this immutable snapshot context; the source-less entry point can be reused.
-            var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument) { Documentation = tokenizer.Documentation };
+            var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
             sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);

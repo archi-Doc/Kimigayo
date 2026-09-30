@@ -92,6 +92,14 @@
     Category="Language"
     Message="A Self clause of a Type declares conformance or the ObjectPayload opt-out only; the opt-out stands alone, unconditional and unrepeated, and ObjectPayload cannot be granted"
 
+  + Name="ClosedContractConformance_Kd"
+    Category="Language"
+    Message="Only the Types that the language designates conform to this Contract, such as Position, PositionRange or PrimitiveInteger, or to a Contract that refines it; a user Type cannot declare the conformance"
+
+  + Name="NotIndexable_Kd"
+    Category="Language"
+    Message="This receiver cannot be indexed by this key: element indexing needs an Indexable conformance that takes the key's Type, and range indexing applies only to fixed arrays, Array and Slice"
+
   + Name="NotObjectPayload_Kd"
     Category="Language"
     Message="The Type {0} opts out of ObjectPayload and cannot be an object target or payload"
@@ -489,6 +497,11 @@
     Category="Language"
     Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
 
+  + Name="StaticMovePathRequired_Kd"
+    Category="Language"
+    Message="An element is moved only through a static Move Path: an integer-literal index within an owned fixed array"
+    Advice="Borrow the element with @ref or @uniq, or exchange it with Kimi.Intrinsics.replace"
+
   + Name="ExclusiveBorrowRequired_Kd"
     Category="Language"
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
@@ -593,6 +606,11 @@
     Category="Input"
     Message="Select a target in the session settings: this project configures several targets and none is the host target"
 
+  + Name="UnsupportedTarget_Kd"
+    Category="Input"
+    Message="The target '{0}' is not supported by this compiler"
+    Arguments="target:Text"
+
   + Name="TestTargetUnavailable_Kd"
     Category="Input"
     Message="The tests of this project are not checked: testing requires a configured Windows x64 target"
@@ -604,7 +622,7 @@
   + Name="CheckFaulted_Kd"
     Category="Internal"
     Message="The compiler failed internally while checking: {0}"
-    Arguments="fault:Text"
+    Arguments="fault:Enumeration"
 
   + Name="PositionAlwaysFails_Kd"
     Severity="Warning"

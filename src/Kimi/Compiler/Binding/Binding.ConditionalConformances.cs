@@ -195,7 +195,7 @@ public sealed partial class Binding
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
-                    this.Fail(target, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                    this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
                 }
                 else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {

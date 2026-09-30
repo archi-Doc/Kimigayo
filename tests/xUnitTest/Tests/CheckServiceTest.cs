@@ -113,6 +113,38 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(SourceIdentity.FromPath(project), Location(output, failure));
     }
 
+    // SPEC 23.3.1, 23.3.3: an unsupported target is an Input problem of its own, Blocked in the check entry and reported by the
+    // command, never an unexplained rejection.
+    [Fact]
+    public async Task AnUnsupportedTargetIsAnInputProblem()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "Targets={\"unknown-none-elf\"}");
+        var output = this.Run(project, target: "unknown-none-elf");
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedTarget_Kd), failure.Code);
+        Assert.Equal(DiagnosticCategory.Input, failure.Category);
+
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
+        loaded.KimiOptions = new Kimi.Command.KimiOptions { Target = "unknown-none-elf" };
+        Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
+        Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.3.3: an invalid test configuration is not established, so test preparation is Blocked before the front end.
+    [Fact]
+    public void AnInvalidTestProjectIdBlocksTestPreparation()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestProjectId=\" \"");
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("TestProjectId", failure.Note, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task EarlierSyntaxErrorsSurviveALaterEncodingFailure()
     {

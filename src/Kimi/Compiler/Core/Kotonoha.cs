@@ -248,7 +248,8 @@ public sealed partial class Kotonoha
             path = Path.GetRelativePath(directory, path);
         }
 
-        var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this);
+        // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
+        var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this).For(sourceDocument);
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 

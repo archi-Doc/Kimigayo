@@ -16,10 +16,11 @@ embedded, validated and implemented.
   The internal group `Kimi.Storage.FixedArray` in `Storage.kimi` holds the fixed-array receiver
   functions. The `length` and `indices` of a fixed array stay compiler sequence metadata, shared
   with Array and Slice: a group declares functions, not Properties, and the fixed length folds to `N`.
-- A position operation that calls an internal `isize` operation passes a resolved position on its
+- A single-position operation that calls an internal `isize` operation passes a resolved position on its
   own path (`match index.tryResolve(length)`, with `-1` on the `None` path) rather than a merged
   `PositionSyntax.resolved` value, where LLVM cannot relate the merged value to the length (as for
-  the one-element move of `insert(^1, value)`).
+  the one-element move of `insert(^1, value)`). `swap` passes both positions merged: `swapAt` checks
+  both before its equal-position shortcut, so `-1` still fails its one check.
 - Array and fixed-array read APIs retain small Kimigayo wrappers over the same Position/PositionRange
   resolution used by Slice. Their required equivalence is observable behavior, not a fixed internal
   call graph: delegation through a full Slice would create a whole-sequence view before a failed try

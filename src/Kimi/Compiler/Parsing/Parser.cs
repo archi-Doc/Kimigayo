@@ -382,7 +382,7 @@ NextParameter:
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
             {
                 reader.Diagnostic.Add(returnArrowRange, DiagnosticCode.MissingReturnType_Kd);
-                returnType = new ErrorKoto(ref reader, returnArrowRange);
+                returnType = new ErrorKoto(ref reader, returnArrowRange) { Cause = reader.Diagnostic.LastError };
             }
             else
             {
@@ -1027,7 +1027,7 @@ CloseParameters:
         if (IsExpressionBoundary(ref reader))
         {
             reader.Diagnostic.Add(arrow, DiagnosticCode.MissingReturnType_Kd);
-            return new ErrorKoto(ref reader, arrow);
+            return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
         }
 
         return ParseDeclarationType(ref reader);
@@ -1707,7 +1707,7 @@ CloseParameters:
         var token = reader.Read();
         if (!IdentifierNameKoto.TryCreate(ref reader, token, out var name))
         {
-            return new ErrorKoto(ref reader, token.Span);
+            return new ErrorKoto(ref reader, token.Span) { Cause = reader.Diagnostic.LastError };
         }
 
         Koto left = name;
@@ -1722,7 +1722,7 @@ CloseParameters:
             var member = reader.Read();
             if (!IdentifierNameKoto.TryCreate(ref reader, member, out var right))
             {
-                return new ErrorKoto(ref reader, member.Span);
+                return new ErrorKoto(ref reader, member.Span) { Cause = reader.Diagnostic.LastError };
             }
 
             left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, right.Span.End), left, right);
@@ -2842,12 +2842,14 @@ CloseParameters:
 
         if (function.ReturnType is ErrorKoto)
         {
-            return; // Avoid cascading diagnostics after an incomplete signature.
+            function.MissingBody = true; // Avoid cascading diagnostics after an incomplete signature.
+            return;
         }
 
         if (!HasLibraryImport(function.AttributeChain))
         {
             reader.Diagnostic.Add(function.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
+            function.MissingBody = true;
         }
     }
 
@@ -4047,7 +4049,7 @@ Loop:
 
                     reader.ReportUnexpectedToken(token);
 
-                    return new ErrorKoto(ref reader, token.Span);
+                    return new ErrorKoto(ref reader, token.Span) { Cause = reader.Diagnostic.LastError };
                 }
         }
     }

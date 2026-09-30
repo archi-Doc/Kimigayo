@@ -314,6 +314,13 @@ public sealed partial class Binding
     {
         direct = true;
         failed = false;
+        if (boundary is not null and not FromEndIndexKoto && KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto)
+        {
+            // A parenthesized `^x` is constructed as a value: the direct application reads only a written `^x` operand.
+            direct = false;
+            return null;
+        }
+
         if (boundary is null || IsUnfittedLiteral(boundary))
         {
             return null;

@@ -117,6 +117,7 @@ internal sealed partial class BodyLowering
                 (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && operation.Source is IndexKoto &&
                         body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Read) ||
+                    (body.Values[id].Kind == OwnershipValueKind.Sequence && body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Indices) ||
                     (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
                         body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } read && read.Input == operation.Place && ReferenceEquals(read.Source, operation.Source))))
             {

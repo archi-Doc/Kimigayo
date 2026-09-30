@@ -46,8 +46,22 @@ internal static class DiagnosticText
 
         var head = (limit * 2) / 3;
         var tail = limit - head - Elision.Length;
-        return (string.Concat(text.AsSpan(0, head), Elision, text.AsSpan(text.Length - tail)), true);
+        return (string.Concat(text.AsSpan(0, HeadLength(text, head)), Elision, text.AsSpan(TailStart(text, text.Length - tail))), true);
     }
+
+    /// <summary>Shortens a kept head so that it never ends inside a surrogate pair; bounded text stays valid UTF-16.</summary>
+    /// <param name="text">The text.</param>
+    /// <param name="length">The intended head length.</param>
+    /// <returns>The head length.</returns>
+    internal static int HeadLength(string text, int length)
+        => length > 0 && length < text.Length && char.IsHighSurrogate(text[length - 1]) && char.IsLowSurrogate(text[length]) ? length - 1 : length;
+
+    /// <summary>Moves the start of a kept tail so that it never begins inside a surrogate pair.</summary>
+    /// <param name="text">The text.</param>
+    /// <param name="start">The intended tail start.</param>
+    /// <returns>The tail start.</returns>
+    internal static int TailStart(string text, int start)
+        => start > 0 && start < text.Length && char.IsHighSurrogate(text[start - 1]) && char.IsLowSurrogate(text[start]) ? start + 1 : start;
 
     /// <summary>Bounds two Types of one mismatch: when either is too long, their common head and tail are elided so the
     /// differing parts stay visible, and each is then bounded.</summary>
@@ -79,6 +93,25 @@ internal static class DiagnosticText
         while (suffix > 0 && NameCharacter(first[first.Length - suffix]))
         {
             suffix--;
+        }
+
+        // Nor split a surrogate pair between a common part and a differing one.
+        if (prefix > 0 && char.IsHighSurrogate(first[prefix - 1]))
+        {
+            prefix--;
+        }
+
+        if (suffix > 0 && char.IsLowSurrogate(first[first.Length - suffix]))
+        {
+            suffix--;
+        }
+
+        // A Type that lies wholly inside the common head and tail, as T in ref/T, has no differing part of its own; eliding the common
+        // parts would show it as a bare elision mark, so each Type is then bounded on its own.
+        if (prefix + suffix >= shorter)
+        {
+            prefix = 0;
+            suffix = 0;
         }
 
         var common = prefix != 0 || suffix != 0;

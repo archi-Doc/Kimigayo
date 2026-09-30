@@ -24,9 +24,14 @@ public sealed partial class Binding
                     actual = written.Components[0];
                 }
 
-                if (actual is null || !this.CheckTypeUse(actual, key, source.Right))
+                if (actual is null)
                 {
-                    return this.Fail(source, BindingFailure.TypeMismatch);
+                    return this.CompleteDependent(source, source.Right); // The key's own failure explains the lookup.
+                }
+
+                if (!this.CheckTypeUse(actual, key, source.Right))
+                {
+                    return this.FailMismatch(source, source.Right, actual, key);
                 }
 
                 ((IndexKoto)source).DictionaryKeyReference = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: this.PlaceOrigin(source.Right));
@@ -36,10 +41,11 @@ public sealed partial class Binding
             if (ReferenceTypes.IsPointer(receiver))
             {
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
+                // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.
                 var offset = this.RequireType(source.Right, scope, BoundType.ISize);
                 return offset is not null && FitsType(offset, BoundType.ISize) &&
                     KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
-                    ? Complete(source, receiver!.Components[0]) : this.Fail(source, BindingFailure.TypeMismatch);
+                    ? Complete(source, receiver!.Components[0]) : this.CompleteDependent(source, source.Right);
             }
 
             if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
@@ -68,7 +74,21 @@ public sealed partial class Binding
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
             {
                 this.BindNode(source.Right, scope);
-                return this.Fail(source, BindingFailure.Unsupported);
+                if (receiver is null)
+                {
+                    return this.CompleteDependent(source, source.Left); // The receiver's own failure explains the access.
+                }
+
+                // SPEC 4.6.9: a sequence reached here, such as through a reference, is an implementation limit; any other
+                // receiver, including a range key on an Indexable Type, cannot be indexed by the key.
+                var core = receiver;
+                while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+                {
+                    core = core.Components[0];
+                }
+
+                var sequence = core.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
+                return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
             if (ReferenceEquals(receiver, BoundType.Never))

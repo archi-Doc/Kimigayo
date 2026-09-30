@@ -132,6 +132,12 @@ internal enum BindingFailure : byte
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,
+
+    // SPEC 8.4.7: the conforming Types of an intrinsic or closed Contract are fixed by the language.
+    ClosedContractConformance,
+
+    // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
+    NotIndexable,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

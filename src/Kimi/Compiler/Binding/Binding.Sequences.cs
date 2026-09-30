@@ -6,6 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // A Range<S, E> or ClosedRange<S, E>, whose iteration condition is `S is PrimitiveInteger` and `E is S` (SPEC 4.6.3.4).
+    private static bool IsRangeShape(BoundType subject)
+        => subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 };
+
     private bool BindSequenceMember(MemberAccessKoto source, BindingScope scope, out BoundType? result)
     {
         result = null;
@@ -15,7 +19,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
+        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
         {
             receiver = receiver!.Components[0]; // SPEC 4.6.1: metadata shares access through a reference to the sequence.
         }
@@ -64,7 +68,7 @@ public sealed partial class Binding
         }
 
         // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
-        // 22.1.2.5). SPEC 4.6.3.5: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
+        // 22.1.2.5). SPEC 4.6.3.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
         // directly; a validated interval never Aborts, so no iterator value is formed.
         var view = iterable;
         var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
@@ -149,8 +153,7 @@ public sealed partial class Binding
             return this.Fail(source, BindingFailure.Unsupported);
         }
 
-        if (proof == ConstraintProof.Refuted && source.Iterable.BindingFailure == BindingFailure.None &&
-            subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 })
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && source.Iterable.BindingFailure == BindingFailure.None && IsRangeShape(subject))
         {
             (this.rangeIterationFailures ??= new(ReferenceEqualityComparer.Instance))[source.Iterable] = (subject, entry);
         }
@@ -182,8 +185,11 @@ public sealed partial class Binding
         var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
         // SPEC 8.4.8.2: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
+        // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
+        // (SPEC 4.6.3.4).
         var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
-                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) != ConstraintProof.Refuted) ||
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
+                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
             (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {

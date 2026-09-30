@@ -395,18 +395,28 @@ public partial class Project
         {
             context.Compilation = compilation;
         }
+        else if (this.FilePath is { } file)
+        {
+            compilation.Diagnostics.RegisterPath(file); // SPEC 23.3.6.3: the project file is consumed before every source.
+        }
 
         var accepted = false;
         var completed = false;
+        Exception? fault = null;
         try
         {
             accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
             completed = true;
         }
+        catch (Exception ex) when (context is null && this.kimigayo.RendersDiagnostics && ex is not OperationCanceledException)
+        {
+            // SPEC 23.3.3: a command renders the Faulted result the check entry publishes; the command then fails.
+            fault = ex;
+        }
         finally
         {
             // The one finalization point of the front-end result (SPEC 23.3.6.8).
-            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted);
+            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted, fault);
         }
 
         return accepted && emit ? this.Emit(compilation, paths, context) : accepted;
@@ -416,7 +426,7 @@ public partial class Project
     {
         if (!(graph is null ? compilation.Prepare(target) : compilation.Prepare(target, graph)))
         {
-            return false;
+            return this.PreparationFailed(compilation.Diagnostics);
         }
 
         this.buildMetadata.Add(compilation.BuildMetadata!);
@@ -462,7 +472,7 @@ public partial class Project
         // No semantic phase runs against a partial set of established source inputs.
         if (!established)
         {
-            return false;
+            return this.PreparationFailed(compilation.Diagnostics);
         }
 
         foreach (var y in this.additionalSource)
@@ -560,15 +570,29 @@ public partial class Project
     private void Fail(DiagnosticOwner diagnostics, string message)
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
+    // SPEC 23.3.3: input preparation that ends without an Error reports its fallback, in the command and the check entry alike.
+    private bool PreparationFailed(DiagnosticOwner diagnostics)
+    {
+        if (!diagnostics.HasErrorsThrough(DiagnosticPartition.Input))
+        {
+            this.Fail(diagnostics, "The project inputs could not be established.");
+        }
+
+        return false;
+    }
+
     // SPEC 23.3.6.8: a command renders each result once it is finalized; a check request's caller finalizes its own.
-    private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false)
+    private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)
     {
         if (context is null && this.kimigayo.RendersDiagnostics)
         {
             DiagnosticResult result;
             try
             {
-                result = diagnostics.Finalize(first, last, rejected);
+                // SPEC 23.3.3: an exception keeps the valid records and adds the fault; a violated contract discards them.
+                result = fault is DiagnosticContractException contract ? DiagnosticFaults.Create(contract.Fault, contract.Message, this.FilePath) :
+                    fault is not null ? DiagnosticFaults.Create(DiagnosticFault.Exception, fault.Message, this.FilePath, diagnostics.Finalize(first, last)) :
+                    diagnostics.Finalize(first, last, rejected);
             }
             catch (DiagnosticContractException ex)
             {

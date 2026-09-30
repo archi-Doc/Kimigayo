@@ -614,12 +614,23 @@ public class ForeignEmissionTest
     [InlineData("let p: unsafe/i32 = null\nlet n: i32 = 1\nunsafe\n    let v = p[n]")]
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[^1]")]
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[0..1]")]
-    [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[0...1]")]
     [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[true]")]
     public void PointerIndexingRejectsInvalidOffsets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
+    // SPEC 23.3.6.4: an offset whose syntax failed to parse rests on that syntax Error, so no Type mismatch cascades from it.
+    [Fact]
+    public void AMalformedPointerOffsetRestsOnItsSyntaxError()
+    {
+        var c = MinimalEmissionTest.Analyze("let p: unsafe/i32 = null\nunsafe\n    let v = p[0...1]");
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
