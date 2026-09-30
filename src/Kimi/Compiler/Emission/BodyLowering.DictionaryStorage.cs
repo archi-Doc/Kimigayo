@@ -36,8 +36,8 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Dictionary layout projection has no acquired handle.", out failure);
         }
 
-        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value);
-        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryLayout");
+        var entryLayout = GetDictionaryEntryLayout(key, value);
+        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryLayout");
         return true;
     }
 
@@ -89,7 +89,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value);
+        var entryLayout = GetDictionaryEntryLayout(key, value);
         if (!borrow)
         {
             if (!this.ScalarArrayArgument(body, id, 0, input, out _) || !this.ScalarArrayArgument(body, id, 1, pointer!, out var slot))
@@ -97,7 +97,7 @@ internal sealed partial class BodyLowering
                 return Fail("Dictionary storage lending arguments are unavailable at the call.", out failure);
             }
 
-            var offset = lendsKey ? helper.KeyOffset : helper.ValueOffset;
+            var offset = lendsKey ? entryLayout.KeyOffset : entryLayout.ValueOffset;
             function.AddScalar(EmissionOpcode.Sequence, id, [slot, new(EmissionOperandKind.Integer, offset)], op: "DictionaryEntryAddress");
             return true;
         }
@@ -114,7 +114,7 @@ internal sealed partial class BodyLowering
             return Fail("Dictionary storage borrow is unavailable at the call.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryBorrowStorage");
+        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryBorrowStorage");
         return true;
     }
 
@@ -204,7 +204,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value);
+        var entryLayout = GetDictionaryEntryLayout(key, value);
         if (!owning)
         {
             if (!this.ScalarArrayArgument(body, id, 0, pointer!, out var slot))
@@ -212,7 +212,7 @@ internal sealed partial class BodyLowering
                 return Fail("Owned Dictionary storage addressing arguments are unavailable at the call.", out failure);
             }
 
-            var offset = plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? helper.KeyOffset : helper.ValueOffset;
+            var offset = plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? entryLayout.KeyOffset : entryLayout.ValueOffset;
             function.AddScalar(EmissionOpcode.Sequence, id, [slot, new(EmissionOperandKind.Integer, offset)], op: "DictionaryEntryAddress");
             return true;
         }
@@ -232,7 +232,7 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Owned Dictionary remainder does not have the boundary's shape.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryOwnStorage");
+        function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryOwnStorage");
         return true;
     }
 }

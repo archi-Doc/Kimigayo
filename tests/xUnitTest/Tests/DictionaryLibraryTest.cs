@@ -8,6 +8,17 @@ namespace XunitTest;
 
 public class DictionaryLibraryTest
 {
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("string")]
+    public void BorrowedLookupDoesNotRegisterDestructionHelpers(string valueType)
+    {
+        var c = MinimalEmissionTest.Analyze("func lookup(values: ref/Dictionary<i32, " + valueType + ">) -> ref/" + valueType + " during values => values[1]@ref\nlet boot = 0");
+        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.Empty(module.DictionaryHelpers);
+        Assert.False(module.NeedsDictionaryRuntime);
+    }
+
     [Fact]
     public void RemovalResultCompilesFromOrdinarySource()
     {

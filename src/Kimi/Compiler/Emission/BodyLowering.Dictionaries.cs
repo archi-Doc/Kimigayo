@@ -14,6 +14,15 @@ internal sealed partial class BodyLowering
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
+    // Physical entry metadata is independent of the operations that acquire or destroy its stored values.
+    private static (long KeyOffset, long ValueOffset, long Stride) GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
+    {
+        var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
+        var keyOffset = AlignDictionary(16, key.Value.Layout.Alignment);
+        var valueOffset = AlignDictionary(keyOffset + key.Value.Layout.Size, value.Value.Layout.Alignment);
+        return (keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
+    }
+
     private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value, AggregateLayout? result = null, FunctionAbi? equality = null)
     {
         FunctionAbi? related = kind == DictionaryHelperKind.Find ? equality :
@@ -40,10 +49,8 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), output, location, length], resultSlot: true),
                 _ => new(name, "void", [handle, location, length]),
             };
-            var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
-            var keyOffset = AlignDictionary(16, key.Value.Layout.Alignment);
-            var valueOffset = AlignDictionary(keyOffset + key.Value.Layout.Size, value.Value.Layout.Alignment);
-            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment), result, related);
+            var layout = GetDictionaryEntryLayout(key, value);
+            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, layout.KeyOffset, layout.ValueOffset, layout.Stride, result, related);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 
@@ -139,7 +146,7 @@ internal sealed partial class BodyLowering
         if (operation is CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit)
         {
             abi = operation == CompilerFunctionKind.DictionaryReserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink;
-            this.callOperands.Add(new(EmissionOperandKind.Integer, this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value).Stride));
+            this.callOperands.Add(new(EmissionOperandKind.Integer, GetDictionaryEntryLayout(key, value).Stride));
             if (operation == CompilerFunctionKind.DictionaryReserve)
             {
                 if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
