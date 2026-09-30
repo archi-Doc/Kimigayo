@@ -55,3 +55,14 @@ The previously documented §11 gaps are still real and are not weakened out of t
 The shared owner cannot recover facts a recorder never supplied. In particular, the existing first-failure Binding state and ownership's `(Source, Failure)` aggregation still need per-recorder checks for independent conditions/Places and instantiation-specific facts. The duplicate group repair captures its collision facts separately, but does not certify all other recorders. Keep these limitations open; neither the historical migration stages nor a passing Session establishes complete diagnostic conformance.
 
 NativeAOT is not part of this review. CSP serving, public JSON/catalog schemas, durable diagnostic identities, hover and automatic repairs remain outside the implemented diagnostic-only service.
+
+## Second review — 2026-09-30
+
+A second comparison of this document with SPEC §23 and the code reproduced and repaired these defects:
+
+- **Recovery.** Recovery nodes without their syntax Error published unexplained `PrerequisiteUnavailable_Kd` records. A token rejected by the lexer was reported again as an `UnmatchedToken_Kd` with an empty token, because the lexer and the parser used different targets. A body that a syntax Error left missing produced ownership Errors. A missing member name was located on the next line.
+- **Mismatch display.** `BoundPair` showed a Type that lies inside the other as a bare "…". Bounded text could split a surrogate pair.
+- **Command and check entry.** An unsupported target published no Error and faulted the command as an unexplained rejection; it now reports `UnsupportedTarget_Kd`. The command path rendered partial records without a fault after an analysis exception. An invalid `TestProjectId` produced a Completed result.
+- **Record details.** The project file's source-table entry followed later sources. `CheckFaulted_Kd` declared a Text Reason. Two failed writes of one interpolation had no defined order and faulted the check.
+
+SPEC §23.3.6.8 and §23.4.7 now list omissions after related locations, as both adapters always rendered them. The existing parser prose, flow-refinement and ownership-evidence gaps remain open. So does a Note shortened by its limit without an omission count.

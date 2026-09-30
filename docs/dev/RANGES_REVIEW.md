@@ -47,3 +47,28 @@ The Unit's `verified-change.patch` preserves the staged implementation and docum
 ## Product boundaries
 
 Hover and automatic repair/code-action support remain unimplemented; the language server publishes diagnostics. The range audit does not complete the separate parser-explanation, ownership-evidence or object-flow-refinement work tracked in DIAGNOSTICS.md §11. No new timing or whole-compiler performance claim is made.
+
+## Second review — 2026-09-30
+
+A second review compared the frozen proposal with the formal specification, the Kimi library, Binding, and lowering. It used about 40,000 generated resolution cases and more than 300 probe programs, run at O0 and O2. No miscompile and no missing or extra Abort was found in resolution, merged checks, iteration or the Array operations.
+
+| Area | Finding | Disposition |
+| --- | --- | --- |
+| Specification | §15.1.3 still decoded literal indexes as `isize`. §4.6.3 had lost the carried-over range rules (same meaning everywhere; no Origin, Comparable, arithmetic or conversion). The automatic-repair condition, the try wording of §17.4.4, the `FromEnd` formatting wording and §4.5 needed corrections. SPEC.md, GUIDE.md and the milestone README still used Scalar read, `Index`, `IndexRange` and `Range<T>`. | Corrected in `d7ba81f5`, recorded in `draft/INTEGRATED.md`. |
+| Closed Contracts | A user Contract refining `Position` or `PositionRange` granted a conformance through `Self is MyPos`. | Rejected, with `ClosedContractConformance_Kd`. |
+| Literal typing | A range argument with a literal-only and a typed boundary was bound independently, so the candidate's `S`/`E` never reached the literal. `if`/`match` results had no evidence for written ranges and `^x`. | Fitted per candidate, like tuples; results find the common Type. |
+| Direct keys and lowering | `(^x)` boundaries failed Binding. `isize` boundaries with parentheses, operations or `@` failed generation. Fields of range, `^x` and `indices` temporaries failed generation. Generic Types with an identity premise lost their field Types. | Repaired. Covered by `KeyedIndexingBoundaryForms`, `KeyedIndexingRangeInference` and `TypeIdentityFields` (native O0/O2). |
+| Warnings | Length-generic fixed arrays were judged as length 0. | Only a constant fixed length is judged. |
+| Diagnostics | Ineligible Moves and non-indexable receivers were reported as implementation limits. Conversions of positions were reported as Unsupported. Generic range iteration was reported twice without the requirement. A user `Indexable` key mismatch published only an unexplained derived record. | `StaticMovePathRequired_Kd`, `NotIndexable_Kd`, Type mismatches, one explained `UnprovenConstraint_Kd`, and a published indexer failure. |
+| Library | `swapRemove` checked positions three times and used a different abort kind. | One shared bounds check. |
+
+Remaining boundaries:
+
+- **Indexable.** Built-in sequences do not yet satisfy a generic `S is Indexable<isize>` Constraint (§4.6.9).
+- **Scaling.** Borrow verification's dense tables fault on one very large body.
+- **Generic arithmetic.** Arithmetic on a `P is Position` Type parameter is still reported as Unsupported rather than as a Language error.
+- **Temporary slices.** The expired temporary behind `make()[..]` is reported as a Loan conflict.
+
+These are recorded in STATUS where they are support boundaries.
+
+Evidence: Units `20260930-141606-883-unit-second-review-unit` and `20260930-141848-985-unit-second-review-arguments`, Session `20260930-142114-408-session-second-review-session` (13,834 tests, unchanged diagnostic snapshot) and `20260930-142414-817-unit-second-review-milestones` (all 32 milestone harnesses at O0/O2).
