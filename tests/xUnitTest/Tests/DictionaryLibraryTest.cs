@@ -9,6 +9,20 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void LookupCompilesFromOrdinarySource()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => $abort(\"missing\")");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
+        Assert.NotNull(function);
+        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.DoesNotContain("__kimi_dictionary_tryget", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceLookup", ir, string.Empty);
+    }
+
+    [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");

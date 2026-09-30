@@ -392,7 +392,6 @@ internal enum DictionaryHelperKind : byte
     TryInsert,
     InsertOrReplace,
     Remove,
-    TryGet,
     Clear,
     Drop,
 }

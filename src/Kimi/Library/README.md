@@ -81,9 +81,11 @@ Callbacks use the ordinary Function Type ABI with stack handles, without heap
 allocation. The compiler passes the selected equality witness and typed entry
 destruction, preserving comparison direction and value-before-key cleanup.
 
+`Dictionary.tryGet` in [Dictionary.kimi](Dictionary.kimi) searches through the standard shared storage remainder and
+constructs its optional reference through ordinary generic source. The three iteration entries also use Kimigayo.
 The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
-still contains compiler-recognized public signatures. Generic mutation/result
-dispatch and typed index/iteration access remain compiler code.
+still contains compiler-recognized mutation signatures. Generic mutation/result
+dispatch and typed indexed access remain compiler code.
 Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified

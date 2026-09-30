@@ -9,6 +9,15 @@ public struct Dictionary<K, V>
     Self is IntoIterable
     associate IntoIterable.IteratorType is DictionaryOwningIterator<K, V>
 
+    /// Borrows the matching value, or returns None. Only the collection, not the search key, is a result dependency.
+    public func tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>
+        var state = Storage.borrowStorage(self)
+        loop
+            match Storage.splitFirst(state@uniq)
+                .Some((let storedKey, let value))
+                    if storedKey.equals(key) => return .Some(value)
+                .None => return .None
+
     /// Starts a shared enumeration of the entries in insertion order.
     public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source
         return DictionaryIterator<K, V>.init(Storage.borrowStorage(self))

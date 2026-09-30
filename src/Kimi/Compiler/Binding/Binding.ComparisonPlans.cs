@@ -7,7 +7,7 @@ public sealed partial class Binding
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, bool Operators), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
 
     internal static bool HasDictionarySearch(BoundCall site)
-        => site.Target.CompilerFunction is CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace or CompilerFunctionKind.DictionaryRemove or CompilerFunctionKind.DictionaryTryGet;
+        => site.Target.CompilerFunction is CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace or CompilerFunctionKind.DictionaryRemove;
 
     // One verified tree supplies both effect traversal and generation. Selection of a leaf uses
     // the conformance witness map, exactly like an explicit requirement invocation.

@@ -97,6 +97,12 @@ public class DictionaryOperationsTest
             var entries: Dictionary<Key, i32> = [:]
             _ = entries.tryInsert(Key.init(7, 1), 20)
             _ = entries.insertOrReplace(Key.init(7, 9), 22)
+            match entries.tryGet(Key.init(7, 0))
+                .Some(let value) => require value == 22 else => $abort("lookup")
+                .None => $abort("missing lookup")
+            match entries.tryGet(Key.init(8, 0))
+                .None => ()
+                .Some(_) => $abort("absent lookup")
             match entries.remove(Key.init(7, 0))@move
                 .Some((let key, let value)) => require key.tag == 1 and value == 22 else => $abort("stored key")
                 .None => $abort("missing")

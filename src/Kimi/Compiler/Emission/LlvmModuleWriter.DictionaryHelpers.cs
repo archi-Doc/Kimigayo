@@ -206,16 +206,9 @@ internal static partial class LlvmModuleWriter
         else
         {
             DictionaryAddress(output, "%result_value", "%result", result.PayloadOffset);
-            if (helper.Kind == DictionaryHelperKind.TryGet)
-            {
-                output.Write("  store ptr %stored_value, ptr %result_value, align 8\n");
-            }
-            else
-            {
-                WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
-                WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%stored_value", "%value_replaced");
-                WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%key");
-            }
+            WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
+            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%stored_value", "%value_replaced");
+            WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%key");
 
             output.Write("  store i32 0, ptr %result, align 4\n");
         }

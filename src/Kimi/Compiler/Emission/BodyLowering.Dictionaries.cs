@@ -38,7 +38,7 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), output, location, length], resultSlot: true),
-                DictionaryHelperKind.Remove or DictionaryHelperKind.TryGet => new(name, "void", [handle, new("ptr", "key"), output, location, length], resultSlot: true),
+                DictionaryHelperKind.Remove => new(name, "void", [handle, new("ptr", "key"), output, location, length], resultSlot: true),
                 _ => new(name, "void", [handle, location, length]),
             };
             var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
@@ -215,7 +215,7 @@ internal sealed partial class BodyLowering
                 }
 
                 this.callOperands.Add(search);
-                kind = operation == CompilerFunctionKind.DictionaryRemove ? DictionaryHelperKind.Remove : DictionaryHelperKind.TryGet;
+                kind = DictionaryHelperKind.Remove;
             }
 
             this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[id].Place));

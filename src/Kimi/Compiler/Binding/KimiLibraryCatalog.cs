@@ -109,7 +109,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryInsert),
         new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryInsertOrReplace),
         new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryRemove),
-        new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryGet),
+        new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, SourceFunction: true),
         new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryClear),
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
         new(KimiDeclarationId.Indexable, "Indexable"),
@@ -197,8 +197,8 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false)
     {
-        internal bool IsFunction => this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
+        internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
     }
 }

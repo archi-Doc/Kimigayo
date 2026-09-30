@@ -60,6 +60,8 @@ Syntax changes also start in `Parser*` and the corresponding `Parsing/Koto` node
 
 For library-backed features, also inspect the corresponding `.kimi` declarations/bodies in [Library](../../src/Kimi/Library/) (for example `Iterator.kimi`, `Dictionary.kimi`, `Array.kimi`, `Slice.kimi`, `Formatting.kimi`) and the matching KimiLibrary validation files. Disjoint array pairs (§4.6.10) enter through `Array.kimi` / `Storage.FixedArray`, share `Storage.tryGetPairUniq` in `Storage.kimi`, and are covered by `DisjointArrayPairTest` and `DynamicArrayCostTest`.
 
+Dictionary optional lookup enters through `Dictionary.kimi` (`tryGet`) and `Storage.splitFirst`; `DictionaryLibraryTest`, `DictionaryOperationsTest` and `DictionaryCostTest` cover the source body, result Loans and costs. Catalog `SourceFunction` entries retain public signature validation without a compiler operation.
+
 For cross-cutting changes: project/dependency input starts with `DependencyResolutionTest` and `DependencyLockTest`; check/diagnostic publication with `CheckServiceTest`, `DiagnosticOwnerTest`, `DiagnosticContractTest` and `DiagnosticRelationTest`; LSP with `LspProtocolTest` and `LspProjectDiagnosticTest`; edit invalidation with `SyntaxEditInvalidationTest`.
 
 ## Use and maintenance
