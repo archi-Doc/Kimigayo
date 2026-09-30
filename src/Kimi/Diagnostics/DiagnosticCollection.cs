@@ -127,6 +127,18 @@ public sealed class DiagnosticCollection
         return entry;
     }
 
+    /// <summary>Records a syntax check whose decision depends on an earlier lexical or syntax failure.</summary>
+    /// <param name="range">The check's source boundary.</param>
+    /// <param name="condition">The syntax expected at that boundary.</param>
+    /// <param name="cause">The failed prerequisite.</param>
+    /// <param name="document">The source being recovered.</param>
+    internal void AddDependentSyntax(SourceSpan range, string condition, DiagnosticKey cause, SourceDocument document)
+    {
+        var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, range.Length, DiagnosticRequirement.Syntax, 0, condition);
+        this.Report(DiagnosticPartition.Syntax, key, range, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [cause], document);
+        this.LastError = key;
+    }
+
     /// <summary>Makes the lexical Error that rejected a token of this target's document the cause of the parser's recovery, without
     /// reporting the token again (SPEC 23.3.6.4).</summary>
     /// <param name="range">The rejected token's span.</param>

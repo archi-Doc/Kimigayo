@@ -3849,7 +3849,7 @@ ProcessPrefix:
         argumentLabels = default;
 
         var tokenKind = reader.CurrentTokenKind;
-        while (tokenKind != TokenKind.Invalid &&
+        while (reader.CanRead &&
                tokenKind != TokenKind.CloseParenthesis)
         {
             if (tokenKind.IsIdentifierOrContextualKeyword() &&

@@ -80,6 +80,10 @@ internal ref struct Tokenizer
     private int tokenAdded;
     private int genericLookaheadEnd;
 
+    // Only malformed literals allocate this map. A delimiter opened before the rejected literal cannot be diagnosed
+    // independently until the literal's extent is known; delimiters opened by later source items remain independent.
+    private Dictionary<int, DiagnosticKey>? delimiterRecoveryCauses;
+
     /// <summary>
     /// Gets the source document being tokenized.
     /// </summary>
@@ -806,7 +810,7 @@ LineContent:
             // may be the matching closing delimiter placed at the outer indentation level.
             // If it matches, consume the delimiter and close the grouping context.
             // Otherwise, recover by treating the grouping construct as implicitly closed,
-            // remove it from the indentation stack, and report an indentation mismatch.
+            // remove it from the indentation stack, and report a missing delimiter.
 
             var hasTrailingContentOnCurrentLine = false;
             var indentationMismatch = false;
@@ -876,9 +880,11 @@ LineContent:
                         }
 
                         this.AddToken(new(closingKind, this.CurrentRange, true));
-                        this.Report(missing, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
+                        this.ReportMissingDelimiter(entry, missing, closingKind);
                         indentationMismatch = true;
-                        break;
+                        // Finish unwinding to the written indentation. Stopping at the first recovered delimiter
+                        // would put the next source item inside an outer call or the preceding function body.
+                        continue;
                     }
                 }
                 else if (this.currentIndentLevel > 0)
@@ -1309,7 +1315,21 @@ EndOfFile:
         }
         else
         {// Invalid
-            this.Report(this.NewRange(1), DiagnosticCode.MissingStringLiteralEnd_Kd);
+            var opening = this.NewRange(doubleQuoteCount);
+            this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', doubleQuoteCount));
+            var cause = this.diagnostics.LastError!.Value;
+            for (var i = 0; i < this.indentCount; i++)
+            {
+                var entry = this.indentStack[i];
+                if (entry.Source is not (IndentSource.Block or IndentSource.LineContinuation))
+                {
+                    (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
+                }
+            }
+
+            // Retain the operand and its exact lexical subject for the parser's ErrorKoto. Dropping it would turn a
+            // malformed argument into an absent argument and cause an unrelated overload-selection diagnostic.
+            this.AddToken(new(TokenKind.Invalid, opening));
             this.Slice(stringLiteralLength);
         }
     }
@@ -1543,9 +1563,21 @@ EndOfFile:
             if (indentSource != IndentSource.LineContinuation)
             {
                 var closingKind = GetClosingTokenKind(indentSource);
-                this.Report(missingRange, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
+                this.ReportMissingDelimiter(entry, missingRange, closingKind);
                 this.AddToken(new(closingKind, missingRange, true));
             }
+        }
+    }
+
+    private void ReportMissingDelimiter(IndentEntry entry, SourceSpan range, TokenKind closingKind)
+    {
+        if (this.delimiterRecoveryCauses?.TryGetValue(entry.Position, out var cause) == true)
+        {
+            this.diagnostics.AddDependentSyntax(range, closingKind.ToText(), cause, this.sourceDocument);
+        }
+        else
+        {
+            this.Report(range, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
         }
     }
 

@@ -325,7 +325,11 @@
 
   + Name="MissingStringLiteralEnd_Kd"
     Category="Language"
-    Message="String literal is not terminated. Expected closing \""
+    Message="Unterminated string literal; expected closing {0}."
+    Arguments="expected:Text"
+    Label="string starts here"
+    Note="Closing brackets inside the string do not close the surrounding expression."
+    Advice="Close the string before any code that follows it."
 
   + Name="MultipleAccessibilityModifiers_Kd"
     Category="Language"
