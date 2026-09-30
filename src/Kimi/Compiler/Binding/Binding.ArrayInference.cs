@@ -120,31 +120,10 @@ public sealed partial class Binding
         BoundType? literalDefault = null;
         for (var i = 0; i < literal.Elements.Count; i++)
         {
-            var source = KotoHelper.UnwrapParentheses(literal.Elements[i]);
-            if (IsUnfittedLiteral(source))
-            {
-                literalDefault ??= this.LiteralDefault(source);
-                continue;
-            }
-
-            var actual = this.BindNode(literal.Elements[i], scope);
-            if (actual is null)
+            if (!this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault))
             {
                 return Complete(literal, null);
             }
-
-            if (ReferenceEquals(actual, BoundType.Never))
-            {
-                continue;
-            }
-
-            var common = established is null ? actual : this.CommonOriginType(established, actual);
-            if (common is null)
-            {
-                return this.Fail(literal, BindingFailure.TypeMismatch);
-            }
-
-            established = common;
         }
 
         if ((established ?? literalDefault) is not { } element)
@@ -158,6 +137,39 @@ public sealed partial class Binding
         }
 
         return Complete(literal, this.InternType(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
+    }
+
+    // Arrays and Dictionary keys/values use the same bounded evidence rule: complete Types establish the expectation;
+    // unfitted literals supply only a default, and Never contributes no value Type. No temporary element list is needed.
+    private bool CollectLiteralElementEvidence(Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (IsUnfittedLiteral(unwrapped))
+        {
+            literalDefault ??= this.LiteralDefault(unwrapped);
+            return true;
+        }
+
+        var actual = this.BindNode(source, scope);
+        if (actual is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(actual, BoundType.Never))
+        {
+            return true;
+        }
+
+        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        if (common is null)
+        {
+            this.FailMismatch(source, source, actual, established!);
+            return false;
+        }
+
+        established = common;
+        return true;
     }
 
     private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)

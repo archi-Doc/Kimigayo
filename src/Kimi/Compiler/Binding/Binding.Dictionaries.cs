@@ -12,8 +12,30 @@ public sealed partial class Binding
     {
         if (expected is not { Kind: BoundTypeKind.Dictionary, Components.Count: 2 })
         {
-            this.BindUnknownChildren(literal, scope);
-            return this.Fail(literal, BindingFailure.Unsupported);
+            BoundType? inferredKey = null;
+            BoundType? inferredValue = null;
+            BoundType? keyDefault = null;
+            BoundType? valueDefault = null;
+            var inferred = true;
+            for (var i = 0; i < literal.Entries.Count; i++)
+            {
+                inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Key, scope, ref inferredKey, ref keyDefault);
+                inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Value, scope, ref inferredValue, ref valueDefault);
+            }
+
+            if (!inferred)
+            {
+                return Complete(literal, null);
+            }
+
+            inferredKey ??= keyDefault;
+            inferredValue ??= valueDefault;
+            if (inferredKey is null || inferredValue is null)
+            {
+                return this.Fail(literal, BindingFailure.MissingType, true);
+            }
+
+            expected = this.InternType(BoundTypeKind.Dictionary, this.Library.GetSymbol(KimiDeclarationId.Dictionary), SemanticsKind.Owner, [inferredKey, inferredValue]);
         }
 
         BoundType? key = null;
@@ -22,17 +44,25 @@ public sealed partial class Binding
         for (var i = 0; i < literal.Entries.Count; i++)
         {
             var entry = literal.Entries[i];
-            var actualKey = this.BindNode(entry.Key, scope, expected.Components[0]);
-            var actualValue = this.BindNode(entry.Value, scope, expected.Components[1]);
-            if (actualKey is null || actualValue is null)
+            var actualKey = this.RequireType(entry.Key, scope, expected.Components[0]);
+            var actualValue = this.RequireType(entry.Value, scope, expected.Components[1]);
+            if (actualKey is null || actualValue is null || entry.Key.BindingState == BindingState.Invalid || entry.Value.BindingState == BindingState.Invalid)
             {
                 complete = false;
                 continue;
             }
 
-            key = key is null ? actualKey : this.CommonOriginType(key, actualKey);
-            value = value is null ? actualValue : this.CommonOriginType(value, actualValue);
-            complete &= key is not null && value is not null;
+            if (!ReferenceEquals(actualKey, BoundType.Never))
+            {
+                key = key is null ? actualKey : this.CommonOriginType(key, actualKey);
+                complete &= key is not null;
+            }
+
+            if (!ReferenceEquals(actualValue, BoundType.Never))
+            {
+                value = value is null ? actualValue : this.CommonOriginType(value, actualValue);
+                complete &= value is not null;
+            }
         }
 
         // Check only the syntax required by SPEC 12.3.4, after all children have
