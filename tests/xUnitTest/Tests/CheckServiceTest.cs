@@ -85,7 +85,7 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var failure = Assert.Single(output.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
-        Assert.Contains("At least one compilation target", failure.Message);
+        Assert.Contains("At least one compilation target", failure.Note);
         Assert.Equal(SourceIdentity.FromPath(project), Location(output, failure));
     }
 
@@ -141,7 +141,7 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var failure = Assert.Single(output.Diagnostics);
-        Assert.Contains("Conflicting inputs for leaf@1", failure.Message);
+        Assert.Contains("Conflicting inputs for leaf@1", failure.Note);
         Assert.Contains("Conflicting inputs for leaf@1", console.Output);
     }
 
@@ -202,7 +202,7 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project, CheckMode.Test, "x86_64-unknown-linux-gnu");
 
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        Assert.Contains(output.Diagnostics, static x => x.Message.Contains("Windows x64", StringComparison.Ordinal));
+        Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
     }
 
     private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)

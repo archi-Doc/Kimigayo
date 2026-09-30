@@ -41,6 +41,16 @@ public readonly record struct DiagnosticValue(string Name, DiagnosticValueKind K
         => new(name, DiagnosticValueKind.Enumeration, value.ToString());
 }
 
+/// <summary>A part of a record that a limit omitted (SPEC 23.3.6.2).</summary>
+/// <param name="Part">What was omitted, such as <c>related locations</c> or <c>excerpt lines</c>.</param>
+/// <param name="Count">How many were omitted.</param>
+public readonly record struct DiagnosticOmission(string Part, int Count)
+{
+    /// <summary>Gets the rendered text of the omission.</summary>
+    /// <returns>The text, such as <c>3 more related locations omitted</c>.</returns>
+    public override string ToString() => $"{this.Count} more {this.Part} omitted";
+}
+
 /// <summary>One source a result's records name (SPEC 23.3.6.3).</summary>
 /// <param name="Path">The display path: a file path, a <c>compiler://</c> identity, or a name given by the source's creator.</param>
 /// <param name="IsInput">Whether the source is an input the check read, so its spans are positions in that input.</param>
@@ -113,6 +123,9 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets conditional repair advice; no edit is inferred from it.</summary>
     public string? Advice { get; init; }
 
+    /// <summary>Gets the parts that limits omitted, with their counts.</summary>
+    public DiagnosticOmission[]? Omissions { get; init; }
+
     /// <summary>Gets the presentation data.</summary>
     public DiagnosticDisplay? Display { get; init; }
 
@@ -120,7 +133,8 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Category == other.Category &&
             this.Message == other.Message && this.Source == other.Source && this.Span == other.Span && this.Label == other.Label &&
             this.Note == other.Note && this.Advice == other.Advice && Equals(this.Display, other.Display) &&
-            (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []);
+            (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []) &&
+            (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []);
 
     public override int GetHashCode()
         => HashCode.Combine(this.Code, this.Source, this.Span, this.Message);

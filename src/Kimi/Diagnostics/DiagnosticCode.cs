@@ -180,6 +180,8 @@ public enum DiagnosticCode
     UnusedTrySuccess_Kd,
     DiscardedValue_Kd,
     OwningWriteArgument_Kd,
+    InvalidTryReturn_Kd,
+    TryPayloadMismatch_Kd,
 
     Count, // Last sentinel
 }
@@ -266,21 +268,16 @@ public static class DiagnosticEntries
 
             try
             {
-                entry.Prepare();
+                if (entry.Prepare() is { } anomaly)
+                {
+                    anomalies.Add($"{entry.Name}: {anomaly}");
+                    continue;
+                }
             }
             catch (FormatException ex)
             {
-                anomalies.Add($"{entry.Name}: the message is not a valid template ({ex.Message}).");
+                anomalies.Add($"{entry.Name}: the message or label is not a valid template ({ex.Message}).");
                 continue;
-            }
-
-            if (entry.Arity > 2)
-            {
-                anomalies.Add($"{entry.Name}: the message takes more than two arguments.");
-            }
-            else if (entry.Arity == 0 && entry.Message.AsSpan().IndexOfAny('{', '}') >= 0)
-            {
-                anomalies.Add($"{entry.Name}: a message without arguments contains a brace.");
             }
 
             table[(int)code] = entry;

@@ -42,7 +42,15 @@ public class PositionWarningTest
         c.Binding.ReportDiagnostics();
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var warning = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
-        Assert.Contains(message, warning.Message, StringComparison.Ordinal);
+
+        // The kind is in the message, the position is the underlined text, and a fixed length is in the label.
+        const string Suffix = " fails to resolve for every length it can take";
+        Assert.EndsWith(Suffix, warning.Message, StringComparison.Ordinal);
+        var kind = warning.Message["The ".Length..^Suffix.Length];
+        var described = warning.Label is { } label
+            ? $"The {kind} {warning.Text} fails to resolve for the fixed array's length {label["the fixed length is ".Length..]}"
+            : $"The {kind} {warning.Text} fails to resolve for every length";
+        Assert.Contains(message, described, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -23,8 +23,8 @@ public sealed class DiagnosticOwnerTest
         other.Add(new(0, 1), DiagnosticCode.IdentifierExpected_Kd);
         target.Add(new(4, 3), DiagnosticCode.IdentifierExpected_Kd);
         target.Add(new(0, 3), DiagnosticCode.IncompleteSyntax_Kd);
-        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, null, "no source");
-        owner.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, "third.kimi", "whole input");
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, null, note: "no source");
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, "third.kimi", note: "whole input");
 
         var result = owner.Finalize();
         Assert.Equal(["first.kimi", "second.kimi", "third.kimi"], result.Sources.Select(static x => x.Path));
@@ -46,7 +46,7 @@ public sealed class DiagnosticOwnerTest
         var key = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.MissingName));
         target.Report(DiagnosticPartition.Binding, key, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, null, null, null, null, null, document);
         c.Kotonoha.DiagnosticCollection.Add(new(0, 5), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document);
-        c.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", "kept");
+        c.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
         Assert.True(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
 
         c.Diagnostics.InvalidateSemantics();
@@ -83,7 +83,7 @@ public sealed class DiagnosticOwnerTest
         }
 
         var owner = new DiagnosticOwner();
-        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", "kept");
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
         var kept = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "App.kimiproj", owner.Finalize());
         Assert.Equal(["ProjectPreparationFailed_Kd", "CheckFaulted_Kd"], kept.Diagnostics.Select(static x => x.Code));
         Assert.Single(kept.Sources);
@@ -186,5 +186,40 @@ public sealed class DiagnosticOwnerTest
         target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
         target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
         Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
+    }
+
+    // SPEC 23.3.6.2, 23.3.6.5: the Reason is typed by the catalog; two long Types keep their differences and elide the rest;
+    // environment text is a bounded Note; limits count what they omit.
+    [Fact]
+    public void ExplanationsAreTypedBoundedAndCountTheirOmissions()
+    {
+        var owner = new DiagnosticOwner();
+        var text = string.Concat(Enumerable.Range(0, 12).Select(static i => $"line{i}\n"));
+        var document = new SourceDocument("main.kimi", text);
+        var target = owner.GetOrAddCollection("main.kimi").For(document);
+        var common = new string('A', 120);
+        var mismatch = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.TypeMismatch));
+        target.Report(DiagnosticPartition.Binding, mismatch, new(0, 5), DiagnosticCode.TypeMismatch_Kd, null, null, null, null, null, document, [$"Pair<{common}, i32>", $"Pair<{common}, bool>"]);
+
+        // A derived problem spanning many lines with more prerequisites than the limit.
+        var prerequisites = Enumerable.Range(0, 10).Select(i => new DiagnosticKey(null, 0, i * 6, 5, DiagnosticRequirement.Syntax)).ToArray();
+        var derived = target.KeyOf(document, new(6, 60), document, DiagnosticRequirement.Startup);
+        target.Report(DiagnosticPartition.Startup, derived, new(6, 60), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, document);
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: new string('x', 1000));
+
+        var records = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Startup).Diagnostics;
+        var typed = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+        Assert.Equal(["actual", "expected"], typed.Reason!.Select(static x => x.Name));
+        Assert.Equal(["…i32…", "…bool…"], typed.Reason!.Select(static x => x.Value));
+        Assert.All(typed.Reason!, static x => Assert.True(x.Elided));
+        Assert.Equal("expected …bool…, found …i32…", typed.Label);
+
+        var undecided = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
+        Assert.Equal(8, undecided.Related!.Length);
+        Assert.Equal([new DiagnosticOmission("excerpt lines", 6), new DiagnosticOmission("related locations", 2)], undecided.Omissions!);
+
+        var input = Assert.Single(records, static x => x.Code == nameof(DiagnosticCode.ProjectPreparationFailed_Kd));
+        Assert.Equal(DiagnosticLimits.NoteLength, input.Note!.Length);
+        Assert.Contains(DiagnosticText.Elision, input.Note, StringComparison.Ordinal);
     }
 }

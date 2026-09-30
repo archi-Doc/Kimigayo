@@ -29,6 +29,15 @@ public sealed partial class Binding
     // The expression being bound without its expected Type because the syntax that supplies it failed.
     private (Koto Expression, Koto Cause)? missingExpectation;
 
+    // SPEC 23.3.6.2: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
+    private Dictionary<Koto, (Koto At, string Actual, string Expected)>? mismatches;
+
+    // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
+    private Dictionary<Koto, Koto>? writeTargets;
+
+    // The candidates a failed overload selection considered, recorded only when it fails.
+    private Dictionary<Koto, FunctionKoto[]>? rejectedCandidates;
+
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
@@ -104,8 +113,65 @@ public sealed partial class Binding
         return ReferenceEquals(value, reference) || (value is InvocationKoto { Method: var method } && ReferenceEquals(method, reference)) ? missing.Cause : null;
     }
 
+    /// <summary>Fails a node whose value does not have the Type its use expects, recording both Types as evidence.</summary>
+    /// <param name="node">The node whose check failed.</param>
+    /// <param name="at">The smallest syntax that shows the mismatch, such as the value.</param>
+    /// <param name="actual">The value's Type.</param>
+    /// <param name="expected">The expected Type.</param>
+    /// <returns><see langword="null"/>.</returns>
+    private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected)
+        => this.FailMismatch(node, at, actual.Name, expected.Name);
+
+    // An untyped literal is described by its category, such as "integer literal".
+    private BoundType? FailMismatch(Koto node, Koto at, string actual, string expected)
+    {
+        // Types that display alike differ only where the display is silent, such as Origins; they are no evidence.
+        if (node.BindingFailure == BindingFailure.None && actual != expected)
+        {
+            (this.mismatches ??= new(ReferenceEqualityComparer.Instance))[node] = (at, actual, expected);
+        }
+
+        return this.Fail(node, BindingFailure.TypeMismatch);
+    }
+
+    /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
+    /// <param name="node">The write.</param>
+    /// <param name="target">The written target.</param>
+    /// <returns><see langword="null"/>.</returns>
+    private BoundType? FailWrite(Koto node, Koto target)
+    {
+        if (node.BindingFailure == BindingFailure.None)
+        {
+            (this.writeTargets ??= new(ReferenceEqualityComparer.Instance))[node] = target;
+        }
+
+        return this.Fail(node, AccessFailure(target));
+    }
+
+    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice.
+    private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        if (code != DiagnosticCode.InvalidAssignment_Kd)
+        {
+            node.Report(requirement, code, at: target);
+            return;
+        }
+
+        var root = KotoHelper.UnwrapParentheses(target);
+        while (root is MemberAccessKoto or IndexKoto)
+        {
+            root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
+        }
+
+        var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
+        node.Report(requirement, code, at: target, evidence: [target.ToString()], advice: immutable ? "Declare the binding with var to assign it again" : null);
+    }
+
     private void ResetPrerequisites()
     {
+        this.mismatches?.Clear();
+        this.writeTargets?.Clear();
+        this.rejectedCandidates?.Clear();
         this.prerequisites.Clear();
         this.prerequisiteStore.Clear();
         this.derivedIssues.Clear();

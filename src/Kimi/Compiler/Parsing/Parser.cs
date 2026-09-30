@@ -3972,6 +3972,8 @@ Loop:
 
             case TokenKind.Func:
                 {
+                    // A function expression spans from its keyword, so its captures belong to it.
+                    var start = reader.CurrentToken.Span.Start;
                     reader.Advance();
                     var function = ParseFuncDeclaration(ref reader, anonymous: true);
                     if (function is null)
@@ -3980,6 +3982,7 @@ Loop:
                     }
 
                     function.Parse(ref reader);
+                    function.Span = SourceSpan.FromBounds(start, function.Span.End);
                     return function;
                 }
 

@@ -234,7 +234,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = Compilation.CreateForTest();
         var diagnostics = c.Diagnostics;
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, null, "test");
+        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, null, note: "test");
         Assert.True(diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
         Assert.False(diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership));
         diagnostics.Invalidate(DiagnosticPartition.Emission);

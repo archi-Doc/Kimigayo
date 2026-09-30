@@ -591,8 +591,29 @@ public abstract class Koto
     /// <param name="first">The first message argument.</param>
     /// <param name="second">The second message argument.</param>
     /// <param name="note">A Note formed from the facts.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, code, first, second, note, null, null, this.CodeContext.SourceDocument);
+    /// <param name="at">The smallest syntax that shows the failed condition, when it is not this node; this node stays the subject.</param>
+    /// <param name="evidence">The code's evidence facts, all of them or none.</param>
+    /// <param name="advice">Conditional advice formed from the facts.</param>
+    /// <param name="related">Syntax related to the problem, with its role and label.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null)
+    {
+        if (this.DiagnosticCollection is not { } collection)
+        {
+            return;
+        }
+
+        DiagnosticRelatedFact[]? locations = null;
+        if (related is not null)
+        {
+            locations = new DiagnosticRelatedFact[related.Length];
+            for (var i = 0; i < related.Length; i++)
+            {
+                locations[i] = collection.Relate(related[i].Role, related[i].At.Span, related[i].At.CodeContext.SourceDocument, related[i].Label);
+            }
+        }
+
+        collection.Report(requirement.Partition, this.KeyOf(requirement), (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
+    }
 
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
     /// <param name="requirement">The requirement left undecided.</param>

@@ -115,14 +115,14 @@ public partial class Compilation
         {
             if (NativeConfiguration.ValidatePackageSupplies(graph.Nodes[i].Input.Configuration, graph.Nodes) is { } failure)
             {
-                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[i].Input.Path, failure);
+                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[i].Input.Path, note: failure);
                 return false;
             }
         }
 
         if (NativeConfiguration.ValidateSupplyAgreement(graph.Nodes, out var conflicting) is { } conflict)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[conflicting].Input.Path, conflict);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[conflicting].Input.Path, note: conflict);
             return false;
         }
 

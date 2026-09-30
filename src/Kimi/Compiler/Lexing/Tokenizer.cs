@@ -863,10 +863,20 @@ LineContent:
                         this.nonBlockDepth--;
                         // Close the malformed delimiter before the next source item. A grouping that the
                         // indentation ends unclosed is reported like one left open at the end of the source.
+                        // The closer is missing right after the grouping's last written token: an insertion point.
                         var closingKind = GetClosingTokenKind(indentSource);
-                        this.AddToken(new(closingKind, this.CurrentRange, true));
+                        var missing = new SourceSpan(indentationStart, indentationLength);
+                        for (var t = this.tokenCount - 1; t >= 0; t--)
+                        {
+                            if (!this.tokens[t].IsMissing && this.tokens[t].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+                            {
+                                missing = new(this.tokens[t].Span.End, 0);
+                                break;
+                            }
+                        }
 
-                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
+                        this.AddToken(new(closingKind, this.CurrentRange, true));
+                        this.Report(missing, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
                         indentationMismatch = true;
                         break;
                     }

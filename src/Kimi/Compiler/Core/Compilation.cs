@@ -194,7 +194,7 @@ public partial class Compilation
         this.BuildMetadata = null;
         if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
         {
-            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, dependencyFailure);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: dependencyFailure);
             return false;
         }
 

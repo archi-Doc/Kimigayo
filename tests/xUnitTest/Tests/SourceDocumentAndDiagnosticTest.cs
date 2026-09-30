@@ -203,7 +203,7 @@ public class SourceDocumentAndDiagnosticTest
     public void ASilentServiceRendersNothing()
     {
         var owner = new DiagnosticOwner();
-        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", "failure");
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "failure");
         Kimigayo.CreateSilent().Render(owner.Finalize(), string.Empty);
         Assert.Single(owner.Finalize().Diagnostics);
     }

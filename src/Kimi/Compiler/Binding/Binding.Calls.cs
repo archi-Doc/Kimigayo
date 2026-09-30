@@ -592,7 +592,20 @@ public sealed partial class Binding
             if (applicable == 0)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                return this.Fail(call, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate, true);
+                var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate;
+                if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
+                {
+                    // The candidates that were considered explain the failed selection; recorded only when it fails.
+                    var rejected = new FunctionKoto[count];
+                    for (var i = 0; i < count; i++)
+                    {
+                        rejected[i] = (FunctionKoto)evaluated[i].Symbol.Declaration;
+                    }
+
+                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
+                }
+
+                return this.Fail(call, failure, true);
             }
 
             if (applicable > 1)

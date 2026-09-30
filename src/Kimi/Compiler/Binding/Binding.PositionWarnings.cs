@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 // changes neither Type fitting, execution nor overload choice.
 public sealed partial class Binding
 {
-    private readonly List<(Koto Node, string Message)> positionWarnings = new();
+    private readonly List<(Koto Node, string Kind, long FixedLength)> positionWarnings = new();
 
     private static long FixedLength(BoundType? core) => core is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } ? core.Length : -1;
 
@@ -175,9 +175,8 @@ public sealed partial class Binding
         }
 
         var kind = role switch { LiteralRole.Range => "range", LiteralRole.Element => "element position", _ => "position" };
-        this.positionWarnings.Add((node, everyLength
-            ? string.Create(CultureInfo.InvariantCulture, $"The {kind} {node} fails to resolve for every length")
-            : string.Create(CultureInfo.InvariantCulture, $"The {kind} {node} fails to resolve for the fixed array's length {fixedLength}")));
+        // A position that fails at every length has no length to name; one that fails at a fixed array's only length names it.
+        this.positionWarnings.Add((node, kind, everyLength ? -1 : fixedLength));
 
         static bool PositionResolves(LiteralRole role, bool fromLength, long offset, long length)
         {

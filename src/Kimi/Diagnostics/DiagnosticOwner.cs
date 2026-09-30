@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Text;
 using Kimi.Compiler;
 
@@ -12,10 +13,6 @@ namespace Kimi.Diagnostics;
 /// </summary>
 public sealed class DiagnosticOwner
 {
-    private const int MaxExcerptLines = 4;
-    private const int MaxExcerptWidth = 160;
-    private const int ExcerptLead = 40;
-
     private readonly List<SourceEntry> sources = [];
     private readonly Dictionary<SourceDocument, int> documentSources = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, int> pathSources = new(StringComparer.Ordinal);
@@ -102,15 +99,16 @@ public sealed class DiagnosticOwner
     /// <param name="path">The input it concerns, or <see langword="null"/> for none.</param>
     /// <param name="first">The first message argument.</param>
     /// <param name="second">The second message argument.</param>
-    /// <remarks>The observed failure, its arguments, is the context of the problem (SPEC 23.3.4): two failures of one input are two problems.</remarks>
-    public void Report(DiagnosticPartition partition, DiagnosticCode code, string? path, object? first = null, object? second = null)
+    /// <param name="note">The environment-dependent text of the failure, such as an exception message; it is published as a bounded Note.</param>
+    /// <remarks>The observed failure, its arguments or else its Note, is the context of the problem (SPEC 23.3.4): two failures of one input are two problems.</remarks>
+    public void Report(DiagnosticPartition partition, DiagnosticCode code, string? path, object? first = null, object? second = null, string? note = null)
     {
         var entry = DiagnosticCollection.Validate(default, code, first, second, null, null);
         var source = path is null ? -1 : this.PathSource(path);
         var module = partition == DiagnosticPartition.Syntax ? this.UnattributedModule() : -1;
-        var context = first is null ? null : second is null ? first.ToString() : string.Concat(first.ToString(), "\u001f", second.ToString());
+        var context = first is null ? note : second is null ? first.ToString() : string.Concat(first.ToString(), "\u001f", second.ToString());
         var key = new DiagnosticKey(null, source, 0, -1, new(partition, 0), 0, context);
-        this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), null, null, null), entry.Severity == DiagnosticSeverity.Error);
+        this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), note, null, null), entry.Severity == DiagnosticSeverity.Error);
     }
 
     /// <summary>Discards a partition's facts and error state; syntax is discarded for every module.</summary>
@@ -212,6 +210,22 @@ public sealed class DiagnosticOwner
     internal static object? Capture(object? value)
         => value is null or string or int or long or bool or Enum ? value : value.ToString();
 
+    internal static object?[]? Capture(object?[]? values)
+    {
+        if (values is null)
+        {
+            return null;
+        }
+
+        var captured = new object?[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            captured[i] = Capture(values[i]);
+        }
+
+        return captured;
+    }
+
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
     {
         var list = partition == DiagnosticPartition.Syntax ? this.syntax[module] : this.partitions[(int)partition];
@@ -223,7 +237,8 @@ public sealed class DiagnosticOwner
             var existing = list.Facts[index];
             // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
             if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
-                !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice))
+                !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice) ||
+                (existing.Evidence is { } recorded && fact.Evidence is { } reported && !recorded.SequenceEqual(reported)))
             {
                 throw new DiagnosticContractException(DiagnosticFault.ConflictingProblem, $"{fact.Code} was reported twice with different locations or facts: [{existing.Start}+{existing.Length}] {existing.First} {existing.Second} {existing.Note} and [{fact.Start}+{fact.Length}] {fact.First} {fact.Second} {fact.Note}.");
             }
@@ -232,6 +247,8 @@ public sealed class DiagnosticOwner
             {
                 Note = existing.Note ?? fact.Note,
                 Advice = existing.Advice ?? fact.Advice,
+                Evidence = existing.Evidence ?? fact.Evidence,
+                Related = existing.Related ?? fact.Related,
                 DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
             };
 
@@ -308,6 +325,58 @@ public sealed class DiagnosticOwner
 
     private static bool Conflicts(string? left, string? right)
         => left is not null && right is not null && left != right;
+
+    // SPEC 23.3.6.2, 23.3.6.5: the code's facts, typed by its catalog schema (arguments, then evidence) and bounded once here;
+    // the message and the label display the bounded values. The Types of one record are bounded as a pair.
+    private static (DiagnosticValue[]? Reason, string Message, string? Label) Describe(DiagnosticEntry entry, in DiagnosticFact fact)
+    {
+        var arguments = entry.ArgumentSchema;
+        var evidence = fact.Evidence is null ? [] : entry.EvidenceSchema;
+        var count = arguments.Length + evidence.Length;
+        if (count == 0)
+        {
+            return (null, entry.Message, entry.FormatLabel([]));
+        }
+
+        var values = new DiagnosticValue[count];
+        var shown = new object?[count];
+        var full = new string[count];
+        var firstType = -1;
+        var secondType = -1;
+        for (var i = 0; i < count; i++)
+        {
+            var parameter = i < arguments.Length ? arguments[i] : evidence[i - arguments.Length];
+            var value = i < arguments.Length ? (i == 0 ? fact.First : fact.Second) : fact.Evidence![i - arguments.Length];
+            full[i] = value switch
+            {
+                bool flag => flag ? "true" : "false",
+                IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+                _ => value?.ToString() ?? string.Empty,
+            };
+
+            if (parameter.IsType)
+            {
+                secondType = firstType >= 0 && secondType < 0 ? i : secondType;
+                firstType = firstType < 0 ? i : firstType;
+            }
+
+            var (bounded, elided) = parameter.Kind == DiagnosticValueKind.Text ? DiagnosticText.Bound(full[i]) : (full[i], false);
+            values[i] = new(parameter.Name, parameter.Kind, bounded, elided);
+            shown[i] = parameter.Kind == DiagnosticValueKind.Number ? value : bounded;
+        }
+
+        if (secondType >= 0)
+        {
+            var (first, second) = DiagnosticText.BoundPair(full[firstType], full[secondType]);
+            values[firstType] = values[firstType] with { Value = first.Text, Elided = first.Elided };
+            values[secondType] = values[secondType] with { Value = second.Text, Elided = second.Elided };
+            shown[firstType] = first.Text;
+            shown[secondType] = second.Text;
+        }
+
+        var message = entry.FormatMessage(arguments.Length > 0 ? shown[0] : null, arguments.Length > 1 ? shown[1] : null);
+        return (values, message, entry.FormatLabel(shown));
+    }
 
     private static DiagnosticKey[] Union(DiagnosticKey[]? left, DiagnosticKey[] right)
     {
@@ -467,14 +536,14 @@ public sealed class DiagnosticOwner
         var expanded = ExpandTabs(text);
         var start = DisplayWidth(text[..startCharacter]);
         var length = Math.Max(1, DisplayWidth(text[..endCharacter]) - start);
-        if (expanded.Length <= MaxExcerptWidth)
+        if (expanded.Length <= DiagnosticLimits.ExcerptWidth)
         {
             return new(line + 1, expanded, start, length);
         }
 
         // Clip a long line to a window around the underline, marking each cut with an ellipsis.
-        var from = Math.Clamp(start - ExcerptLead, 0, expanded.Length);
-        var to = Math.Min(expanded.Length, from + MaxExcerptWidth);
+        var from = Math.Clamp(start - DiagnosticLimits.ExcerptLead, 0, expanded.Length);
+        var to = Math.Min(expanded.Length, from + DiagnosticLimits.ExcerptWidth);
         var clipped = string.Concat(from > 0 ? "…" : string.Empty, expanded.AsSpan(from, to - from), to < expanded.Length ? "…" : string.Empty);
         var clippedStart = start - from + (from > 0 ? 1 : 0);
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
@@ -564,9 +633,11 @@ public sealed class DiagnosticOwner
 
     private CheckDiagnostic CreateRecord(in DiagnosticFact fact, List<DiagnosticSource> table, Dictionary<int, int> remap)
     {
-        DiagnosticEntries.TryGet(fact.Code, out var entry);
+        DiagnosticEntries.TryGet(fact.Code, out var found);
+        var entry = found!; // Every recorded code was validated against the catalog.
         var (span, range) = this.Locate(fact.Source, fact.Start, fact.Length);
         DiagnosticDisplay? display = null;
+        List<DiagnosticOmission>? omissions = null;
         if (range is { } primary && this.sources[fact.Source].Document is { } document)
         {
             var lastLine = primary.End.Line;
@@ -575,11 +646,13 @@ public sealed class DiagnosticOwner
                 lastLine--;
             }
 
+            lastLine = Math.Min(lastLine, document.LineCount - 1);
             var lines = new List<DiagnosticExcerptLine>();
-            for (var line = primary.Start.Line; line <= lastLine && line < document.LineCount; line++)
+            for (var line = primary.Start.Line; line <= lastLine; line++)
             {
-                if (lines.Count == MaxExcerptLines - 1 && line < lastLine)
+                if (lines.Count == DiagnosticLimits.ExcerptLines - 1 && line < lastLine)
                 {
+                    (omissions ??= []).Add(new("excerpt lines", lastLine - line));
                     line = lastLine; // Keep the first lines and the last one.
                 }
 
@@ -591,8 +664,10 @@ public sealed class DiagnosticOwner
             display = new(range, lines.ToArray());
         }
 
-        DiagnosticValue[]? reason = null;
+        DiagnosticValue[]? reason;
         DiagnosticRelated[]? related = null;
+        string message;
+        string? label;
         if (fact.DerivedFrom is { } prerequisites)
         {
             // SPEC 23.3.6.4: the requirement left undecided, what it needs, and where each prerequisite is.
@@ -608,23 +683,67 @@ public sealed class DiagnosticOwner
                 if (!key.IsUnresolved && key.Source >= 0)
                 {
                     var (relatedSpan, relatedRange) = this.Locate(key.Source, key.Start, key.Length);
-                    var label = DiagnosticRequirements.TryGetDescription(key.Requirement, out var prerequisiteDescription) ? prerequisiteDescription : key.Requirement.Name;
-                    locations.Add(new("prerequisite", this.TableIndex(key.Source, table, remap), relatedSpan, relatedRange, label));
+                    var prerequisiteLabel = DiagnosticRequirements.TryGetDescription(key.Requirement, out var prerequisiteDescription) ? prerequisiteDescription : key.Requirement.Name;
+                    locations.Add(new("prerequisite", this.TableIndex(key.Source, table, remap), relatedSpan, relatedRange, prerequisiteLabel));
                 }
             }
 
-            related = locations.Count == 0 ? null : locations.ToArray();
+            related = Limit(locations, ref omissions);
+            message = entry.Message;
+            label = entry.Label;
+        }
+        else
+        {
+            (reason, message, label) = Describe(entry, fact);
+            if (fact.Related is { } recorded)
+            {
+                var locations = new List<DiagnosticRelated>(recorded.Length);
+                foreach (var item in recorded)
+                {
+                    var (relatedSpan, relatedRange) = this.Locate(item.Source, item.Start, item.Length);
+                    locations.Add(new(item.Role, this.TableIndex(item.Source, table, remap), relatedSpan, relatedRange, item.Label is null ? null : DiagnosticText.Bound(item.Label).Text));
+                }
+
+                related = Limit(locations, ref omissions);
+            }
         }
 
-        return new(entry!.Name, entry.Severity, entry.Category, entry.FormatMessage(fact.First, fact.Second), this.TableIndex(fact.Source, table, remap), span)
+        return new(entry.Name, entry.Severity, entry.Category, message, this.TableIndex(fact.Source, table, remap), span)
         {
-            Label = entry.Label,
+            Label = label,
             Reason = reason,
             Related = related,
-            Note = fact.Note ?? entry.Note,
+            Note = fact.Note is { } note ? DiagnosticText.Bound(note, DiagnosticLimits.NoteLength).Text : entry.Note,
             Advice = fact.Advice ?? entry.Advice,
+            Omissions = omissions?.ToArray(),
             Display = display,
         };
+
+        // SPEC 23.3.6.5: related locations by role, then location, then value; the first ones up to the limit are kept.
+        static DiagnosticRelated[]? Limit(List<DiagnosticRelated> locations, ref List<DiagnosticOmission>? omissions)
+        {
+            if (locations.Count == 0)
+            {
+                return null;
+            }
+
+            locations.Sort(static (x, y) =>
+            {
+                var order = string.CompareOrdinal(x.Role, y.Role);
+                order = order != 0 ? order : x.Source.CompareTo(y.Source);
+                order = order != 0 ? order : (x.Span?.Start ?? -1).CompareTo(y.Span?.Start ?? -1);
+                order = order != 0 ? order : (x.Span?.Length ?? -1).CompareTo(y.Span?.Length ?? -1);
+                return order != 0 ? order : string.CompareOrdinal(x.Label, y.Label);
+            });
+
+            if (locations.Count > DiagnosticLimits.Related)
+            {
+                (omissions ??= []).Add(new("related locations", locations.Count - DiagnosticLimits.Related));
+                locations.RemoveRange(DiagnosticLimits.Related, locations.Count - DiagnosticLimits.Related);
+            }
+
+            return locations.ToArray();
+        }
     }
 
     private sealed class FactList

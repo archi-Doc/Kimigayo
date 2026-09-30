@@ -244,7 +244,7 @@ public class OptionalTryDiscardTest
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
         c.AnalyzeControlFlow(c.Binding.TypeSystem).ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Message.Contains("payload Type", StringComparison.Ordinal) && d.Message.Contains("without try", StringComparison.Ordinal));
+        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Code == "TryPayloadMismatch_Kd" && d.Explanation.Contains("without try", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -325,7 +325,7 @@ public sealed partial class Binding
             return a;
         }
 
-        return this.Fail(node, BindingFailure.TypeMismatch);
+        return this.FailMismatch(node, node, b, a);
     }
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
@@ -529,7 +529,7 @@ public sealed partial class Binding
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
-                    return this.Fail(node, BindingFailure.TypeMismatch);
+                    return this.FailMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType.Name);
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
@@ -649,7 +649,7 @@ public sealed partial class Binding
                     targetResult?.Sources.Add(actual);
                     if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
                     {
-                        this.Fail(jump, BindingFailure.TypeMismatch);
+                        this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType);
                     }
                 }
 
@@ -759,7 +759,7 @@ public sealed partial class Binding
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
                     symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
                 {
-                    this.Fail(expression, BindingFailure.TypeMismatch);
+                    this.FailMismatch(expression, expression, result, expected);
                 }
             }
         }
@@ -845,7 +845,7 @@ public sealed partial class Binding
 
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
         {
-            this.Fail(variable, BindingFailure.TypeMismatch);
+            this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared);
         }
 
         symbol.Type = declared ?? inferred;
@@ -985,7 +985,7 @@ public sealed partial class Binding
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
             if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
             {
-                return this.Fail(node, AccessFailure(node));
+                return this.FailWrite(node, node);
             }
 
             if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
@@ -1050,7 +1050,7 @@ public sealed partial class Binding
         var actual = this.BindNode(node, scope, expected);
         if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node))
         {
-            this.Fail(node, BindingFailure.TypeMismatch);
+            this.FailMismatch(node, node, actual, expected);
         }
 
         return actual;
@@ -1126,7 +1126,7 @@ public sealed partial class Binding
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 if (!this.ValidPropertyWritePath(unary.Operand, scope))
                 {
-                    return this.Fail(unary, AccessFailure(unary.Operand));
+                    return this.FailWrite(unary, unary.Operand);
                 }
 
                 if (ElementAccess.DestinationType(unary.Operand, operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
@@ -1137,7 +1137,7 @@ public sealed partial class Binding
 
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
-                    return this.Fail(unary, AccessFailure(unary.Operand));
+                    return this.FailWrite(unary, unary.Operand);
                 }
 
                 // Increment and decrement do not apply to floats (SPEC 13.2).
@@ -1223,7 +1223,7 @@ public sealed partial class Binding
 
         if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
         {
-            return this.Fail(binary, AccessFailure(binary.Left));
+            return this.FailWrite(binary, binary.Left);
         }
 
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
@@ -1233,7 +1233,7 @@ public sealed partial class Binding
             // write is permitted; its lowering is not yet implemented.
             var exclusiveElement = KotoHelper.UnwrapParentheses(binary.Left) is IndexKoto { Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
                 (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver));
-            return this.Fail(binary, exclusiveElement ? BindingFailure.Unsupported : AccessFailure(binary.Left));
+            return exclusiveElement ? this.Fail(binary, BindingFailure.Unsupported) : this.FailWrite(binary, binary.Left);
         }
 
         var result = assignment ? BoundType.Unit : left;
@@ -1258,9 +1258,9 @@ public sealed partial class Binding
         {
             // Both operands have a bool context, even when the left transfers.
             // Never fitting does not waive checking of an unreachable right side.
-            return Compatible(left, BoundType.Boolean) && Compatible(right, BoundType.Boolean)
-                ? Complete(binary, BoundType.Boolean)
-                : this.Fail(binary, BindingFailure.TypeMismatch);
+            return !Compatible(left, BoundType.Boolean) ? this.FailMismatch(binary, binary.Left, left, BoundType.Boolean)
+                : !Compatible(right, BoundType.Boolean) ? this.FailMismatch(binary, binary.Right, right, BoundType.Boolean)
+                : Complete(binary, BoundType.Boolean);
         }
 
         if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
@@ -1268,7 +1268,7 @@ public sealed partial class Binding
             // SPEC 5.3: an isize count; a zero element stride makes every displacement zero.
             return ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)
                 ? Complete(binary, result)
-                : this.Fail(binary, BindingFailure.TypeMismatch);
+                : this.FailMismatch(binary, binary.Right, right, BoundType.ISize);
         }
 
         if (comparison)
@@ -1309,7 +1309,7 @@ public sealed partial class Binding
             }
             else
             {
-                return this.Fail(binary, BindingFailure.TypeMismatch);
+                return this.FailMismatch(binary, binary.Right, right, left);
             }
         }
 

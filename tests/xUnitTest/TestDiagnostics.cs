@@ -14,7 +14,8 @@ namespace XunitTest;
 /// <param name="Text">The source text under the primary span, or <see langword="null"/> without a source.</param>
 /// <param name="Note">The Note.</param>
 /// <param name="Advice">The Advice.</param>
-internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, string Message, string? Path, SourceSpan Span, string? Text, string? Note, string? Advice)
+/// <param name="Label">The label of the primary span.</param>
+internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, string Message, string? Path, SourceSpan Span, string? Text, string? Note, string? Advice, string? Label = null)
 {
     /// <summary>Gets the message, Note and Advice on separate lines, for tests that look for an explanation wherever it is placed.</summary>
     public string Explanation => string.Join('\n', new[] { this.Message, this.Note, this.Advice }.Where(static x => x is not null));
@@ -65,7 +66,7 @@ internal static class TestDiagnostics
 
             var span = diagnostic.Span ?? default;
             var text = diagnostic.Span is { } primary && source is not null && owner.FindDocument(source) is { } document ? document.SourceText.Substring(primary.Start, primary.Length) : null;
-            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Advice));
+            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Advice, diagnostic.Label));
         }
 
         return records.ToArray();

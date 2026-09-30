@@ -112,6 +112,11 @@ public class Kimigayo
             }
         }
 
+        foreach (var omission in diagnostic.Omissions ?? [])
+        {
+            this.consoleService.WriteLine($" = {omission}");
+        }
+
         if (diagnostic.Advice is not null || diagnostic.Note is not null)
         {
             this.consoleService.WriteLine();

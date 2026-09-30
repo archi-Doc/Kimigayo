@@ -324,17 +324,38 @@ public sealed partial class Binding
             }
             else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
             {
-                // Only a match plan fails NonExhaustiveMatch, so its coverage is always the argument.
-                issue.Node.Report(requirement, issue.Code, this.matches[(MatchKoto)issue.Node].Coverage.Describe());
+                // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
+                var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
+                issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
             }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
-                issue.Node.Report(requirement, issue.Code, this.DescribeTryFailure(issue.Node));
+                var (code, evidence, note) = this.TryFailure(issue.Node);
+                issue.Node.Report(requirement, code, note: note, evidence: evidence);
             }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
                 // FailObjectPayload records the declaring Type before it fails the use.
                 issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+            }
+            else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+            {
+                var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+                for (var c = 0; c < rejected.Length; c++)
+                {
+                    candidates[c] = ("candidate", rejected[c], rejected[c].Name);
+                }
+
+                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates);
+            }
+            else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
+            {
+                this.ReportWrite(issue.Node, target, requirement, issue.Code);
+            }
+            else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
+            {
+                // The subject stays the failed node; the location is the syntax that shows the two Types.
+                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), at: mismatch.At, evidence: [mismatch.Actual, mismatch.Expected]);
             }
             else
             {
@@ -362,7 +383,7 @@ public sealed partial class Binding
 
             foreach (var position in this.positionWarnings)
             {
-                position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Message);
+                position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Kind, evidence: position.FixedLength < 0 ? null : [position.FixedLength]);
             }
 
             // SPEC 23.3.3: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its

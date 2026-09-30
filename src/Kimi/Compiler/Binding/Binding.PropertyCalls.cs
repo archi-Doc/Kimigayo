@@ -82,7 +82,7 @@ public sealed partial class Binding
         var type = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
-            this.Fail(node, AccessFailure(node));
+            this.FailWrite(node, node);
             return false;
         }
 
@@ -149,7 +149,7 @@ public sealed partial class Binding
                 (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null) ||
                 !this.AdaptInput(receiver, required, actual, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
             {
-                this.Fail(node, AccessFailure(node));
+                this.FailWrite(node, node);
                 return false;
             }
 

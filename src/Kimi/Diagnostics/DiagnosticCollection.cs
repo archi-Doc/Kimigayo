@@ -141,18 +141,34 @@ public sealed class DiagnosticCollection
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="derivedFrom">The unmet prerequisites.</param>
     /// <param name="document">The source the span belongs to; the target's document by default.</param>
+    /// <param name="evidence">The code's evidence facts, all of them in catalog order, or <see langword="null"/> for none.</param>
+    /// <param name="related">Locations related to the problem, located by <see cref="Relate"/>.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document)
+    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null)
     {
         document ??= this.Document;
         var entry = Validate(range, code, first, second, document, derivedFrom);
+        if (evidence is not null && (evidence.Length != entry.EvidenceSchema.Length || Array.IndexOf(evidence, null) >= 0))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.EvidenceSchema.Length} evidence facts, all of them or none.");
+        }
+
         var module = this.CurrentModule();
         var source = this.SourceOf(document);
         var isError = entry.Severity == DiagnosticSeverity.Error;
         var length = document is null ? -1 : range.Length;
-        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom), isError);
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom, DiagnosticOwner.Capture(evidence), related), isError);
         return isError;
     }
+
+    /// <summary>Locates a related location in the source table.</summary>
+    /// <param name="role">The role, such as <c>candidate</c>.</param>
+    /// <param name="span">The span.</param>
+    /// <param name="document">The span's source, or <see langword="null"/> for a location outside every source.</param>
+    /// <param name="label">A short description of the location.</param>
+    /// <returns>The related location.</returns>
+    internal DiagnosticRelatedFact Relate(string role, SourceSpan span, SourceDocument? document, string? label)
+        => new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
 
     private int CurrentModule()
         => this.module >= 0 ? this.module : this.Owner.UnattributedModule();

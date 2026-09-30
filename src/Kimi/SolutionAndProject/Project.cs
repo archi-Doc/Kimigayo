@@ -464,7 +464,7 @@ public partial class Project
                     }
                     else
                     {
-                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, path, exception.Message);
+                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, path, note: exception.Message);
                     }
 
                     return false;
@@ -535,7 +535,7 @@ public partial class Project
         if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
             // SPEC 21.3.5: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
-            compilation.Diagnostics.Report(DiagnosticPartition.Emission, compilation.Emission.FailureIsResourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, this.FilePath, failure);
+            compilation.Diagnostics.Report(DiagnosticPartition.Emission, compilation.Emission.FailureIsResourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, this.FilePath, note: failure);
             this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
             return false;
         }
@@ -569,7 +569,7 @@ public partial class Project
     }
 
     private void Fail(DiagnosticOwner diagnostics, string message)
-        => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, message);
+        => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, note: message);
 
     // SPEC 23.3.6.8: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false)

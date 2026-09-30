@@ -1,4 +1,4 @@
-// To define a diagnostic, follow the Template format below and add the same name to the DiagnosticCode enum. Every entry states its Category (SPEC 23.3.6.1); Severity defaults to Error. A message takes at most two arguments ({0}, {1}) and no free text.
+// To define a diagnostic, follow the Template format below and add the same name to the DiagnosticCode enum. Every entry states its Category (SPEC 23.3.6.1); Severity defaults to Error. A message takes at most two arguments ({0}, {1}) and no free text; Arguments names each as name:Kind (Number, Enumeration, Boolean, Text or Type), and they become the Reason. Evidence names further facts a report may add to the Reason, all of them or none. A Label may reference the Reason's facts in order, arguments then evidence.
 
   + Name="Template_Kd"
     Severity="Error"
@@ -40,6 +40,8 @@
   + Name="NoApplicableOverload_Kd"
     Category="Language"
     Message="No unique applicable overload can be established from the supplied arguments"
+    Evidence="candidates:Number"
+    Label="none of {0} candidates applies"
 
   + Name="CyclicBinding_Kd"
     Category="Language"
@@ -48,6 +50,8 @@
   + Name="InvalidAssignment_Kd"
     Category="Language"
     Message="The selected target does not permit assignment"
+    Evidence="target:Text"
+    Label="{0} cannot be written"
 
   + Name="InaccessibleBinding_Kd"
     Category="Language"
@@ -64,6 +68,7 @@
   + Name="UnavailableFeature_Kd"
     Category="Language"
     Message="The declaration modifier {0} is unavailable in this language revision"
+    Arguments="modifier:Text"
 
   + Name="InvalidOriginBinding_Kd"
     Category="Language"
@@ -88,6 +93,7 @@
   + Name="NotObjectPayload_Kd"
     Category="Language"
     Message="The Type {0} opts out of ObjectPayload and cannot be an object target or payload"
+    Arguments="type:Type"
 
   + Name="UnprovenConstraint_Kd"
     Category="Proof"
@@ -120,10 +126,11 @@
   + Name="InvalidCompileTimeSetting_Kd"
     Category="Input"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
+    Arguments="setting:Text"
 
   + Name="InvalidDependencyConfiguration_Kd"
     Category="Input"
-    Message="Invalid dependency configuration: {0}"
+    Message="The dependency configuration is invalid"
 
   + Name="UnresolvedDependencyGraph_Kd"
     Category="Input"
@@ -132,11 +139,13 @@
   + Name="UnknownCompileTimeName_Kd"
     Category="Language"
     Message="Unknown compile-time environment Name '{0}'"
+    Arguments="name:Text"
     Advice="Use a built-in Compilation value or configure a Project setting before parsing"
 
   + Name="UnsupportedLanguageVersion_Kd"
     Category="Input"
     Message="Unsupported language version '{0}'; this compiler supports '{1}'"
+    Arguments="version:Text,supported:Text"
 
   + Name="ChainedComparison_Kd"
     Category="Language"
@@ -187,10 +196,12 @@
   + Name="DuplicateModifier_Kd"
     Category="Language"
     Message="Duplicate modifier '{0}'"
+    Arguments="modifier:Text"
 
   + Name="DuplicatePropertyAccessor_Kd"
     Category="Language"
     Message="A Property may declare the '{0}' accessor at most once"
+    Arguments="accessor:Text"
 
   + Name="DuplicateTypeConstraintDefinition_Kd"
     Category="Language"
@@ -216,6 +227,7 @@
   + Name="InvalidCharacter_Kd"
     Category="Language"
     Message="Unexpected character '{0}'"
+    Arguments="character:Text"
 
   + Name="InvalidCharLiteral_Kd"
     Category="Language"
@@ -232,11 +244,13 @@
   + Name="InvalidIdentifier_Kd"
     Category="Language"
     Message="'{0}' is not a valid identifier"
+    Arguments="identifier:Text"
     Advice="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
 
   + Name="InvalidIndentation_Kd"
     Category="Language"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
+    Arguments="spaces:Number"
 
   + Name="InvalidNumericLiteral_Kd"
     Category="Language"
@@ -270,6 +284,7 @@
   + Name="MissingExpectedToken_Kd"
     Category="Language"
     Message="Expected: {0}, but reached the end of line."
+    Arguments="expected:Text"
 
   + Name="MissingStringLiteralEnd_Kd"
     Category="Language"
@@ -286,6 +301,7 @@
   + Name="TokenMismatch_Kd"
     Category="Language"
     Message="The token does not match the expected token. Expected: {0}"
+    Arguments="expected:Text"
 
   + Name="TopLevelKeywordAfterCode_Kd"
     Category="Language"
@@ -295,10 +311,15 @@
   + Name="TypeMismatch_Kd"
     Category="Language"
     Message="Values must be of the same type"
+    Evidence="actual:Type,expected:Type"
+    Label="expected {1}, found {0}"
 
   + Name="InvalidTry_Kd"
     Category="Language"
-    Message="{0}"
+    Message="try requires an owned Kimi Option or Result operand"
+    Evidence="operand:Type"
+    Label="found {0}"
+    Advice="Use explicit Type arguments or an annotated intermediate when inference is incomplete; calls and member selection bind before try"
 
   + Name="InvalidTestDefinition_Kd"
     Category="Language"
@@ -359,6 +380,7 @@
   + Name="UnexpectedToken_Kd"
     Category="Language"
     Message="Token {0} is not expected at this position"
+    Arguments="token:Text"
 
   + Name="UnexpectedTrailingToken_Kd"
     Category="Language"
@@ -383,10 +405,12 @@
   + Name="UnmatchedToken_Kd"
     Category="Language"
     Message="Unmatched token {0}"
+    Arguments="token:Text"
 
   + Name="UnsupportedEscape_Kd"
     Category="Language"
     Message="The escape sequence '{0}' is not supported"
+    Arguments="escape:Text"
 
   + Name="MissingStartupBody_Kd"
     Category="Language"
@@ -506,12 +530,14 @@
 
   + Name="NonExhaustiveMatch_Kd"
     Category="Language"
-    Message="{0}"
+    Message="A Result-requiring match must be exhaustive"
+    Evidence="coverage:Enumeration"
 
   + Name="UnreachablePattern_Kd"
     Severity="Warning"
     Category="Language"
     Message="This Pattern is covered by earlier unguarded arm {0}"
+    Arguments="arm:Number"
 
   + Name="OuterCloserInBody_Kd"
     Category="Language"
@@ -520,19 +546,19 @@
 
   + Name="GenerationFailed_Kd"
     Category="Internal"
-    Message="LLVM artifact generation failed: {0}"
+    Message="LLVM artifact generation failed"
 
   + Name="GenerationResourceLimit_Kd"
     Category="Resource"
-    Message="Generic generation exceeds a mandatory resource limit: {0}"
+    Message="Generic generation exceeds a mandatory resource limit"
 
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
-    Message="Project preparation failed: {0}"
+    Message="Project preparation failed"
 
   + Name="ProjectLoadFailed_Kd"
     Category="Input"
-    Message="{0}"
+    Message="The project cannot be loaded"
 
   + Name="TargetSelectionRequired_Kd"
     Category="Input"
@@ -549,11 +575,15 @@
   + Name="CheckFaulted_Kd"
     Category="Internal"
     Message="The compiler failed internally while checking: {0}"
+    Arguments="fault:Text"
 
   + Name="PositionAlwaysFails_Kd"
     Severity="Warning"
     Category="Language"
-    Message="{0}"
+    Message="The {0} fails to resolve for every length it can take"
+    Arguments="kind:Text"
+    Evidence="length:Number"
+    Label="the fixed length is {1}"
     Advice="Correct the literal position or range; an out-of-range access Aborts when executed"
 
   + Name="IncompatibleSerializedSource_Kd"
@@ -562,7 +592,7 @@
 
   + Name="SourceReadFailed_Kd"
     Category="Input"
-    Message="The source file cannot be read: {0}"
+    Message="The source file cannot be read"
 
   + Name="PrerequisiteUnavailable_Kd"
     Category="Proof"
@@ -572,6 +602,7 @@
   + Name="InvalidJumpTarget_Kd"
     Category="Language"
     Message="No valid target for {0}"
+    Arguments="keyword:Text"
 
   + Name="UnlabeledYieldTarget_Kd"
     Category="Language"
@@ -589,10 +620,12 @@
   + Name="IncompatibleResult_Kd"
     Category="Language"
     Message="A result of type {0} is incompatible with {1}"
+    Arguments="actual:Type,expected:Type"
 
   + Name="OverlappingLabel_Kd"
     Category="Language"
     Message="Label {0} overlaps an enclosing Label"
+    Arguments="label:Text"
 
   + Name="UntypedNull_Kd"
     Category="Language"
@@ -662,3 +695,17 @@
     Category="Language"
     Message="This argument creates an owning string before writing"
     Advice="Use $tryWrite(writer, literal) to write directly and skip later expressions after failure"
+
+  + Name="InvalidTryReturn_Kd"
+    Category="Language"
+    Message="The failure path of try cannot return to the enclosing result"
+    Evidence="operand:Type,result:Type"
+    Label="{0} cannot return to {1}"
+    Advice="Use a compatible Option or Result return Type, and wrap normal success values explicitly where needed"
+
+  + Name="TryPayloadMismatch_Kd"
+    Category="Language"
+    Message="The normal value of try does not fit this use"
+    Evidence="payload:Type"
+    Label="the payload is {0}"
+    Advice="At an Option or Result return, consider .Some(try ...) or .Ok(try ...) with an appropriate return annotation, then recheck Type inference, ownership and cleanup"

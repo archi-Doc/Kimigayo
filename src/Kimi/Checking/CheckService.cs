@@ -41,7 +41,7 @@ internal static class CheckService
         catch (InvalidDataException ex)
         {
             // Test preparation reports configuration and test-definition failures as exceptions.
-            context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, ex.Message);
+            context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
         }
         catch (DiagnosticContractException ex)
         {
@@ -60,7 +60,7 @@ internal static class CheckService
             if (!context.Diagnostics.HasErrorsThrough(DiagnosticPartition.Input))
             {
                 // SPEC 23.3.3: the fallback of input preparation, a compiler defect to repair where it occurs.
-                context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, "the project inputs could not be established");
+                context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: "The project inputs could not be established.");
             }
         }
 
@@ -88,12 +88,12 @@ internal static class CheckService
     /// <summary>Creates the diagnostics of a result that concerns a whole input, such as a project file.</summary>
     /// <param name="code">The diagnostic code.</param>
     /// <param name="location">The input, or the default value.</param>
-    /// <param name="argument">The message argument.</param>
+    /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>
     /// <returns>The finalized diagnostics, without a range.</returns>
-    public static DiagnosticResult Create(DiagnosticCode code, SourceIdentity location, object? argument = null)
+    public static DiagnosticResult Create(DiagnosticCode code, SourceIdentity location, string? note = null)
     {
         var owner = new DiagnosticOwner();
-        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, argument);
+        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: note);
         return owner.Finalize();
     }
 

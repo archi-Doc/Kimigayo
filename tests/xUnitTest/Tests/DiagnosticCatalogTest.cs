@@ -63,6 +63,21 @@ public sealed class DiagnosticCatalogTest
               + Name="MissingComma_Kd"
                 Category="Language"
                 Message=""
+
+              + Name="UnexpectedToken_Kd"
+                Category="Language"
+                Message="Token {0}"
+
+              + Name="UnmatchedToken_Kd"
+                Category="Language"
+                Message="Token {0}"
+                Arguments="token"
+
+              + Name="InvalidAssignment_Kd"
+                Category="Language"
+                Message="No arguments"
+                Evidence="actual:Type"
+                Label="found {1}"
             """;
         var (table, anomalies) = DiagnosticEntries.Load(Encoding.UTF8.GetBytes(text));
 
@@ -70,7 +85,10 @@ public sealed class DiagnosticCatalogTest
         Assert.Contains(anomalies, static x => x == "NoSuch_Kd: no DiagnosticCode has this name.");
         Assert.Contains(anomalies, static x => x == "Count: no DiagnosticCode has this name.");
         Assert.Contains(anomalies, static x => x == "IdentifierExpected_Kd: the entry has no category.");
-        Assert.Contains(anomalies, static x => x.StartsWith("InvalidCharacter_Kd: the message is not a valid template", StringComparison.Ordinal));
+        Assert.Contains(anomalies, static x => x.StartsWith("InvalidCharacter_Kd: the message or label is not a valid template", StringComparison.Ordinal));
+        Assert.Contains(anomalies, static x => x == "UnexpectedToken_Kd: Arguments must name each message argument (1), not 0.");
+        Assert.Contains(anomalies, static x => x == "UnmatchedToken_Kd: a fact is not written as name:Kind.");
+        Assert.Contains(anomalies, static x => x == "InvalidAssignment_Kd: the label references a fact that the code does not name.");
         Assert.Contains(anomalies, static x => x == "InvalidIdentifier_Kd: the message takes more than two arguments.");
         Assert.Contains(anomalies, static x => x == "IncompleteSyntax_Kd: a message without arguments contains a brace.");
         Assert.Contains(anomalies, static x => x == "MissingComma_Kd: the entry has no message.");
@@ -127,7 +145,7 @@ public sealed class DiagnosticCatalogTest
         var exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(new(start, length), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document); });
         Assert.Equal(DiagnosticFault.InvalidLocation, exception.Fault);
 
-        exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(new(0, 1), DiagnosticCode.ProjectLoadFailed_Kd, "failure"); });
+        exception = Assert.Throws<DiagnosticContractException>(() => { collection.Add(new(0, 1), DiagnosticCode.ProjectLoadFailed_Kd); });
         Assert.Equal(DiagnosticFault.InvalidLocation, exception.Fault);
     }
 

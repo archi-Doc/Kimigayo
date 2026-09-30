@@ -316,11 +316,11 @@ internal sealed class WorkspaceCheck
         this.start.Post(new CheckDone(failure));
     }
 
-    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, Note, Advice and, for a moved record, its
+    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, omissions, Note, Advice and, for a moved record, its
     // original location, on separate lines.
     private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved, List<string>? related)
     {
-        if (diagnostic.Label is null && related is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
+        if (diagnostic.Label is null && related is null && diagnostic.Omissions is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
         {
             return diagnostic.Message;
         }
@@ -334,6 +334,11 @@ internal sealed class WorkspaceCheck
         foreach (var item in related ?? [])
         {
             builder.Append('\n').Append(item);
+        }
+
+        foreach (var omission in diagnostic.Omissions ?? [])
+        {
+            builder.Append('\n').Append(omission.ToString());
         }
 
         if (diagnostic.Note is { } note)
@@ -358,8 +363,8 @@ internal sealed class WorkspaceCheck
         return builder.ToString();
     }
 
-    private static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, object? argument = null)
-        => new(CheckOutcome.Blocked, false, TestPresence.Unknown, CheckService.Create(code, location, argument));
+    private static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, string? note = null)
+        => new(CheckOutcome.Blocked, false, TestPresence.Unknown, CheckService.Create(code, location, note));
 
     private static LoadedProject CreateLoaded(SourceIdentity path, Project project, SnapshotInputSource source)
     {

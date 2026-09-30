@@ -17,6 +17,12 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, this.Argument2) : this.Code.ToString();
 
+    /// <summary>Gets the code's evidence facts, all of them or none.</summary>
+    public object?[]? Evidence { get; init; }
+
+    /// <summary>Gets a Note formed from the facts.</summary>
+    public string? Note { get; init; }
+
     internal int Priority { get; init; } = 4;
 }
 
@@ -154,7 +160,7 @@ public sealed class ControlFlowAnalysis
             }
             else
             {
-                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2);
+                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence);
             }
         }
 
@@ -347,11 +353,11 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    private void Error(Koto node, DiagnosticCode code, object? argument = null, object? argument2 = null)
+    private void Error(Koto node, DiagnosticCode code, object? argument = null, object? argument2 = null, object?[]? evidence = null, string? note = null)
     {
         if (this.reported.Add((node, code)))
         {
-            this.issues.Add(new(node, code, argument, argument2));
+            this.issues.Add(new(node, code, argument, argument2) { Evidence = evidence, Note = note });
         }
     }
 
@@ -1155,7 +1161,7 @@ public sealed class ControlFlowAnalysis
         else if (exhaustive == false)
         {
             boundary.InvalidResult = true;
-            this.Error(node, DiagnosticCode.NonExhaustiveMatch_Kd, coverage.Describe());
+            this.Error(node, DiagnosticCode.NonExhaustiveMatch_Kd, evidence: [coverage.Requirement], note: coverage.Describe());
         }
 
         var normal = exhaustive != true;
@@ -1425,7 +1431,8 @@ public sealed class ControlFlowAnalysis
         {
             if (KotoHelper.UnwrapParentheses(source.Node) is TryKoto propagation)
             {
-                this.Error(source.Node, DiagnosticCode.InvalidTry_Kd, Binding.DescribeTryPayloadFailure(propagation, type));
+                var (evidence, note) = Binding.TryPayloadFacts(propagation, type);
+                this.Error(source.Node, DiagnosticCode.TryPayloadMismatch_Kd, evidence: evidence, note: note);
             }
             else if (source.Type is null)
             {
