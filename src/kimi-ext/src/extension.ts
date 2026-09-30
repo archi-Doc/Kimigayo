@@ -61,7 +61,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const executor = new TaskExecutor(message => output.appendLine(message));
   const runner = new CommandRunner({
-    runBuilds: () => workspace.getConfiguration('kimi').get('runBuilds', false),
+    runBuilds: () => workspace.getConfiguration('kimi').get('runBuilds', true),
     save: saveKimiDocuments,
     resolveExecutable: () => resolveServerPath(currentServerPath()),
     execute: (executable, command, target, signal) => executor.execute(executable, command, target, signal),

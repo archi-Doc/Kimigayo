@@ -94,9 +94,9 @@
         },
         "kimi.runBuilds": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "scope": "machine",
-          "description": "Enable for current Kimi executables whose run command builds before running. Build and Run then saves inputs and invokes run once, without a separate build. Run also saves inputs in this mode. Leave disabled for older run-only executables."
+          "description": "Save inputs and invoke run once to build and run with current Kimi executables (default). Disable only for older run-only executables: Build and Run then invokes build followed by run, and Run does not save inputs."
         },
         "kimi.trace.server": {
           "type": "string",

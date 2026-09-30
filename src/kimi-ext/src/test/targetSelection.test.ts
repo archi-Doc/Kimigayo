@@ -19,7 +19,7 @@ suite('Kimi automatic target selection', () => {
   let picked: Item[];
 
   suiteSetup(async () => {
-    const extension = vscode.extensions.getExtension('local.kimi-ext');
+    const extension = vscode.extensions.getExtension('archi-Doc.kimi-ext');
     assert.ok(extension);
     await extension.activate();
     const require = createRequire(path.join(extension.extensionPath, 'package.json'));

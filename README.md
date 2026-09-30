@@ -324,12 +324,11 @@ The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check
 
    ```json
    {
-     "kimi.serverPath": "C:/path/to/Kimigayo/src/Kimi/bin/Release/net10.0/Kimi.exe",
-     "kimi.runBuilds": true
+     "kimi.serverPath": "C:/path/to/Kimigayo/src/Kimi/bin/Release/net10.0/Kimi.exe"
    }
    ```
 
-   Current Kimi builds sources in `run`, so enable `kimi.runBuilds` to avoid a separate build. Leave it `false` only for older executables whose `run` requires an existing build.
+   Current Kimi builds sources in `run`. The default `kimi.runBuilds: true` invokes it once, avoiding a duplicate build. Set this option to `false` only for older executables whose `run` requires an existing build. If you previously set it to `false`, remove that override or enable it when using current Kimi.
 
 4. Open a trusted source folder and a saved `.kimi` or `.kimiproj`. Press **Ctrl+F5** or **F1 > Kimi: Build and Run**. If asked, choose **Kimi (Run Without Debugging)**. An unambiguous target runs without a picker; `.kimiproj` is optional. Diagnostics appear in the editor and Problems panel.
 
@@ -355,7 +354,7 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 ### Settings and troubleshooting
 
 - **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and server errors offer **Open Settings** and **Show Output** once per unchanged setting during an extension session, shared by diagnostics and build/run/check commands. Repeated failures remain in the **Kimi** Output channel. Changing the setting allows a new notification and restarts the server; **Kimi: Restart Language Server** retries the same setting without repeating the popup. A failed connection does not automatically restart in a loop.
-- **`kimi.runBuilds`**: enable for current Kimi. The compatibility default is `false`, which uses `build` then `run` for Build and Run and leaves Run's behavior to the executable.
+- **`kimi.runBuilds`**: `true` by default for current Kimi; Run and Build and Run save inputs and invoke `run` once. Set `false` only for older run-only executables: Build and Run uses `build` then `run`, while Run invokes `run` without saving inputs.
 - **`kimi.trace.server`**: `off` (default), `messages`, or `verbose`; see the **Kimi** Output channel.
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.

@@ -1,5 +1,9 @@
 # Change Log
 
+## Unreleased
+
+- Default to saving inputs and invoking `run` once for Run, Build and Run, and Ctrl+F5, avoiding a duplicate build with current Kimi. Explicit `kimi.runBuilds: false` retains support for older run-only executables.
+
 ## 0.0.9
 
 - Report invalid server paths and server failures once per unchanged setting, shared across diagnostics and build/run/check commands; retain repeated details in the Kimi output.

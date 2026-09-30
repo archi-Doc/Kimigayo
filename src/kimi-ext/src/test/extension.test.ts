@@ -15,7 +15,7 @@ suite('Kimi extension integration', () => {
 
   suiteSetup(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'kimi-ext-integration-'));
-    const extension = vscode.extensions.getExtension('local.kimi-ext');
+    const extension = vscode.extensions.getExtension('archi-Doc.kimi-ext');
     assert.ok(extension, 'Kimi extension was not loaded');
     // VS Code scopes its API objects to the calling extension. Packaged smoke
     // tests live outside the extracted extension, so capture its API instance.
@@ -53,7 +53,7 @@ suite('Kimi extension integration', () => {
   }
 
   test('activates automatically and reports a missing executable without a Kimi document', () => {
-    assert.ok(vscode.extensions.getExtension('local.kimi-ext')?.isActive);
+    assert.ok(vscode.extensions.getExtension('archi-Doc.kimi-ext')?.isActive);
     assert.ok(!vscode.workspace.textDocuments.some(document => ['kimi', 'kimiproj'].includes(document.languageId)));
     assert.ok(errors.some(error => error.includes('kimi.serverPath') && error.includes('missing.exe')));
   });
