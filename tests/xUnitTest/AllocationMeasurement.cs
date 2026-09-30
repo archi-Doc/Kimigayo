@@ -6,15 +6,18 @@ internal static class AllocationMeasurement
 {
     // Keep test-runner execution context and thread setup outside the measured interval.
     // Warm the measuring thread too; zero remains a strict assertion at every call site.
-    internal static long Measure(Action operation, int iterations = 8)
+    internal static long Measure(Action operation, int iterations = 8, int? warmupIterations = null)
     {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentOutOfRangeException.ThrowIfNegative(iterations);
+        ArgumentOutOfRangeException.ThrowIfNegative(warmupIterations ?? iterations);
         long allocated = -1;
         Exception? failure = null;
         var thread = new Thread(() =>
         {
             try
             {
-                for (var i = 0; i < iterations; i++)
+                for (var i = 0; i < (warmupIterations ?? iterations); i++)
                 {
                     operation();
                 }
