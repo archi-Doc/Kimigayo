@@ -117,7 +117,5 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 /// <param name="Note">A Note formed from the facts.</param>
 /// <param name="Advice">Conditional advice formed from the facts.</param>
 /// <param name="DerivedFrom">The check keys of the unmet prerequisites.</param>
-/// <param name="Unit">The former collection, for the transitional start-offset filter.</param>
-/// <param name="Legacy">Whether the fact comes from a recorder not yet migrated to problem identities (D2b).</param>
 internal readonly record struct DiagnosticFact(
-    DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, string? Advice, DiagnosticKey[]? DerivedFrom, int Unit, bool Legacy);
+    DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, string? Advice, DiagnosticKey[]? DerivedFrom);

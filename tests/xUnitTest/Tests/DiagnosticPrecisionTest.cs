@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -56,25 +57,31 @@ public class DiagnosticPrecisionTest
     [InlineData("func f() -> i32\n    let wrong: i32 = true\npublic func main() => ()", "FunctionFallthrough_Kd,TypeMismatch_Kd")]
     [InlineData("public func main() -> Missing\n    return ()", "UnresolvedBinding_Kd")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        c.Binding.ReportDiagnostics();
-        c.Binding.ReportStartupDiagnostics();
-        c.Ownership.ControlFlow!.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
-        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(static x => x.Code).Order(StringComparer.Ordinal);
-        Assert.Equal(codes.Split(','), errors);
-    }
+        => Assert.Equal(codes.Split(','), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
+    // DIAGNOSTICS.md §9.2: the published Errors of a mutation are exactly its expected codes. Every intended problem is
+    // reported, including independent ones, nothing depends on another, and no fallback or unexplained derived fact remains.
     [Theory]
     [MemberData(nameof(MutationNames))]
     public void MilestoneFaultsHaveSpecificDiagnosticsWithoutDependentCascades(string name)
     {
         var mutation = DiagnosticCorpus.Mutation(name);
         var c = MinimalEmissionTest.Analyze(DiagnosticCorpus.Apply(mutation));
-        var codes = c.Binding.Issues.Select(x => x.Code.ToString()).Concat(c.Ownership.Issues.Select(x => x.Code.ToString())).ToArray();
-        var detail = string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)) + "\n" + string.Join("\n", c.Ownership.Issues);
-        Assert.True(codes.Length > 0 && codes.All(mutation.Expected.Contains), detail);
+        var errors = PublishedErrors(c);
+        var detail = string.Join("\n", errors.Select(static x => x.ToString()));
+        Assert.True(errors.Length != 0, detail);
+        Assert.True(errors.All(x => mutation.Expected.Contains(x.Code)), detail);
+        Assert.True(mutation.Expected.All(code => errors.Any(x => x.Code == code)), detail);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    // Publishes every front-end phase as a check does and returns its Errors.
+    private static TestDiagnostic[] PublishedErrors(Compilation c)
+    {
+        c.Binding.ReportDiagnostics();
+        c.Binding.ReportStartupDiagnostics();
+        c.Ownership.ControlFlow!.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        return [.. TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)];
     }
 }

@@ -67,7 +67,8 @@ internal static class CheckService
         DiagnosticResult result;
         try
         {
-            result = context.Diagnostics.Finalize();
+            // SPEC 23.3.3: a rejected result that publishes no Error violates the diagnostic contract.
+            result = context.Diagnostics.Finalize(rejected: outcome != CheckOutcome.Faulted && !accepted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

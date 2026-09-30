@@ -861,10 +861,12 @@ LineContent:
                     else
                     {
                         this.nonBlockDepth--;
-                        // Close the malformed delimiter before the next source item.
-                        this.AddToken(new(GetClosingTokenKind(indentSource), this.CurrentRange, true));
+                        // Close the malformed delimiter before the next source item. A grouping that the
+                        // indentation ends unclosed is reported like one left open at the end of the source.
+                        var closingKind = GetClosingTokenKind(indentSource);
+                        this.AddToken(new(closingKind, this.CurrentRange, true));
 
-                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
                         indentationMismatch = true;
                         break;
                     }

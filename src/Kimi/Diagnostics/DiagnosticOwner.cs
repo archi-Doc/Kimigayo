@@ -20,7 +20,6 @@ public sealed class DiagnosticOwner
     private readonly Dictionary<SourceDocument, int> documentSources = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, int> pathSources = new(StringComparer.Ordinal);
     private readonly Dictionary<Kotonoha, int> modules = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<string, int> units = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Name, int Module), DiagnosticCollection> targets = [];
     private readonly FactList[] partitions = new FactList[(int)DiagnosticPartition.Emission + 1];
     private readonly int[] partitionErrors = new int[(int)DiagnosticPartition.Emission + 1];
@@ -53,7 +52,7 @@ public sealed class DiagnosticOwner
         }
     }
 
-    /// <summary>Gets the recording target of a module, named like the former diagnostic collection for the transitional start-offset filter.</summary>
+    /// <summary>Gets the recording target of a module; its name also names sources parsed from text through it.</summary>
     /// <param name="name">The unit name.</param>
     /// <param name="module">The module whose syntax the target records, or <see langword="null"/> for inputs.</param>
     /// <returns>The recording target.</returns>
@@ -62,7 +61,7 @@ public sealed class DiagnosticOwner
         var index = module is null ? -1 : this.ModuleIndex(module);
         if (!this.targets.TryGetValue((name, index), out var collection))
         {
-            collection = new(this, name, this.UnitOf(name), index);
+            collection = new(this, name, index);
             this.targets.Add((name, index), collection);
         }
 
@@ -111,7 +110,7 @@ public sealed class DiagnosticOwner
         var module = partition == DiagnosticPartition.Syntax ? this.UnattributedModule() : -1;
         var context = first is null ? null : second is null ? first.ToString() : string.Concat(first.ToString(), "\u001f", second.ToString());
         var key = new DiagnosticKey(null, source, 0, -1, new(partition, 0), 0, context);
-        this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), null, null, null, this.UnitOf(path ?? string.Empty), false), entry.Severity == DiagnosticSeverity.Error);
+        this.Record(partition, module, new(code, key, source, 0, -1, Capture(first), Capture(second), null, null, null), entry.Severity == DiagnosticSeverity.Error);
     }
 
     /// <summary>Discards a partition's facts and error state; syntax is discarded for every module.</summary>
@@ -157,14 +156,15 @@ public sealed class DiagnosticOwner
     /// </summary>
     /// <param name="first">The first partition.</param>
     /// <param name="last">The last partition.</param>
+    /// <param name="rejected">Whether the result these partitions produce is rejected; a rejection must publish an Error that explains it.</param>
     /// <returns>The records in result order and their source table.</returns>
-    /// <exception cref="DiagnosticContractException">Two distinct problems have no defined order.</exception>
-    public DiagnosticResult Finalize(DiagnosticPartition first = DiagnosticPartition.Input, DiagnosticPartition last = DiagnosticPartition.Ownership)
+    /// <exception cref="DiagnosticContractException">Two distinct problems have no defined order, or a rejection is unexplained.</exception>
+    public DiagnosticResult Finalize(DiagnosticPartition first = DiagnosticPartition.Input, DiagnosticPartition last = DiagnosticPartition.Ownership, bool rejected = false)
     {
         var facts = this.Candidates(first, last);
         if (facts.Count == 0)
         {
-            return DiagnosticResult.Empty;
+            return rejected ? throw Unexplained() : DiagnosticResult.Empty;
         }
 
         var explained = Explain(facts);
@@ -187,7 +187,7 @@ public sealed class DiagnosticOwner
         {
             var previous = facts[order[i - 1]];
             var current = facts[order[i]];
-            if (!previous.Legacy && !current.Legacy && Compare(previous, current) == 0)
+            if (Compare(previous, current) == 0)
             {
                 throw new DiagnosticContractException(DiagnosticFault.UndefinedOrder, $"{previous.Code} and {current.Code} at {current.Start} have no defined order.");
             }
@@ -201,7 +201,12 @@ public sealed class DiagnosticOwner
             records[i] = this.CreateRecord(facts[order[i]], table, remap);
         }
 
-        return new(records, table.ToArray());
+        // SPEC 23.3.3: every rejected result publishes at least one Error; the fallbacks make this hold, so a violation is a defect.
+        var result = new DiagnosticResult(records, table.ToArray());
+        return rejected && !result.HasErrors ? throw Unexplained() : result;
+
+        static DiagnosticContractException Unexplained()
+            => new(DiagnosticFault.UnexplainedRejection, "The result is rejected but publishes no Error.");
     }
 
     internal static object? Capture(object? value)
@@ -210,33 +215,30 @@ public sealed class DiagnosticOwner
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
     {
         var list = partition == DiagnosticPartition.Syntax ? this.syntax[module] : this.partitions[(int)partition];
-        if (!fact.Legacy)
+
+        // One problem, one fact: a repeated report merges its prerequisites and must agree on location and facts.
+        list.Problems ??= [];
+        if (list.Problems.TryGetValue((fact.Key, fact.Code), out var index))
         {
-            // One problem, one fact: a repeated report merges its prerequisites and must agree on location and facts.
-            list.Problems ??= [];
-            if (list.Problems.TryGetValue((fact.Key, fact.Code), out var index))
+            var existing = list.Facts[index];
+            // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
+            if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
+                !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice))
             {
-                var existing = list.Facts[index];
-                // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
-                if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
-                    !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice))
-                {
-                    throw new DiagnosticContractException(DiagnosticFault.ConflictingProblem, $"{fact.Code} was reported twice with different locations or facts: [{existing.Start}+{existing.Length}] {existing.First} {existing.Second} {existing.Note} and [{fact.Start}+{fact.Length}] {fact.First} {fact.Second} {fact.Note}.");
-                }
-
-                list.Facts[index] = existing with
-                {
-                    Note = existing.Note ?? fact.Note,
-                    Advice = existing.Advice ?? fact.Advice,
-                    DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
-                };
-
-                return;
+                throw new DiagnosticContractException(DiagnosticFault.ConflictingProblem, $"{fact.Code} was reported twice with different locations or facts: [{existing.Start}+{existing.Length}] {existing.First} {existing.Second} {existing.Note} and [{fact.Start}+{fact.Length}] {fact.First} {fact.Second} {fact.Note}.");
             }
 
-            list.Problems.Add((fact.Key, fact.Code), list.Facts.Count);
+            list.Facts[index] = existing with
+            {
+                Note = existing.Note ?? fact.Note,
+                Advice = existing.Advice ?? fact.Advice,
+                DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
+            };
+
+            return;
         }
 
+        list.Problems.Add((fact.Key, fact.Code), list.Facts.Count);
         list.Facts.Add(fact);
         if (isError)
         {
@@ -336,7 +338,7 @@ public sealed class DiagnosticOwner
         int[]? pending = null;
         for (var i = 0; i < facts.Count; i++)
         {
-            if (facts[i] is { Legacy: false, DerivedFrom: { } prerequisites })
+            if (facts[i].DerivedFrom is { } prerequisites)
             {
                 watchers ??= [];
                 pending ??= new int[facts.Count];
@@ -366,7 +368,7 @@ public sealed class DiagnosticOwner
         var queue = new Queue<DiagnosticKey>();
         foreach (var fact in facts)
         {
-            if (!fact.Legacy && fact.DerivedFrom is null && DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error && satisfied.Add(fact.Key))
+            if (fact.DerivedFrom is null && DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error && satisfied.Add(fact.Key))
             {
                 queue.Enqueue(fact.Key);
             }
@@ -410,7 +412,7 @@ public sealed class DiagnosticOwner
             order = left.Length.CompareTo(right.Length);
         }
 
-        if (order == 0 && !left.Legacy && !right.Legacy)
+        if (order == 0)
         {
             order = left.Key.CompareSubject(right.Key);
         }
@@ -420,7 +422,7 @@ public sealed class DiagnosticOwner
             order = string.CompareOrdinal(left.Code.ToString(), right.Code.ToString());
         }
 
-        return order == 0 && !left.Legacy && !right.Legacy ? left.Key.CompareCheck(right.Key) : order;
+        return order == 0 ? left.Key.CompareCheck(right.Key) : order;
     }
 
     private static int DisplayWidth(ReadOnlySpan<char> text)
@@ -478,50 +480,26 @@ public sealed class DiagnosticOwner
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
     }
 
-    // D2a's start-offset suppression per former collection, kept for recorders not yet migrated (docs/dev/DIAGNOSTICS.md §8):
-    // in recording order, a legacy fact is dropped when an earlier fact occupies its offset; migrated facts are never dropped.
+    // Every recorded problem of the partitions is a candidate; suppression is decided only by explained prerequisites.
     private List<DiagnosticFact> Candidates(DiagnosticPartition first, DiagnosticPartition last)
     {
         var candidates = new List<DiagnosticFact>();
-        HashSet<(int Unit, int Start)>? seen = null;
         for (var partition = first; partition <= last; partition++)
         {
             if (partition == DiagnosticPartition.Syntax)
             {
                 foreach (var list in this.syntax)
                 {
-                    Add(list.Facts, candidates, ref seen);
+                    candidates.AddRange(list.Facts);
                 }
             }
             else
             {
-                Add(this.partitions[(int)partition].Facts, candidates, ref seen);
+                candidates.AddRange(this.partitions[(int)partition].Facts);
             }
         }
 
         return candidates;
-
-        static void Add(List<DiagnosticFact> facts, List<DiagnosticFact> candidates, ref HashSet<(int Unit, int Start)>? seen)
-        {
-            foreach (var fact in facts)
-            {
-                if ((seen ??= []).Add((fact.Unit, fact.Length < 0 ? 0 : fact.Start)) || !fact.Legacy)
-                {
-                    candidates.Add(fact);
-                }
-            }
-        }
-    }
-
-    private int UnitOf(string name)
-    {
-        if (!this.units.TryGetValue(name, out var unit))
-        {
-            unit = this.units.Count;
-            this.units.Add(name, unit);
-        }
-
-        return unit;
     }
 
     private int AddModule()

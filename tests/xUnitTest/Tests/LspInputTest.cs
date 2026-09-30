@@ -95,6 +95,40 @@ public sealed class LspInputTest
             => new(code, DiagnosticSeverity.Error, DiagnosticCategory.Language, message, source, range is null ? null : new SourceSpan(0, 1)) { Display = range is null ? null : new(range, []) };
     }
 
+    // SPEC 23.4.7: a related location in a recorded input is sent as relatedInformation when the client declares it; its
+    // text is appended to the message otherwise, and always for a location the client cannot open.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RelatedLocationsAreSentWhenTheClientAcceptsThem(bool accepted)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-related");
+        var main = SourceIdentity.FromPath(Path.Combine(directory, "Main.kimi"));
+        var project = SourceIdentity.FromPath(Path.Combine(directory, "App.kimiproj"));
+        var range = new SourceRange(new(1, 4), new(1, 7));
+        DiagnosticSource[] sources = [new(main.Value, true), new(SourceIdentity.BuiltInPrefix + "src/Kimi/Core.kimi", false)];
+        var record = new CheckDiagnostic("PrerequisiteUnavailable_Kd", DiagnosticSeverity.Error, DiagnosticCategory.Proof, "undecided", 0, new SourceSpan(0, 1))
+        {
+            Display = new(new(new(0, 0), new(0, 1)), []),
+            Related = [new("prerequisite", 0, new SourceSpan(9, 3), range, "the Type is formed"), new("prerequisite", 1, new SourceSpan(0, 1), range, null)],
+        };
+        var output = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, [record], sources);
+
+        var diagnostic = Assert.Single(WorkspaceCheck.Place(output, [main], project, accepted)[main]);
+        var builtIn = "prerequisite: compiler://src/Kimi/Core.kimi:2:5";
+        if (accepted)
+        {
+            var sent = Assert.Single(diagnostic.RelatedInformation!);
+            Assert.Equal(new LspRelatedInformation(new(main.ToUri(), range), "prerequisite: the Type is formed"), sent);
+            Assert.Equal("undecided\n" + builtIn, diagnostic.Message);
+        }
+        else
+        {
+            Assert.Null(diagnostic.RelatedInformation);
+            Assert.Equal($"undecided\nprerequisite: {main.Value}:2:5: the Type is formed\n{builtIn}", diagnostic.Message);
+        }
+    }
+
     [Fact]
     public void ContributorsMergeByRangeContributorAndLargestCount()
     {

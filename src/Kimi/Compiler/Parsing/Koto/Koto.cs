@@ -540,15 +540,6 @@ public abstract class Koto
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? note = null)
         => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, note);
 
-    /// <summary>Reports a problem of an analysis phase that is not yet migrated to problem identities (D2b).</summary>
-    /// <param name="partition">The phase's partition.</param>
-    /// <param name="code">The code.</param>
-    /// <param name="obj">The first message argument.</param>
-    /// <param name="obj2">The second message argument.</param>
-    /// <param name="note">A Note formed from the facts.</param>
-    public void AddDiagnostic(DiagnosticPartition partition, DiagnosticCode code, object? obj = null, object? obj2 = null, string? note = null)
-        => this.DiagnosticCollection?.Add(partition, this.Span, code, obj, obj2, this.CodeContext.SourceDocument, note);
-
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
     /// <returns><see langword="true"/> when the attribute was removed.</returns>
@@ -601,13 +592,13 @@ public abstract class Koto
     /// <param name="second">The second message argument.</param>
     /// <param name="note">A Note formed from the facts.</param>
     internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, code, first, second, note, null, null, this.CodeContext.SourceDocument, false);
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, code, first, second, note, null, null, this.CodeContext.SourceDocument);
 
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
     /// <param name="requirement">The requirement left undecided.</param>
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument, false);
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument);
 
     /// <summary>Attaches an attribute chain and links its parents.</summary>
     /// <param name="attributeChain">The attribute chain, or <see langword="null"/>.</param>

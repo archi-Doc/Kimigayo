@@ -38,6 +38,7 @@ internal sealed class LspSession : IDisposable
     private bool clientInitialized;
     private bool shutdownRequested;
     private bool watchSupported;
+    private bool relatedInformationSupported;
     private long? eligibleAt;
     private long checkBase = -1;
     private int nextRequestId;
@@ -175,6 +176,7 @@ internal sealed class LspSession : IDisposable
             BaseTexts = baseTexts,
             Documents = views,
             Settings = settings,
+            RelatedInformation = this.relatedInformationSupported,
             Projects = new(this.projects),
             Units = results,
             ChangedAfterBase = () => this.store.ChangedAfterBase,
@@ -317,6 +319,7 @@ internal sealed class LspSession : IDisposable
         var parameters = Read<InitializeParams>(message);
         this.settings = LspSettings.Parse(parameters?.InitializationOptions, x => this.Log(2, x));
         this.watchSupported = parameters?.Capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration == true;
+        this.relatedInformationSupported = parameters?.Capabilities?.TextDocument?.PublishDiagnostics?.RelatedInformation == true;
         this.initialized = true;
         var result = new InitializeResult
         {

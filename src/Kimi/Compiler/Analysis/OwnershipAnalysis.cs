@@ -132,11 +132,42 @@ public sealed partial class OwnershipAnalysis
 
     public void ReportDiagnostics()
     {
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
+        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure.
+        var diagnostics = this.compilation.Diagnostics;
+        diagnostics.Invalidate(DiagnosticPartition.Ownership);
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Source.AddDiagnostic(DiagnosticPartition.Ownership, issue.Code);
+            issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code);
+        }
+
+        // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
+        // incomplete subject, a control-flow obligation still pending after complete Binding. It marks a missing report.
+        if (this.compilation.Binding.Result.IsComplete && !this.Result.IsVerified && this.flow is { } flow &&
+            !diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership) && FirstPending(flow) is { } pending)
+        {
+            pending.ReportDerived(DiagnosticRequirement.ControlFlow, [DiagnosticKey.Unresolved]);
+        }
+
+        static Koto? FirstPending(ControlFlowAnalysis flow)
+        {
+            Koto? first = null;
+            foreach (var node in flow.PendingBinding)
+            {
+                if (first is null)
+                {
+                    first = node;
+                    continue;
+                }
+
+                var path = string.CompareOrdinal(node.CodeContext.SourceDocument?.Path, first.CodeContext.SourceDocument?.Path);
+                if (path < 0 || (path == 0 && node.Span.Start < first.Span.Start))
+                {
+                    first = node;
+                }
+            }
+
+            return first;
         }
     }
 

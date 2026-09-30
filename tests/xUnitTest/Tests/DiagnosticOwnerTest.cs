@@ -42,7 +42,9 @@ public sealed class DiagnosticOwnerTest
     {
         var c = Compilation.CreateForTest();
         var document = new SourceDocument("main.kimi", "value");
-        c.Kotonoha.DiagnosticCollection.Add(DiagnosticPartition.Binding, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, sourceDocument: document);
+        var target = c.Kotonoha.DiagnosticCollection;
+        var key = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.MissingName));
+        target.Report(DiagnosticPartition.Binding, key, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, null, null, null, null, null, document);
         c.Kotonoha.DiagnosticCollection.Add(new(0, 5), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document);
         c.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", "kept");
         Assert.True(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
@@ -134,10 +136,10 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal("a note", record.Note);
 
         var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
-        var exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(1, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false); });
+        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
+        var exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(1, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null); });
         Assert.Equal(DiagnosticFault.ConflictingProblem, exception.Fault);
-        exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, null, null, false); });
+        exception = Assert.Throws<DiagnosticContractException>(() => { target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, null, null); });
         Assert.Equal(DiagnosticFault.InvalidArgument, exception.Fault);
     }
 
@@ -155,7 +157,7 @@ public sealed class DiagnosticOwnerTest
         var first = Key(8);
         var second = new DiagnosticKey(null, 0, 8, 1, DiagnosticRequirement.Emission);
         Derive(first, [second]);
-        target.Report(DiagnosticPartition.Emission, second, new(8, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [first], null, false);
+        target.Report(DiagnosticPartition.Emission, second, new(8, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [first], null);
 
         // The chain resolves to the direct error; the unresolved mark and the cycle are published.
         var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
@@ -171,7 +173,7 @@ public sealed class DiagnosticOwnerTest
         DiagnosticKey Key(int start) => new(null, 0, start, 1, DiagnosticRequirement.Startup);
 
         void Derive(DiagnosticKey key, DiagnosticKey[] prerequisites)
-            => target.Report(DiagnosticPartition.Startup, key, new(key.Start, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, null, false);
+            => target.Report(DiagnosticPartition.Startup, key, new(key.Start, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, null);
     }
 
     [Fact]
@@ -181,8 +183,8 @@ public sealed class DiagnosticOwnerTest
         var target = owner.GetOrAddCollection("main.kimi").For(new SourceDocument("main.kimi", "abc"));
         var first = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
         var second = new DiagnosticKey(new object(), 0, 0, 1, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
-        target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, false);
+        target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
+        target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
         Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
     }
 }

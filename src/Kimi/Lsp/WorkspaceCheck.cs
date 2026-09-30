@@ -49,6 +49,9 @@ internal sealed record CheckStart
 
     public required LspSettings Settings { get; init; }
 
+    /// <summary>Gets a value indicating whether the client accepts related locations as <c>relatedInformation</c> (SPEC 23.4.7).</summary>
+    public bool RelatedInformation { get; init; }
+
     public required Dictionary<SourceIdentity, LoadedProject> Projects { get; init; }
 
     public required Dictionary<UnitKey, UnitResult?> Units { get; init; }
@@ -121,8 +124,9 @@ internal sealed class WorkspaceCheck
     /// <param name="output">The check output.</param>
     /// <param name="sources">The source files the check read.</param>
     /// <param name="display">The project file or implicit source.</param>
+    /// <param name="relatedInformation">Whether the client accepts related locations as <c>relatedInformation</c>.</param>
     /// <returns>The diagnostics per report URI.</returns>
-    public static Dictionary<SourceIdentity, LspDiagnostic[]> Place(CheckOutput output, IReadOnlyList<SourceIdentity> sources, SourceIdentity display)
+    public static Dictionary<SourceIdentity, LspDiagnostic[]> Place(CheckOutput output, IReadOnlyList<SourceIdentity> sources, SourceIdentity display, bool relatedInformation = false)
     {
         var reports = new Dictionary<SourceIdentity, LspDiagnostic[]>(sources.Count);
         foreach (var source in sources)
@@ -159,7 +163,24 @@ internal sealed class WorkspaceCheck
                 lists.Add(uri, list);
             }
 
-            list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", Text(diagnostic, moved ? entry : null)));
+            // A related location in a recorded input with a range is sent as a location when the client accepts one; the text
+            // of every other related location is appended to the message.
+            List<LspRelatedInformation>? sent = null;
+            List<string>? appended = null;
+            foreach (var related in diagnostic.Related ?? [])
+            {
+                var relatedPath = related.Source < 0 ? null : output.Sources[related.Source].Path;
+                if (relatedInformation && related.Source >= 0 && identities[related.Source] is { } relatedInput && related.Range is { } relatedRange)
+                {
+                    (sent ??= []).Add(new(new(relatedInput.ToUri(), relatedRange), related.Describe(null)));
+                }
+                else
+                {
+                    (appended ??= []).Add(related.Describe(relatedPath));
+                }
+            }
+
+            list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", Text(diagnostic, moved ? entry : null, appended), sent?.ToArray()));
         }
 
         foreach (var (uri, list) in lists)
@@ -295,10 +316,11 @@ internal sealed class WorkspaceCheck
         this.start.Post(new CheckDone(failure));
     }
 
-    // SPEC 23.4.7: the message, then the label, Note, Advice and, for a moved record, its original location, on separate lines.
-    private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved)
+    // SPEC 23.4.7: the message, then the label, the text of unsent related locations, Note, Advice and, for a moved record, its
+    // original location, on separate lines.
+    private static string Text(CheckDiagnostic diagnostic, DiagnosticSource? moved, List<string>? related)
     {
-        if (diagnostic.Label is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
+        if (diagnostic.Label is null && related is null && diagnostic.Note is null && diagnostic.Advice is null && moved is null)
         {
             return diagnostic.Message;
         }
@@ -307,6 +329,11 @@ internal sealed class WorkspaceCheck
         if (diagnostic.Label is { } label)
         {
             builder.Append('\n').Append(label);
+        }
+
+        foreach (var item in related ?? [])
+        {
+            builder.Append('\n').Append(item);
         }
 
         if (diagnostic.Note is { } note)
@@ -835,7 +862,7 @@ internal sealed class WorkspaceCheck
         {
             Key = plan.Key,
             Output = output,
-            Reports = Place(output, source.Sources, plan.Display),
+            Reports = Place(output, source.Sources, plan.Display, this.start.RelatedInformation),
             Inputs = source.GetRecorded(plan.Project?.Inputs),
         };
         this.start.Post(new UnitDone(result));

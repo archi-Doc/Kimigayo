@@ -179,6 +179,26 @@ public class SourceDocumentAndDiagnosticTest
             console.Output);
     }
 
+    // SPEC 23.4.7: related locations follow the excerpt, then the Note and the Advice.
+    [Fact]
+    public void RendersRelatedLocationsThenNoteAndAdvice()
+    {
+        var console = new TestConsoleService();
+        var kimigayo = new Kimigayo(console);
+        var record = new CheckDiagnostic("PrerequisiteUnavailable_Kd", DiagnosticSeverity.Error, DiagnosticCategory.Proof, "undecided", 0, null)
+        {
+            Note = "a note",
+            Advice = "an advice",
+            Related = [new("prerequisite", 0, new SourceSpan(4, 1), new SourceRange(new(1, 4), new(1, 5)), "the Type is formed"), new("prerequisite", -1, null, null, "the program has a valid startup")],
+        };
+
+        kimigayo.Render(new DiagnosticResult([record], [new("test.kimi", true)]), string.Empty);
+
+        Assert.Equal(
+            "undecided : PrerequisiteUnavailable_Kd\n --> test.kimi\n = prerequisite: test.kimi:2:5: the Type is formed\n = prerequisite: the program has a valid startup\n\nNote: a note\nAdvice: an advice\n\n",
+            console.Output);
+    }
+
     [Fact]
     public void ASilentServiceRendersNothing()
     {

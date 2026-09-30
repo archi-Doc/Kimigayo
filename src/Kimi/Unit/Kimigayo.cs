@@ -38,7 +38,7 @@ public class Kimigayo
 
         foreach (var diagnostic in result.Diagnostics)
         {
-            this.Render(diagnostic, diagnostic.Source < 0 ? null : result.Sources[diagnostic.Source], baseDirectory);
+            this.Render(diagnostic, result.Sources, baseDirectory);
         }
     }
 
@@ -72,9 +72,11 @@ public class Kimigayo
         return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathFullyQualified(relative) ? path : relative;
     }
 
-    // Message and code, the primary location, the underlined excerpt with its label, then Advice and Note.
-    private void Render(CheckDiagnostic diagnostic, DiagnosticSource? source, string baseDirectory)
+    // SPEC 23.4.7: message and code, the primary location, the underlined excerpt with its label, related locations, then
+    // Note and Advice.
+    private void Render(CheckDiagnostic diagnostic, DiagnosticSource[] sources, string baseDirectory)
     {
+        var source = diagnostic.Source < 0 ? null : sources[diagnostic.Source];
         this.consoleService.Write(diagnostic.Message);
         this.consoleService.Write(" : ");
         this.WriteLine(diagnostic.Severity, diagnostic.Code);
@@ -102,17 +104,25 @@ public class Kimigayo
             this.consoleService.WriteLine($"{margin}|");
         }
 
+        if (diagnostic.Related is { Length: > 0 } related)
+        {
+            foreach (var item in related)
+            {
+                this.consoleService.WriteLine($" = {item.Describe(item.Source < 0 ? null : DisplayPath(sources[item.Source].Path, baseDirectory))}");
+            }
+        }
+
         if (diagnostic.Advice is not null || diagnostic.Note is not null)
         {
             this.consoleService.WriteLine();
-            if (diagnostic.Advice is not null)
-            {
-                this.consoleService.WriteLine($"Advice: {diagnostic.Advice}");
-            }
-
             if (diagnostic.Note is not null)
             {
                 this.consoleService.WriteLine($"Note: {diagnostic.Note}");
+            }
+
+            if (diagnostic.Advice is not null)
+            {
+                this.consoleService.WriteLine($"Advice: {diagnostic.Advice}");
             }
         }
 

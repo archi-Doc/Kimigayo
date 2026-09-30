@@ -6,18 +6,16 @@ namespace Kimi.Diagnostics;
 
 /// <summary>
 /// A recording target of a <see cref="DiagnosticOwner"/>, bound to one module and optionally one document. Lexical and
-/// syntax reports are problems whose subject is their span; an analysis reports keyed problems. The name is the former
-/// collection name, which only the transitional start-offset filter uses (docs/dev/DIAGNOSTICS.md §8).
+/// syntax reports are problems whose subject is their span; an analysis reports keyed problems.
 /// </summary>
 public sealed class DiagnosticCollection
 {
     private readonly int module;
 
-    internal DiagnosticCollection(DiagnosticOwner owner, string name, int unit, int module, SourceDocument? document = null)
+    internal DiagnosticCollection(DiagnosticOwner owner, string name, int module, SourceDocument? document = null)
     {
         this.Owner = owner;
         this.Name = name;
-        this.Unit = unit;
         this.module = module;
         this.Document = document;
     }
@@ -34,8 +32,6 @@ public sealed class DiagnosticCollection
     /// <summary>Gets the key of the last lexical or syntax Error reported through this target; parser recovery names it as the cause of what it synthesizes.</summary>
     internal DiagnosticKey? LastError { get; private set; }
 
-    internal int Unit { get; }
-
     /// <summary>Gets a target bound to one document, registering the document in the source table in consumption order.</summary>
     /// <param name="document">The document.</param>
     /// <returns>The bound target.</returns>
@@ -48,7 +44,7 @@ public sealed class DiagnosticCollection
 
         var module = this.CurrentModule();
         this.Owner.DocumentSource(document, module);
-        return new(this.Owner, this.Name, this.Unit, module, document);
+        return new(this.Owner, this.Name, module, document);
     }
 
     /// <summary>Registers a document in the source table in consumption order, without creating a target.</summary>
@@ -74,28 +70,13 @@ public sealed class DiagnosticCollection
         // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
         var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
         var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
-        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, false);
+        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument);
         if (isError)
         {
             this.LastError = key;
         }
 
         return isError;
-    }
-
-    /// <summary>Reports a problem of an analysis phase that is not yet migrated to problem identities (D2b).</summary>
-    /// <param name="partition">The phase's partition.</param>
-    /// <param name="range">The span; it must be the default value when no source applies.</param>
-    /// <param name="code">The code.</param>
-    /// <param name="obj">The first message argument.</param>
-    /// <param name="obj2">The second message argument.</param>
-    /// <param name="sourceDocument">The source the span belongs to; the target's document by default.</param>
-    /// <param name="note">A Note formed from the facts.</param>
-    /// <returns><see langword="true"/> when the report is an Error.</returns>
-    public bool Add(DiagnosticPartition partition, SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null)
-    {
-        sourceDocument ??= this.Document;
-        return this.Report(partition, default, range, code, obj, obj2, note, null, null, sourceDocument, true);
     }
 
     // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
@@ -149,7 +130,7 @@ public sealed class DiagnosticCollection
         return new(node, this.SourceOf(document), span.Start, document is null ? -1 : span.Length, requirement, condition);
     }
 
-    /// <summary>Reports one problem of a migrated recorder.</summary>
+    /// <summary>Reports one problem.</summary>
     /// <param name="partition">The partition of the requirement's phase.</param>
     /// <param name="key">The check key.</param>
     /// <param name="range">The primary span.</param>
@@ -160,9 +141,8 @@ public sealed class DiagnosticCollection
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="derivedFrom">The unmet prerequisites.</param>
     /// <param name="document">The source the span belongs to; the target's document by default.</param>
-    /// <param name="legacy">Whether the transitional start-offset filter still applies.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, bool legacy)
+    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document)
     {
         document ??= this.Document;
         var entry = Validate(range, code, first, second, document, derivedFrom);
@@ -170,7 +150,7 @@ public sealed class DiagnosticCollection
         var source = this.SourceOf(document);
         var isError = entry.Severity == DiagnosticSeverity.Error;
         var length = document is null ? -1 : range.Length;
-        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom, this.Unit, legacy), isError);
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, derivedFrom), isError);
         return isError;
     }
 

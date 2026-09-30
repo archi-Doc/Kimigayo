@@ -397,15 +397,17 @@ public partial class Project
             context.Compilation = compilation;
         }
 
-        bool accepted;
+        var accepted = false;
+        var completed = false;
         try
         {
             accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
+            completed = true;
         }
         finally
         {
             // The one finalization point of the front-end result (SPEC 23.3.6.8).
-            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context);
+            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted);
         }
 
         return accepted && emit ? this.Emit(compilation, paths, context) : accepted;
@@ -570,11 +572,22 @@ public partial class Project
         => diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, this.FilePath, message);
 
     // SPEC 23.3.6.8: a command renders each result once it is finalized; a check request's caller finalizes its own.
-    private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context)
+    private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false)
     {
         if (context is null && this.kimigayo.RendersDiagnostics)
         {
-            this.kimigayo.Render(diagnostics.Finalize(first, last), this.Directory);
+            DiagnosticResult result;
+            try
+            {
+                result = diagnostics.Finalize(first, last, rejected);
+            }
+            catch (DiagnosticContractException ex)
+            {
+                // SPEC 23.3.3: a violated contract discards every partial record and reports the fault.
+                result = DiagnosticFaults.Create(ex.Fault, ex.Message, this.FilePath);
+            }
+
+            this.kimigayo.Render(result, this.Directory);
         }
     }
 }

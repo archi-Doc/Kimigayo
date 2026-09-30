@@ -71,7 +71,23 @@ public sealed record DiagnosticDisplay(SourceRange? Range, DiagnosticExcerptLine
 /// <param name="Span">The span, or <see langword="null"/> for the whole input.</param>
 /// <param name="Range">The span as lines and UTF-16 characters, for display; <see langword="null"/> without a span.</param>
 /// <param name="Label">A short description of the location.</param>
-public sealed record DiagnosticRelated(string Role, int Source, SourceSpan? Span, SourceRange? Range, string? Label);
+public sealed record DiagnosticRelated(string Role, int Source, SourceSpan? Span, SourceRange? Range, string? Label)
+{
+    /// <summary>Gets the alternative text of the location (SPEC 23.4.7): its role, where it is and its label.</summary>
+    /// <param name="path">The displayed path of its source, or <see langword="null"/> without a source.</param>
+    /// <returns>The text, such as <c>prerequisite: main.kimi:3:5: the program has a valid startup</c>.</returns>
+    public string Describe(string? path)
+    {
+        var location = path is null ? null : this.Range is { } range ? $"{path}:{range.Start.Line + 1}:{range.Start.Character + 1}" : path;
+        return (location, this.Label) switch
+        {
+            (null, null) => this.Role,
+            (null, { } label) => $"{this.Role}: {label}",
+            ({ } at, null) => $"{this.Role}: {at}",
+            ({ } at, { } label) => $"{this.Role}: {at}: {label}",
+        };
+    }
+}
 
 /// <summary>One published problem with its explanation (SPEC 23.3.6.2). No compiler object escapes into it.</summary>
 /// <param name="Code">The code name.</param>
