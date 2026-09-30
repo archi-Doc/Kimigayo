@@ -197,6 +197,9 @@ public class StringComparisonEmissionTest
             Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         }
 
+        // As in AllocationMeasurement, retire the unused allocation-context tail before measuring.
+        // Keep the original 100 warm-ups and 128 measured analyses/writes; zero remains the required result.
+        GC.Collect();
         var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
         for (var i = 0; i < 128; i++)
