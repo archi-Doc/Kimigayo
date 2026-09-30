@@ -222,7 +222,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 | Unit | `()`. |
 | `string`, `Utf8Slice` | Their bytes, including NUL. |
 | Floating point | The rules below, independent of locale. |
-| `FromEnd<T>` | `^` followed by the offset as an integer, as written: `^1`. |
+| `FromEnd<T>` | `^` followed by the offset's integer representation: `^1`, and `^-1` for `^(-1)`. |
 | `Start`, `End` | The empty string: the boundary that range syntax omits. |
 | `Range<S, E>`, `ClosedRange<S, E>` | The start, then `..` or `..=`, then the end, each boundary in its own representation: `1..^1`, `..=3`, `2..`. |
 | `ResolvedRange` | That of the `Range<isize, isize>` with the same boundaries: `1..4`. |

@@ -156,7 +156,7 @@ Fixed arrays and Array expose the [length metadata](#461-access-and-length-metad
 
 A fixed array is Copy exactly when its complete element Type is Copy (§3.5.1). Owned is derived, and element Origins and Loans are retained, recursively. Partial Move follows [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move). [Aggregate cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup) destroys the remaining initialized elements in decreasing index order, including abandoned construction on an ordinary control transfer; Uninitialized and Moved parts are skipped, and partly built elements are cleaned recursively. Abort does not guarantee cleanup.
 
-Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), including after removal, replacement and clear (§4.7.5). A shared view of either owning array form requires explicit slicing.
+Array is Non-Copy and accepts any valid complete element Type with a representable element layout; neither Owned nor Copy is required. Its Type preserves `T`'s Origin dependencies and Loan requirements, and its values keep the acquired elements' Loans under [ordinary storage](15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision), including after removal, replacement and clear (§4.7.5). A shared view of either owning array form is formed only explicitly, by range indexing or the read operations of §4.6.6; no implicit conversion to Slice exists.
 
 The element position preserves Origin variance, and nested variance composes normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. No covariance between different element Cores is added. The Kimi dynamic mutation operations (§4.7) require exclusive access to the whole Array, whether or not they reallocate.
 
@@ -284,6 +284,8 @@ let e = ^(-1)          // Valid FromEnd<i32>; values[e] Aborts if executed.
 
 A **range** is an interval of positions. Range syntax constructs `Range<S, E>` and `ClosedRange<S, E>`, and resolution against a length produces a `ResolvedRange`. The Types satisfying the closed Contract `Kimi.PositionRange` are exactly these three (§4.6.4).
 
+A range value means the same whether it is stored, passed, iterated or used as an index; `for` and indexing add no special cases. No range Type retains a storage Origin or Loan, implements Comparable or arithmetic, or converts implicitly to another range Type.
+
 #### 4.6.3.1. Syntax and Types
 
 | Syntax | Type | Interval |
@@ -368,7 +370,7 @@ public struct Range<S, E>     // ClosedRange<S, E> has the same form.
 | `ResolvedRange` | None | `RangeIterator<isize>` | Those of the `Range<isize, isize>` with the same boundaries |
 
 - **Conformance.** Each range conforms to `Iterable`, `UniqIterable` and `IntoIterable` under its condition by conditional conformance (§8.4.8); `E is S` is a Type-identity requirement (§8.3). A range with an omitted boundary or a `FromEnd<T>` boundary, or with two different integer Types, does not satisfy the condition and is not iterable.
-- **Rejection diagnostics.** The explanation names the entry selected by the Subject mode and the boundary Types that prevent iteration. For `FromEnd`, `Start` or `End` boundaries, Advice suggests resolving against a sequence length, such as `r.resolve(values.length)`. For different integer boundary Types, it suggests explicit conversion to the same integer Type. These suggestions do not silently resolve a range or change its Type.
+- **Rejection diagnostics.** The explanation names the entry selected by the Subject mode and the boundary Types that prevent iteration. For `FromEnd`, `Start` or `End` boundaries, Advice suggests resolving against a sequence length, such as `r.resolve(values.length)`. For different integer boundary Types, it suggests explicit conversion to the same integer Type. These suggestions do not silently resolve a range or change its Type, and an automatic repair is offered only when the changed body is verified (§23.5).
 - **Entries.** An entry copies the boundaries and keeps no Storage, Origin or Loan of the source. The borrowing entries' `IteratorType(source)` is the same Type for every `source`. An entry initiates Abort when `start > end`; a reversed range is neither empty nor descending.
 - **Values.** Values are produced from `start` upward in unit steps. `ClosedRangeIterator<T>` produces `end` last and never computes past it, including at the maximum of `T`. Reassigning a `for var` binding does not change the sequence. Acquisition, borrowing and cleanup follow §14.6.2.
 - **Iterators.** `RangeIterator<T>` and `ClosedRangeIterator<T>` are Owned, Non-Copy Iterators whose `Item` is `T`; `next(self: uniq/Self)` returns `Option<T>`. They stay exhausted after `None` and satisfy the [Iterator effect bound](22-core-execution-and-foreign-functions.md#22124-iterator-independence). They have no public constructor and no entry conformance; enumerate an iterator value through `Kimi.Iteration.owning` or `borrowing` (§22.1.2.3). Their representation is unspecified.

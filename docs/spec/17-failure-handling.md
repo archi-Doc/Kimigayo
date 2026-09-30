@@ -317,7 +317,7 @@ A warning is issued for a position or range built only from literal-only express
 - for every length `L`, as for an element position `-1` or `^0`, a closed end `^0` (`..=^0`), or the reversed ranges `2..=1` and `^3..^5`;
 - or, when it indexes a fixed array or is passed to a fixed-array operation, for that array's length `N`, as for `fixed[5..2]`, or `fixed[3]` when `N = 3`.
 
-The judgment evaluates linear inequalities over the literal values and `L` exactly, so every implementation reports the same occurrences independently of optimization. A literal position or range that resolves for some length is not reported, and neither is a value whose Type or boundaries come from other expressions. The warning changes neither Type fitting, execution nor overload choice: the operation still Aborts only when executed (§17.3.4). The diagnostic should state the failing condition and, for a fixed array, its length.
+The judgment evaluates linear inequalities over the literal values and `L` exactly, so every implementation reports the same occurrences independently of optimization. A literal position or range that resolves for some length is not reported, and neither is a value whose Type or boundaries come from other expressions. The warning changes neither Type fitting, execution nor overload choice: an aborting operation still Aborts only when executed (§17.3.4), and a try-prefixed operation returns `None`. The diagnostic should state the failing condition and, for a fixed array, its length.
 
 ```kimi
 let fixed: [3 of i32] = [1, 2, 3]

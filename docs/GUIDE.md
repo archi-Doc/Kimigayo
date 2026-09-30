@@ -65,14 +65,14 @@ A **Place** is storage, such as a local or an element. `T` (= `owner/T`) owns a 
 
 - Bare acquisition of a Place copies only a proven Copy Type; it **never moves**. `@move` transfers and
   invalidates the source even for Copy Types. Temporaries transfer as values without spelling `@move`.
-- Scalars, Unit, shared references, raw pointers and Slice handles are Copy. Tuples/fixed arrays are Copy
+- Scalars, Unit, positions and ranges, shared references, raw pointers and Slice handles are Copy. Tuples/fixed arrays are Copy
   when all parts are. User structs/enums opt in with `Self is Copy`; all storage must qualify and no user
   `drop` is allowed. `string`, `Array`, `Dictionary`, exclusive references and owning object handles are Non-Copy.
 - `x@ref` / `x@uniq` borrow the **written slot**. `r@follow` selects one safe reference's referent.
   Thus `r@ref` adds a layer; `r@follow@ref` borrows its target; `r@follow += 1` updates its target.
   `r@move` transfers the reference, never the referent. `r@follow@copy` copies a proven-Copy referent.
 - A fixed reference expectation copies/reborrows existing references as needed; passing `r: uniq/T` to
-  `uniq/T` or `ref/T` needs no `@uniq`. Safe reference chains can supply one shared reference or a Scalar read.
+  `uniq/T` or `ref/T` needs no `@uniq`. Safe reference chains can supply one shared reference or a value read.
   With no expectation, `let x = sharedRef` copies the reference, not its target.
 - New exclusive borrows are explicit except for method/accessor/callable receivers: `values.append(item)`
   acquires its mutable receiver implicitly. `let`-owned storage cannot be lent exclusively; a `uniq/T` held
@@ -203,10 +203,12 @@ struct View<T> {source}
 - `[1, 2]` normally creates `Array<i32>`; `let a: [2 of i32] = [1, 2]` creates inline fixed storage.
   `[N of value]` always creates a fixed array, evaluates value once, and requires Copy elements.
   Empty collections need element Types. No implicit fixed-array/Array/Slice conversions.
-- Element indices are `isize` or `Index`; convert an established `i32` explicitly. `^1` is last; `^0` is the
-  end boundary, invalid as an element. Invalid indexing Aborts; `tryGet` returns optional references.
-- `a..b` excludes b; `a..=b` includes b. Open ends or an `Index` produce `IndexRange`; two integers produce
-  `Range<T>`. Iterate `0..n` or `values.indices`; IndexRange is not iterable. Reversed iteration ranges Abort.
+- Positions are integers of any Type, `^x` (`FromEnd<T>`, counted from the end) and omitted `Start`/`End`.
+  `^1` is last; `^0` is the end boundary, invalid as an element. Invalid indexing Aborts; `tryGet` returns
+  an optional reference and `trySlice` an optional Slice. Constructing `^x` or a range checks nothing.
+- `a..b` (`Range<S, E>`) excludes b; `a..=b` (`ClosedRange<S, E>`) includes b; omitted ends are `Start`/`End`.
+  Only ranges whose two boundaries share one integer Type iterate: `0..n`, `values.indices` or
+  `r.resolve(values.length)`. Reversed iteration ranges Abort.
 - `values[range]` / `values[..]` returns a shared `Slice<T>` retaining the backing Loan. A `var` Slice or
   `uniq/Slice<T>` does not make elements mutable. Even an empty array-derived Slice can block source mutation.
 - Array/fixed-array iteration yields `ref/T`, `uniq/T`, or `T` for shared, exclusive, or consuming access.

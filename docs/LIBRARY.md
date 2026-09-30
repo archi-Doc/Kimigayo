@@ -145,7 +145,7 @@ The closed Contracts `Position` and `PositionRange` fix the position and range T
 | `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types, `FromEnd<T>`, `Start` and `End` conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
 | `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform. |
 
-The position and range Types are Copy, Owned and Equatable and have no public constructor; none provides Comparable or arithmetic. Every one other than the integers also publishes `resolve(self: Self, length: isize)`, which Aborts where `tryResolve` returns None.
+The position and range Types are Copy, Owned and Equatable. The non-integer position Types and the range Types have no public constructor and provide neither Comparable nor arithmetic; integer positions keep their integer operations. Every one other than the integers also publishes `resolve(self: Self, length: isize)`, which Aborts where `tryResolve` returns None.
 
 | Type | Member | Guarantee |
 | --- | --- | --- |
@@ -154,7 +154,7 @@ The position and range Types are Copy, Owned and Equatable and have no public co
 | `Range<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The half-open interval of `..`; resolves to `[s, e)` when the resolved `s <= e`. Possibly reversed; no `length` or `isEmpty`. Formatted as `start..end`. |
 | `ClosedRange<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The closed interval of `..=`; its end resolves as an element position `q`, giving `[s, q + 1)` when `s <= q < length`. Formatted as `start..=end`. |
 | | `iterate`, `iterateUniq`, `intoIterator` | Conditional entries of both range Types, under `S is PrimitiveInteger` and `E is S`: return `RangeIterator<S>` or `ClosedRangeIterator<S>`, which copy the boundaries; a reversed range Aborts at the entry. |
-| `RangeIterator<T>`, `ClosedRangeIterator<T>` | `next(self: uniq/Self) -> Option<T>` | Non-Copy Iterators from `start` upward in unit steps, the closed one ending with `end`; they never compute past their last value and stay exhausted after None. No public constructor. |
+| `RangeIterator<T>`, `ClosedRangeIterator<T>` | `next(self: uniq/Self) -> Option<T>` | Non-Copy Iterators from `start` upward in unit steps, the closed one ending with `end` without computing past it, even at the maximum of `T`; both stay exhausted after None. No public constructor. |
 | `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. Only `indices`, `resolve` and `tryResolve` produce it. |
 | | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`, `resolve(self: Self, length: isize) -> ResolvedRange` | Its `PositionRange` conformance: the interval itself when `end <= length`; otherwise None, or Abort for `resolve`. |
 | | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes `start..end`. |

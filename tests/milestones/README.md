@@ -203,7 +203,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
 | 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
 | 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
-| 27 | General Slice/Index/Range and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
+| 27 | General Slice, positions and ranges, and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
 | 28 | General Iterator/Iterable | User Iterable protocols, owned/borrowed elements, early exit and remaining-element cleanup |
 | 29 | Dynamic Array | Capacity, insertion/removal/replacement, Non-Copy elements and owning iteration |
 | 30 | Comparison Contracts | Equatable/Comparable, generic requirement calls and composed comparisons before Dictionary |
@@ -564,7 +564,7 @@ supported. The script does not build or run NativeAOT.
 
 Traverse a fully initialized 3-by-4 fixed array using its `indices` snapshots.
 These are iterable ResolvedRange values with isize indices; iterating `0..3`
-instead yields `Range<i32>` values, which are not element positions. Double each visited cell, skip the
+instead yields the `i32` values of a `Range<i32, i32>`, which are also valid element positions. Double each visited cell, skip the
 row beginning with 0, and stop both loops before changing the cell holding 7.
 The accumulated total is `2 + 4 + 6 + 8 + 10 + 12 = 42`.
 
@@ -1467,13 +1467,13 @@ Focus: [captures and invocation](../../docs/spec/07-functions-and-callable-value
 [closure dependencies](../../docs/spec/15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results),
 and [environment/erasure layout](../../docs/impl/21-layout-runtime-and-code-generation.md#2125-concrete-closures-and-common-function-values).
 
-## Milestone 27: general Slice, Index and Range
+## Milestone 27: general Slice, positions and ranges
 
-The two IndexRange boundaries evaluate once in source order. Resolving against a row
+The two boundaries of the saved `Range<isize, FromEnd<i32>>` evaluate once in source order. Resolving against a row
 length produces `[1, 3)`; slicing nested rows preserves the element Type and
 backing storage. `middle` survives the local handles used to form it, is split
 without copying elements, and supports a from-end empty view and a generic tail.
-`^0` is a boundary but not an element, and applying the saved IndexRange to a shorter
+`^0` is a boundary but not an element, and applying the saved range to a shorter
 length fails through `tryResolve`. Shared string access preserves its Non-Copy
 owner. A `Slice<ref/i32>` read copies the inner reference with its original
 dependency, distinct from the Slice's backing-slot dependency.
@@ -1501,7 +1501,7 @@ Pair second.
 Pair replaced.
 ```
 
-Separate checks: full/empty/inclusive ranges, `Index.init`, zero-sized elements,
+Separate checks: full/empty/closed ranges, `FromEnd` construction, zero-sized elements,
 `tryGet`/`trySlice`/`trySplitAt` success and failure, saved bounds reapplied to
 different targets, receiver/boundary evaluation and negative-bound Abort order.
 Reject escaping local or temporary backing, mutation conflicting with a retained

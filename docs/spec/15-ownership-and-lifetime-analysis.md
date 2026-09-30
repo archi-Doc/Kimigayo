@@ -50,7 +50,7 @@ Tuple and array construction places elements in increasing index order. Each ele
 
 A **Move Path** is a statically trackable path with its own initialization state and destruction responsibility. Move Paths are formed by Fields reached through statically known base-subobject paths, Tuple elements, fixed-array elements at constant indices (below), and combinations of these. Runtime indices, dynamic containers and user indexers never form Move Paths, even with literal indices, and neither constant propagation by an optimizer nor integer proofs add any.
 
-**Constant fixed-array indices.** A ConstantIndexExpression is one nonnegative integer literal token, optionally enclosed in any number of grouping parentheses. Every integer base and digit separator of §2.6 is accepted; the value is decoded by the lexical integer rules and must fit `isize`. Recognition involves no arithmetic, conversion, name lookup, general constant evaluation or target-dependent evaluation.
+**Constant fixed-array indices.** A ConstantIndexExpression is one nonnegative integer literal token, optionally enclosed in any number of grouping parentheses. Every integer base and digit separator of §2.6 is accepted; the value is decoded by the lexical integer rules and, as a literal-only key, must fit its `i32` Type ([§4.6.3.1](04-arrays-indexing-and-slices.md#4631-syntax-and-types)). Recognition involves no arithmetic, conversion, name lookup, general constant evaluation or target-dependent evaluation.
 
 ~~~ebnf
 ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
@@ -60,11 +60,11 @@ For a resolved fixed-array Type `[N of T]`, such an index forms an element Move 
 
 | Index expression | Static fixed-array Move Path |
 | --- | --- |
-| `0`, `(0)`, `((0))`, `0x1` | Yes, when it fits `isize` and is in bounds |
+| `0`, `(0)`, `((0))`, `0x1` | Yes, when it is in bounds |
 | `1 + 1`, `-1`, `+1`, `3@isize` | No; operators and conversions are outside this grammar |
 | `if condition => 1 else => 2`, an immutable Name, `^1` | No; selection, name propagation and from-end resolution are not literal recognition |
 
-An out-of-range literal forms no element path, but that alone does not make an otherwise valid index operation a compile-time error: its bounds check follows §4.6 and §17.3.4 and Aborts if executed. An operation that requires a Move Path is rejected when none exists, whether or not its bounds check could fail. A literal that does not fit `isize` is an ordinary compile-time error. Thus `array[1 + 1]` is usable for ordinary permitted reads but never gains Partial Move eligibility or a disjointness proof.
+An out-of-range literal forms no element path, but that alone does not make an otherwise valid index operation a compile-time error: its bounds check follows §4.6 and §17.3.4 and Aborts if executed. An operation that requires a Move Path is rejected when none exists, whether or not its bounds check could fail. A literal that does not fit `i32` is an ordinary compile-time error; a typed index such as `3_000_000_000@isize` is valid but never forms a Move Path. Thus `array[1 + 1]` is usable for ordinary permitted reads but never gains Partial Move eligibility or a disjointness proof.
 
 Within an owned match Subject, selected Case payload positions also form Move Paths ([match acquisition](#1516-match-acquisition-and-lifetime)); they grant neither general payload access nor a Partial Move from the caller's enum.
 
