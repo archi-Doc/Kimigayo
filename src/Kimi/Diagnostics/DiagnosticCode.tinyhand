@@ -358,6 +358,13 @@
     Label="named section has no ordinary parameter"
     Advice="Remove the '!' boundary or add an ordinary parameter after it; a receiver does not count"
 
+  + Name="DuplicateExternalParameterName_Kd"
+    Category="Language"
+    Arguments="name:Text"
+    Message="The external parameter name '{0}' is already used in this parameter list"
+    Label="external name is repeated"
+    Advice="Rename one external name to make all names in this parameter list distinct; use 'external => internal: T' if its local binding should stay unchanged"
+
   + Name="IdentifierExpected_Kd"
     Category="Language"
     Message="Identifier expected"

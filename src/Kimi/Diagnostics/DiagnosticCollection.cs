@@ -62,22 +62,7 @@ public sealed class DiagnosticCollection
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
     public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null)
-    {
-        sourceDocument ??= this.Document;
-        var source = this.SourceOf(sourceDocument);
-        var length = sourceDocument is null ? -1 : range.Length;
-
-        // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
-        var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
-        var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
-        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument);
-        if (isError)
-        {
-            this.LastError = key;
-        }
-
-        return isError;
-    }
+        => this.AddSyntax(range, code, obj, obj2, sourceDocument, note, advice);
 
     // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
     internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document, DiagnosticKey[]? derivedFrom)
@@ -125,6 +110,34 @@ public sealed class DiagnosticCollection
         }
 
         return entry;
+    }
+
+    /// <summary>Records a syntax problem with optional related evidence, preserving the parser's recovery cause.</summary>
+    /// <param name="range">The primary span.</param>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The first message argument.</param>
+    /// <param name="obj2">The second message argument.</param>
+    /// <param name="sourceDocument">The source; the target's document by default.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    /// <param name="advice">Conditional advice formed from the facts.</param>
+    /// <param name="related">Locations obtained through <see cref="Relate"/>.</param>
+    /// <returns>Whether the report is an Error.</returns>
+    internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null, DiagnosticRelatedFact[]? related = null)
+    {
+        sourceDocument ??= this.Document;
+        var source = this.SourceOf(sourceDocument);
+        var length = sourceDocument is null ? -1 : range.Length;
+
+        // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
+        var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
+        var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
+        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, related: related);
+        if (isError)
+        {
+            this.LastError = key;
+        }
+
+        return isError;
     }
 
     /// <summary>Records a syntax check whose decision depends on an earlier lexical or syntax failure.</summary>

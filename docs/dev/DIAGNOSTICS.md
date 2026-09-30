@@ -181,7 +181,7 @@ AGENTS.md lists the required steps. This section gives their detail.
 
 ## 11. Audit findings (D1)
 
-Origin suffix annotation sites now use factual catalog messages and conditional Advice, with focused recovery and output checks (`OriginSyntaxDiagnosticTest`; DIAGNOSTICS_REVIEW.md). The parser finding below remains open for the other reporting sites; its counts describe the original D1 audit.
+Origin suffix annotation sites now use factual catalog messages and conditional Advice, with focused recovery and output checks (`OriginSyntaxDiagnosticTest`; DIAGNOSTICS_REVIEW.md). External parameter-name collisions now identify each later name and relate the first written name across both argument sections and the receiver (`ParameterSyntaxDiagnosticTest`). The syntax recorder shares its identity/recovery path when attaching related evidence. Unit `20260930-165003-655-unit-parameter-duplicate-evidence`: warning-free Release build, 235 tests and unchanged diagnostic snapshot; CLI/LSP, Unicode, long names and independent errors are covered. The parser finding below remains open for the other reporting sites; its counts describe the original D1 audit.
 
 The [2026-09-30 conformance review](DIAGNOSTICS_REVIEW.md) maps these rules to the formal specification, records the repaired shared-path violations and keeps the remaining recorder gaps explicit. The historical migration checkpoints below do not certify all individual reporting sites.
 

@@ -95,6 +95,7 @@ public enum DiagnosticCode
     DuplicateArgumentBoundary_Kd,
     ArgumentBoundaryContext_Kd,
     ParameterNameMarker_Kd,
+    DuplicateExternalParameterName_Kd,
     EmptyNamedParameterSection_Kd,
     UnexpectedTrailingToken_Kd,
     UnmatchedAngleBracket_Kd,

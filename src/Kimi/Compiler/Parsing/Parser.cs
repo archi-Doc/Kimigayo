@@ -313,7 +313,11 @@ public static partial class Parser
                 {
                     if (previous.ExternalName == externalName)
                     {
-                        reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "duplicate external parameter name");
+                        reader.Diagnostic.AddSyntax(
+                            externalNameToken.Span,
+                            DiagnosticCode.DuplicateExternalParameterName_Kd,
+                            externalName,
+                            related: [reader.Diagnostic.Relate("declaration", previous.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name")]);
                         break;
                     }
                 }
@@ -355,7 +359,7 @@ public static partial class Parser
                 internalName,
                 parameterType,
                 defaultValue,
-                parameterAttribute));
+                parameterAttribute) { ExternalNameSpan = externalNameToken.Span });
 
 NextParameter:
             reader.SkipSeparators();
