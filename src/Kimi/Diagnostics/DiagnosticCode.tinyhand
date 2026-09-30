@@ -153,6 +153,31 @@
     Label="This comparison requires explicit grouping"
     Advice="Use parentheses for a nested comparison, or combine separate comparisons with and"
 
+  + Name="LabelTargetExpected_Kd"
+    Category="Language"
+    Message="A label must directly precede if, match, for, while, loop, or do on the same physical line"
+    Label="Expected a labelable construct here"
+    Advice="Place one label before the construct keyword; a label cannot target another label, parentheses, a statement, or a declaration"
+
+  + Name="TransferTargetExpected_Kd"
+    Category="Language"
+    Message="A named transfer requires one target Name after to on the same physical line"
+    Label="Expected the target Name here"
+    Advice="Write to followed by the intended enclosing label Name on this line"
+
+  + Name="TransferOperandExpected_Kd"
+    Category="Language"
+    Message="The token {0} cannot start a transfer value and is not a value-omission boundary"
+    Arguments="token:Text"
+    Label="Expected a value expression, found {0}"
+    Advice="If a following expression is the transfer value, remove the invalid token and separate a named target from that expression; if an outer colon is intended after a Unit transfer, write () before it"
+
+  + Name="TransferOperandSeparation_Kd"
+    Category="Language"
+    Message="A named transfer's target Name and value must be separated by whitespace or a same-line block comment"
+    Label="The value starts immediately after the target Name"
+    Advice="Insert a space before the value; calls, member access, and indexing cannot extend a target Name"
+
   + Name="EmptyExecutableBlock_Kd"
     Category="Language"
     Message="An executable Block requires at least one Syntax item"

@@ -21,7 +21,7 @@ internal group Storage
         internal var count: isize
         internal var capacity: isize
 
-        deinit
+        drop
             let storage: unsafe/E = self.storage
             while self.count > 0
                 self.count -= 1
@@ -54,7 +54,7 @@ internal group Storage
         internal var count: isize
 
         // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
-        deinit
+        drop
             let storage: unsafe/u8 = self.storage
             while self.count > 0
                 self.count -= 1
@@ -135,7 +135,7 @@ internal group Storage
         internal var count: isize
 
         // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
-        deinit
+        drop
             var elements: unsafe/E = null
             unsafe => elements = inlineBase<E, A>(self.storage@uniq)
             while self.count > 0

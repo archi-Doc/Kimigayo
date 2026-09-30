@@ -22,10 +22,10 @@ public class BlockSyntaxParseTest
                 defer
                     defer => log("end")
                     exit
-                let result = resolve: do
+                let result = label resolve: do
                     if ready()
-                        exit to resolve: 1
-                    exit to resolve: 2
+                        exit to resolve 1
+                    exit to resolve 2
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));
         var body = function.Body!;
@@ -92,7 +92,7 @@ public class BlockSyntaxParseTest
     [Theory]
     [InlineData("defer => ")]
     [InlineData("unsafe => ")]
-    [InlineData("blockA: do")]
+    [InlineData("label blockA: do")]
     [InlineData("if ready()")]
     [InlineData("while ready()")]
     [InlineData("loop")]
@@ -109,7 +109,7 @@ public class BlockSyntaxParseTest
     [Theory]
     [InlineData("defer => ")]
     [InlineData("unsafe => ")]
-    [InlineData("blockA: do")]
+    [InlineData("label blockA: do")]
     [InlineData("if ready()")]
     [InlineData("while ready()")]
     [InlineData("loop")]

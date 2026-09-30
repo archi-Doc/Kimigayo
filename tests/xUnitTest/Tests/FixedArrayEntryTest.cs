@@ -8,7 +8,7 @@ namespace XunitTest;
 /// functions of the internal Kimi fixed-array group, found by member lookup on any `[N of E]`.</summary>
 public class FixedArrayEntryTest
 {
-    private const string Token = "struct Token\n    public let name: string\n    public init(name: string) => self.name = name@move\n    deinit => Console.writeLine(self.name)\n";
+    private const string Token = "struct Token\n    public let name: string\n    public init(name: string) => self.name = name@move\n    drop => Console.writeLine(self.name)\n";
 
     private const string Shapes =
         "let values: [3 of i32] = [1, 2, 3]\nvar total = 0\nvar it = values.intoIterator()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\n" +

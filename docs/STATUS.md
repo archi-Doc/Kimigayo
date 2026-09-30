@@ -1,10 +1,10 @@
 # Kimigayo Implementation Status
 
-The 2026-09-30 contextual-label and `drop` spelling revision is integrated into SPEC and authored examples; compiler migration and execution verification are pending. Existing destruction evidence below concerns the unchanged semantics, not yet the new spellings.
-
 Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required behavior; limits listed here never narrow it. The plan and milestone order are in [PLAN.md](dev/PLAN.md). Earlier dated records are in git (`git show 32324537:STATUS.md`).
 
 ## Summary
+
+- **Contextual labels and drop (2026-09-30):** `label Name:` prefixes all six labelable constructs at Primary positions. Named `exit`/`yield` use colon-free, separated operands and share omission boundaries with unnamed transfers and `return`. `drop` replaces the destruction declaration keyword; cleanup, ownership and defer semantics are unchanged. Parser/AST round trips, recovered syntax, CLI/LSP explanations and native operand/grouping/cleanup behavior are verified. Unit `20260930-081455-242-unit-contextual-drop-wide2` passes a warning-free Release build, 5,349 tests, 78 native O0/O2 executions and milestones 6, 7, 15, 18, 22 and 27. Existing collection support limits below still apply.
 
 - **VS Code extension:** [kimi-ext](../src/kimi-ext/) is maintained in this repository. It provides diagnostics, executable-path validation, automatic or explicit target selection, build/run/check tasks and Ctrl+F5 with Stop support. Current Kimi uses `kimi.runBuilds: true` for one build-and-run invocation; compatibility with older run-only executables remains configurable. Setup and limits are in the [README](../README.md#visual-studio-code).
 

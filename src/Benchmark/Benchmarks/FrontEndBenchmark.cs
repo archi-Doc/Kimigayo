@@ -39,7 +39,7 @@ public class FrontEndBenchmark
         struct Child : Parent
             init(value: i32) : base(value)
                 return
-            deinit
+            drop
                 return
         func transform<length N, T>(values: [N of T]) -> [N of T]
             T is Comparable

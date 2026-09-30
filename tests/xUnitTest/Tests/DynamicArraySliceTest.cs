@@ -23,7 +23,7 @@ public class DynamicArraySliceTest
     public void SharedIterationDoesNotDestroyOrMoveNonCopyElements()
         => ScalarEmissionTest.EmitFixture(
             "DynamicArraySliceTasks",
-            "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"drop\")\nlet values: Array<Task> = [Task.init(20), Task.init(22)]\nvar sum = 0\nfor task in values => sum += task.id\nrequire sum == 42 and values.length == 2 else => $abort(\"shared tasks\")\nConsole.writeLine(\"done\")",
+            "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop\")\nlet values: Array<Task> = [Task.init(20), Task.init(22)]\nvar sum = 0\nfor task in values => sum += task.id\nrequire sum == 42 and values.length == 2 else => $abort(\"shared tasks\")\nConsole.writeLine(\"done\")",
             "done\ndrop\ndrop\n");
 
     [Theory]
@@ -35,7 +35,7 @@ public class DynamicArraySliceTest
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nlet derived = view[0..0]\nvalues@uniq.clear()\nlet n = derived.length")]
     [InlineData("var values: Array<i32> = [1]\nfor value in values\n    values@uniq.clear()\n    let n = value")]
     [InlineData("func make() -> Array<i32> => [1]\nlet view = make()[..]\nlet n = view[0]")]
-    [InlineData("var values: Array<i32> = [1]\nlet view = values[(index: do\n    values@uniq.clear()\n    exit to index: 0\n)..]\nlet n = view.length")]
+    [InlineData("var values: Array<i32> = [1]\nlet view = values[(label index: do\n    values@uniq.clear()\n    exit to index 0\n)..]\nlet n = view.length")]
     public void RejectsInvalidationAndExpiredBackingStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

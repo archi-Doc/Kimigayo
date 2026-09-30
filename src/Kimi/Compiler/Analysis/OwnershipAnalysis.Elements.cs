@@ -186,7 +186,7 @@ public sealed partial class OwnershipAnalysis
                     this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
                     path.Left.BoundType is { } owner && StructStorage.Destructor(owner) is not null)
                 {
-                    this.Unsupported(source); // No partial Move through any deinit-bearing ancestor.
+                    this.Unsupported(source); // No partial Move through any drop-bearing ancestor.
                 }
             }
 

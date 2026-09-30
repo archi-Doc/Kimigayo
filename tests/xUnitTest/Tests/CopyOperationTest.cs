@@ -26,7 +26,7 @@ public class CopyOperationTest
         "let unit = ()@copy\nrequire unit == () else => $abort(\"unit\")\nrequire p.x@copy + 1 == 6 and (n@copy) / 2 == 3 else => $abort(\"chain\")\n" +
         "let r = n@ref\nlet s = r@copy\nlet t = r@follow@copy\nrequire s == 6 and t == 6 else => $abort(\"reference\")\nConsole.writeLine(\"ok\")";
 
-    // A copied Subject is ByValue: match bindings and for items are owned, and the original stays unchanged.
+    // A copied Subject is label ByValue: match bindings and for items are owned, and the original stays unchanged.
     private const string SubjectsSource =
         "var count: i32 = 5\nmatch count@copy\n    var m\n        m += 1\n        require m == 6 else => $abort(\"match\")\nrequire count == 5 else => $abort(\"count\")\n" +
         "var fixed: [3 of i32] = [1, 2, 3]\nvar total: i32 = 0\nfor var v in fixed@copy\n    v += 10\n    total += v\n" +
@@ -38,7 +38,7 @@ public class CopyOperationTest
         "let pair = twice(7)\nrequire pair.0 == 7 and pair.1 == 7 else => $abort(\"generic\")\nConsole.writeLine(\"ok\")";
 
     private const string MovedStructMemberSource =
-        "struct Tracked\n    public var n: i32\n    public init(n: i32) => self.n = n\n    deinit\n        Console.writeLine(\"drop\")\n" +
+        "struct Tracked\n    public var n: i32\n    public init(n: i32) => self.n = n\n    drop\n        Console.writeLine(\"drop\")\n" +
         "var t = Tracked.init(7)\nlet a = t@move.n\nrequire a == 7 else => $abort(\"move\")\nConsole.writeLine(\"after\")";
 
     [Theory]

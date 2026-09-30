@@ -952,7 +952,7 @@ public class ParserRegressionTest
     [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
     [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
-    [InlineData("struct Box<T>\n    var item: T\n    deinit\n        T is Copy\n        ()\n", 1)]
+    [InlineData("struct Box<T>\n    var item: T\n    drop\n        T is Copy\n        ()\n", 1)]
     [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
     [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
     public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)

@@ -17,7 +17,7 @@ public class ElementEmissionTest
         { "Temporary", "func make() -> (string, i32) => (\"kept\", 42)\nif make().1 == 42 => Console.writeLine(\"ok\")" },
         { "Selection", "let a = (1, 42)\nlet b = (3, 4)\nif (if true => a else => b).1 == 42 => Console.writeLine(\"ok\")" },
         { "CopyAggregate", "let a = ((1, 42), \"kept\")\nlet b = a.0\nif b.1 + a.0.0 == 43 => Console.writeLine(\"ok\")" },
-        { "Snapshot", "var a: [1 of i32] = [40]\nlet n = a[0] + (work: do\n    a = [2]\n    exit to work: a[0]\n)\nif n == 42 => Console.writeLine(\"ok\")" },
+        { "Snapshot", "var a: [1 of i32] = [40]\nlet n = a[0] + (label work: do\n    a = [2]\n    exit to work a[0]\n)\nif n == 42 => Console.writeLine(\"ok\")" },
         { "Once", "func make() -> [2 of i32]\n    Console.writeLine(\"ok\")\n    return [1, 42]\nfunc index() -> isize => 1\nlet n = make()[index()]" },
         { "Loop", "let a: [3 of i32] = [10, 20, 12]\nvar i: isize = 0\nvar sum = 0\nwhile i < 3\n    sum += a[i]\n    i += 1\nif sum == 42 => Console.writeLine(\"ok\")" },
         { "Unit", "let a: [2 of ()] = [(), ()]\nlet u = a[1]\nConsole.writeLine(\"ok\")" },
@@ -59,9 +59,9 @@ public class ElementEmissionTest
     }
 
     [Theory]
-    [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    a = [2]\n    exit to work: 0\n)]")]
-    [InlineData("func take(a: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(work: do\n    take(a@move)\n    exit to work: 0\n)]")]
-    [InlineData("var a: [1 of i32] = [1]\nlet n = a[(work: do\n    defer => a = [2]\n    exit to work: 0\n)]")]
+    [InlineData("var a: [1 of i32] = [1]\nlet n = a[(label work: do\n    a = [2]\n    exit to work 0\n)]")]
+    [InlineData("func take(a: (string, [1 of i32])) => ()\nlet a: (string, [1 of i32]) = (\"a\", [1])\nlet n = a.1[(label work: do\n    take(a@move)\n    exit to work 0\n)]")]
+    [InlineData("var a: [1 of i32] = [1]\nlet n = a[(label work: do\n    defer => a = [2]\n    exit to work 0\n)]")]
     public void ReceiverCannotChangeDuringIndexEvaluation(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

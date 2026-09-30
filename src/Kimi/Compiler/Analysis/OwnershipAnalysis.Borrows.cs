@@ -27,7 +27,7 @@ public sealed partial class OwnershipAnalysis
 
             // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
             // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
-            // nested dependencies, including deinit uses, in VerifyBorrows.
+            // nested dependencies, including drop uses, in VerifyBorrows.
             if (obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
                 obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
                 (uint)outer.Slot >= (uint)function.Parameters.Count ||

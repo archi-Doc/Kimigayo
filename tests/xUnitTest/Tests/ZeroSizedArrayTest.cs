@@ -29,7 +29,7 @@ public class ZeroSizedArrayTest
         "Console.writeLine(\"Units ok.\")";
 
     private const string Tokens =
-        "struct Token\n    public let id: ()\n    public init() => self.id = ()\n    deinit => Console.writeLine(\"Token dropped.\")\n" +
+        "struct Token\n    public let id: ()\n    public init() => self.id = ()\n    drop => Console.writeLine(\"Token dropped.\")\n" +
         "var tokens: Array<Token> = [Token.init(), Token.init()]\n" +
         "tokens.append(Token.init())\ntokens.insert(1, Token.init())\n" +
         "let taken = tokens.remove(0)\nConsole.writeLine(\"Removed.\")\n" +

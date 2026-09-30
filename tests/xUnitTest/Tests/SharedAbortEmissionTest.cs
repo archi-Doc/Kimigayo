@@ -13,7 +13,7 @@ public class SharedAbortEmissionTest
     [InlineData("OwnedMessage", "func fail<T>(value: ref/T)\n    let message = \"stop\"\n    let held = \"held\"\n    $abort(message@move)\nlet v = true\nfail(v)", "", 1, "Hello.kimi:4:5: abort KIMI_E_ABORT: stop\n", "stop=0;held=0")]
     [InlineData("SkipCleanup", "func fail<T>(value: ref/T)\n    defer => Console.writeLine(\"cleanup\")\n    $abort(\"stop\")\n    Console.writeLine(\"after\")\nlet v = true\nfail(v)", "", 1, "Hello.kimi:3:5: abort KIMI_E_ABORT: stop\n", "cleanup=0;stop=0;after=0")]
     [InlineData("Conditional", "func choose<T>(value: ref/T, flag: bool) -> i32 => if flag => 42 else => $abort(\"bad\")\nlet v = true\nrequire choose(v, true) == 42 else => $abort(\"wrong\")", "", 0, "", "bad=0;wrong=0")]
-    [InlineData("MessageOnce", "func fail<T>(value: ref/T)\n    $abort((message: do\n        Console.writeLine(\"once\")\n        exit to message: \"stop\"\n    ))\nlet v = true\nfail(v)", "once\n", 1, "Hello.kimi:2:5: abort KIMI_E_ABORT: stop\n", "once=1;stop=0")]
+    [InlineData("MessageOnce", "func fail<T>(value: ref/T)\n    $abort((label message: do\n        Console.writeLine(\"once\")\n        exit to message \"stop\"\n    ))\nlet v = true\nfail(v)", "once\n", 1, "Hello.kimi:2:5: abort KIMI_E_ABORT: stop\n", "once=1;stop=0")]
     public void Executes(string name, string source, string stdout, int exit, string stderr, string destructions)
     {
         name = "SharedAbort" + name;

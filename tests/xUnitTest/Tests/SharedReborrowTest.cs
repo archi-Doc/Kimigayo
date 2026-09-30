@@ -49,7 +49,7 @@ public class SharedReborrowTest
             struct Item
                 public let value: i32
                 public init(value: i32) => self.value = value
-                deinit => Console.writeLine("drop")
+                drop => Console.writeLine("drop")
             var owner = Kimi.Intrinsics.makeObj<Item>(Item.init(42))
             let value = (owner@move, 1)
             match value

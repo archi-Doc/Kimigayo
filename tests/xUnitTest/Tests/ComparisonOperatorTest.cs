@@ -57,7 +57,7 @@ public class ComparisonOperatorTest
                 public func equals(self: ref/Self, other: ref/Self) -> bool
                     Console.writeLine("unexpected witness")
                     return true
-                deinit => Console.writeLine("destroyed")
+                drop => Console.writeLine("destroyed")
             func run() -> i32
                 let first = Key.init()
                 defer => Console.writeLine("deferred")
@@ -94,7 +94,7 @@ public class ComparisonOperatorTest
                 public func equals(self: ref/Self, other: ref/Self) -> bool
                     Console.writeLine("equals")
                     return false
-                deinit
+                drop
                     if self.first => Console.writeLine("left")
                     else => Console.writeLine("right")
             func create(label: string, first: bool) -> Key

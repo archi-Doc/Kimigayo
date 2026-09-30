@@ -51,7 +51,7 @@ public class ContinuationVerificationTest
     public void ScopedFalseGuardCleansTemporariesBeforeSubjectAcquisition()
     {
         const string Source = "func same(a: ref/string, b: ref/string) -> bool => a == b\n" +
-            "match \"subject\"\n    let text if (guard: do\n        let local = \"guard\"\n        exit to guard: same(text, \"other\")\n    ) => ()\n    let text if same(text, \"subject\") => Console.writeLine(text)\n    _ => ()";
+            "match \"subject\"\n    let text if (label guard: do\n        let local = \"guard\"\n        exit to guard same(text, \"other\")\n    ) => ()\n    let text if same(text, \"subject\") => Console.writeLine(text)\n    _ => ()";
         var name = "VerificationContinuation" + Configuration + "GuardCleanup";
         var ir = ScalarEmissionTest.EmitFixture(name, Source, "subject\n");
         StringEmissionTest.WriteAuditedFixture(name, Source, ir, "subject\n", "subject=2;guard=1;other=1", order: [2, 1, 0, 0]);
@@ -193,7 +193,7 @@ public class ContinuationVerificationTest
         File.WriteAllText(Path.Combine(path, Configuration + "-growth.json"), System.Text.Json.JsonSerializer.Serialize(results));
     }
 
-    private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            choice: match \"subject\"\n                let text if (guard: do\n                    x += 1\n                    exit to guard: same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)@move\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
+    private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            label choice: match \"subject\"\n                let text if (label guard: do\n                    x += 1\n                    exit to guard same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)@move\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
 
 #if DEBUG
     private const string Configuration = "Debug";

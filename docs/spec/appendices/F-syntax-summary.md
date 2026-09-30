@@ -411,10 +411,10 @@ Transfer             := "return" Expression?
                       | "exit" (Expression? | "to" Name Expression?)
                       | "continue" ("to" Name)?
                       | "yield" (Expression? | "to" Name Expression?)
-DropDeclaration    := "drop" ExecutableBody
+DropDeclaration      := "drop" ExecutableBody
 ```
 
-Optional transfer operands obey the mandatory omission boundaries of §14.5.1, not a trial parse or an expression-start test; `:` does not omit an operand. Named operands require token separation by spaces or a same-line block comment.
+Optional transfer operands obey the mandatory omission boundaries of §14.5.1, not a trial parse or an expression-start test; `:` does not omit an operand. Named operands require token separation by whitespace or a same-line block comment.
 
 Conditions and guards must fit `bool`. Body headers, operand boundaries, delimiter regions and required grouping follow §2.2 and §14.5. The label introducer, Name, colon and construct keyword share a physical line. The keyword `do` is reserved; `label` is contextual at a Primary start before same-line `Name :` (§14.4), and `to` is contextual immediately after `exit`, `continue` or `yield`. These forms commit before ordinary Names, without lookup. A named target consumes one Name, never a computed destination. Labels add no grouping requirement; existing operator grouping and delimiter regions remain in force. SingleItem includes no declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar. `for` bindings accept only ForSlot forms, not general Patterns (§14.6.1).
 

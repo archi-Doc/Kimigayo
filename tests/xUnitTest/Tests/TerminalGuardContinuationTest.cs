@@ -77,7 +77,7 @@ public class TerminalGuardContinuationTest
     public void GuardYieldTargetsAnEnclosingSelection()
     {
         var source = Source("var x = 1", "yield to scope", "x = 2", "let y = x")
-            .Replace("scope: do", "scope: if true", StringComparison.Ordinal);
+            .Replace("label scope: do", "label scope: if true", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -86,7 +86,7 @@ public class TerminalGuardContinuationTest
     [Theory]
     [InlineData("return")]
     [InlineData("if c => return else => false")]
-    [InlineData("guard: do\n                    return\n                    flag == flag\n                    exit to guard: true\n                ")]
+    [InlineData("label guard: do\n                    return\n                    flag == flag\n                    exit to guard true\n                ")]
     public void AbandonedStringProtectionDoesNotEscapeIntoBodyAcquisition(string guard)
     {
         var c = MinimalEmissionTest.Analyze(Source("var x = 1", guard, "Console.writeLine(flag)", "let y = x", "\"subject\""));
@@ -161,6 +161,6 @@ public class TerminalGuardContinuationTest
 
     private static string Source(string declaration, string guard, string body, string tail, string subject = "c")
         => "func stop() -> Never => $abort(\"terminal guard\")\nfunc f(c: bool)\n    " + declaration +
-            "\n    scope: do\n        loop\n            if c => return else => exit\n            match " + subject + "\n                let flag if (" + guard + ") => " + body +
+            "\n    label scope: do\n        loop\n            if c => return else => exit\n            match " + subject + "\n                let flag if (" + guard + ") => " + body +
             "\n                _ => ()\n        stop()\n    " + tail + "\nf(true)";
 }

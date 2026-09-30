@@ -29,7 +29,7 @@ public class LocalLoopContinuationTest
     [InlineData("Nested", "var x = 1\ndo\n    loop\n        var n = 1\n        while n < 3\n            n += 1\n        if n == 3 => continue else => ()\nlet y = x")]
     [InlineData("Default", "func value(y: i32 = (loop\n    var n = 1\n    n = 2\n)) -> i32 => y\nvar x = 1\nvalue()\nlet y = x")]
     [InlineData("Checking", "func f()\n    return\n    var x: i32 = loop\n        var n = 1\n        n = 2\n    x = 3\n    let y = x\nf()\nloop => continue")]
-    [InlineData("ContainedExit", "let x = 1\nloop\n    var n = work: do\n        exit to work: 1\n    n += 1\nlet y = x")]
+    [InlineData("ContainedExit", "let x = 1\nloop\n    var n = label work: do\n        exit to work 1\n    n += 1\nlet y = x")]
     public void EmitsLoopsWhoseEffectsStayLocal(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverLocalLoop" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
@@ -50,7 +50,7 @@ public class LocalLoopContinuationTest
     [Theory]
     [InlineData(Loop)]
     [InlineData("loop\n    var n = 1\n    if x == 1 => n += 1 else => n = 3\n    while n < 4\n        n++\n")]
-    [InlineData("loop\n    var n = work: do\n        exit to work: 1\n    n += 1\n")]
+    [InlineData("loop\n    var n = label work: do\n        exit to work 1\n    n += 1\n")]
     public void ReloadAndWarmProofReuseAllocateNothing(string loop)
     {
         var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");

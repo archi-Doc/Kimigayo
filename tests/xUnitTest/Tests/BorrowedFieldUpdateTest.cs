@@ -49,7 +49,7 @@ public class BorrowedFieldUpdateTest
     }
 
     [Theory]
-    [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@uniq\nr.0 += (work: do\n    pair.0 = 9\n    exit to work: 1)")]
+    [InlineData("var pair: (i32, bool) = (1, true)\nlet r = pair@uniq\nr.0 += (label work: do\n    pair.0 = 9\n    exit to work 1)")]
     public void RejectsOwnerWritesWhileTheBorrowIsLive(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

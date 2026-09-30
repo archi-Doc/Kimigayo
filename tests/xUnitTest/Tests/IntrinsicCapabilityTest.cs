@@ -69,7 +69,7 @@ public class IntrinsicCapabilityTest
     [InlineData("struct S {}\n    Self is Copy\n    let x: string")]
     [InlineData("enum S\n    Self is Copy\n    A(string)")]
     [InlineData("struct S<T> {}\n    Self is Copy\n    let x: T")]
-    [InlineData("struct S {}\n    Self is Copy\n    deinit\n        ()")]
+    [InlineData("struct S {}\n    Self is Copy\n    drop\n        ()")]
     public void InvalidCopyPromisesFailDefinitionChecking(string source)
     {
         var c = CompilationTestHelper.ParseSuccess(source);

@@ -71,8 +71,8 @@ public class WholeValueTest
     [Theory]
     [InlineData("Scalar", "var x: i32 = 1\nvar y: i32 = 9\nKimi.Intrinsics.replace(x@uniq, with: 2)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: 3)\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("String", "var x = \"old\"\nvar y = \"other\"\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: \"new\")\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nConsole.writeLine(old)\nConsole.writeLine(x)\nConsole.writeLine(y)", "old\nother\nnew\n")]
-    [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.Intrinsics.replace(x@uniq, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]
-    [InlineData("SwapDestroy", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nvar y = S.init(2)\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
+    [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.Intrinsics.replace(x@uniq, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]
+    [InlineData("SwapDestroy", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nvar y = S.init(2)\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
     public void EmitsWholeUpdates(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -88,7 +88,7 @@ public class WholeValueTest
     [InlineData("Swap", "func update(x: uniq/S, y: uniq/S) => Kimi.Intrinsics.swap(x, y)\nvar x = S.init(1)\nvar y = S.init(2)\nupdate(x@uniq, y@uniq)\nif x.value == 2 and y.value == 1 => Console.writeLine(\"ok\")", "ok\ndrop 1\ndrop 2\n")]
     public void EmitsBorrowedUpdates(string name, string body, string stdout)
     {
-        const string declaration = "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\n";
+        const string declaration = "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\n";
         this.EmitsWholeUpdates("Borrowed" + name, declaration + body, stdout);
     }
 
@@ -199,7 +199,7 @@ public class WholeValueTest
 
     [Fact]
     public void ReplacementDestructionAbortPreventsPlacement()
-        => ScalarEmissionTest.EmitFixture("WholeValueDestructorAbort", "struct S\n    public init() => ()\n    deinit => $abort(\"drop\")\nvar x = S.init()\nKimi.Intrinsics.replace(x@uniq, with: S.init())\nConsole.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:3:15: abort KIMI_E_ABORT: drop\n");
+        => ScalarEmissionTest.EmitFixture("WholeValueDestructorAbort", "struct S\n    public init() => ()\n    drop => $abort(\"drop\")\nvar x = S.init()\nKimi.Intrinsics.replace(x@uniq, with: S.init())\nConsole.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:3:13: abort KIMI_E_ABORT: drop\n");
 
     [Fact]
     public void RebindingAndSerializationRetainUpdates()

@@ -55,8 +55,8 @@ public class ExternalOriginForwardingTest
     [InlineData("        require selected.value", "        first.value = 99\n        require selected.value")]
     [InlineData("        require selected.value", "        second.value = 99\n        require selected.value")]
     [InlineData("        child.value =", "        target.value = 99\n        child.value =")]
-    [InlineData("            exit to selection:", "            first.value = 99\n            exit to selection:")]
-    [InlineData("            exit to selection:", "            second.value = 99\n            exit to selection:")]
+    [InlineData("            exit to selection ", "            first.value = 99\n            exit to selection ")]
+    [InlineData("            exit to selection ", "            second.value = 99\n            exit to selection ")]
     public void RejectsConflictingAccess(string before, string after)
     {
         var c = MinimalEmissionTest.Analyze(Source().Replace(before, after, StringComparison.Ordinal));

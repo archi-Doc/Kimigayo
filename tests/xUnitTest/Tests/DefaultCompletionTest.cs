@@ -32,8 +32,8 @@ public class DefaultCompletionTest
 
     [Theory]
     [InlineData("loop => continue")]
-    [InlineData("scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope: n")]
-    [InlineData("scope: do\n    defer => loop => ()\n    exit to scope: 3")]
+    [InlineData("label scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope n")]
+    [InlineData("label scope: do\n    defer => loop => ()\n    exit to scope 3")]
     public void NoncompletingDefaultsSatisfyRequireFailure(string expression)
     {
         var c = Parse("func f(x: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
@@ -48,7 +48,7 @@ public class DefaultCompletionTest
     [InlineData("If", "if f() => Console.writeLine(\"bad\")")]
     [InlineData("While", "while f() => Console.writeLine(\"bad\")")]
     [InlineData("Require", "require f() else => $abort(\"bad\")")]
-    [InlineData("Result", "let n = scope: do => exit to scope: f()")]
+    [InlineData("Result", "let n = label scope: do => exit to scope f()")]
     public void NoncompletingDefaultConditionsHaveNoRuntimeSuccessor(string name, string use)
         => ScalarEmissionTest.EmitFixture(
             Prefix + name,

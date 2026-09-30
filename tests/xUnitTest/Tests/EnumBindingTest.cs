@@ -245,7 +245,7 @@ public class EnumBindingTest
     [InlineData("    let value: i32")]
     [InlineData("    property value: i32 { get }")]
     [InlineData("    init() => ()")]
-    [InlineData("    deinit() => ()")]
+    [InlineData("    drop() => ()")]
     [InlineData("    struct Nested {}")]
     public void ForbiddenEnumMembersCannotPassParsingAndBinding(string member)
     {

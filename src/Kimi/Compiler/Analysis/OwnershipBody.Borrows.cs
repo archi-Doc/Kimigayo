@@ -29,7 +29,7 @@ public sealed partial class OwnershipBody
         return this.TryOwnedBorrowState(borrow, out var state) ? state : this.CompleteState(borrow.Place);
     }
 
-    // Borrow validity follows CFG uses, including the implicit use by deinit.
+    // Borrow validity follows CFG uses, including the implicit use by drop.
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
     {

@@ -36,7 +36,7 @@ public class Utf8TryWriteTest
     [Theory]
     [InlineData("buffer.length")]
     [InlineData("bytes[0]")]
-    [InlineData("read: do\n    _ = writer.status()\n    exit to read: 1@i32")]
+    [InlineData("label read: do\n    _ = writer.status()\n    exit to read 1@i32")]
     public void RootBorrowIsActiveBeforeTheFirstEmbeddedExpression(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Setup + "_ = $tryWrite(writer@uniq, \"\\(" + expression + ")\")");
@@ -113,8 +113,8 @@ public class Utf8TryWriteTest
     }
 
     [Theory]
-    [InlineData("Exit", "work: do", "exit to work: 7")]
-    [InlineData("Yield", "work: if true", "yield to work: 7")]
+    [InlineData("Exit", "label work: do", "exit to work 7")]
+    [InlineData("Yield", "label work: if true", "yield to work 7")]
     public void EmbeddedTransferKeepsItsEnclosingTarget(string name, string boundary, string transfer)
     {
         var source = Setup + "let value: i32 = " + boundary + "\n    _ = $tryWrite(writer@uniq, \"a\\(do => " + transfer + ")b\")\n    " + transfer +

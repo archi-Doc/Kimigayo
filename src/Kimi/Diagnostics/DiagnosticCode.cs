@@ -89,6 +89,10 @@ public enum DiagnosticCode
     BlockStatementInExpression_Kd,
 
     ChainedComparison_Kd,
+    LabelTargetExpected_Kd,
+    TransferTargetExpected_Kd,
+    TransferOperandExpected_Kd,
+    TransferOperandSeparation_Kd,
 
     MissingStartupBody_Kd,
     MixedStartupBodies_Kd,

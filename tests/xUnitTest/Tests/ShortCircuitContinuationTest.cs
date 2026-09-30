@@ -76,7 +76,7 @@ public class ShortCircuitContinuationTest
     public void ScopedOperandsRetainCaughtAndEscapingHistories(string name, string prefix)
         => ScalarEmissionTest.EmitFixture(
             "NeverPartialScoped" + Configuration + "CaughtLogical" + name,
-            Source("var x: i32", "x = 1\n                return", "let b = " + prefix + " (choice: do\n                if c => return\n                exit to choice: true\n            )", "x = 2", "let y = x") + "\nConsole.writeLine(\"done\")" + Helpers,
+            Source("var x: i32", "x = 1\n                return", "let b = " + prefix + " (label choice: do\n                if c => return\n                exit to choice true\n            )", "x = 2", "let y = x") + "\nConsole.writeLine(\"done\")" + Helpers,
             "done\n");
 
     [Theory]

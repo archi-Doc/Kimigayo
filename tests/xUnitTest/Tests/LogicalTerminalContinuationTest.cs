@@ -40,7 +40,7 @@ public class LogicalTerminalContinuationTest
     [InlineData("let s = \"s\"", "c or truth(stopTake(s@move))", "return", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "c and (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c or (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("var x: i32", "c and (choice: do\n            if c => return\n            exit to choice: true\n        )", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("var x: i32", "c and (label choice: do\n            if c => return\n            exit to choice true\n        )", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     public void CheckingJoinsRetainAllOperandPaths(string declaration, string expression, string tail, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, expression, tail, use) + Helpers);

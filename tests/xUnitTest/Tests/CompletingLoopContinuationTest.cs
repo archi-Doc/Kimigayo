@@ -34,12 +34,12 @@ public class CompletingLoopContinuationTest
     [InlineData("WhileExit", "while c\n            x = 1\n            return", false)]
     [InlineData("InternalExit", "loop\n            if c => exit\n            x = 1\n            exit", false)]
     [InlineData("InternalContinue", "var again = true\n        loop\n            if again\n                again = false\n                continue\n            exit", false)]
-    [InlineData("ScopeExit", "inner: do\n            if c => exit to inner\n            x = 1", false)]
+    [InlineData("ScopeExit", "label inner: do\n            if c => exit to inner\n            x = 1", false)]
     [InlineData("NestedLoop", "loop\n            loop\n                if c\n                    x = 1\n                    return\n                exit\n            exit", true)]
-    [InlineData("OuterExit", "outer: loop\n            loop\n                if c => exit to outer\n                exit\n            exit", false)]
-    [InlineData("Yield", "choice: if c\n            if c => yield to choice\n            x = 1\n        else => ()", false)]
+    [InlineData("OuterExit", "label outer: loop\n            loop\n                if c => exit to outer\n                exit\n            exit", false)]
+    [InlineData("Yield", "label choice: if c\n            if c => yield to choice\n            x = 1\n        else => ()", false)]
     [InlineData("SameTarget", "loop\n            if c => exit else => exit", false)]
-    [InlineData("SameOuterTarget", "outer: loop\n            do\n                if c => exit to outer else => exit to outer", false)]
+    [InlineData("SameOuterTarget", "label outer: loop\n            do\n                if c => exit to outer else => exit to outer", false)]
     [InlineData("DeadTransfer", "loop\n            if c\n                x = 1\n                return\n                exit\n            exit", true)]
     public void InternalTransfersDoNotPolluteOuterJoins(string name, string loop, bool returns)
         => ScalarEmissionTest.EmitFixture(
@@ -84,14 +84,14 @@ public class CompletingLoopContinuationTest
     public void CompletingDefaultLoopPreservesCallerState(string condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingLoop" + Configuration + "Default" + condition,
-            "func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(" + condition + ")\nlet y = x",
+            "func value(c: bool, y: i32 = (label scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    n = 2\n    loop => continue\n    exit to scope n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(" + condition + ")\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 
     [Fact]
     public void SuppliedDefaultStillChecksTheLoopDeclaration()
     {
-        var c = MinimalEmissionTest.Analyze("func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvalue(true, 3)");
+        var c = MinimalEmissionTest.Analyze("func value(c: bool, y: i32 = (label scope: do\n    var n: i32\n    loop\n        if c => exit\n        n = 1\n        exit\n    loop => continue\n    exit to scope n\n)) -> i32 => y\nvalue(true, 3)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);

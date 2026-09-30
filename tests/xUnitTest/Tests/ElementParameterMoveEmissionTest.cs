@@ -31,7 +31,7 @@ public class ElementParameterMoveEmissionTest
         { "Parameters", "func f(a: (string, string), b: (string, string)) -> string\n    let moved = b.0@move\n    return a.0@move\nConsole.writeLine(f((\"a\", \"b\"), (\"c\", \"d\")))", "a\n", "a=1;b=1;c=1;d=1", [2, 3, 1, 0] },
         { "LoopExit", "func f(a: (string, string)) -> string\n    loop\n        return a.0@move\nConsole.writeLine(f((\"first\", \"last\")))", "first\n", "first=1;last=1", [1, 0] },
         { "Dead", "func f(a: (string, string))\n    return\n    let moved = a.0@move\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
-        { "Covered", "func f(a: (string, string))\n    match true\n        _ => ()\n        true => (work: do\n            let moved = a.0@move\n        )\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
+        { "Covered", "func f(a: (string, string))\n    match true\n        _ => ()\n        true => (label work: do\n            let moved = a.0@move\n        )\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
         { "Transfer", "func inspect(a: string, b: bool) => ()\nfunc f(a: (string, string)) -> string\n    inspect(a.0@move, (return \"out\"))\n    return \"bad\"\nConsole.writeLine(f((\"first\", \"last\")))", "out\n", "first=1;last=1;out=1;bad=0", [0, 1, 2] },
         { "ZeroSize", "func f(a: ([0 of string], string)) -> [0 of string] => a.0@move\nlet a: ([0 of string], string) = ([], \"last\")\nlet moved = f(a@move)", string.Empty, "last=1", [0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
@@ -60,7 +60,7 @@ public class ElementParameterMoveEmissionTest
     [InlineData("func f(a: ([0 of string], string))\n    let moved = a.0@move\n    let twice = a.0@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(a: ((string, string), string))\n    let moved = a.0@move\n    let nested = a.0.0@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(a: (string, string))\n    return\n    let moved = a.0@move\n    let twice = a.0@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(work: do\n        let moved = a.0@move\n        exit to work: 0\n    )]", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("func f(a: (string, [1 of i32])) -> i32\n    return a.1[(label work: do\n        let moved = a.0@move\n        exit to work 0\n    )]", OwnershipFailure.ComparisonLoanConflict)]
     public void InvalidMovesFailBeforeEmission(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"ok\")");

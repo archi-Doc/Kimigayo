@@ -10,35 +10,35 @@ namespace XunitTest;
 public class PartialScopedReplayTest
 {
     [Theory]
-    [InlineData("Then", "inner: do\n                if c => exit to inner else => x = 3")]
-    [InlineData("Else", "inner: do\n                if c => x = 3 else => exit to inner")]
-    [InlineData("All", "inner: do\n                if c => exit to inner else => exit to inner")]
-    [InlineData("Bare", "inner: do => exit to inner")]
-    [InlineData("Escaping", "inner: do\n                if c => return else => exit to inner")]
-    [InlineData("Nested", "outer: do\n                inner: do\n                    if c => exit to outer else => exit to inner\n                x = 3")]
-    [InlineData("OwnedLocal", "inner: do\n                let local = \"local\"\n                if c => exit to inner else => x = 3")]
-    [InlineData("AfterExit", "inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => x = 4")]
-    [InlineData("Scalar", "let n = inner: do\n                if c => exit to inner: 3 else => exit to inner: 4\n            x = n")]
+    [InlineData("Then", "label inner: do\n                if c => exit to inner else => x = 3")]
+    [InlineData("Else", "label inner: do\n                if c => x = 3 else => exit to inner")]
+    [InlineData("All", "label inner: do\n                if c => exit to inner else => exit to inner")]
+    [InlineData("Bare", "label inner: do => exit to inner")]
+    [InlineData("Escaping", "label inner: do\n                if c => return else => exit to inner")]
+    [InlineData("Nested", "label outer: do\n                label inner: do\n                    if c => exit to outer else => exit to inner\n                x = 3")]
+    [InlineData("OwnedLocal", "label inner: do\n                let local = \"local\"\n                if c => exit to inner else => x = 3")]
+    [InlineData("AfterExit", "label inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => x = 4")]
+    [InlineData("Scalar", "let n = label inner: do\n                if c => exit to inner 3 else => exit to inner 4\n            x = n")]
     public void CaughtScopeTransfersJoinNormalArrivals(string name, string dead)
         => Emit("Caught" + name, Source("var x = 1", dead, "x = 4", "let y = x", "x = 2"));
 
     [Theory]
-    [InlineData("Initialization", "var x: i32", "inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => x = 4", "let y = x")]
-    [InlineData("DeadMove", "let s = \"s\"", "inner: do\n                if c\n                    exit to inner\n                    _ = s@move\n                else => ()", "Console.writeLine(s)")]
-    [InlineData("DeadLet", "let x: i32", "inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => ()", "x = 4")]
-    [InlineData("LocalLoan", "var counter = Counter.init()", "inner: do\n                if c\n                    let r = counter@ref\n                    let n = r.value\n                    exit to inner\n                else => ()", "counter.value = 9")]
-    [InlineData("MissingCondition", "var x: i32", "inner: do\n                if c => x = 3 else if truth(stop()) => exit to inner else => x = 4", "let y = x")]
-    [InlineData("MissingConditionMove", "let s = \"s\"", "inner: do\n                if c => () else if truth(stop())\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)")]
-    [InlineData("MissingConditionLet", "let x: i32", "inner: do\n                if c => () else if truth(stop())\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4")]
+    [InlineData("Initialization", "var x: i32", "label inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => x = 4", "let y = x")]
+    [InlineData("DeadMove", "let s = \"s\"", "label inner: do\n                if c\n                    exit to inner\n                    _ = s@move\n                else => ()", "Console.writeLine(s)")]
+    [InlineData("DeadLet", "let x: i32", "label inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => ()", "x = 4")]
+    [InlineData("LocalLoan", "var counter = Counter.init()", "label inner: do\n                if c\n                    let r = counter@ref\n                    let n = r.value\n                    exit to inner\n                else => ()", "counter.value = 9")]
+    [InlineData("MissingCondition", "var x: i32", "label inner: do\n                if c => x = 3 else if truth(stop()) => exit to inner else => x = 4", "let y = x")]
+    [InlineData("MissingConditionMove", "let s = \"s\"", "label inner: do\n                if c => () else if truth(stop())\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)")]
+    [InlineData("MissingConditionLet", "let x: i32", "label inner: do\n                if c => () else if truth(stop())\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4")]
     public void CaughtArrivalsExcludeLaterDeadEffectsAndIncludeCleanup(string name, string declaration, string dead, string after)
         => Emit("CaughtNormal" + name, Source(declaration, dead, after, "()") + Counter);
 
     [Theory]
-    [InlineData("var x: i32", "inner: do\n                if c => exit to inner else => x = 3", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("var x: i32", "inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "inner: do\n                if c\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "inner: do\n                if c => () else\n                    _ = s@move\n                    exit to inner", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: i32", "inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
+    [InlineData("var x: i32", "label inner: do\n                if c => exit to inner else => x = 3", "let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("var x: i32", "label inner: do\n                if c\n                    exit to inner\n                    x = 3\n                else => x = 4", "let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("let s = \"s\"", "label inner: do\n                if c\n                    _ = s@move\n                    exit to inner\n                else => ()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "label inner: do\n                if c => () else\n                    _ = s@move\n                    exit to inner", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x: i32", "label inner: do\n                if c\n                    x = 3\n                    exit to inner\n                else => ()", "x = 4", OwnershipFailure.ReassignedLet)]
     public void CaughtScopeArrivalsRetainTheirEffects(string declaration, string dead, string after, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, dead, after, "()"));
@@ -88,8 +88,8 @@ public class PartialScopedReplayTest
     [Theory]
     [InlineData("do\n                if c\n                    counter.value = 9\n                    return\n                else => ()")]
     [InlineData("do\n                if c => return else => counter.value = 9")]
-    [InlineData("inner: do\n                if c\n                    counter.value = 9\n                    exit to inner\n                else => ()")]
-    [InlineData("inner: do\n                if c => () else\n                    counter.value = 9\n                    exit to inner")]
+    [InlineData("label inner: do\n                if c\n                    counter.value = 9\n                    exit to inner\n                else => ()")]
+    [InlineData("label inner: do\n                if c => () else\n                    counter.value = 9\n                    exit to inner")]
     public void StoredLoansSurvivePartialScopes(string dead)
     {
         var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "()", "let n = r.value") + Counter);
@@ -108,7 +108,7 @@ public class PartialScopedReplayTest
     [Fact]
     public void CaughtScopeExitsCannotLoseTheirNormalArrival()
     {
-        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "inner: do\n                if c => exit to inner else => x = 3", "let y = x", "()"));
+        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "label inner: do\n                if c => exit to inner else => x = 3", "let y = x", "()"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
@@ -118,7 +118,7 @@ public class PartialScopedReplayTest
 
     [Theory]
     [InlineData("do\n                if c => return else => counter.value")]
-    [InlineData("inner: do\n                if c => exit to inner else => counter.value")]
+    [InlineData("label inner: do\n                if c => exit to inner else => counter.value")]
     public void ReloadedPartialScopesAllocateNothingWhenWarm(string dead)
     {
         var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "()", "let n = r.value") + Counter);

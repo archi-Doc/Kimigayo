@@ -207,7 +207,7 @@ public class IteratorOriginEffectsTest
     [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
         "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
     [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
-    [InlineData("let first = self.inner.next()\n        outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
+    [InlineData("let first = self.inner.next()\n        label outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
     [InlineData("let first = self.inner.next()\n        let step: i32 = if self.steps > 0\n            self.steps -= 1\n            yield 1\n        else => 0\n        self.steps += step\n        return first@move")] // A yield inside the gap
     [InlineData("let first = self.inner.next()\n        defer => self.steps += 1\n        return first@move")] // The destructions are the planned cleanups, so a defer,
     [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        while i < 2 => i += 1\n        self.steps += i\n        return first@move")] // a while loop,
@@ -559,7 +559,7 @@ public class IteratorOriginEffectsTest
     [InlineData("let first = self.inner.next()\n        if self.steps == 3 => return .None\n        return first@move")]
     [InlineData("let first = self.inner.next()\n        let copy = first@move\n        self.steps += 1\n        return .None")]
     [InlineData("var first = self.inner.next()\n        first = self.inner.next()\n        return first@move")]
-    [InlineData("outer: loop\n            let first = self.inner.next()\n            loop\n                if self.steps == 3 => exit to outer\n                exit\n            return first@move\n        return .None")]
+    [InlineData("label outer: loop\n            let first = self.inner.next()\n            loop\n                if self.steps == 3 => exit to outer\n                exit\n            return first@move\n        return .None")]
     [InlineData("loop\n            let first = self.inner.next()\n            if self.steps == 3 => exit\n            return first@move\n        return .None")]
     [InlineData("match self.inner.next()\n            .Some(let item)\n                if self.steps == 3 => return .None\n                return .Some(item@move)\n            .None => return .None")]
     public void ALocalItemThatMayBeDestroyedIsRejected(string body)

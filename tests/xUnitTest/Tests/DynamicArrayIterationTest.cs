@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class DynamicArrayIterationTest
 {
-    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        match self.id\n            1 => Console.writeLine(\"drop 1\")\n            2 => Console.writeLine(\"drop 2\")\n            _ => Console.writeLine(\"drop 3\")\n";
+    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        match self.id\n            1 => Console.writeLine(\"drop 1\")\n            2 => Console.writeLine(\"drop 2\")\n            _ => Console.writeLine(\"drop 3\")\n";
 
     [Theory]
     [InlineData("values", "iterate")]
@@ -55,9 +55,9 @@ public class DynamicArrayIterationTest
 
     [Theory]
     [InlineData("Conditional", "if true => tasks@move else => tasks@move")]
-    [InlineData("Scope", "selection: do\n    exit to selection: tasks@move\n")]
+    [InlineData("Scope", "label selection: do\n    exit to selection tasks@move\n")]
     [InlineData("Match", "match true\n    true => tasks@move\n    false => tasks@move\n")]
-    [InlineData("Loop", "selection: loop\n    exit to selection: tasks@move\n")]
+    [InlineData("Loop", "label selection: loop\n    exit to selection tasks@move\n")]
     public void OwnsTheResultHandleAcrossControlFlow(string name, string expression)
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayIterationResult" + name,

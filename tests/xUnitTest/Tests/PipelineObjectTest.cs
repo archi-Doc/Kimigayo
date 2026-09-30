@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class PipelineObjectTest
 {
-    private const string Counter = "struct Counter\n    var value: i32 = 0\n    public func add(self: uniq/Self, n: i32) => self.value = self.value + n\n    public func read(self: ref/Self) -> i32 => self.value\n    deinit => Console.writeLine(\"drop\")\n";
+    private const string Counter = "struct Counter\n    var value: i32 = 0\n    public func add(self: uniq/Self, n: i32) => self.value = self.value + n\n    public func read(self: ref/Self) -> i32 => self.value\n    drop => Console.writeLine(\"drop\")\n";
 
     [Theory]
     [InlineData("Exchange", "var owner = Kimi.Intrinsics.makeObj(Counter.init())\nowner.add(7)\ndo\n    let old = Kimi.Intrinsics.exchange(owner@follow@uniq, with: Counter.init())\n    require old.read() == 7 and owner.read() == 0 else => $abort(\"exchange\")\n    owner.add(old.read())\nrequire owner.read() == 7 else => $abort(\"owner\")\nConsole.writeLine(\"done\")", "drop\ndone\ndrop\n")]
@@ -20,7 +20,7 @@ public class PipelineObjectTest
 
     [Fact]
     public void ZeroSizedPayloadStillDestroys()
-        => ScalarEmissionTest.EmitFixture("PipelineObjectZero", "struct Empty\n    deinit => Console.writeLine(\"empty\")\nlet value = Kimi.Intrinsics.makeObj(Empty.init())", "empty\n");
+        => ScalarEmissionTest.EmitFixture("PipelineObjectZero", "struct Empty\n    drop => Console.writeLine(\"empty\")\nlet value = Kimi.Intrinsics.makeObj(Empty.init())", "empty\n");
 
     [Fact]
     public void DistinctTypesWithIdenticalLayoutsHaveDistinctMetadata()

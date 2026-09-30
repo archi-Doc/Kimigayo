@@ -20,7 +20,7 @@ public class BorrowedTupleProjectionTest
     [InlineData("Padding", "func read(pair: ref/(bool, (i64, i32), u8)) -> i64\n    let item = pair.1@ref\n    return item.0\nlet pair: (bool, (i64, i32), u8) = (true, (42, 7), 255)\nrequire read(pair@ref) == 42 else => $abort(\"offset\")")]
     [InlineData("LastUse", Counter + "func change(pair: uniq/(Counter, bool))\n    let item = pair.0@uniq\n    item.value += 41\n    pair.1 = false\nvar pair = (Counter.init(), true)\nchange(pair@uniq)\nrequire pair.0.value == 42 and not pair.1 else => $abort(\"value\")")]
     [InlineData("StoredReference", Counter + "let counter = Counter.init()\nlet pair = (counter@ref, true)\nlet view = pair@ref\nlet item = view.0@follow@ref\nrequire item.value == 1 else => $abort(\"value\")")]
-    [InlineData("StoredReferenceOutlivesWrapper", Counter + "let counter = Counter.init()\nlet item = work: do\n    let pair = (counter@ref, true)\n    let view = pair@ref\n    exit to work: view.0@follow@ref\nrequire item.value == 1 else => $abort(\"value\")")]
+    [InlineData("StoredReferenceOutlivesWrapper", Counter + "let counter = Counter.init()\nlet item = label work: do\n    let pair = (counter@ref, true)\n    let view = pair@ref\n    exit to work view.0@follow@ref\nrequire item.value == 1 else => $abort(\"value\")")]
     public void ExecutesStoredElementBorrows(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedTupleProjection" + name, source, string.Empty);
 
@@ -62,7 +62,7 @@ public class BorrowedTupleProjectionTest
     [Fact]
     public void ProjectionDoesNotDestroyTheParent()
     {
-        const string Source = "struct Counter\n    public var value: i32 = 42\n    deinit => Console.writeLine(\"drop\")\nfunc read(pair: ref/(Counter, bool)) -> i32\n    let item = pair.0@ref\n    return item.value\nlet pair = (Counter.init(), true)\nrequire read(pair@ref) == 42 else => $abort(\"value\")\nConsole.writeLine(\"read\")";
+        const string Source = "struct Counter\n    public var value: i32 = 42\n    drop => Console.writeLine(\"drop\")\nfunc read(pair: ref/(Counter, bool)) -> i32\n    let item = pair.0@ref\n    return item.value\nlet pair = (Counter.init(), true)\nrequire read(pair@ref) == 42 else => $abort(\"value\")\nConsole.writeLine(\"read\")";
         ScalarEmissionTest.EmitFixture("BorrowedTupleProjectionCleanup", Source, "read\ndrop\n");
     }
 

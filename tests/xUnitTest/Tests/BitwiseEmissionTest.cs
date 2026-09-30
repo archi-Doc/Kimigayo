@@ -23,7 +23,7 @@ public class BitwiseEmissionTest
         { "BitwisePhi", "var c = true\nvar x = 3\nlet y = if c => x << 2 else => x >> 1\nlet z = if c\n    yield y | 1\nelse\n    yield 0\nif y == 12 and z == 13 => Console.writeLine(\"ok\")" },
         { "BitwiseSnapshot", Snapshot },
         { "BitwiseDeferredLoop", "var x = 1\nloop\n    defer => x <<= 1\n    if x == 8 => exit\n    continue\nif x == 16 => Console.writeLine(\"ok\")" },
-        { "BitwiseOperandTransfer", "var x = 3\nlet y = outer: do\n    x <<= (if true => exit to outer: 9 else => 32)\n    exit to outer: 0\nif x == 3 and y == 9 => Console.writeLine(\"ok\")" },
+        { "BitwiseOperandTransfer", "var x = 3\nlet y = label outer: do\n    x <<= (if true => exit to outer 9 else => 32)\n    exit to outer 0\nif x == 3 and y == 9 => Console.writeLine(\"ok\")" },
         { "BitwiseFunctions", "func left() -> i32\n    Console.writeLine(\"ok\")\n    return 3\nfunc count() -> i32\n    Console.writeLine(\"bad\")\n    return 1\npublic func main() -> ()\n    let n = left()\n    if n == 3 or count() == 1 => ()\n    if (n & 1) == 0 and count() == 1 => ()" },
         { "BitwiseCallOrder", "func left() -> i32\n    Console.writeLine(\"left\")\n    return 3\nfunc count() -> i32\n    Console.writeLine(\"count\")\n    return 1\nif (left() << count()) == 6 => Console.writeLine(\"ok\")" },
     };

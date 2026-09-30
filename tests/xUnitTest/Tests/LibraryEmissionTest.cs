@@ -14,7 +14,7 @@ public class LibraryEmissionTest
     [InlineData("MainAbort", "public func main() => $abort(\"must not execute\")")]
     [InlineData("Functions", "public group Api\n    public func answer() -> i32 => 42\n    public func text() -> string => \"library\"")]
     [InlineData("Generic", "public group Api\n    public func keep<T>(value: T) -> T => value@move")]
-    [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit => Console.writeLine(\"drop\")")]
+    [InlineData("Cleanup", "public struct Value\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")")]
     public void EmitsInspectionWithoutAnOsEntry(string name, string source)
     {
         var c = Analyze(source);

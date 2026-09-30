@@ -32,7 +32,7 @@ public class StorageBoundaryTest
     [Fact]
     public void AbortInRemainderCleanupStopsRemainingCleanup()
     {
-        var source = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 2 => $abort(\"stop\")\n        Console.writeLine(\"drop\")\nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nvar iterator = (values@move).intoIterator()\n_ = iterator.next()\nConsole.writeLine(\"stop\")";
+        var source = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 2 => $abort(\"stop\")\n        Console.writeLine(\"drop\")\nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nvar iterator = (values@move).intoIterator()\n_ = iterator.next()\nConsole.writeLine(\"stop\")";
         ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedAbort", source, "drop\nstop\ndrop\n", 1, "Hello.kimi:5:28: abort KIMI_E_ABORT: stop\n");
     }
 
@@ -148,7 +148,7 @@ public class StorageBoundaryTest
     [Fact]
     public void OwningIteratorDestroysUnreturnedElements()
     {
-        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped \\(self.id)\")\n" +
             "public func main()\n    var items: Array<Tracked> = [Tracked.init(1), Tracked.init(2), Tracked.init(3), Tracked.init(4)]\n    var it = (items@move).intoIterator()\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 1 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 2 else => $abort(\"second\")\n        .None => $abort(\"empty\")\n    Console.writeLine(\"Stop.\")";

@@ -91,7 +91,7 @@ public class ConditionalMemberBindingTest
     [InlineData("Self is Copy")]
     [InlineData("Self is C when T is Copy")]
     [InlineData("init() => ()")]
-    [InlineData("deinit => ()")]
+    [InlineData("drop => ()")]
     public void BlocksRejectLayoutOrNestedConformanceDeclarations(string member)
     {
         var c = Parse($"contract C\nstruct S<T>\n    Self is C when T is Copy\n        {member}", allowDiagnostics: true);

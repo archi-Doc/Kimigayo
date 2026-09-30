@@ -15,17 +15,17 @@ public class ElementPathEmissionTest
         { "SameOuter", "var a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += a[0][1]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
         { "NestedUpdate", "var a: [2 of i32] = [40, 2]\na[0] += a[1]++\nif a[0] == 42 and a[1] == 3 => Console.writeLine(\"ok\")" },
         { "NestedPrefix", "var a: [2 of i32] = [40, 1]\na[0] += ++a[1]\nif a[0] == 42 and a[1] == 2 => Console.writeLine(\"ok\")" },
-        { "RhsStore", "var a: [2 of i32] = [40, 0]\na[0] += work: do\n    a[1] = 2\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 2 => Console.writeLine(\"ok\")" },
-        { "RhsCleanup", "var a: [2 of i32] = [40, 2]\na[0] += work: do\n    defer => a[1]++\n    exit to work: a[1]\nif a[0] == 42 and a[1] == 3 => Console.writeLine(\"ok\")" },
+        { "RhsStore", "var a: [2 of i32] = [40, 0]\na[0] += label work: do\n    a[1] = 2\n    exit to work a[1]\nif a[0] == 42 and a[1] == 2 => Console.writeLine(\"ok\")" },
+        { "RhsCleanup", "var a: [2 of i32] = [40, 2]\na[0] += label work: do\n    defer => a[1]++\n    exit to work a[1]\nif a[0] == 42 and a[1] == 3 => Console.writeLine(\"ok\")" },
         { "Selection", "var a: [2 of i32] = [40, 2]\na[0] += if true => a[1] else => 0\nif a[0] == 42 => Console.writeLine(\"ok\")" },
-        { "Snapshot", "var a: [2 of i32] = [40, 2]\na[0] += a[1] + (work: do\n    a[1] = 99\n    exit to work: 0\n)\nif a[0] == 42 and a[1] == 99 => Console.writeLine(\"ok\")" },
+        { "Snapshot", "var a: [2 of i32] = [40, 2]\na[0] += a[1] + (label work: do\n    a[1] = 99\n    exit to work 0\n)\nif a[0] == 42 and a[1] == 99 => Console.writeLine(\"ok\")" },
         { "DynamicPrefix", "var a: ([1 of i32], [1 of i32]) = ([40], [2])\nvar i: isize = 0\na.0[i] += a.1[i]++\nif a.0[0] == 42 and a.1[0] == 3 => Console.writeLine(\"ok\")" },
         { "DynamicDescendant", "var a: [2 of [1 of i32]] = [[40], [2]]\nvar i: isize = 0\na[0][i] += a[1][i]\nif a[0][0] == 42 => Console.writeLine(\"ok\")" },
         { "Literals", "var a: [2 of i32] = [40, 2]\na[((0x0))] += a[(0b0_1)]\nif a[0] == 42 => Console.writeLine(\"ok\")" },
         { "CopyAggregate", "func get(a: [1 of i32]) -> i32 => a[0]\nvar a: (i32, [1 of i32]) = (40, [2])\na.0 += get(a.1)\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "ZeroSizeSibling", "func amount(unit: ()) -> i32 => 2\nvar a = ((), 40)\na.1 += amount(a.0)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
         { "IndexRead", "var a: (i32, [1 of i32], isize) = (41, [1], 0)\na.0 += a.1[a.2]++\nif a.0 == 42 and a.1[0] == 2 => Console.writeLine(\"ok\")" },
-        { "Transfer", "func f() -> i32\n    var a = (40, 2)\n    defer\n        if a.0 == 40 and a.1 == 3 => Console.writeLine(\"ok\")\n    a.0 += (work: do\n        a.1++\n        return 42\n    )\n    return 0\nf()" },
+        { "Transfer", "func f() -> i32\n    var a = (40, 2)\n    defer\n        if a.0 == 40 and a.1 == 3 => Console.writeLine(\"ok\")\n    a.0 += (label work: do\n        a.1++\n        return 42\n    )\n    return 0\nf()" },
         { "Deferred", "var a: [2 of i32] = [0, 14]\nvar i = 0\nloop\n    defer => a[0] += a[1]\n    i += 1\n    if i < 3 => continue\n    exit\nif a[0] == 42 => Console.writeLine(\"ok\")" },
     };
 
@@ -35,8 +35,8 @@ public class ElementPathEmissionTest
         => ScalarEmissionTest.EmitFixture("ElementPath" + name, source, "ok\n");
 
     [Theory]
-    [InlineData("AggregateStore", "var a: (i32, [2 of i32]) = (40, [0, 0])\na.0 += work: do\n    a.1 = [1, 2]\n    exit to work: a.1[1]\nif a.0 == 42 and a.1[0] == 1 => Console.writeLine(\"ok\")", "ok\n")]
-    [InlineData("UnitStore", "func mark() => Console.writeLine(\"unit\")\nvar a = (40, ())\na.0 += work: do\n    a.1 = mark()\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "unit\nok\n")]
+    [InlineData("AggregateStore", "var a: (i32, [2 of i32]) = (40, [0, 0])\na.0 += label work: do\n    a.1 = [1, 2]\n    exit to work a.1[1]\nif a.0 == 42 and a.1[0] == 1 => Console.writeLine(\"ok\")", "ok\n")]
+    [InlineData("UnitStore", "func mark() => Console.writeLine(\"unit\")\nvar a = (40, ())\na.0 += label work: do\n    a.1 = mark()\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "unit\nok\n")]
     public void DisjointCopyReplacementPreservesEvaluation(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementPathAdditional" + name, source, stdout);
 
@@ -65,9 +65,9 @@ public class ElementPathEmissionTest
     [InlineData("a[0] += a[(if true => 1 else => 1)]")]
     [InlineData("if i != 1 => a[i] += a[1]")]
     [InlineData("a[0] += get(a)")]
-    [InlineData("a[0] += (work: do\n    a = [1, 2]\n    exit to work: 2\n)")]
-    [InlineData("a[0] += (work: do\n    defer => a[0]\n    exit to work: 2\n)")]
-    [InlineData("a[0] += (work: do\n    a[1]++\n    exit to work: a[0]\n)")]
+    [InlineData("a[0] += (label work: do\n    a = [1, 2]\n    exit to work 2\n)")]
+    [InlineData("a[0] += (label work: do\n    defer => a[0]\n    exit to work 2\n)")]
+    [InlineData("a[0] += (label work: do\n    a[1]++\n    exit to work a[0]\n)")]
     public void RightSideOperandsPrecedeTheElementAccess(string expression)
     {
         var c = MinimalEmissionTest.Analyze("func get(a: [2 of i32]) -> i32 => a[0]\nvar a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);
@@ -94,8 +94,8 @@ public class ElementPathEmissionTest
     [InlineData("let r = a@ref\na[0] += r[1]\nlet n = r[0]")]
     [InlineData("let r = a@ref\na[i] += 1\nlet n = r[0]")]
     [InlineData("let r = a@uniq\na[0] += 1\nlet n = r[0]")]
-    [InlineData("a[(work: do\n    a[1]++\n    exit to work: 0\n)] += 2")]
-    [InlineData("let n = a[(work: do\n    a[1] = 1\n    exit to work: 0\n)]")]
+    [InlineData("a[(label work: do\n    a[1]++\n    exit to work 0\n)] += 2")]
+    [InlineData("let n = a[(label work: do\n    a[1] = 1\n    exit to work 0\n)]")]
     public void LoansOutlivingTheRightSideProduceNoIr(string expression)
     {
         var c = MinimalEmissionTest.Analyze("var a: [2 of i32] = [40, 2]\nvar i: isize = 0\n" + expression);

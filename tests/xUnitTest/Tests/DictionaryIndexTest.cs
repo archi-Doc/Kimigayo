@@ -29,7 +29,7 @@ public class DictionaryIndexTest
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             func key() -> i32
                 Console.writeLine("key")
                 return 1
@@ -56,7 +56,7 @@ public class DictionaryIndexTest
                     self.number = number
                     self.name = name@move
                 public func equals(self: ref/Self, other: ref/Self) -> bool => self.number == other.number
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<Key, i32> = [:]
             _ = entries.tryInsert(Key.init(1, "stored"), 2)
             entries[Key.init(1, "search")] = 3

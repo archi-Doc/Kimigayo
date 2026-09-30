@@ -67,7 +67,7 @@ public class Utf8ConsoleTest
             struct Value
                 public init() => Console.writeLine("create")
                 public func get(self: ref/Self) -> i32 => 42
-                deinit => Console.writeLine("destroy")
+                drop => Console.writeLine("destroy")
             Console.writeLine("n=\(Value.init().get())")
             """;
         NativeAllocationAudit.WriteFixture("Utf8ConsoleLifetime", Source, 0, 0, 0, "create\nn=42\ndestroy\n");

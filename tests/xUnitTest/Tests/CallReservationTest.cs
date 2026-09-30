@@ -27,7 +27,7 @@ public class CallReservationTest
     [InlineData("PayloadMethod", "var o = Kimi.Intrinsics.makeObj(Cell.init())\no.set(read(o@follow@ref))")]
     [InlineData("ReplaceBorrowed", "func update(c: uniq/Cell) => Kimi.Intrinsics.replace(c, with: Cell.init())\nvar c = Cell.init()\nupdate(c@uniq)")]
     [InlineData("Disjoint", "func two(a: uniq/Cell, b: uniq/Cell)\n    a.value = 2\n    b.value = 3\nvar pair = (Cell.init(), Cell.init())\ntwo(pair.0@uniq, pair.1@uniq)")]
-    [InlineData("Caught", "var c = Cell.init()\nset(c@uniq, (scope: do => exit to scope: read(c)))")]
+    [InlineData("Caught", "var c = Cell.init()\nset(c@uniq, (label scope: do => exit to scope read(c)))")]
     [InlineData("Return", "func run() -> i32\n    var c = Cell.init()\n    defer => c.value = 7\n    set(c@uniq, do => return read(c))\n    return 0\nrequire run() == 1 else => $abort(\"return\")")]
     [InlineData("Generic", "func run<T>(c: uniq/Cell, x: ref/T) => set(c@follow@uniq, read(c))\nvar c = Cell.init()\nlet x = true\nrun(c@uniq, x)")]
     [InlineData("Constructor", "struct S\n    public init(c: uniq/Cell, n: i32) => c.value = n\nvar c = Cell.init()\nlet s = S.init(c@uniq, read(c))")]
@@ -87,8 +87,8 @@ public class CallReservationTest
     [InlineData("var text = \"owned\"\nKimi.Intrinsics.exchange(text@uniq, with: text@move)")]
     [InlineData("func both(o: objuniq/Cell, r: objref/Cell) => ()\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nboth(o@objuniq, o@objref)")]
     [InlineData("func put(o: objuniq/Cell, n: i32) => ()\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nlet u = o@objuniq\nput(u@objuniq, read(o@follow@ref))")]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (scope: do\n    c.value = 2\n    exit to scope: 3))")]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (scope: do\n    defer => c.value = 2\n    exit to scope: 3))")]
+    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3))")]
+    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3))")]
     public void RejectsConflictsAndBoundaries(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
@@ -152,7 +152,7 @@ public class CallReservationTest
 
     [Theory]
     [InlineData("func both(c: uniq/Cell, r: ref/Cell) => ()\nvar c = Cell.init()\nboth(c@uniq, c@ref)", true)]
-    [InlineData("var c = Cell.init()\nset(c@uniq, (scope: do\n    c.value = 2\n    exit to scope: 3))", false)]
+    [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3))", false)]
     public void DiagnosticsIdentifyPreparationOrActivation(string body, bool activation)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
@@ -186,7 +186,7 @@ public class CallReservationTest
     [InlineData("var o = Kimi.Intrinsics.makeObj(Cell.init())\nlet r = o@objref\nlet u = r@objuniq")]
     [InlineData("let o = Kimi.Intrinsics.makeObj(Cell.init())\nlet u = o@objuniq")]
     [InlineData("var c = Cell.init()\nlet u = c@objuniq/Cell")]
-    [InlineData("func bad(c: uniq/Cell, n: i32 = (scope: do\n    c.value = 2\n    exit to scope: 3)) => ()\nvar c = Cell.init()\nbad(c)")]
+    [InlineData("func bad(c: uniq/Cell, n: i32 = (label scope: do\n    c.value = 2\n    exit to scope 3)) => ()\nvar c = Cell.init()\nbad(c)")]
     [InlineData("func bad(c: uniq/Cell, r: ref/Cell = c@ref) => ()\nvar c = Cell.init()\nbad(c)")]
     public void RejectsPermissionAndDefaultEscapes(string body)
     {

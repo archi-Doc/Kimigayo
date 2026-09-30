@@ -131,7 +131,7 @@ public class DictionaryRemainderTest
     [Fact]
     public void OwningIterationTransfersEntriesAndDestroysTheRest()
     {
-        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped \\(self.id)\")\n" +
             "public func main()\n    var map: Dictionary<i32, Tracked> = [:]\n    _ = map.tryInsert(1, Tracked.init(10))\n    _ = map.tryInsert(2, Tracked.init(20))\n" +
             "    _ = map.tryInsert(3, Tracked.init(30))\n    _ = map.tryInsert(4, Tracked.init(40))\n    _ = map.remove(2)\n    Console.writeLine(\"Removed.\")\n" +
             "    var it = (map@move).intoIterator()\n" +
@@ -165,7 +165,7 @@ public class DictionaryRemainderTest
     [Fact]
     public void ForSelectsTheDictionaryEntryByMode()
     {
-        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped \\(self.id)\")\n" +
             "public func main()\n    var totals: Dictionary<string, i32> = [:]\n    _ = totals.tryInsert(\"a\", 1)\n    _ = totals.tryInsert(\"b\", 2)\n" +
             "    for (key, value) in totals@uniq\n        value@follow += 10\n    var sum: i32 = 0\n    for (key, value) in totals\n        let n: i32 = value\n        sum += n\n" +
             "    require sum == 23 else => $abort(\"sum\")\n" +

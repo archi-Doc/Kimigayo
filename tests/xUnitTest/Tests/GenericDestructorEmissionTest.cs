@@ -16,7 +16,7 @@ public class GenericDestructorEmissionTest
                 specialize func tag<i32>() -> i32 => 1
                 specialize func tag<i64>() -> i32 => 2
             struct Marker<T>
-                deinit => Console.writeLine("\(Support.tag<T>())")
+                drop => Console.writeLine("\(Support.tag<T>())")
             let first = Marker<i32>.init()
             let second = Marker<i64>.init()
             """;
@@ -32,7 +32,7 @@ public class GenericDestructorEmissionTest
         var c = MinimalEmissionTest.Analyze($$"""
             struct Box<T>
                 let value: {{fieldType}}
-                deinit
+                drop
                     let observed: {{localType}} = self.value
             ()
             """);
@@ -54,7 +54,7 @@ public class GenericDestructorEmissionTest
             struct Owner
                 var counter: Counter
                 public init() => self.counter = Counter.init()
-                deinit
+                drop
                     Support.bump(self.counter@uniq)
                     Support.show(self.counter@ref)
             let owner = Owner.init()
@@ -71,7 +71,7 @@ public class GenericDestructorEmissionTest
             struct Owner
                 var n: i32
                 public init() => self.n = 0
-                deinit => {{use}}
+                drop => {{use}}
             group Support
                 public func take(owner: uniq/Owner) => ()
             ()
@@ -83,7 +83,7 @@ public class GenericDestructorEmissionTest
     public void InstantiatedBodyRunsBeforeInstantiatedFieldCleanup()
         => ScalarEmissionTest.EmitFixture(
             "GenericDestructorOrder",
-            "struct Child\n    deinit => Console.writeLine(\"child\")\nstruct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    deinit => Console.writeLine(\"box\")\nlet a = Box<Child>.init(Child.init())\nlet b = Box<i32>.init(7)\nConsole.writeLine(\"body\")",
+            "struct Child\n    drop => Console.writeLine(\"child\")\nstruct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop => Console.writeLine(\"box\")\nlet a = Box<Child>.init(Child.init())\nlet b = Box<i32>.init(7)\nConsole.writeLine(\"body\")",
             "body\nbox\nbox\nchild\n");
 
     [Fact]
@@ -93,7 +93,7 @@ public class GenericDestructorEmissionTest
             struct Child
                 let tag: i32
                 public init(tag: i32) => self.tag = tag
-                deinit => Console.writeLine("child \(self.tag)")
+                drop => Console.writeLine("child \(self.tag)")
             group Support
                 public func inspect<T>(value: ref/T, tag: i32)
                     Console.writeLine("box \(tag)")
@@ -103,7 +103,7 @@ public class GenericDestructorEmissionTest
                 public init(value: T, tag: i32)
                     self.value = value@move
                     self.tag = tag
-                deinit => Support.inspect(self.value, self.tag)
+                drop => Support.inspect(self.value, self.tag)
             let small = Box<i8>.init(7, 1)
             let large = Box<(i64, i64)>.init((8, 9), 2)
             let nested = Box<Child>.init(Child.init(4), 3)
@@ -122,11 +122,11 @@ public class GenericDestructorEmissionTest
                 public init(value: T, tag: i32)
                     self.value = value@move
                     self.tag = tag
-                deinit => Console.writeLine("local \(self.tag)")
+                drop => Console.writeLine("local \(self.tag)")
             struct Box<T>
                 let value: T
                 public init(value: T) => self.value = value@move
-                deinit
+                drop
                     let local = Local<unsafe/T>.init(null, 7)
                     Console.writeLine("box")
             let value = Box<i32>.init(1)
@@ -141,14 +141,14 @@ public class GenericDestructorEmissionTest
             struct Child
                 let tag: i32
                 public init(tag: i32) => self.tag = tag
-                deinit => Console.writeLine("child \(self.tag)")
+                drop => Console.writeLine("child \(self.tag)")
             struct Box<T>
                 let value: T
                 var tag: i32
                 public init(value: T, tag: i32)
                     self.value = value@move
                     self.tag = tag
-                deinit
+                drop
                     self.tag += 10
                     defer => Console.writeLine("defer \(self.tag)")
                     if self.tag == 11 => return
@@ -162,7 +162,7 @@ public class GenericDestructorEmissionTest
     [Fact]
     public void InstantiatedDestructorsReuseWarmEmissionState()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    deinit\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    let tag: i32\n    public init(value: T)\n        self.value = value@move\n        self.tag = 1\n    drop\n        if self.tag == 1 => Console.writeLine(\"tag\")\nlet a = Box<i8>.init(7)\nlet b = Box<i64>.init(8)");
         for (var i = 0; i < 16; i++)
         {
             Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -184,7 +184,7 @@ public class GenericDestructorEmissionTest
         GenericStoragePlan.SubstitutionSetLimit = 2;
         try
         {
-            var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    deinit => ()\nfunc a(value: Box<i8>) => ()\nfunc b(value: Box<i16>) => ()\nfunc c(value: Box<i32>) => ()\npublic func main() => ()");
+            var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    drop => ()\nfunc a(value: Box<i8>) => ()\nfunc b(value: Box<i16>) => ()\nfunc c(value: Box<i32>) => ()\npublic func main() => ()");
             using var output = new StringWriter();
             Assert.False(c.Emission.WriteIr(output, out var error));
             Assert.Empty(output.ToString());
@@ -203,7 +203,7 @@ public class GenericDestructorEmissionTest
     [InlineData("(T, T)")]
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
     {
-        var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: unsafe/T\n    public init() => self.pointer = null\n    deinit\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
+        var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: unsafe/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out var error));
@@ -215,7 +215,7 @@ public class GenericDestructorEmissionTest
     [Fact]
     public void GenericDestructorStillRejectsUninitializedFields()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    deinit\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var output = new StringWriter();

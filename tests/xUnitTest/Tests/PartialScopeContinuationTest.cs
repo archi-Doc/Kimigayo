@@ -98,7 +98,7 @@ public class PartialScopeContinuationTest
 
     [Theory]
     [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        loop\n            if d => exit\n            x = 1\n            exit\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
-    [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        inner: do\n            if d => exit to inner\n            x = 1\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
+    [InlineData("func f(c: bool, d: bool)\n    var x: i32\n    if c\n        label inner: do\n            if d => exit to inner\n            x = 1\n        x = 2\n        stop()\n    else\n        x = 3\n        return\n    let y = x")]
     public void LabeledPartialPathsNeverJoinAsTerminal(string source)
     {
         var c = MinimalEmissionTest.Analyze(Stop + source);

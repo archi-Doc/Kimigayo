@@ -65,23 +65,23 @@ public class SpecRevisionAnalysisTest
     }
 
     [Theory]
-    [InlineData("let value: i32 = work: do\n    exit to work: 1")]
-    [InlineData("let value: () = work: do\n    exit to work: ()")]
-    [InlineData("let result = work: do\n    exit to work: 1")]
-    [InlineData("func f() -> i32\n    let result = work: do\n        return 1")]
-    [InlineData("let result = work: do\n    loop\n        continue")]
-    [InlineData("work: do\n    exit to work")]
-    [InlineData("work: do\n    let unused = loop\n        exit 1\n    ()")]
-    [InlineData("let result = work: do\n    loop\n        if false\n            exit to work: 1")]
+    [InlineData("let value: i32 = label work: do\n    exit to work 1")]
+    [InlineData("let value: () = label work: do\n    exit to work ()")]
+    [InlineData("let result = label work: do\n    exit to work 1")]
+    [InlineData("func f() -> i32\n    let result = label work: do\n        return 1")]
+    [InlineData("let result = label work: do\n    loop\n        continue")]
+    [InlineData("label work: do\n    exit to work")]
+    [InlineData("label work: do\n    let unused = loop\n        exit 1\n    ()")]
+    [InlineData("let result = label work: do\n    loop\n        if false\n            exit to work 1")]
     public void AcceptsLabeledBlockResults(string source)
         => AssertValidAnalysis(source);
 
     [Theory]
-    [InlineData("let value: i32 = work: do\n    ()", "incompatible")]
-    [InlineData("let value: i32 = work: do\n    exit to work", "incompatible")]
-    [InlineData("work: do\n    exit to work: 1\n    exit to work", "incompatible")]
-    [InlineData("work: do\n    exit to work: 1\n    exit to work: \"text\"", "incompatible")]
-    [InlineData("let value: i32 = work: do\n    loop\n        if false\n            exit to work: \"text\"", "incompatible")]
+    [InlineData("let value: i32 = label work: do\n    ()", "incompatible")]
+    [InlineData("let value: i32 = label work: do\n    exit to work", "incompatible")]
+    [InlineData("label work: do\n    exit to work 1\n    exit to work", "incompatible")]
+    [InlineData("label work: do\n    exit to work 1\n    exit to work \"text\"", "incompatible")]
+    [InlineData("let value: i32 = label work: do\n    loop\n        if false\n            exit to work \"text\"", "incompatible")]
     public void RejectsInvalidLabeledResultsEvenWhenUnreachable(string source, string diagnostic)
         => Assert.Contains(Analyze(source).Issues, issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
 
@@ -97,7 +97,7 @@ public class SpecRevisionAnalysisTest
     [Theory]
     [InlineData("func f()\n    defer => return", "No valid target")]
     [InlineData("loop\n    defer => continue", "No valid target")]
-    [InlineData("outer: loop\n    defer => exit to outer", "No valid target")]
+    [InlineData("label outer: loop\n    defer => exit to outer", "No valid target")]
     [InlineData("if true\n    defer => yield 1", "No valid target")]
     [InlineData("defer => exit 1", "incompatible")]
     [InlineData("defer\n    if false\n        return", "No valid target")]
@@ -160,7 +160,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("func f()\n    #if false\n        ()")]
     [InlineData("defer\n    #if false\n        ()")]
     [InlineData("unsafe\n    #if false\n        ()")]
-    [InlineData("work: do\n    #if false\n        ()")]
+    [InlineData("label work: do\n    #if false\n        ()")]
     [InlineData("if true\n    #if false\n        ()")]
     [InlineData("struct Example\n    var value: i32\n        get(self: ref/Self) -> i32\n            #if false\n                return 1")]
     public void EmptySelectedBodiesRemainValidAfterWriting(string source)

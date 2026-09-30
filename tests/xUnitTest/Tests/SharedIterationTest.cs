@@ -40,7 +40,7 @@ public class SharedIterationTest
             struct Item
                 public let number: i32
                 public init(number: i32) => self.number = number
-                deinit => ()
+                drop => ()
             let values: [2 of (i32, Item)] = [(2, Item.init(3)), (5, Item.init(7))]
             var total = 0
             for (number, item) in values

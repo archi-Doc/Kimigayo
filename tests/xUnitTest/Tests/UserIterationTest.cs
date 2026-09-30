@@ -117,7 +117,7 @@ public class UserIterationTest
 
     [Fact]
     public void EntryConstraintPreservesOwnedAndBorrowedItems()
-        => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    deinit => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
+        => ScalarEmissionTest.EmitFixture("UserIterationConstraintItems", Drain + "struct Tracked\n    drop => Console.writeLine(\"item\")\nfunc count<B>(batch: B) -> isize\n    B is IntoIterable\n    var count: isize = 0\n    for _ in batch@move => count += 1\n    return count\nfunc inspect(n: ref/i32 during a)\n    require count(Batch<ref/i32 during a>.init(n)) == 1 else => $abort(\"borrow\")\nrequire count(Batch<Tracked>.init(Tracked.init())) == 1 else => $abort(\"owned\")\nvar n: i32 = 7\ninspect(n@ref)\nn = 8\nConsole.writeLine(\"ok\")", "item\nok\n");
 
     [Fact]
     public void GenericLoopTransfersItsProjectedItemIntoTheResult()
@@ -226,16 +226,16 @@ public class UserIterationTest
     [InlineData("Unnamed", "Console.writeLine(\"body\")\n    exit", "body\nitem\niterator\ndone\n")]
     public void IteratorAndItemHaveSeparateCleanup(string name, string body, string stdout)
     {
-        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
-        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        var declarations = Drain.Replace("    public func next(self:", "    drop => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    drop => Console.writeLine(\"item\")\n";
         ScalarEmissionTest.EmitFixture("UserIterationCleanup" + name, declarations + item + "for " + (name == "Unnamed" ? "_" : "item") + " in Batch<Tracked>.init(Tracked.init())\n    " + body + "\nConsole.writeLine(\"done\")", stdout);
     }
 
     [Fact]
     public void ReturnTransfersTheItemBeforeIteratorCleanup()
     {
-        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
-        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        var declarations = Drain.Replace("    public func next(self:", "    drop => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    drop => Console.writeLine(\"item\")\n";
         ScalarEmissionTest.EmitFixture("UserIterationReturn", declarations + item + "func take() -> Tracked\n    for item in Batch<Tracked>.init(Tracked.init()) => return item@move\n    $abort(\"empty\")\nlet value = take()\nConsole.writeLine(\"done\")", "iterator\ndone\nitem\n");
     }
 
@@ -244,17 +244,17 @@ public class UserIterationTest
     [InlineData("exit")]
     public void NestedTransfersCleanEachScopeInOrder(string transfer)
     {
-        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
-        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
-        ScalarEmissionTest.EmitFixture("UserIterationNested" + transfer, declarations + item + "outer: for first in Batch<Tracked>.init(Tracked.init())\n    defer => Console.writeLine(\"outer defer\")\n    for second in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"inner defer\")\n        " + transfer + " to outer\nConsole.writeLine(\"done\")", "inner defer\nitem\niterator\nouter defer\nitem\niterator\ndone\n");
+        var declarations = Drain.Replace("    public func next(self:", "    drop => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    drop => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationNested" + transfer, declarations + item + "label outer: for first in Batch<Tracked>.init(Tracked.init())\n    defer => Console.writeLine(\"outer defer\")\n    for second in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"inner defer\")\n        " + transfer + " to outer\nConsole.writeLine(\"done\")", "inner defer\nitem\niterator\nouter defer\nitem\niterator\ndone\n");
     }
 
     [Fact]
     public void OutwardResultSecuresTheItemBeforeDeferredCleanup()
     {
-        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
-        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
-        ScalarEmissionTest.EmitFixture("UserIterationOutward", declarations + item + "let value = result: do\n    for item in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"defer\")\n        exit to result: item@move\n    $abort(\"empty\")\nConsole.writeLine(\"done\")", "defer\niterator\ndone\nitem\n");
+        var declarations = Drain.Replace("    public func next(self:", "    drop => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    drop => Console.writeLine(\"item\")\n";
+        ScalarEmissionTest.EmitFixture("UserIterationOutward", declarations + item + "let value = label result: do\n    for item in Batch<Tracked>.init(Tracked.init())\n        defer => Console.writeLine(\"defer\")\n        exit to result item@move\n    $abort(\"empty\")\nConsole.writeLine(\"done\")", "defer\niterator\ndone\nitem\n");
     }
 
     [Fact]
@@ -268,8 +268,8 @@ public class UserIterationTest
     [Fact]
     public void AbortDoesNotRunLoopCleanup()
     {
-        var declarations = Drain.Replace("    public func next(self:", "    deinit => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
-        var item = "struct Tracked\n    deinit => Console.writeLine(\"item\")\n";
+        var declarations = Drain.Replace("    public func next(self:", "    drop => Console.writeLine(\"iterator\")\n    public func next(self:", StringComparison.Ordinal);
+        var item = "struct Tracked\n    drop => Console.writeLine(\"item\")\n";
         var source = declarations + item + "for item in Batch<Tracked>.init(Tracked.init())\n    defer => Console.writeLine(\"defer\")\n    Console.writeLine(\"body\")\n    var n = 2147483647\n    n += 1\nConsole.writeLine(\"done\")";
         var line = source[..source.IndexOf("    n += 1", StringComparison.Ordinal)].Count(x => x == '\n') + 1;
         ScalarEmissionTest.EmitFixture("UserIterationAbort", source, "body\n", 1, $"Hello.kimi:{line}:5: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");

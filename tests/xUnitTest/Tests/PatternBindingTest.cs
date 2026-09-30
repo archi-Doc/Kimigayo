@@ -333,7 +333,7 @@ public class PatternBindingTest
     [Fact]
     public void AbruptSubjectDoesNotPropagateGuardTransfers()
     {
-        var c = Parse("func f() -> i32\n    let result = work: do\n        match (return 1)\n            _ if (exit to work: 2) => ()\n            _ => ()\n        exit to work: 3\n    return result");
+        var c = Parse("func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n        exit to work 3\n    return result");
         c.Bind();
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         var match = Matches(c)[0];

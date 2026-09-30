@@ -20,7 +20,7 @@ public class ElementUpdateEmissionTest
         { "IndexUpdate", "var a: [2 of i32] = [40, 0]\nvar i: [1 of isize] = [0]\na[i[0]++] += 2\nif a[0] == 42 and i[0] == 1 => Console.writeLine(\"ok\")" },
         { "IndexSnapshot", "var a: [2 of i32] = [40, 0]\nvar i: isize = 0\na[i++] += 2\nif a[0] == 42 and a[1] == 0 and i == 1 => Console.writeLine(\"ok\")" },
         { "RhsSelection", "var a = (40, true)\nlet flag = a.1\na.0 += if flag => 2 else => 0\nif a.0 == 42 => Console.writeLine(\"ok\")" },
-        { "RhsDo", "var a = (40, true)\na.0 += work: do\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")" },
+        { "RhsDo", "var a = (40, true)\na.0 += label work: do\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
@@ -123,10 +123,10 @@ public class ElementUpdateEmissionTest
 
     // SPEC 13.7.2: the RHS, including its cleanup, completes before the element is located, read and written.
     [Theory]
-    [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    a = [1]\n    exit to work: 42\n)")]
+    [InlineData("var a: [1 of i32] = [0]\na[0] += (label work: do\n    a = [1]\n    exit to work 42\n)")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += a[0]++")]
     [InlineData("var a: [2 of i32] = [0, 0]\nlet i: isize = 1\na[0] += ++a[i]")]
-    [InlineData("var a: [1 of i32] = [0]\na[0] += (work: do\n    defer => a[0] = 1\n    exit to work: 42\n)")]
+    [InlineData("var a: [1 of i32] = [0]\na[0] += (label work: do\n    defer => a[0] = 1\n    exit to work 42\n)")]
     public void RightSideEffectsPrecedeTheAccessProtection(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -137,8 +137,8 @@ public class ElementUpdateEmissionTest
 
     // The located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
     [Theory]
-    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0]++\n    exit to work: 0\n)]++")]
-    [InlineData("var a: [1 of i32] = [21]\nlet x = a[(work: do\n    a[0]++\n    exit to work: 0\n)]")]
+    [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    a[0]++\n    exit to work 0\n)]++")]
+    [InlineData("var a: [1 of i32] = [21]\nlet x = a[(label work: do\n    a[0]++\n    exit to work 0\n)]")]
     public void IndexOperandsCannotMutateTheProtectedReceiver(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -150,15 +150,15 @@ public class ElementUpdateEmissionTest
     [Fact]
     public void TargetMovedByTheRightSideIsRejected()
     {
-        var c = MinimalEmissionTest.Analyze("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (work: do\n    take(a@move)\n    exit to work: 42\n)");
+        var c = MinimalEmissionTest.Analyze("func take(a: (string, i32)) => ()\nvar a = (\"held\", 0)\na.1 += (label work: do\n    take(a@move)\n    exit to work 42\n)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.PossiblyMovedUse);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
-    [InlineData("Rhs", "a.1[0] += work: do\n    defer => loop => ()\n    exit to work: 42")]
-    [InlineData("Index", "a.1[work: do\n    defer => loop => ()\n    exit to work: 0\n]++")]
+    [InlineData("Rhs", "a.1[0] += label work: do\n    defer => loop => ()\n    exit to work 42")]
+    [InlineData("Index", "a.1[label work: do\n    defer => loop => ()\n    exit to work 0\n]++")]
     public void NonterminatingCleanupPreventsTheStore(string name, string expression)
     {
         var source = "var a: (string, [1 of i32]) = (\"held\", [0])\n" + expression;
@@ -193,7 +193,7 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [1 of [1 of i32]] = [[21]]\na[0][0] += a[0][0]")]
     [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1 + 0]")]
     [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
-    [InlineData("var a: [1 of i32] = [21]\na[0] += (work: do\n    defer => a[0]\n    exit to work: 21\n)")]
+    [InlineData("var a: [1 of i32] = [21]\na[0] += (label work: do\n    defer => a[0]\n    exit to work 21\n)")]
     [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]\nf()")]
     public void SelfReadsInTheRightSidePrecedeTheExclusiveUpdate(string source)
     {

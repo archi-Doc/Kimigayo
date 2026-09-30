@@ -610,6 +610,13 @@ public sealed partial class Binding
                 var loopResult = this.BeginResult(loop, scope, expected);
                 this.BindNode(loop.Body, scope);
                 return this.FinishResult(loop, loopResult);
+            case JumpKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
+                if (recovered.Expression is { } recoveredOperand)
+                {
+                    this.BindNode(recoveredOperand, scope);
+                }
+
+                return Complete(node, null);
             case JumpKoto jump:
                 var target = KotoHelper.ResolveTransferTarget(jump);
                 this.resultContexts.TryGetValue(target ?? jump, out var targetResult);
@@ -663,6 +670,9 @@ public sealed partial class Binding
                 return Complete(node, BoundType.Unit);
             case TestVerificationKoto verification:
                 return this.BindVerification(verification, scope);
+            case LabeledKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
+                this.BindNode(recovered.Target, scope);
+                return Complete(node, null);
             case LabeledKoto labeled:
                 return Complete(node, this.BindNode(labeled.Target, scope, expected));
             case TupleLiteralKoto tuple:

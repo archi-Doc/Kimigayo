@@ -107,7 +107,7 @@ public class DictionaryOperationsTest
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<i32, Item> = [:]
             entries.reserve(3)
             _ = entries.tryInsert(1, Item.init("first"))

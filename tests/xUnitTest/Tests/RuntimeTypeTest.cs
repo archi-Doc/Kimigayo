@@ -289,7 +289,7 @@ public class RuntimeTypeTest
     [Fact]
     public void RequiredCleanupCanStopAValidObjectTypedOperand()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (work: do\n    defer => loop => ()\n    exit to work: x\n) is Dog");
+        var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (label work: do\n    defer => loop => ()\n    exit to work x\n) is Dog");
         AssertBound(c);
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);

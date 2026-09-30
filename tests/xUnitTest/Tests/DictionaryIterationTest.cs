@@ -56,11 +56,11 @@ public class DictionaryIterationTest
                 public let number: i32
                 public init(number: i32) => self.number = number
                 public func equals(self: ref/Self, other: ref/Self) -> bool => self.number == other.number
-                deinit => Console.writeLine("key")
+                drop => Console.writeLine("key")
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<Key, Item> = [:]
             _ = entries.tryInsert(Key.init(1), Item.init("one"))
             _ = entries.tryInsert(Key.init(2), Item.init("two"))

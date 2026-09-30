@@ -19,7 +19,7 @@ public class DefaultOwnershipTest
     [InlineData("func f(x: string, y: (string, i32) = (x, 1)) => ()")]
     [InlineData("func f(x: string, y: [1 of string] = [x]) => ()")]
     [InlineData("func f(x: string, y: Option<string> = .Some(x@move)) => ()")]
-    [InlineData("func f(x: string, y: string = (scope: do\n    var local = \"a\"\n    local = x\n    exit to scope: local\n)) => ()")]
+    [InlineData("func f(x: string, y: string = (label scope: do\n    var local = \"a\"\n    local = x\n    exit to scope local\n)) => ()")]
     public void OwnedSubplacesAndAggregateInputsCannotMoveInDefaults(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

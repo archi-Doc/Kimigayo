@@ -65,7 +65,7 @@ public class Utf8DeclarationTest
     [InlineData(KimiDeclarationId.Utf8Writer)]
     public void ManagedLayoutsRejectExtraFieldsAndDestruction(KimiDeclarationId id)
     {
-        foreach (var added in new[] { "let extra: i32 = 0", "deinit => ()" })
+        foreach (var added in new[] { "let extra: i32 = 0", "drop => ()" })
         {
             var c = Compilation.CreateForTest();
             var type = (StructKoto)c.Library.GetSymbol(id)!.Declaration;

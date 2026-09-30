@@ -19,8 +19,8 @@ public class MixedTargetContinuationTest
     [InlineData("While", "while c\n            if c\n                x = 1\n                return\n            else => exit", true)]
     [InlineData("NestedSelection", "loop\n            if c\n                if c\n                    x = 1\n                    return\n                else => exit\n            else => exit", true)]
     [InlineData("NestedLoop", "loop\n            loop\n                if c\n                    x = 1\n                    return\n                else => exit\n            exit", true)]
-    [InlineData("Scope", "inner: do\n            if c\n                x = 1\n                return\n            else => exit to inner", true)]
-    [InlineData("Yield", "choice: if c\n            if c\n                x = 1\n                return\n            else => yield to choice\n        else => ()", true)]
+    [InlineData("Scope", "label inner: do\n            if c\n                x = 1\n                return\n            else => exit to inner", true)]
+    [InlineData("Yield", "label choice: if c\n            if c\n                x = 1\n                return\n            else => yield to choice\n        else => ()", true)]
     public void MixedTargetsReachTheirOwnExtents(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedTarget" + Configuration + name,
@@ -127,8 +127,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("Reversed", "loop\n            if c => exit\n            else => return\n            x = 3", false)]
     [InlineData("Nested", "loop\n            loop\n                if c => return\n                else => exit\n                x = 3\n            exit", true)]
-    [InlineData("Scope", "inner: do\n            if c => return\n            else => exit to inner\n            x = 3", true)]
-    [InlineData("Yield", "choice: if c\n            if c => return\n            else => yield to choice\n            x = 3\n        else => ()", true)]
+    [InlineData("Scope", "label inner: do\n            if c => return\n            else => exit to inner\n            x = 3", true)]
+    [InlineData("Yield", "label choice: if c\n            if c => return\n            else => yield to choice\n            x = 3\n        else => ()", true)]
     public void EffectsSurviveEnclosingTargetFiltering(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,

@@ -18,7 +18,7 @@ public class SharedMatchTest
             struct Item
                 public let number: i32
                 public init(number: i32) => self.number = number
-                deinit => Console.writeLine("drop")
+                drop => Console.writeLine("drop")
             let value = (Pair.init(42), Item.init(7))
             match value
                 (let pair, let item)

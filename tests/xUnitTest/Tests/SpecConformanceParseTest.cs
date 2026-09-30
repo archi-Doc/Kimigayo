@@ -79,7 +79,7 @@ public class SpecConformanceParseTest
 
             struct Logger {sink}
                 let output: uniq/Writer during sink
-                deinit
+                drop
                     self.output.flush()
                     return
             """);
@@ -302,24 +302,24 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData("struct Resource\n    deinit\n        release()")]
-    [InlineData("struct Resource\n    deinit => release()")]
+    [InlineData("struct Resource\n    drop\n        release()")]
+    [InlineData("struct Resource\n    drop => release()")]
     public void PreservesDestructorBody(string source)
     {
         var parsed = Parse(source);
         AssertValid(parsed);
-        Assert.Contains("deinit", ParseTestHelper.Unparse(parsed));
+        Assert.Contains("drop", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
     [Theory]
-    [InlineData("struct Resource\n    public deinit\n        release()")]
-    [InlineData("struct Resource\n    #Marker\n    deinit\n        release()")]
+    [InlineData("struct Resource\n    public drop\n        release()")]
+    [InlineData("struct Resource\n    #Marker\n    drop\n        release()")]
     [InlineData("struct Resource\n    unsafe init()\n        ()")]
     [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
     public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
     {
-        // deinit accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
+        // drop accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
         Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
     }
 

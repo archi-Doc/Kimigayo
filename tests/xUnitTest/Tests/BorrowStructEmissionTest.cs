@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class BorrowStructEmissionTest
 {
-    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    deinit => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref/Counter during counter => counter\n";
+    private const string Counter = "struct Counter\n    public var value: i32 = 0\n    drop => Console.writeLine(\"drop\")\nfunc add(counter: uniq/Counter, amount: i32)\n    counter.value = counter.value + amount\nfunc borrow(counter: ref/Counter) -> ref/Counter during counter => counter\n";
 
     [Fact]
     public void Milestone5()
@@ -21,8 +21,8 @@ public class BorrowStructEmissionTest
     }
 
     [Theory]
-    [InlineData("Default", "struct S\n    public var value: i32 = 7\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()\nif s.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
-    [InlineData("Empty", "struct S\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()", "drop\n")]
+    [InlineData("Default", "struct S\n    public var value: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet s = S.init()\nif s.value == 7 => Console.writeLine(\"ok\")", "ok\ndrop\n")]
+    [InlineData("Empty", "struct S\n    drop => Console.writeLine(\"drop\")\nlet s = S.init()", "drop\n")]
     [InlineData("Order", "struct S\n    let a: () = ::Kimi.Console.writeLine(\"first\")\n    let b: () = ::Kimi.Console.writeLine(\"second\")\nlet s = S.init()", "first\nsecond\n")]
     public void SynthesizedConstruction(string name, string source, string stdout)
     {

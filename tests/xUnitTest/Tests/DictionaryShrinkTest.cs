@@ -46,7 +46,7 @@ public class DictionaryShrinkTest
             struct Item
                 public let id: i32
                 public init(id: i32) => self.id = id
-                deinit
+                drop
                     match self.id
                         1 => Console.writeLine("one")
                         2 => Console.writeLine("two")

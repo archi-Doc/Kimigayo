@@ -26,12 +26,12 @@ public class FunctionEmissionTest
         { "FunctionOverload", "func f(x: i32) -> i32 => x\nfunc f(x: bool) -> bool => x\nif f(1) == 1 and f(true) => Console.writeLine(\"ok\")", "ok\n" },
         { "FunctionUnused", "func unused() => 123\npublic func main() => Console.writeLine(\"ok\")", "ok\n" },
         { "FunctionSkipped", "func zero() -> i32 => 1 / 0\nif false => zero()\nif true or zero() == 0 => Console.writeLine(\"ok\")", "ok\n" },
-        { "FunctionTransferArgument", "func add(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => Console.writeLine(\"end\")\n    add(1, (inner: do => exit to outer: 7))\nif x == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
-        { "FunctionReturnOperand", "func f() -> i32\n    defer => Console.writeLine(\"end\")\n    return (inner: do => return 7)\nif f() == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionTransferArgument", "func add(a: i32, b: i32) -> i32 => a + b\nlet x = label outer: do\n    defer => Console.writeLine(\"end\")\n    add(1, (label inner: do => exit to outer 7))\nif x == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionReturnOperand", "func f() -> i32\n    defer => Console.writeLine(\"end\")\n    return (label inner: do => return 7)\nif f() == 7 => Console.writeLine(\"ok\")", "end\nok\n" },
         { "FunctionNames", "func 日本語(v3: i32, p3: i32, b3: bool, checked3: i32, a0: i32) -> i32 => if b3 => v3 + p3 + checked3 + a0 else => 0\nif 日本語(1, 2, true, 3, 4) == 10 => Console.writeLine(\"ok\")", "ok\n" },
         { "FunctionDeferredCalls", "func tick() => Console.writeLine(\"tick\")\nfunc f(x: i32) -> i32\n    defer => tick()\n    if x == 1 => return x\n    return 2\nif f(1) + f(0) == 3 => Console.writeLine(\"ok\")", "tick\ntick\nok\n" },
-        { "FunctionConditionalTransfer", "func f(a: i32, b: i32) -> i32 => a + b\nlet x = outer: do\n    defer => Console.writeLine(\"end\")\n    exit to outer: f(2, (if false => exit to outer: 9 else => 3))\nif x == 5 => Console.writeLine(\"ok\")", "end\nok\n" },
-        { "FunctionTransferThenArgument", "func f(a: i32, b: i32) -> i32 => a + b\nfunc side() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nlet x = outer: do\n    f((inner: do => exit to outer: 7), side())\nif x == 7 => Console.writeLine(\"ok\")", "ok\n" },
+        { "FunctionConditionalTransfer", "func f(a: i32, b: i32) -> i32 => a + b\nlet x = label outer: do\n    defer => Console.writeLine(\"end\")\n    exit to outer f(2, (if false => exit to outer 9 else => 3))\nif x == 5 => Console.writeLine(\"ok\")", "end\nok\n" },
+        { "FunctionTransferThenArgument", "func f(a: i32, b: i32) -> i32 => a + b\nfunc side() -> i32\n    Console.writeLine(\"bad\")\n    return 1\nlet x = label outer: do\n    f((label inner: do => exit to outer 7), side())\nif x == 7 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -70,7 +70,7 @@ public class FunctionEmissionTest
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
     [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)", true)]
-    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)", true)]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), x++)", true)]
     public void SelectedBodiesAndStartupRespectSupportedFeatures(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);

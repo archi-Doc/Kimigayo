@@ -86,7 +86,7 @@ public class RequireContinuationTest
 
     [Fact]
     public void DefaultFailureCanDeliverToItsEnclosingScope()
-        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + "DefaultResult", "func value(c: bool, y: i32 = (choice: do\n    require c else => exit to choice: 4\n    exit to choice: 7\n)) -> i32 => y\nrequire value(false) == 4 else => $abort(\"failure\")\nrequire value(true) == 7 else => $abort(\"success\")\nrequire value(false, 9) == 9 else => $abort(\"supplied\")\nConsole.writeLine(\"done\")", "done\n");
+        => ScalarEmissionTest.EmitFixture("NeverRequire" + Configuration + "DefaultResult", "func value(c: bool, y: i32 = (label choice: do\n    require c else => exit to choice 4\n    exit to choice 7\n)) -> i32 => y\nrequire value(false) == 4 else => $abort(\"failure\")\nrequire value(true) == 7 else => $abort(\"success\")\nrequire value(false, 9) == 9 else => $abort(\"supplied\")\nConsole.writeLine(\"done\")", "done\n");
 
     [Theory]
     [InlineData("let x: i32\nvalue(true)\nlet y = x", OwnershipFailure.UninitializedUse)]

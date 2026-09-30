@@ -169,7 +169,7 @@ public class NamedArgumentBoundaryTest
 
     [Fact]
     public void AcquiresInSourceOrderAndCleansUpInParameterOrder()
-        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    deinit\n        if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
+        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    drop\n        if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
 
     [Fact]
     public void ConstructorBaseArgumentsUseCallSyntaxWithoutABoundary()

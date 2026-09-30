@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class DynamicArrayBorrowTest
 {
-    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"drop\")\n";
+    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop\")\n";
 
     [Theory]
     [InlineData("Owner", "let item = values[0]@ref\nrequire item.id == 42 else => $abort(\"value\")")]
@@ -42,7 +42,7 @@ public class DynamicArrayBorrowTest
 
     [Theory]
     [InlineData("func make() -> Array<i32> => [1]\nlet item = make()[0]@ref\nlet n: i32 = item")]
-    [InlineData("var values: Array<i32> = [1]\nlet item = values[(index: do\n    values@uniq.clear()\n    exit to index: 0\n)]@ref\nlet n: i32 = item")]
+    [InlineData("var values: Array<i32> = [1]\nlet item = values[(label index: do\n    values@uniq.clear()\n    exit to index 0\n)]@ref\nlet n: i32 = item")]
     [InlineData("var values: Array<i32> = [1]\nlet handle = values@uniq\nlet item = handle[0]@ref\nhandle@follow@uniq.clear()\nlet n: i32 = item")]
     public void RejectsExpiredAndConflictingDependencies(string source)
     {

@@ -17,16 +17,16 @@ public class AggregateResultEmissionTest
         { "AggregateSelectionFalse", "let pair = if false => (\"a\", 1) else => (\"b\", 2)", string.Empty, "a=0;b=1" },
         { "AggregateSelectionSelf", Self, string.Empty, "old=1;new=0" },
         { "AggregateSelectionReplace", Self.Replace("true", "false"), string.Empty, "old=1;new=1" },
-        { "AggregateSelectionDo", "let pair = work: do\n    exit to work: (\"a\", 1)", string.Empty, "a=1" },
+        { "AggregateSelectionDo", "let pair = label work: do\n    exit to work (\"a\", 1)", string.Empty, "a=1" },
         { "AggregateSelectionTrailing", "let pair = do => (\"a\", 1)", string.Empty, "a=1" },
-        { "AggregateSelectionYield", "let pair = choice: if true\n    loop => yield to choice: (\"a\", 1)\nelse => (\"b\", 2)", string.Empty, "a=1;b=0" },
+        { "AggregateSelectionYield", "let pair = label choice: if true\n    loop => yield to choice (\"a\", 1)\nelse => (\"b\", 2)", string.Empty, "a=1;b=0" },
         { "AggregateSelectionLoop", "var i = 0\nlet pair = loop\n    i += 1\n    if i < 3 => continue\n    exit (\"a\", 1)", string.Empty, "a=1" },
         { "AggregateSelectionNested", "let pair = if true => (if false => (\"a\", 1) else => (\"b\", 2)) else => (\"c\", 3)", string.Empty, "a=0;b=1;c=0" },
         { "AggregateSelectionPayload", "let nested = (if true => (\"a\", 1) else => (\"b\", 2), \"outer\")", string.Empty, "a=1;b=0;outer=1" },
         { "AggregateSelectionDeferred", Deferred, string.Empty, "first=1;later=2" },
         { "AggregateSelectionRepeated", "var i = 0\nwhile i < 3\n    let pair = if i == 0 => (\"first\", 1) else => (\"later\", 2)\n    i += 1", string.Empty, "first=1;later=2" },
-        { "AggregateSelectionSnapshot", "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair@move", string.Empty, "old=1;new=1" },
-        { "AggregateSelectionOutward", "let pair = outer: do\n    let inner = work: do\n        exit to work: (if false => (\"a\", 1) else => exit to outer: (\"b\", 2))\n    exit to outer: inner@move", string.Empty, "a=0;b=1" },
+        { "AggregateSelectionSnapshot", "var pair = (\"old\", 1)\nlet saved = label work: do\n    defer => pair = (\"new\", 2)\n    exit to work pair@move", string.Empty, "old=1;new=1" },
+        { "AggregateSelectionOutward", "let pair = label outer: do\n    let inner = label work: do\n        exit to work (if false => (\"a\", 1) else => exit to outer (\"b\", 2))\n    exit to outer inner@move", string.Empty, "a=0;b=1" },
         { "AggregateSelectionArray", "let values: [2 of string] = if true => [\"a\", \"b\"] else => [\"c\", \"d\"]", string.Empty, "a=1;b=1;c=0;d=0" },
         { "AggregateSelectionArrayLoop", "let values: [2 of string] = loop => exit [\"a\", \"b\"]", string.Empty, "a=1;b=1" },
         { "AggregateSelectionZero", "let values: [0 of string] = if true => [] else => []", string.Empty, string.Empty },
@@ -101,7 +101,7 @@ public class AggregateResultEmissionTest
     [Fact]
     public void SnapshotKeepsItsValueAcrossDeferredReplacement()
     {
-        const string Source = "var pair = (\"old\", 1)\nlet saved = work: do\n    defer => pair = (\"new\", 2)\n    exit to work: pair@move";
+        const string Source = "var pair = (\"old\", 1)\nlet saved = label work: do\n    defer => pair = (\"new\", 2)\n    exit to work pair@move";
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionSnapshotOrder", Source, string.Empty);
         StringEmissionTest.WriteAuditedFixture("AggregateSelectionSnapshotOrder", Source, ir, string.Empty, "old=1;new=1", order: [0, 1]);
     }
@@ -109,7 +109,7 @@ public class AggregateResultEmissionTest
     [Fact]
     public void SecuredResultIsNotDestroyedWhenCleanupAborts()
     {
-        const string Source = "var pair = (\"old\", 1)\npair = work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work: (\"secured\", 2)";
+        const string Source = "var pair = (\"old\", 1)\npair = label work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work (\"secured\", 2)";
         const string Error = "Hello.kimi:5:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionAbort", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("AggregateSelectionAbort", Source, ir, string.Empty, "old=0;secured=0", 1, Error);
@@ -118,7 +118,7 @@ public class AggregateResultEmissionTest
     [Fact]
     public void NonterminatingCleanupHasNoArrivalOrSubsequentDestruction()
     {
-        const string Source = "let pair = work: do\n    defer => loop => ()\n    exit to work: (\"secured\", 2)";
+        const string Source = "let pair = label work: do\n    defer => loop => ()\n    exit to work (\"secured\", 2)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var result = Assert.Single(c.Ownership.Bodies[0].SlotResults);
@@ -170,7 +170,7 @@ public class AggregateResultEmissionTest
     [InlineData(true)]
     public void ADeferredConsumerCannotReadASecuredUndeliveredResult(bool text)
     {
-        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work: original@move";
+        var source = "var original = (\"old\", 1)\nvar target = (\"init\", 1)\nlet saved = label work: do\n    defer => target = (\"cleanup\", 1)\n    exit to work original@move";
         if (text)
         {
             source = source.Replace("(\"old\", 1)", "\"old\"").Replace("(\"init\", 1)", "\"init\"").Replace("(\"cleanup\", 1)", "\"cleanup\"");

@@ -35,7 +35,7 @@ embedded, validated and implemented.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal
   unsafe `lend`/`split` capabilities, and owning `takeFirst` through typed raw reads.
   Its owning remainder destroys unreturned elements in reverse order in a concrete
-  generic `deinit`, then calls the internal unsafe `release` primitive. Only handle
+  generic `drop`, then calls the internal unsafe `release` primitive. Only handle
   construction, capability creation and raw region release remain compiler operations.
 - Register compiler-recognized identities in `KimiLibraryCatalog` and validate
   their contracts in `KimiLibraryValidation`. Append new stable declaration IDs;

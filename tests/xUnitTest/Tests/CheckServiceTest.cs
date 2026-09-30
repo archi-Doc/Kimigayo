@@ -76,6 +76,29 @@ public sealed class CheckServiceTest : IDisposable
         Assert.DoesNotContain(output.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
     }
 
+    [Theory]
+    [MemberData(nameof(ContextualLabelTest.DiagnosticCases), MemberType = typeof(ContextualLabelTest))]
+    public async Task ContextualSyntaxExplainsTheExactRangeInCliAndCheck(string source, string valid, string code, string token)
+    {
+        const string Prefix = "func sample()\n    ";
+        var project = this.WriteProject("Labels", ("main.kimi", Prefix + source));
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
+        Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
+        var output = this.Run(project);
+        Assert.False(output.Accepted);
+        var error = Assert.Single(output.Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(code, error.Code);
+        var start = token.Length == 0 ? source.Length : source.LastIndexOf(token, StringComparison.Ordinal);
+        Assert.Equal(new SourceSpan(Prefix.Length + start, token.Length), error.Span);
+        Assert.Contains(error.Message, console.Output);
+        Assert.Contains(error.Label!, console.Output);
+        Assert.Contains("Advice: " + error.Advice, console.Output);
+        Assert.Contains($"main.kimi:2:{start + 5}", console.Output);
+        File.WriteAllText(this.PathOf("Labels", "main.kimi"), Prefix + valid);
+        Assert.True(this.Run(project).Accepted);
+    }
+
     [Fact]
     public void TextOnlyPreparationFailuresBecomeBlockedDiagnostics()
     {

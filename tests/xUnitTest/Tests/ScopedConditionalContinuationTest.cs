@@ -9,7 +9,7 @@ namespace XunitTest;
 [TestClass(DisableParallelization = true)]
 public class ScopedConditionalContinuationTest
 {
-    private const string Default = "func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    if c\n        loop => continue\n        n = 1\n    else\n        loop => continue\n        n = 2\n    exit to scope: n\n)) -> i32 => y\n";
+    private const string Default = "func value(c: bool, y: i32 = (label scope: do\n    var n: i32\n    if c\n        loop => continue\n        n = 1\n    else\n        loop => continue\n        n = 2\n    exit to scope n\n)) -> i32 => y\n";
     private const string MissingConditionDefault = "func value(c: bool, y: i32 = (do => if (loop => continue) => 1 else => 2)) -> i32 => y\n";
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
 

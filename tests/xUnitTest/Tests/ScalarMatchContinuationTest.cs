@@ -47,6 +47,6 @@ public class ScalarMatchContinuationTest
 
     private static string Source(string declaration, string arms, string after, string use)
         => "func stop() -> Never => $abort(\"scalar match\")\nfunc f(c: bool)\n    " + declaration +
-            "\n    do\n        loop\n            if c => return else => exit\n            choice: match c\n                " + arms +
+            "\n    do\n        loop\n            if c => return else => exit\n            label choice: match c\n                " + arms +
             "\n            " + after + "\n        stop()\n    " + use + "\nf(true)";
 }

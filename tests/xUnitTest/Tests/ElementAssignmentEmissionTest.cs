@@ -26,13 +26,13 @@ public class ElementAssignmentEmissionTest
         { "Dead", "func f()\n    return\n    var a = (1, 2)\n    a.0 = 42\nf()\nConsole.writeLine(\"ok\")" },
         { "DeadArm", "var a = (0, true)\nmatch true\n    _ => a.0 = 42\n    true => a.0 = 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "ReadIndex", "var a: [2 of isize] = [1, 0]\na[a[0]] = 42\nif a[1] == 42 => Console.writeLine(\"ok\")" },
-        { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(work: do\n    i = 1\n    exit to work: 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => Console.writeLine(\"ok\")" },
-        { "RestoreRhs", "var a: (string, i32) = (\"old\", 0)\na.1 = (work: do\n    a = (\"new\", 1)\n    exit to work: 42\n)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
+        { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(label work: do\n    i = 1\n    exit to work 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => Console.writeLine(\"ok\")" },
+        { "RestoreRhs", "var a: (string, i32) = (\"old\", 0)\na.1 = (label work: do\n    a = (\"new\", 1)\n    exit to work 42\n)\nif a.1 == 42 => Console.writeLine(\"ok\")" },
         { "TransferIndex", "func f() -> i32\n    var a: [1 of i32] = [0]\n    defer => a[0] = 1\n    a[(return 42)] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferRhs", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of i32] = [0]\n    a[index()] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "NestedTransfer", "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of [1 of i32]] = [[0]]\n    a[(return 42)][index()] = 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "TransferPriority", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 1)] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
-        { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = work: loop\n        a[(return 1)] = (exit to work: 42)\n    return result\nif f() == 42 => Console.writeLine(\"ok\")" },
+        { "TransferBoundary", "func f() -> i32\n    var a: [1 of i32] = [0]\n    let result = label work: loop\n        a[(return 1)] = (exit to work 42)\n    return result\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "DeferredAggregate", "var a = ((0, false), \"held\")\nvar i = 0\nloop\n    defer => a.0 = if true => (42, true) else => (0, false)\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
         { "UnitEffects", "func unit()\n    Console.writeLine(\"ok\")\nvar a: [1 of ()] = [()]\na[0] = unit()" },
     };
@@ -109,11 +109,11 @@ public class ElementAssignmentEmissionTest
     }
 
     [Theory]
-    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a = [1]\n    exit to work: 0\n)] = 42")]
-    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    a[0] = 1\n    exit to work: 0\n)] = 42")]
-    [InlineData("var a: [1 of i32] = [0]\nlet n = a[(work: do\n    a[0] = 42\n    exit to work: 0\n)]")]
-    [InlineData("var a: [1 of i32] = [0]\na[(work: do\n    defer => a[0] = 1\n    exit to work: 0\n)] = 42")]
-    [InlineData("func take(a: (string, [1 of i32])) => ()\nvar a: (string, [1 of i32]) = (\"held\", [0])\na.1[(work: do\n    take(a@move)\n    exit to work: 0\n)] = 42")]
+    [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    a = [1]\n    exit to work 0\n)] = 42")]
+    [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    a[0] = 1\n    exit to work 0\n)] = 42")]
+    [InlineData("var a: [1 of i32] = [0]\nlet n = a[(label work: do\n    a[0] = 42\n    exit to work 0\n)]")]
+    [InlineData("var a: [1 of i32] = [0]\na[(label work: do\n    defer => a[0] = 1\n    exit to work 0\n)] = 42")]
+    [InlineData("func take(a: (string, [1 of i32])) => ()\nvar a: (string, [1 of i32]) = (\"held\", [0])\na.1[(label work: do\n    take(a@move)\n    exit to work 0\n)] = 42")]
     public void AccessProtectionRejectsConflictingWritesAndMoves(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -125,14 +125,14 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void CopyingAnAggregateSecuresAnIndependentSnapshot()
     {
-        const string Source = "var source: [2 of i32] = [40, 2]\nvar target: [1 of [2 of i32]] = [[0, 0]]\ntarget[(work: do\n    source = [0, 0]\n    exit to work: 0\n)] = source\nif target[0][0] == 40 and target[0][1] == 2 and source[0] == 0 => Console.writeLine(\"ok\")";
+        const string Source = "var source: [2 of i32] = [40, 2]\nvar target: [1 of [2 of i32]] = [[0, 0]]\ntarget[(label work: do\n    source = [0, 0]\n    exit to work 0\n)] = source\nif target[0][0] == 40 and target[0][1] == 2 and source[0] == 0 => Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("ElementAssignmentAggregateSnapshot", Source, "ok\n");
     }
 
     [Fact]
     public void ParentResponsibilityAndResultCleanupArePreserved()
     {
-        const string Source = "var a = (\"first\", (0, false), \"last\")\na.1 = (work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work: (42, true)\n)\nif a.1.0 == 42 and a.1.1 => Console.writeLine(\"ok\")";
+        const string Source = "var a = (\"first\", (0, false), \"last\")\na.1 = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (42, true)\n)\nif a.1.0 == 42 and a.1.1 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementAssignmentLifetime", Source, "cleanup\nok\n");
         StringEmissionTest.WriteAuditedFixture("ElementAssignmentLifetime", Source, ir, "cleanup\nok\n", "first=1;last=1;cleanup=1;ok=1", order: [2, 3, 1, 0]);
     }
@@ -149,7 +149,7 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void NonterminatingRightSideCleanupPreventsDestinationAccess()
     {
-        const string Source = "var a = ((0, false), \"held\")\na.0 = work: do\n    defer => loop => ()\n    exit to work: (42, true)";
+        const string Source = "var a = ((0, false), \"held\")\na.0 = label work: do\n    defer => loop => ()\n    exit to work (42, true)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.ElementAddress or EmissionOpcode.DestroyAggregate);
@@ -159,7 +159,7 @@ public class ElementAssignmentEmissionTest
     [Fact]
     public void NonterminatingIndexCleanupPreventsTheStore()
     {
-        const string Source = "var a: (string, [1 of i32]) = (\"held\", [0])\na.1[work: do\n    defer => loop => ()\n    exit to work: 0\n] = 42";
+        const string Source = "var a: (string, [1 of i32]) = (\"held\", [0])\na.1[label work: do\n    defer => loop => ()\n    exit to work 0\n] = 42";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode is EmissionOpcode.StoreElement or EmissionOpcode.DestroyAggregate);

@@ -41,8 +41,8 @@ public class UnreachableOwnershipTest
     [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        return\n        Console.writeLine(x)\n    else if c\n        return\n        Console.writeLine(x)\n    Console.writeLine(x)")]
     [InlineData("func f()\n    let x = \"s\"\n    defer => loop => ()\n    return\n    Console.writeLine(x)")]
     [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    let value = match c\n        true\n            yield 1\n            Console.writeLine(x)\n        false => 2\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    choice: if c\n        yield to choice\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    work: do\n        exit to work\n        Console.writeLine(x)\n    Console.writeLine(x)")]
+    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    label choice: if c\n        yield to choice\n        Console.writeLine(x)\n    Console.writeLine(x)")]
+    [InlineData("func f()\n    let x = \"s\"\n    return\n    label work: do\n        exit to work\n        Console.writeLine(x)\n    Console.writeLine(x)")]
     [InlineData("func f()\n    return\n    let x = \"s\"\n    defer => Console.writeLine(x)")]
     [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    let y = 1")]
     public void SupportedCheckingContinuationsVerify(string source)
@@ -67,8 +67,8 @@ public class UnreachableOwnershipTest
     [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    _ = x@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    if false => _ = x@move\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    return\n    let x: i32\n    while c\n        x = 1\n        exit\n    let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    let result = work: do\n        exit to work: x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = work: do\n        exit to work: x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f()\n    let x = \"s\"\n    let result = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    match x@move\n        .Some(let text)\n            yield\n            _ = text@move\n            Console.writeLine(text)\n        .None => ()", OwnershipFailure.PossiblyMovedUse)]
     public void CheckingUsesOrdinaryOwnershipDiagnostics(string source, OwnershipFailure failure)
     {
@@ -92,7 +92,7 @@ public class UnreachableOwnershipTest
 
     [Theory]
     [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)")]
-    [InlineData("func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
+    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
     public void UnseededRegionsRetainTheSafetyGate(string source)
     {
         var c = Parse(source);

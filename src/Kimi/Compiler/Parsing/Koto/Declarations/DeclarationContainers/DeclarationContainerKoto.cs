@@ -941,20 +941,20 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return true;
         }
 
-        if (this is StructKoto && token.Kind == TokenKind.Deinit)
+        if (this is StructKoto && token.Kind == TokenKind.Drop)
         {
             var context = reader.TakeContext();
             reader.Advance();
-            var destructor = new FunctionKoto(ref reader, context, token.Span, "deinit", null, null, new TupleTypeKoto(ref reader, token.Span, []))
+            var destructor = new FunctionKoto(ref reader, context, token.Span, "drop", null, null, new TupleTypeKoto(ref reader, token.Span, []))
             {
                 IsDestructor = true,
             };
             reader.Document(destructor, token.Span, context.AttributeKoto);
 
-            // deinit accepts a common Body, without modifiers or attributes (SPEC 16.3).
+            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)
             {
-                destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "deinit declaration");
+                destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "drop declaration");
             }
 
             destructor.Parse(ref reader);

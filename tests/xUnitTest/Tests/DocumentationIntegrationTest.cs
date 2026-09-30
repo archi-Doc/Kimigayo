@@ -21,7 +21,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [InlineData("/// d\npublic func main() => ()")]
     [InlineData("/// d\n#Test func f() => ()")]
     [InlineData("struct S {}\n    /// d\n    init() => ()")]
-    [InlineData("struct S {}\n    /// d\n    deinit => ()")]
+    [InlineData("struct S {}\n    /// d\n    drop => ()")]
     [InlineData("contract C\n    /// d\n    func f(self)")]
     [InlineData("contract C\n    /// d\n    property value: i32 has get")]
     [InlineData("struct S {}\n    /// d\n    var value: i32 = 0")]

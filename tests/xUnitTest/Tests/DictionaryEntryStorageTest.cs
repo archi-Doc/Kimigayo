@@ -61,7 +61,7 @@ public class DictionaryEntryStorageTest
         const string Source = """
             struct Empty
                 public init() => ()
-                deinit => Console.writeLine("destroyed")
+                drop => Console.writeLine("destroyed")
             var entries: Dictionary<i32, Empty> = [:]
             _ = entries.tryInsert(1, Empty.init())
             entries.clear()

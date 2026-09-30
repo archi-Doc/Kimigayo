@@ -39,7 +39,7 @@ public class Utf8InterpolationTest
             struct Value
                 Self is Utf8Format
                 public init() => Console.writeLine("create")
-                deinit => Console.writeLine("destroy")
+                drop => Console.writeLine("destroy")
                 public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
                     Console.writeLine("format")
                     return writer.write("v")

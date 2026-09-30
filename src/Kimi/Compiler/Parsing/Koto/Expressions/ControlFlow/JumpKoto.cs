@@ -49,10 +49,6 @@ public abstract class JumpKoto : ExpressionKoto
         {
             builder.Append(" to ");
             builder.Append(this.Label);
-            if (this.Expression is not null)
-            {
-                builder.Append(':');
-            }
         }
 
         if (this.Expression is not null)

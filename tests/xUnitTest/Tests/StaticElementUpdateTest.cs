@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class StaticElementUpdateTest
 {
-    private const string Resource = "func read(n: ref/i32) => ()\nstruct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        match self.id\n            1 => Console.writeLine(\"first\")\n            2 => Console.writeLine(\"second\")\n            _ => Console.writeLine(\"new\")\n";
+    private const string Resource = "func read(n: ref/i32) => ()\nstruct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        match self.id\n            1 => Console.writeLine(\"first\")\n            2 => Console.writeLine(\"second\")\n            _ => Console.writeLine(\"new\")\n";
 
     [Fact]
     public void EmitsUnchangedMilestone17()
@@ -54,7 +54,7 @@ public class StaticElementUpdateTest
     [Fact]
     public void AbortingReplacementDestroysOldValueBeforePlacement()
     {
-        const string Source = "struct Resource\n    public let id: i32\n    public init(id: i32)\n        self.id = id\n        Console.writeLine(\"constructed\")\n    deinit\n        if self.id == 1\n            Console.writeLine(\"destroying old\")\n            $abort(\"drop\")\n        Console.writeLine(\"bad new cleanup\")\nvar a: [1 of Resource] = [Resource.init(1)]\ndefer => Console.writeLine(\"bad defer\")\nKimi.Intrinsics.replace(a[0]@uniq, with: Resource.init(2))\nConsole.writeLine(\"bad continuation\")";
+        const string Source = "struct Resource\n    public let id: i32\n    public init(id: i32)\n        self.id = id\n        Console.writeLine(\"constructed\")\n    drop\n        if self.id == 1\n            Console.writeLine(\"destroying old\")\n            $abort(\"drop\")\n        Console.writeLine(\"bad new cleanup\")\nvar a: [1 of Resource] = [Resource.init(1)]\ndefer => Console.writeLine(\"bad defer\")\nKimi.Intrinsics.replace(a[0]@uniq, with: Resource.init(2))\nConsole.writeLine(\"bad continuation\")";
         ScalarEmissionTest.EmitFixture("StaticElementUpdateDestructorAbort", Source, "constructed\nconstructed\ndestroying old\n", 1, "Hello.kimi:9:13: abort KIMI_E_ABORT: drop\n");
     }
 
@@ -70,7 +70,7 @@ public class StaticElementUpdateTest
     [InlineData("let a: [2 of i32] = [1, 2]\nKimi.Intrinsics.replace(a[0]@uniq, with: 3)")]
     [InlineData("let a: [2 of i32] = [1, 2]\nKimi.Intrinsics.replace(a[0], with: 3)")]
     [InlineData("let a: [2 of i32] = [1, 2]\nKimi.Intrinsics.replace(a[0]@uniq/i32, with: 3)")]
-    [InlineData("struct Holder\n    public var items: [2 of Resource] = [Resource.init(1), Resource.init(2)]\n    deinit => Console.writeLine(\"holder\")\nvar owner = Holder.init()\nlet taken = owner.items[0]@move")]
+    [InlineData("struct Holder\n    public var items: [2 of Resource] = [Resource.init(1), Resource.init(2)]\n    drop => Console.writeLine(\"holder\")\nvar owner = Holder.init()\nlet taken = owner.items[0]@move")]
     [InlineData("var a: [2 of i32]\nKimi.Intrinsics.replace(a[0]@uniq, with: 3)")]
     [InlineData("var a: [2 of Resource] = [Resource.init(1), Resource.init(2)]\nlet all = a@move\nKimi.Intrinsics.replace(a[0]@uniq, with: Resource.init(3))")]
     [InlineData("var a: [2 of Resource] = [Resource.init(1), Resource.init(2)]\nlet borrowed = a[0]@uniq\nlet taken = *borrowed")]

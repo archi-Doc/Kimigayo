@@ -13,11 +13,11 @@ public class GenericPointerEmissionTest
         var source = """
             struct Resource
                 public var value: i32
-                deinit
+                drop
                     require self.value == 0 else => $abort("value")
                     Console.writeLine("drop")
             struct Empty
-                deinit => Console.writeLine("empty")
+                drop => Console.writeLine("empty")
             enum Choice<T>
                 None
                 Some(T)

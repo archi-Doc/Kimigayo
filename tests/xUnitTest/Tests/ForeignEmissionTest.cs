@@ -509,12 +509,12 @@ public class ForeignEmissionTest
 
     [Theory]
     [InlineData("func update(p: unsafe/bool, n: unsafe/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    deinit => ()\nfunc take(p: unsafe/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: unsafe/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
     [InlineData("func update(p: unsafe/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: unsafe/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
     [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: unsafe/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: unsafe/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
     [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: unsafe/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value@move\npublic func main() => ()")]
-    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    deinit => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    drop => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
     [InlineData("func update(p: unsafe/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
     [InlineData("struct P\n    public var a: u8\n    public var b: (i32, [2 of u16])\nfunc update(p: unsafe/P)\n    unsafe\n        (*p).b.1[1] += 1\n        let a = (*p).a\n        p[1].b.0 = 3\npublic func main() => ()")]
     [InlineData("func compare(p: unsafe/string, h: unsafe/(string, i32))\n    unsafe\n        let a = *p == \"x\"\n        let b = (*h).0 < p[1]\npublic func main() => ()")]
@@ -580,20 +580,20 @@ public class ForeignEmissionTest
                 require value == 45 else => $abort("stride")
                 var chosen = p
                 unsafe
-                    *chosen += change: do
+                    *chosen += label change: do
                         chosen = next
                         require chosen == next else => $abort("changed")
-                        exit to change: 2
+                        exit to change 2
                 unsafe => value = p[0]
                 require value == 18 else => $abort("target located after the right-hand side")
                 unsafe => value = next[0]
                 require value == 2 else => $abort("updated target")
                 chosen = p
                 unsafe
-                    value = chosen[offset: do
+                    value = chosen[label offset: do
                         chosen = next
                         require chosen == next else => $abort("changed")
-                        exit to offset: 0
+                        exit to offset 0
                     ]
                 require value == 18 else => $abort("secured index base")
                 unsafe => skipIndex(p)
@@ -1119,7 +1119,7 @@ public class ForeignEmissionTest
             struct R
                 public var n: i32
                 public init(n: i32) => self.n = n
-                deinit
+                drop
                     if self.n == 1 => Console.writeLine("one")
                     else => Console.writeLine("two")
             group Native
@@ -1175,13 +1175,13 @@ public class ForeignEmissionTest
             struct Resource
                 public var value: i32
                 public init(value: i32) => self.value = value
-                deinit
+                drop
                     if self.value == 0 => Console.writeLine("drop zero")
                     else if self.value == 1 => Console.writeLine("drop one")
                     else => Console.writeLine("drop two")
             struct Empty
                 public init() => ()
-                deinit => Console.writeLine("empty")
+                drop => Console.writeLine("empty")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
                 public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
@@ -1233,11 +1233,11 @@ public class ForeignEmissionTest
         var source = """
             struct Resource
                 public var value: i32
-                deinit
+                drop
                     require self.value == 0 else => $abort("value")
                     Console.writeLine("drop")
             struct Empty
-                deinit => Console.writeLine("empty")
+                drop => Console.writeLine("empty")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
                 public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
@@ -1285,7 +1285,7 @@ public class ForeignEmissionTest
     [Fact]
     public void MovingAPointerReadValuePreventsItsReuse()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: unsafe/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1296,7 +1296,7 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerReplacementConsumesTheSourceOwner()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    deinit => ()\nfunc test(p: unsafe/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: unsafe/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1311,7 +1311,7 @@ public class ForeignEmissionTest
             struct R
                 public var n: i32
                 public init(n: i32) => self.n = n
-                deinit
+                drop
                     if self.n == 0 => $abort("old")
                     Console.writeLine("new cleanup")
             group Native
@@ -1335,7 +1335,7 @@ public class ForeignEmissionTest
         var source = """
             struct Marker
                 public init() => ()
-                deinit => Console.writeLine("marker")
+                drop => Console.writeLine("marker")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
                 public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
@@ -1557,7 +1557,7 @@ public class ForeignEmissionTest
             struct Resource
                 public var n: i32
                 public init(n: i32) => self.n = n
-                deinit
+                drop
                     if self.n == 0 => Console.writeLine("old")
                     else => Console.writeLine("new")
             group Native

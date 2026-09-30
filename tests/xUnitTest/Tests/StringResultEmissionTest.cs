@@ -19,21 +19,21 @@ public class StringResultEmissionTest
         { "StringResultEmpty", "Console.writeLine(if true => \"\" else => \"unused\")", "\n", "=1;unused=0" },
         { "StringResultDirectCall", "Console.writeLine(if false => \"a\" else => \"b\")", "b\n", "a=0;b=1" },
         { "StringResultNested", "let result = if true => (if false => \"a\" else => \"b\") else => \"c\"\nConsole.writeLine(result)", "b\n", "a=0;b=1;c=0" },
-        { "StringResultDo", "let text = work: do\n    exit to work: \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
+        { "StringResultDo", "let text = label work: do\n    exit to work \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
         { "StringResultTrailing", "let text = do => \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
         { "StringResultElseIf", "var n = 2\nlet text = if n == 1 => \"a\" else if n == 2 => \"b\" else => \"c\"\nConsole.writeLine(text)", "b\n", "a=0;b=1;c=0" },
-        { "StringResultYield", "let text = choice: if true\n    loop => yield to choice: \"a\"\nelse => \"b\"\nConsole.writeLine(text)", "a\n", "a=1;b=0" },
+        { "StringResultYield", "let text = label choice: if true\n    loop => yield to choice \"a\"\nelse => \"b\"\nConsole.writeLine(text)", "a\n", "a=1;b=0" },
         { "StringResultLoop", "var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nConsole.writeLine(text)", "a\n", "a=1" },
         { "StringResultRepeated", "var i = 0\nwhile i < 3\n    let text = if i == 0 => \"first\" else => \"later\"\n    Console.writeLine(text)\n    i += 1", "first\nlater\nlater\n", "first=1;later=2" },
         { "StringResultSelfTrue", SelfChoice, "old\n", "old=1;new=0" },
         { "StringResultSelfFalse", SelfChoice.Replace("true", "false"), "new\n", "old=1;new=1" },
-        { "StringResultSnapshot", "var text = \"old\"\nlet result = work: do\n    defer => text = \"new\"\n    exit to work: text@move\nConsole.writeLine(result)\nConsole.writeLine(text)", "old\nnew\n", "old=1;new=1" },
+        { "StringResultSnapshot", "var text = \"old\"\nlet result = label work: do\n    defer => text = \"new\"\n    exit to work text@move\nConsole.writeLine(result)\nConsole.writeLine(text)", "old\nnew\n", "old=1;new=1" },
         { "StringResultLocalMove", "var text = \"local\"\nlet result = if true => text@move else => \"other\"\nConsole.writeLine(result)", "local\n", "local=1;other=0" },
         { "StringResultDeferred", Deferred, "first\nlater\nlater\n", "first=1;later=2" },
         { "StringResultDrop", "let text = if true => \"a\" else => \"b\"", string.Empty, "a=1;b=0" },
         { "StringResultDead", "if false\n    let text = if true => \"a\" else => \"b\"\nConsole.writeLine(\"ok\")", "ok\n", "a=0;b=0;ok=1" },
-        { "StringResultOutward", "let text = outer: do\n    let result = work: do\n        exit to work: (if false => \"a\" else => exit to outer: \"b\")\n    exit to outer: result@move\nConsole.writeLine(text)", "b\n", "a=0;b=1" },
-        { "StringResultReplacementOrder", "var text = \"old\"\ntext = work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work: \"new\"\nConsole.writeLine(text)", "cleanup\nnew\n", "old=1;new=1;cleanup=1" },
+        { "StringResultOutward", "let text = label outer: do\n    let result = label work: do\n        exit to work (if false => \"a\" else => exit to outer \"b\")\n    exit to outer result@move\nConsole.writeLine(text)", "b\n", "a=0;b=1" },
+        { "StringResultReplacementOrder", "var text = \"old\"\ntext = label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work \"new\"\nConsole.writeLine(text)", "cleanup\nnew\n", "old=1;new=1;cleanup=1" },
         { "StringResultPartialDivergence", "let text = if true => \"a\" else\n    defer => loop => ()\n    yield \"b\"\nConsole.writeLine(text)", "a\n", "a=1;b=0" },
     };
 
@@ -50,7 +50,7 @@ public class StringResultEmissionTest
     [Fact]
     public void SecuredResultIsNotDestroyedWhenCleanupAborts()
     {
-        const string Source = "var text = \"old\"\ntext = work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work: \"secured\"";
+        const string Source = "var text = \"old\"\ntext = label work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work \"secured\"";
         const string Error = "Hello.kimi:5:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("StringResultAbort", Source, string.Empty, 1, Error);
         StringEmissionTest.WriteAuditedFixture("StringResultAbort", Source, ir, string.Empty, "old=0;secured=0", 1, Error);
@@ -68,7 +68,7 @@ public class StringResultEmissionTest
     [Fact]
     public void DivergentCleanupHasNoArrivalOrResultDestruction()
     {
-        const string Source = "let text = work: do\n    defer => loop => ()\n    exit to work: \"secured\"";
+        const string Source = "let text = label work: do\n    defer => loop => ()\n    exit to work \"secured\"";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];

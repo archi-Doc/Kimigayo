@@ -38,7 +38,7 @@ public class CompletingScopeContinuationTest
     public void DefaultLocalBranchesPreserveCallerState()
         => ScalarEmissionTest.EmitFixture(
             "NeverCompletingScope" + Configuration + "Default",
-            "func value(c: bool, y: i32 = (scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope: n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(true)\nlet y = x",
+            "func value(c: bool, y: i32 = (label scope: do\n    var n: i32\n    if c => n = 1 else => n = 2\n    loop => continue\n    exit to scope n\n)) -> i32 => y\nvar x = 1\nConsole.writeLine(\"begin\")\nvalue(true)\nlet y = x",
             "begin\n",
             timeoutMilliseconds: 200);
 

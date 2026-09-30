@@ -46,7 +46,7 @@ public group Text
         public let capacity: isize
         public let length: isize
         let validated: isize
-        deinit => Text.release(self.data)
+        drop => Text.release(self.data)
 
     public struct Utf8Slice {source}
         Self is Copy

@@ -26,7 +26,7 @@ public class StringComparisonEmissionTest
         { "RepeatedConditional", Echo + "var n = 0\nwhile n < 4\n    if n == 1 and echo(\"once\") == \"once\" => Console.writeLine(\"ok\")\n    n += 1", "ok\n", "once=2;ok=1" },
         { "LoopExit", "let text = \"a\"\nif text == (loop => exit \"a\") => Console.writeLine(text)", "a\n", "a=2" },
         { "AbandonedCleanup", "func f() -> string\n    var text = \"a\"\n    defer => text = \"b\"\n    text == (return \"x\")\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;b=1;x=1;bad=0" },
-        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (work: do\n        return \"x\"\n        echo(text@move)\n        exit to work: \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
+        { "CheckingContinuation", Echo + "func f() -> string\n    let text = \"a\"\n    text == (label work: do\n        return \"x\"\n        echo(text@move)\n        exit to work \"a\"\n    )\n    return \"bad\"\nConsole.writeLine(f())", "x\n", "a=1;x=1;bad=0" },
         { "TwoReturns", "func f(c: bool) -> string\n    let text = \"a\"\n    text == (if c => (return \"x\") else => (return \"y\"))\n    return \"bad\"\nConsole.writeLine(f(true))\nConsole.writeLine(f(false))", "x\ny\n", "a=2;x=1;y=1;bad=0" },
     };
 

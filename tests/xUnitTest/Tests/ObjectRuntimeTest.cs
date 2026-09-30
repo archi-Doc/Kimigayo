@@ -14,11 +14,11 @@ public class ObjectRuntimeTest
             open struct Base
                 public let value: i32
                 protected init(value: i32) => self.value = value
-                deinit => Console.writeLine("base")
+                drop => Console.writeLine("base")
             struct Leaf: Base
                 public let extra: i32
                 public init(): base(10) => self.extra = 20
-                deinit => Console.writeLine("leaf")
+                drop => Console.writeLine("leaf")
             func inspect(view: objref/Base)
                 require view.value == 10 and view is Leaf else => $abort("base view")
             func widen(view: objref/Leaf) -> objref/Base during view => view@objref/Base
@@ -105,7 +105,7 @@ public class ObjectRuntimeTest
             struct Counter
                 public let value: i32
                 public init(value: i32) => self.value = value
-                deinit
+                drop
                     if self.value == 1 => Console.writeLine("old")
                     else => Console.writeLine("new")
             struct Other
@@ -148,7 +148,7 @@ public class ObjectRuntimeTest
     {
         const string Source = """
             struct Item
-                deinit => Console.writeLine("destroyed")
+                drop => Console.writeLine("destroyed")
             func make() -> obj/Item
                 Console.writeLine("created")
                 return Kimi.Intrinsics.makeObj(Item.init())

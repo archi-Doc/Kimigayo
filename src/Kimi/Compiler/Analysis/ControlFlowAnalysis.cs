@@ -151,10 +151,14 @@ public sealed class ControlFlowAnalysis
     {
         // A check that reads Binding's result at a node that Binding failed, or left resting on a failure, is not decided on
         // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement,
-        // and its warning is dropped. Structural checks read no Binding result and stay independent.
+        // and its warning is dropped. Structural checks stay independent of Binding, but require valid syntax.
         foreach (var issue in this.issues)
         {
-            if (ReadsBinding(issue.Code) && Causes(issue) is { } causes)
+            if (issue.Node.CodeContext.RecoveryCause(issue.Node) is { } syntax)
+            {
+                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, [syntax]);
+            }
+            else if (ReadsBinding(issue.Code) && Causes(issue) is { } causes)
             {
                 issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, causes);
             }

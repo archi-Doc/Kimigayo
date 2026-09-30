@@ -254,7 +254,7 @@ public class DirectiveConditionValidationTest
     [Fact]
     public void LabeledBlockReportsUnknownNameWithoutChangingControlFlow()
     {
-        var compilation = Parse("work: do\n    #if false and missing\n    var incomplete =\n    exit to work");
+        var compilation = Parse("label work: do\n    #if false and missing\n    var incomplete =\n    exit to work");
         var labeled = Assert.IsType<LabeledKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = Assert.IsType<DoKoto>(labeled.Target).Body;
         var analysis = compilation.AnalyzeControlFlow();

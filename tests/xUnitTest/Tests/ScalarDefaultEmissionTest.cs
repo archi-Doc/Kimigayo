@@ -21,7 +21,7 @@ public class ScalarDefaultEmissionTest
 
     [Fact]
     public void PreparedOwnerIsDestroyedByTheCalleeAfterDefaultInspection()
-        => ScalarEmissionTest.EmitFixture(Prefix + "ElementDrop", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    deinit => Console.writeLine(\"drop\")\nfunc f(x: S, y: i32 = x.value) -> i32 => y\nif f(S.init(7)) == 7 => Console.writeLine(\"ok\")", "drop\nok\n", 0);
+        => ScalarEmissionTest.EmitFixture(Prefix + "ElementDrop", "struct S\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\nfunc f(x: S, y: i32 = x.value) -> i32 => y\nif f(S.init(7)) == 7 => Console.writeLine(\"ok\")", "drop\nok\n", 0);
 
     [Fact]
     public void PreparedDefaultIndexBoundsAbortAtTheDeclaration()
@@ -72,9 +72,9 @@ public class ScalarDefaultEmissionTest
     [InlineData("Chain", "func f(x: () = (), y: () = x) => Console.writeLine(\"ok\")\nf()")]
     [InlineData("Select", "func f(x: bool, y: () = (if x => () else => ())) => Console.writeLine(\"ok\")\nf(true)")]
     [InlineData("IfNoElse", "func f(x: bool, y: () = (if x => ())) => Console.writeLine(\"ok\")\nf(false)")]
-    [InlineData("Do", "func f(x: () = (scope: do => exit to scope)) => Console.writeLine(\"ok\")\nf()")]
+    [InlineData("Do", "func f(x: () = (label scope: do => exit to scope)) => Console.writeLine(\"ok\")\nf()")]
     [InlineData("Loop", "func f(x: () = (loop => exit)) => Console.writeLine(\"ok\")\nf()")]
-    [InlineData("Local", "func f(x: () = (scope: do\n    let n = ()\n    exit to scope: n\n)) => Console.writeLine(\"ok\")\nf()")]
+    [InlineData("Local", "func f(x: () = (label scope: do\n    let n = ()\n    exit to scope n\n)) => Console.writeLine(\"ok\")\nf()")]
     [InlineData("BeforeScalar", "func f(x: () = (), y: i32 = 3) -> i32 => y\nif f() == 3 => Console.writeLine(\"ok\")")]
     [InlineData("Supplied", "func f(x: () = (loop => continue)) => Console.writeLine(\"ok\")\nf(())")]
     public void UnitDefaultsUseTheExistingZeroSizedArgumentPath(string name, string source)
@@ -156,9 +156,9 @@ public class ScalarDefaultEmissionTest
     [Theory]
     [InlineData("Loop", "func f(x: i32, y: i32 = (loop => exit x + 1)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
     [InlineData("Choice", "func f(x: i32, y: i32 = (loop => if x < 0 => exit -x else => exit x)) -> i32 => y\nif f(-3) == 3 and f(4) == 4 => Console.writeLine(\"ok\")")]
-    [InlineData("DoExit", "func f(x: i32, y: i32 = (scope: do => exit to scope: x + 1)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
-    [InlineData("SelectYield", "func f(x: i32, y: i32 = (scope: if x > 0 => yield to scope: x + 1 else => 0)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
-    [InlineData("Nested", "func f(x: i32, y: i32 = (outer: loop => loop => exit to outer: x + 1)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
+    [InlineData("DoExit", "func f(x: i32, y: i32 = (label scope: do => exit to scope x + 1)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
+    [InlineData("SelectYield", "func f(x: i32, y: i32 = (label scope: if x > 0 => yield to scope x + 1 else => 0)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
+    [InlineData("Nested", "func f(x: i32, y: i32 = (label outer: loop => loop => exit to outer x + 1)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")")]
     [InlineData("Chain", "func f(x: i32, y: i32 = (loop => exit x + 1), z: i32 = (loop => exit y * 2)) -> i32 => z\nif f(2) == 6 => Console.writeLine(\"ok\")")]
     [InlineData("Repeat", "func f(x: i32, y: i32 = (loop => exit x + 1)) -> i32 => y\nvar n = 0\nvar sum = 0\nwhile n < 3\n    sum += f(n)\n    n += 1\nif sum == 6 => Console.writeLine(\"ok\")")]
     [InlineData("Snapshot", "func f(x: i32, touch: (), y: i32 = (loop => exit x)) -> i32 => y\nvar n = 3\nif f(n, n = 7) == 3 and n == 7 => Console.writeLine(\"ok\")")]
@@ -179,32 +179,32 @@ public class ScalarDefaultEmissionTest
     }
 
     [Theory]
-    [InlineData("Simple", "func f(x: i32, y: i32 = (scope: do\n    let n = x + 1\n    exit to scope: n * 2\n)) -> i32 => y\nif f(2) == 6 => Console.writeLine(\"ok\")")]
-    [InlineData("Snapshot", "func f(x: i32, touch: (), y: i32 = (scope: do\n    let n = x\n    exit to scope: n\n)) -> i32 => y\nvar n = 3\nif f(n, n = 7) == 3 and n == 7 => Console.writeLine(\"ok\")")]
-    [InlineData("Repeated", "func f(x: i32, y: i32 = (scope: do\n    let n = x + 1\n    exit to scope: n + n\n)) -> i32 => y\nvar n = 0\nvar sum = 0\nwhile n < 3\n    sum += f(n)\n    n += 1\nif sum == 12 and f(5) == 12 => Console.writeLine(\"ok\")")]
+    [InlineData("Simple", "func f(x: i32, y: i32 = (label scope: do\n    let n = x + 1\n    exit to scope n * 2\n)) -> i32 => y\nif f(2) == 6 => Console.writeLine(\"ok\")")]
+    [InlineData("Snapshot", "func f(x: i32, touch: (), y: i32 = (label scope: do\n    let n = x\n    exit to scope n\n)) -> i32 => y\nvar n = 3\nif f(n, n = 7) == 3 and n == 7 => Console.writeLine(\"ok\")")]
+    [InlineData("Repeated", "func f(x: i32, y: i32 = (label scope: do\n    let n = x + 1\n    exit to scope n + n\n)) -> i32 => y\nvar n = 0\nvar sum = 0\nwhile n < 3\n    sum += f(n)\n    n += 1\nif sum == 12 and f(5) == 12 => Console.writeLine(\"ok\")")]
     [InlineData("Branches", "func f(x: i32, y: i32 = (if x < 0\n    let n = -x\n    yield n\nelse\n    let n = x + 1\n    yield n\n)) -> i32 => y\nif f(-3) == 3 and f(3) == 4 => Console.writeLine(\"ok\")")]
-    [InlineData("Nested", "func f(x: i32, y: i32 = (outer: do\n    let n = x + 1\n    let m = (inner: do\n        let n = 10\n        exit to inner: n\n    )\n    exit to outer: n + m\n)) -> i32 => y\nif f(2) == 13 => Console.writeLine(\"ok\")")]
+    [InlineData("Nested", "func f(x: i32, y: i32 = (label outer: do\n    let n = x + 1\n    let m = (label inner: do\n        let n = 10\n        exit to inner n\n    )\n    exit to outer n + m\n)) -> i32 => y\nif f(2) == 13 => Console.writeLine(\"ok\")")]
     [InlineData("Chained", "func f(x: i32, y: i32 = (loop\n    let n = x + 1\n    exit n\n), z: i32 = (loop\n    let n = y * 2\n    exit n\n)) -> i32 => z\nif f(2) == 6 and f(5) == 12 => Console.writeLine(\"ok\")")]
-    [InlineData("Conversion", "func f(x: i32, y: u8 = (scope: do\n    let wide = x@i64\n    let n = wide@u8\n    exit to scope: n\n)) -> u8 => y\nif f(255) == 255 => Console.writeLine(\"ok\")")]
+    [InlineData("Conversion", "func f(x: i32, y: u8 = (label scope: do\n    let wide = x@i64\n    let n = wide@u8\n    exit to scope n\n)) -> u8 => y\nif f(255) == 255 => Console.writeLine(\"ok\")")]
     public void DefaultLocalCopiesHaveIndependentStorage(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + "Local" + name, source, "ok\n", 0);
 
     [Theory]
-    [InlineData("Assign", "func f(x: i32, y: i32 = (scope: do\n    var n = x\n    n = n + 1\n    n *= 2\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 6 => Console.writeLine(\"ok\")")]
-    [InlineData("Loop", "func f(x: i32, y: i32 = (scope: do\n    var n = 0\n    loop\n        n += 1\n        if n >= x => exit\n    exit to scope: n\n)) -> i32 => y\nif f(3) == 3 and f(5) == 5 => Console.writeLine(\"ok\")")]
-    [InlineData("While", "func f(x: i32, y: i32 = (scope: do\n    var n = 0\n    var sum = 0\n    while n < x\n        n += 1\n        sum += n\n    exit to scope: sum\n)) -> i32 => y\nif f(3) == 6 and f(0) == 0 => Console.writeLine(\"ok\")")]
-    [InlineData("Increment", "func f(x: i32, y: i32 = (scope: do\n    var n = x\n    let old = n++\n    let next = ++n\n    exit to scope: old + next + n\n)) -> i32 => y\nif f(2) == 10 => Console.writeLine(\"ok\")")]
-    [InlineData("Float", "func f(x: f64, y: f64 = (scope: do\n    var n = x\n    n += 0.5\n    exit to scope: n\n)) -> f64 => y\nif f(2.0) == 2.5 => Console.writeLine(\"ok\")")]
-    [InlineData("Bits", "func f(x: i32, y: i32 = (scope: do\n    var n = x\n    n <<= 2\n    n |= 1\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 9 => Console.writeLine(\"ok\")")]
-    [InlineData("Snapshot", "func f(x: i32, touch: (), y: i32 = (scope: do\n    var n = x\n    n *= 2\n    exit to scope: n\n)) -> i32 => y\nvar n = 3\nif f(n, n = 7) == 6 and n == 7 => Console.writeLine(\"ok\")")]
-    [InlineData("Supplied", "func f(x: i32, y: i32 = (scope: do\n    var n = x\n    n += 1\n    exit to scope: n\n)) -> i32 => y\nif f(2147483647, 7) == 7 => Console.writeLine(\"ok\")")]
+    [InlineData("Assign", "func f(x: i32, y: i32 = (label scope: do\n    var n = x\n    n = n + 1\n    n *= 2\n    exit to scope n\n)) -> i32 => y\nif f(2) == 6 => Console.writeLine(\"ok\")")]
+    [InlineData("Loop", "func f(x: i32, y: i32 = (label scope: do\n    var n = 0\n    loop\n        n += 1\n        if n >= x => exit\n    exit to scope n\n)) -> i32 => y\nif f(3) == 3 and f(5) == 5 => Console.writeLine(\"ok\")")]
+    [InlineData("While", "func f(x: i32, y: i32 = (label scope: do\n    var n = 0\n    var sum = 0\n    while n < x\n        n += 1\n        sum += n\n    exit to scope sum\n)) -> i32 => y\nif f(3) == 6 and f(0) == 0 => Console.writeLine(\"ok\")")]
+    [InlineData("Increment", "func f(x: i32, y: i32 = (label scope: do\n    var n = x\n    let old = n++\n    let next = ++n\n    exit to scope old + next + n\n)) -> i32 => y\nif f(2) == 10 => Console.writeLine(\"ok\")")]
+    [InlineData("Float", "func f(x: f64, y: f64 = (label scope: do\n    var n = x\n    n += 0.5\n    exit to scope n\n)) -> f64 => y\nif f(2.0) == 2.5 => Console.writeLine(\"ok\")")]
+    [InlineData("Bits", "func f(x: i32, y: i32 = (label scope: do\n    var n = x\n    n <<= 2\n    n |= 1\n    exit to scope n\n)) -> i32 => y\nif f(2) == 9 => Console.writeLine(\"ok\")")]
+    [InlineData("Snapshot", "func f(x: i32, touch: (), y: i32 = (label scope: do\n    var n = x\n    n *= 2\n    exit to scope n\n)) -> i32 => y\nvar n = 3\nif f(n, n = 7) == 6 and n == 7 => Console.writeLine(\"ok\")")]
+    [InlineData("Supplied", "func f(x: i32, y: i32 = (label scope: do\n    var n = x\n    n += 1\n    exit to scope n\n)) -> i32 => y\nif f(2147483647, 7) == 7 => Console.writeLine(\"ok\")")]
     public void DefaultMutationIsConfinedToItsInitializedLocals(string name, string source)
         => ScalarEmissionTest.EmitFixture(Prefix + "Mutable" + name, source, "ok\n", 0);
 
     [Fact]
     public void DefaultLocalUpdateAbortKeepsItsDeclarationLocation()
     {
-        const string Source = "func f(x: i32, y: i32 = (scope: do\n    var n = x\n    n += 1\n    exit to scope: n\n)) => Console.writeLine(\"bad\")\nf(2147483647)";
+        const string Source = "func f(x: i32, y: i32 = (label scope: do\n    var n = x\n    n += 1\n    exit to scope n\n)) => Console.writeLine(\"bad\")\nf(2147483647)";
         ScalarEmissionTest.EmitFixture(Prefix + "MutableAbort", Source, string.Empty, 1, "Hello.kimi:3:5: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
@@ -214,7 +214,7 @@ public class ScalarDefaultEmissionTest
     [InlineData("++x")]
     public void DefaultsCannotMutatePreparedParametersEvenWhenSupplied(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (scope: do\n    " + mutation + "\n    exit to scope: x\n)) => ()\nf(1, 2)");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    " + mutation + "\n    exit to scope x\n)) => ()\nf(1, 2)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -222,7 +222,7 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void DefaultLocalInitializerAbortSkipsRemainingPreparation()
     {
-        const string Source = "func f(x: i32, y: i32 = (scope: do\n    let n = x + 1\n    exit to scope: n\n)) => Console.writeLine(\"bad\")\nf(2147483647)";
+        const string Source = "func f(x: i32, y: i32 = (label scope: do\n    let n = x + 1\n    exit to scope n\n)) => Console.writeLine(\"bad\")\nf(2147483647)";
         ScalarEmissionTest.EmitFixture(Prefix + "LocalAbort", Source, string.Empty, 1, "Hello.kimi:2:13: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
@@ -231,7 +231,7 @@ public class ScalarDefaultEmissionTest
     [InlineData("f(3)")]
     public void NoncompletingLocalInitializerReportsUninitializedUse(string call)
     {
-        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (scope: do\n    let n: i32 = (loop => continue)\n    exit to scope: n + 1\n)) => ()\n" + call);
+        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n" + call);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -239,8 +239,8 @@ public class ScalarDefaultEmissionTest
     }
 
     [Theory]
-    [InlineData("func f(x: i32 = (scope: do\n    let n = \"a\"\n    exit to scope: 1\n)) => ()\nf(3)")]
-    [InlineData("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (scope: do\n    let n = helper(\"a\")\n    exit to scope: n\n)) => ()\nf(3)")]
+    [InlineData("func f(x: i32 = (label scope: do\n    let n = \"a\"\n    exit to scope 1\n)) => ()\nf(3)")]
+    [InlineData("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (label scope: do\n    let n = helper(\"a\")\n    exit to scope n\n)) => ()\nf(3)")]
     public void SuppliedDefaultsStillRejectUnsupportedLocalEffects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -260,7 +260,7 @@ public class ScalarDefaultEmissionTest
     [Theory]
     [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = helper()) => ()\nf(2)")]
     [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (loop => exit helper())) => ()\nf(3)")]
-    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (scope: do\n    let n = helper()\n    exit to scope: n\n)) => ()\nf(3)")]
+    [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (label scope: do\n    let n = helper()\n    exit to scope n\n)) => ()\nf(3)")]
     [InlineData("func helper() -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper())) => ()\nf(3)")]
     public void CallDefaultsAreExecutableEvenWhenSupplied(string source)
     {
@@ -273,7 +273,7 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void RebindingAndReloadRebuildExecutableDefaultPlans()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope: n\n)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nif f(2) == 3 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
@@ -402,7 +402,7 @@ public class ScalarDefaultEmissionTest
     [Fact]
     public void WarmDefaultOwnershipAndEmissionReuseStorage()
     {
-        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope: n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
+        var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = (label scope: do\n    var n = (loop => exit (do => if x > 0 => (x@i64 + 1)@i32 else => 0))\n    n += 0\n    exit to scope n\n)) -> i32 => y\nlet a = f(1)\nlet b = f(2)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);
