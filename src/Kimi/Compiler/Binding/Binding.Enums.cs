@@ -207,6 +207,12 @@ public sealed partial class Binding
 
     private BindingSymbol? InferredCase(SyntaxFormKoto reference, BindingScope scope, BoundType? expected)
     {
+        if (expected is null && this.MissingExpectationCause(reference) is { } cause)
+        {
+            this.CompleteDependent(reference, cause);
+            return null;
+        }
+
         if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
         {
             this.Fail(reference, BindingFailure.MissingType, true);

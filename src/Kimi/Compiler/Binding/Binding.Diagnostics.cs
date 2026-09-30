@@ -26,6 +26,9 @@ public sealed partial class Binding
     private int consultationStart = -1;
     private Koto? consultationNode;
 
+    // The expression being bound without its expected Type because the syntax that supplies it failed.
+    private (Koto Expression, Koto Cause)? missingExpectation;
+
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
@@ -36,6 +39,45 @@ public sealed partial class Binding
         return Complete(node, null);
     }
 
+    /// <summary>Binds an expression against the Type that a written syntax supplies; when that syntax failed, a check that
+    /// needs the expected Type names it as the prerequisite (SPEC 23.3.6.4).</summary>
+    private BoundType? BindExpected(Koto node, BindingScope scope, BoundType? expected, Koto? supplier)
+    {
+        if (expected is not null || supplier is null || supplier.BindingState == BindingState.Resolved)
+        {
+            return this.BindNode(node, scope, expected);
+        }
+
+        var saved = this.missingExpectation;
+        this.missingExpectation = (node, supplier);
+        var type = this.BindNode(node, scope);
+        this.missingExpectation = saved;
+        return type;
+    }
+
+    // An inferred case that is the value of an expression whose expected Type failed rests on that failure.
+    private Koto? MissingExpectationCause(Koto reference)
+    {
+        if (this.missingExpectation is not { } missing)
+        {
+            return null;
+        }
+
+        var value = missing.Expression;
+        while (true)
+        {
+            value = KotoHelper.UnwrapParentheses(value);
+            if (value is not CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } body)
+            {
+                break;
+            }
+
+            value = body.Items[0];
+        }
+
+        return ReferenceEquals(value, reference) || (value is InvocationKoto { Method: var method } && ReferenceEquals(method, reference)) ? missing.Cause : null;
+    }
+
     private void ResetPrerequisites()
     {
         this.prerequisites.Clear();
@@ -44,6 +86,7 @@ public sealed partial class Binding
         this.consulted.Clear();
         this.consultationStart = -1;
         this.consultationNode = null;
+        this.missingExpectation = null;
     }
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
@@ -168,6 +211,27 @@ public sealed partial class Binding
 
         return pushed;
     }
+
+    // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation
+    // limit, not a missing Name (DIAGNOSTICS.md rule 3): a cataloged declaration without source (PLAN G4), or a Property
+    // requirement read through a generic receiver (P24).
+    private BindingFailure MissingFailure(Koto name, BindingScope scope, BindingFailure missing)
+    {
+        var limit = name switch
+        {
+            MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
+            MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
+                ReferenceEquals(this.TypeName(member.Left, scope, false)?.Declaration, this.Library.Intrinsics),
+            _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
+        };
+        return limit ? BindingFailure.Unsupported : missing;
+    }
+
+    // A Type position names a Type: an inaccessible qualifier explains the miss, otherwise the Name is missing.
+    private BoundType? FailMissingType(Koto name, BindingScope scope)
+        => this.ReportUnavailableQualifier(name, scope) is { } qualifier
+            ? this.CompleteDependent(name, qualifier)
+            : this.Fail(name, this.MissingFailure(name, scope, BindingFailure.MissingType), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.

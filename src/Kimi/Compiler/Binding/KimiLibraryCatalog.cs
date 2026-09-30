@@ -162,6 +162,23 @@ internal static class KimiLibraryCatalog
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 
+    /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
+    /// <param name="container">The container the name was looked up in.</param>
+    /// <param name="name">The name.</param>
+    /// <returns><see langword="true"/> when a lookup that misses the name meets an implementation limit, not a missing name.</returns>
+    internal static bool IsUnsourced(KimiLibraryContainer container, string name)
+    {
+        foreach (ref readonly var entry in Entries)
+        {
+            if (!entry.SourceExpected && entry.Container == container && entry.Name == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static int[] CreateIndices()
     {
         var result = new int[Enum.GetValues<KimiDeclarationId>().Length];

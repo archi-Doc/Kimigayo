@@ -614,7 +614,7 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return this.Fail(syntax, BindingFailure.MissingType, true);
+            return this.FailMissingType(syntax, scope);
         }
 
         syntax.BoundSymbol = symbol;
@@ -668,7 +668,13 @@ public sealed partial class Binding
 
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
-        if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        if (definition is null)
+        {
+            // The generic's Name is what is missing; the application is not formed from it.
+            return this.FailMissingType(generic.Identifier!, scope);
+        }
+
+        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
         {
             return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }

@@ -322,9 +322,10 @@ public sealed partial class Binding
                 // The recorded missing Name of the Constraint is its prerequisite.
                 issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
             }
-            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
+            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
             {
-                issue.Node.Report(requirement, issue.Code, plan.Coverage.Describe());
+                // Only a match plan fails NonExhaustiveMatch, so its coverage is always the argument.
+                issue.Node.Report(requirement, issue.Code, this.matches[(MatchKoto)issue.Node].Coverage.Describe());
             }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
@@ -332,7 +333,8 @@ public sealed partial class Binding
             }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
-                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
+                // FailObjectPayload records the declaring Type before it fails the use.
+                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
             }
             else
             {

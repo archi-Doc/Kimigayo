@@ -143,6 +143,25 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // Gets the first written Type of a bound header that did not resolve.
+    private static Koto? IncompleteSignature(FunctionKoto function)
+    {
+        if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
+        {
+            return result;
+        }
+
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type is { BindingState: not BindingState.Resolved } type)
+            {
+                return type;
+            }
+        }
+
+        return null;
+    }
+
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
         if (member.Right.Akind == KotoKind.ConstructorReference)
@@ -391,7 +410,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);
@@ -506,6 +525,7 @@ public sealed partial class Binding
             var winnerIndex = -1;
             var pending = false;
             var error = false;
+            Koto? incompleteSignature = null;
             this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
             {
@@ -537,6 +557,7 @@ public sealed partial class Binding
                 error |= state == CandidateApplicability.Error;
                 if (state != CandidateApplicability.Applicable)
                 {
+                    incompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;
                     continue;
                 }
 
@@ -560,6 +581,12 @@ public sealed partial class Binding
             if (pending)
             {
                 return this.Fail(call, BindingFailure.UnprovenConstraint, true);
+            }
+
+            if (applicable == 0 && incompleteSignature is not null)
+            {
+                // A candidate whose signature failed cannot be judged, so the selection rests on that failure.
+                return this.CompleteDependent(call, incompleteSignature);
             }
 
             if (applicable == 0)

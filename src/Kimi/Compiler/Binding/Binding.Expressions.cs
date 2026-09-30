@@ -559,7 +559,7 @@ public sealed partial class Binding
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
-                    return this.Fail(member, BindingFailure.MissingName, true);
+                    return this.Fail(member, this.MissingFailure(member, scope, BindingFailure.MissingName), true);
                 }
 
                 return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
@@ -627,7 +627,7 @@ public sealed partial class Binding
                     resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.3
                 }
 
-                var actual = jump.Expression is { } operand ? this.BindNode(operand, scope, resultType) : BoundType.Unit;
+                var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;
                 if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
                 {
                     this.Fail(jump, BindingFailure.TypeMismatch);
@@ -740,7 +740,7 @@ public sealed partial class Binding
         if (function.ExpressionBody is { } expression)
         {
             var discards = KotoHelper.DiscardsFunctionBody(function);
-            var result = this.BindNode(expression, scope, discards ? null : symbol?.Type);
+            var result = discards ? this.BindNode(expression, scope) : this.BindExpected(expression, scope, symbol?.Type, function.ReturnType);
             var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
             if (function.ReturnType is PlaceResultKoto place && !discards && (result is null || !ReferenceEquals(result, BoundType.Never)))
             {
@@ -814,7 +814,7 @@ public sealed partial class Binding
             declared = variable.TypeKoto?.BoundType ?? declared;
         }
 
-        var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
+        var inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
         symbol.Resolving = false;
         if (declared is null && inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
             initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
@@ -1198,7 +1198,7 @@ public sealed partial class Binding
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
             var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
-            right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand);
+            right = this.BindExpected(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand, assignment ? binary.Left : null);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
             {
@@ -1224,7 +1224,11 @@ public sealed partial class Binding
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
-            return this.Fail(binary, AccessFailure(binary.Left));
+            // PLAN G35: SPEC 3.4.1 selects an element through a uniq reference to a built-in array or Array, so the
+            // write is permitted; its lowering is not yet implemented.
+            var exclusiveElement = KotoHelper.UnwrapParentheses(binary.Left) is IndexKoto { Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
+                (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver));
+            return this.Fail(binary, exclusiveElement ? BindingFailure.Unsupported : AccessFailure(binary.Left));
         }
 
         var result = assignment ? BoundType.Unit : left;

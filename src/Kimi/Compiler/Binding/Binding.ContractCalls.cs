@@ -99,6 +99,7 @@ public sealed partial class Binding
         group.Self = type;
         group.Active = true;
         group.TypeAccess = typeAccess;
+        group.PropertyRequirement = false;
         if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
         {
             Add(formatting);
@@ -196,6 +197,10 @@ public sealed partial class Binding
                     group.Members.Add(requirement);
                     group.Contracts.Add(shape.Symbol);
                 }
+                else if (requirement.Kind == BindingSymbolKind.Property)
+                {
+                    group.PropertyRequirement = true;
+                }
             }
         }
     }
@@ -247,6 +252,10 @@ public sealed partial class Binding
         internal bool Active { get; set; }
 
         internal bool TypeAccess { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name; its use through a
+        /// generic receiver is not yet implemented (P24).</summary>
+        internal bool PropertyRequirement { get; set; }
     }
 
     private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
