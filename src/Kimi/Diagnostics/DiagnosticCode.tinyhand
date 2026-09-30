@@ -102,6 +102,8 @@
   + Name="UnsatisfiedConstraint_Kd"
     Category="Language"
     Message="The supplied Types do not satisfy the required Constraints"
+    Evidence="subject:Type,entry:Text,start:Type,end:Type"
+    Label="{0} does not satisfy {1}: boundaries are {2} and {3}"
 
   + Name="InvalidKimiLibrary_Kd"
     Category="Internal"
@@ -609,7 +611,7 @@
     Arguments="kind:Text"
     Evidence="length:Number"
     Label="the fixed length is {1}"
-    Advice="Correct the literal position or range; an out-of-range access Aborts when executed"
+    Advice="Correct the literal position or range; a try operation returns None on resolution failure, while an aborting operation Aborts when executed"
 
   + Name="IncompatibleSerializedSource_Kd"
     Category="Input"

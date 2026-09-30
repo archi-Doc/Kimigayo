@@ -184,6 +184,10 @@ The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`.
 
 These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
+**Diagnostic Type display.** Diagnostics and hover displays qualify these Kimi Types when a user declaration hides their normal alias, for example `Kimi.Start`. A Type mismatch retains the actual and expected complete Types, including the range shape and boundary Type arguments, and identifies the expression that does not fit (§23.3.6).
+
+When a function call rejects a range because its shape differs from a parameter's concrete range Type, its diagnostic identifies the compared argument and candidate parameter Types. Advice is conditional on the function's required capability: a function that only resolves a range for slicing can accept `R is PositionRange`; enumeration requires the appropriate `Iterable`, `UniqIterable` or `IntoIterable` entry and its Item constraints; boundary access requires the appropriate concrete range Type. A function's intent is not inferred from its name or a rejected call alone. The changed body must be verified before offering an automatic repair (§23.5).
+
 **Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Array and Slice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
 | Receiver | Acquisition |
@@ -364,6 +368,7 @@ public struct Range<S, E>     // ClosedRange<S, E> has the same form.
 | `ResolvedRange` | None | `RangeIterator<isize>` | Those of the `Range<isize, isize>` with the same boundaries |
 
 - **Conformance.** Each range conforms to `Iterable`, `UniqIterable` and `IntoIterable` under its condition by conditional conformance (§8.4.8); `E is S` is a Type-identity requirement (§8.3). A range with an omitted boundary or a `FromEnd<T>` boundary, or with two different integer Types, does not satisfy the condition and is not iterable.
+- **Rejection diagnostics.** The explanation names the entry selected by the Subject mode and the boundary Types that prevent iteration. For `FromEnd`, `Start` or `End` boundaries, Advice suggests resolving against a sequence length, such as `r.resolve(values.length)`. For different integer boundary Types, it suggests explicit conversion to the same integer Type. These suggestions do not silently resolve a range or change its Type.
 - **Entries.** An entry copies the boundaries and keeps no Storage, Origin or Loan of the source. The borrowing entries' `IteratorType(source)` is the same Type for every `source`. An entry initiates Abort when `start > end`; a reversed range is neither empty nor descending.
 - **Values.** Values are produced from `start` upward in unit steps. `ClosedRangeIterator<T>` produces `end` last and never computes past it, including at the maximum of `T`. Reassigning a `for var` binding does not change the sequence. Acquisition, borrowing and cleanup follow §14.6.2.
 - **Iterators.** `RangeIterator<T>` and `ClosedRangeIterator<T>` are Owned, Non-Copy Iterators whose `Item` is `T`; `next(self: uniq/Self)` returns `Option<T>`. They stay exhausted after `None` and satisfy the [Iterator effect bound](22-core-execution-and-foreign-functions.md#22124-iterator-independence). They have no public constructor and no entry conformance; enumerate an iterator value through `Kimi.Iteration.owning` or `borrowing` (§22.1.2.3). Their representation is unspecified.

@@ -535,6 +535,7 @@ public sealed partial class Binding
                 }
 
                 var index = count++;
+                operations.AsSpan(index * operationStride, operationStride).Clear();
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
@@ -596,10 +597,19 @@ public sealed partial class Binding
                 if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
                 {
                     // The candidates that were considered explain the failed selection; recorded only when it fails.
-                    var rejected = new FunctionKoto[count];
+                    var rejected = new RejectedCandidate[count];
                     for (var i = 0; i < count; i++)
                     {
-                        rejected[i] = (FunctionKoto)evaluated[i].Symbol.Declaration;
+                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                        for (var a = 0; a < argumentCount; a++)
+                        {
+                            var operation = operations[(i * operationStride) + a];
+                            if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
+                            {
+                                rejected[i] = rejected[i] with { Actual = actual, Expected = parameter };
+                                break;
+                            }
+                        }
                     }
 
                     (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
@@ -834,7 +844,6 @@ public sealed partial class Binding
     private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
     {
         defaultsUsed = 0;
-        operations.Clear();
         if (function.IsConstructor && declaringType is null)
         {
             return CandidateApplicability.Inapplicable;
@@ -959,6 +968,13 @@ public sealed partial class Binding
 
             if (call.ArgumentNodes[i].BoundType is { } actual && !InferInput(type, actual, call.ArgumentNodes[i]))
             {
+                // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
+                // applies; a successful overload selection publishes no repair advice from rejected alternatives.
+                if (DifferentRangeShapes(actual, type))
+                {
+                    operations[i] = new(call.ArgumentNodes[i], actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+                }
+
                 return CandidateApplicability.Inapplicable;
             }
         }
@@ -1063,6 +1079,11 @@ public sealed partial class Binding
 
                     if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literalDefault, argument))
                     {
+                        if (DifferentRangeShapes(literalDefault, function.Parameters[mapping[i]].Type.BoundType!))
+                        {
+                            operations[i] = new(call.ArgumentNodes[i], literalDefault, function.Parameters[mapping[i]].Type.BoundType!, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                        }
+
                         return CandidateApplicability.Inapplicable;
                     }
 
@@ -1120,6 +1141,11 @@ public sealed partial class Binding
 
                 if (!this.FitsInputLiteral(argument, type, scope))
                 {
+                    if (this.LiteralDefault(argument) is { } literalType && DifferentRangeShapes(literalType, type))
+                    {
+                        operations[i] = new(call.ArgumentNodes[i], literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                    }
+
                     return CandidateApplicability.Inapplicable;
                 }
 

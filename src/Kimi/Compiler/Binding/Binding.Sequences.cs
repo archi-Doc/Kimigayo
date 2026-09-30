@@ -149,6 +149,12 @@ public sealed partial class Binding
             return this.Fail(source, BindingFailure.Unsupported);
         }
 
+        if (proof == ConstraintProof.Refuted && source.Iterable.BindingFailure == BindingFailure.None &&
+            subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 })
+        {
+            (this.rangeIterationFailures ??= new(ReferenceEqualityComparer.Instance))[source.Iterable] = (subject, entry);
+        }
+
         this.Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
         return Complete(source, null);
     }

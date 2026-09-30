@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private const string RangeShapeAdvice = "If the function only resolves a range for slicing, accept R with R is PositionRange; if it enumerates, require the matching Iterable, UniqIterable or IntoIterable entry and its Item constraints; if it accesses boundaries, retain the required concrete range Type. Verify the function body after changing its contract";
+
     // SPEC 23.3.6.4: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
@@ -30,13 +32,34 @@ public sealed partial class Binding
     private (Koto Expression, Koto Cause)? missingExpectation;
 
     // SPEC 23.3.6.2: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
-    private Dictionary<Koto, (Koto At, string Actual, string Expected)>? mismatches;
+    private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
+
+    // The selected iteration entry and the range whose boundary Types cannot supply it.
+    private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
 
     // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
     private Dictionary<Koto, Koto>? writeTargets;
 
     // The candidates a failed overload selection considered, recorded only when it fails.
-    private Dictionary<Koto, FunctionKoto[]>? rejectedCandidates;
+    private Dictionary<Koto, RejectedCandidate[]>? rejectedCandidates;
+
+    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected);
+
+    private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
+    {
+        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            actual = actual.Components[0];
+        }
+
+        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            expected = expected.Components[0];
+        }
+
+        return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
+            expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
+    }
 
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
@@ -120,13 +143,16 @@ public sealed partial class Binding
     /// <param name="expected">The expected Type.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected)
-        => this.FailMismatch(node, at, actual.Name, expected.Name);
+        => this.RecordMismatch(node, at, actual, expected);
 
     // An untyped literal is described by its category, such as "integer literal".
     private BoundType? FailMismatch(Koto node, Koto at, string actual, string expected)
+        => this.RecordMismatch(node, at, actual, expected);
+
+    private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
     {
-        // Types that display alike differ only where the display is silent, such as Origins; they are no evidence.
-        if (node.BindingFailure == BindingFailure.None && actual != expected)
+        // Keep semantic identities even when their short names agree. Format only at publication, never during Binding.
+        if (node.BindingFailure == BindingFailure.None)
         {
             (this.mismatches ??= new(ReferenceEqualityComparer.Instance))[node] = (at, actual, expected);
         }
@@ -170,6 +196,7 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.mismatches?.Clear();
+        this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.rejectedCandidates?.Clear();
         this.prerequisites.Clear();

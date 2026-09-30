@@ -1,54 +1,48 @@
-# Ranges review checkpoint — 2026-09-30
+# Ranges review — 2026-09-30
 
-The user requested an audit of the integration and implementation of the frozen proposal `draft/Changes/2026-09-29 Redesign Ranges B.md`, including nearby bugs, then requested an early stopping point, a written handoff and a commit. **The full audit is not complete.** Do not infer completion from the existing P41 milestone status. The starting revision was `3604fb43` on `dev`, with a clean worktree.
+The audit resumed from the checkpoint in `03644ee3`, with a clean worktree. The checkpoint's full Session rerun now passes. The remaining proposal-to-specification audit and diagnostic repairs are complete; final Session verification of the repaired sources is pending below. The frozen proposal `draft/Changes/2026-09-29 Redesign Ranges B.md` was not edited.
 
-## Changes at this checkpoint
+## Repaired behavior
 
-- **Value reads in branch results:** `Binding.ControlFlow` now chooses the terminal read Type for differing safe-reference layers over positions, ranges and constrained Type parameters. Literal result fitting can obtain explicit read-conversion evidence from the complete expression (`a@ref` infers its referent from `a`), restricted to an already bound operand or a known identifier. Ordinary borrow results wait for block-local declarations and all their Origins. `ControlFlowAnalysis` respects the resulting expected adaptation. Previously valid `if`/`match` results could fail Binding or leave pending flow obligations. Tests check copied snapshots, released borrows, nested references, generic Position/PositionRange and preservation of equal reference layers and their Loans.
-- **Type-parameter identities:** `Binding.TypeIdentity` computes the finite equivalence class of available parameter identities instead of following one directed fact with a 16-step cutoff. `A is B; A is C` now makes B and C interchangeable. Constraint and capability proofs share facts across that class. Proof normalization deliberately keeps symbolic subjects symbolic; substituting concrete assumptions there changed the existing four-valued proof rules and was rejected by regression tests. A recursive structural expansion guard remains. Tests include premise order, cycles, 24 parameters, compound Types, zero-allocation warm rebinding and native generic integer-range iteration.
-- **Literal position warnings:** `Binding.PositionWarnings` evaluates the bound integer width/sign, including 128-bit arithmetic, instead of always using i32. It suppresses resolution warnings for arithmetic that itself Aborts, and performs resolution inequalities in Int128 with values saturated outside the target isize domain. Reproducers include missing warnings for `values.tryGet<i64>(1 << 63)` and `values.tryGet<i8>(127 << 1)`, and the false warning for unsigned underflow `values.tryGet<u8>(0 - 1)`. Tests cover limits, overflow, division, shifts and zero-allocation warm rebinding.
-- **Documentation:** SPEC §4.6.2 now excludes integer positions from the no-arithmetic/no-Comparable rule. Appendix A.13 names `tryGet`/`trySlice` correctly. `draft/INTEGRATED.md` records the subsequent API decision already made by `278a3091`: do not restore the proposal's two `tryGet` overloads, which conflict with §9.1. The frozen proposal itself was not edited.
+- **Non-iterable ranges.** `for` rejections retain the range and the actual selected entry (`Iterable`, `UniqIterable` or `IntoIterable`). The public record explains both boundary Types and the same-integer requirement. Omitted/from-end boundaries get length-resolution Advice; different integer Types get explicit-conversion Advice. Prerequisite failures and unrelated errors retain their own identities.
+- **Type mismatch evidence.** Binding stores the actual/expected semantic Types instead of comparing their short names. Publication displays generic arguments and qualifies the designated Kimi positions/ranges. A shadowed `Start` versus `Kimi.Start` mismatch points to `r.start`. Structural display includes reference layers, function Types and concrete/symbolic array lengths. Bounded mismatch formatting keeps whole names such as `i32` and `i64` rather than just their differing digits.
+- **Range-shape arguments.** Rejected overloads keep the argument/parameter comparison that failed, including literal, saved, generic and named-argument cases. Candidate locations and a primary Note retain the comparison even beyond the related-location limit. Advice conditionally describes `PositionRange`, the appropriate iteration entry plus Item constraints, or a concrete boundary-bearing Type. It neither infers a function's purpose nor supplies an automatic edit. Successful alternative overloads, shadowing and unmatched labels do not get this Advice. Reused candidate scratch is cleared even for inaccessible candidates.
+- **Warnings.** CLI and LSP output for the checkpoint's `i64`/`i8` literal-width reproducers was inspected. The generic Advice now distinguishes `None` from a try operation and Abort from an aborting operation. Resolution, warning selection and acceptance are unchanged.
+- **Formal intake.** SPEC §4.6.1 and §4.6.3.4 now state the previously omitted diagnostic requirements. `draft/INTEGRATED.md` records this intake without reopening the frozen proposal. No public Kimi declaration changed.
 
-## Evidence and verification
+## Audit matrix
 
-Incremental feedback (not Unit completion evidence): `artifacts/verify/ranges-review-feedback/proofs.log` passes 613 tests, including all selected constraint classes and the new range regressions. Failed intermediate runs remain in that directory. No NativeAOT tests were run. No compiler speedup is claimed; new allocation regressions retain strict zero-allocation assertions.
+The formal specification is the authority. Proposal section numbers below identify reviewed scope, not a second authority.
 
-| Formal run under `artifacts/verify/` | Result |
+| Proposal scope | Owning specification / implementation | Verification or disposition |
+| --- | --- | --- |
+| §2.2–§2.3, §3.2: closed capabilities, unchecked position construction, value reads and Type identity | SPEC §3.5.3, §4.6.2, §8.3/§8.4.7; `Core.kimi`, `Binding.ReadTypes`, `Binding.TypeIdentity` | `PositionContractTest`, `ValueReadTest`, `TypeIdentityTest`; the checkpoint repairs and warm allocation regressions pass again. |
+| §2.4: syntax, distinct shapes, independent boundary Types and literal fitting | SPEC §4.6.3.1–2, §12.3.1; `Binding.Ranges` | `IntegerRangeTest`, `RangeValueTest`, `RangeDiagnosticTest`; no obsolete `IndexRange`, `Index.init` or `Range<T>` spelling remains in the formal chapters or public library index. |
+| §2.5: position/range resolution and target-independent snapshots | SPEC §4.6.3.3, §4.6.4; `Core.kimi`, direct/saved selection lowering | `PositionModelTest`: all 12 integer Types, signed/unsigned extremes, negative/zero/maximum lengths, all shapes, re-resolution, direct/saved agreement and invalid Abort paths against the overflow-free model. |
+| §2.6: common APIs, receivers, ownership and evaluation order | SPEC §4.6.1/§4.6.6/§4.6.9/§4.7; Array/Slice/Storage sources and keyed selection | `KeyedIndexingTest`: API equivalence with Slice, receivers evaluated once, saved keys, nested selections, Partial Move boundaries and Array-result borrow retention. The earlier `trySlice` naming decision remains (§9.1 excludes constraint-only overloads). |
+| §2.7: conditional iteration, maximum closed ends, exhaustion and value entries | SPEC §4.6.3.4–5; `Core.kimi`, `Binding.Sequences` | `IntegerRangeTest`, `RangeValueTest`, `TypeIdentityTest`: all integer families, closed maximum/exhaustion, reversed Abort, no retained range borrow and ResolvedRange cursor/iterator equivalence. New diagnostics cover all three Subject modes. |
+| §2.8: formatting | UTF-8 formatting §4.2; `Core.kimi` | `RangeValueTest` checks the source-like form of every range shape, from-end/omitted boundaries and resolved intervals. |
+| §3.2/§3.4: warnings, folding and merged checks | SPEC §17.4.4, §4.6.8; `Binding.PositionWarnings`, range emission | `PositionWarningTest`, `PositionModelTest`: width/sign-sensitive arithmetic, overflow exclusion, fixed-array folding and O0/O2 model agreement. |
+| §3.4: diagnostic repair and qualification | SPEC §4.6.1/§4.6.3.4, §23.3.6; Binding diagnostic/candidate records and shared adapters | 35 new `RangeDiagnosticTest` cases: positive counterparts, unrelated errors, recovery, rebinding, strict zero-allocation warm recording, bounds, candidate omissions and CLI/LSP rendering. |
+| §3.4: literal delegation of Array/fixed-array read APIs to Slice | Implementation policy; observable equivalence is SPEC §4.6.6 | Retain the existing small Kimigayo wrappers over shared Position/PositionRange resolution. Literal delegation would create a whole-sequence view before even a failed try lookup; no measured benefit justifies changing these acquisition paths. API equivalence and Partial Move checks are native-tested. This is a call-graph choice, not a language limitation. |
+| §3.4: fixed-array metadata and iterator representation | SPEC §4.6.1/§4.6.8; library README | Fixed-array length/indices remain compiler metadata, explicitly allowed by the proposal. The previously selected closed iterator and ResolvedRange cursor optimization are retained. |
+| §2.9, §6.3: exclusions and performance | Appendix D, SPEC §4.6.8; earlier benchmark records | No descending/stepped/infinite range, user position conformance or string indexing is added. This diagnostic follow-up changes no native runtime algorithm and makes no timing claim. Historical P41 comparisons, including the approximately 65% O0 `insert(^1, x)` regression, remain documented in PLAN_HISTORY; they were not repeated here. |
+
+## Evidence
+
+All paths below are under `artifacts/verify/`, ignored by Git and retained separately from commits.
+
+| Run | Result |
 | --- | --- |
-| `20260930-095053-858-unit-ranges-review-checkpoint` | PASS: warning-free non-incremental Release build, 862 tests, 124 native O0/O2 executions, Milestone 41 original-source O0/O2 (2 checks). |
-| `20260930-095326-380-session-ranges-review-checkpoint` | Whole-solution Release build PASS, 13,720 tests with 2 failures. Unconditional early conversion binding broke `BorrowedTupleProjectionTest.ExecutesStoredElementBorrows` (StoredReferenceOutlivesWrapper) and `OwnershipJoinTest.JoinedBorrowCannotOutliveEitherLocalSource`. The snapshot step was not reached. Both regressions were subsequently repaired; retain this failed run. |
-| `20260930-100204-878-unit-ranges-review-scope-repair` | PASS on the final compiler sources: warning-free non-incremental Release build, 609 tests (including both regressions, control-flow/results/continuations and the three changed feature classes), 38 native O0/O2 executions. |
+| `20260930-105940-212-session-ranges-review-resume` | PASS on checkpoint `03644ee3`: warning-free whole-solution Release build, 13,720 managed tests, diagnostic snapshot. Both checkpoint Session regressions remain fixed. |
+| `ranges-review-resume-feedback` | Reproducers and incremental checks, including failed intermediate attempts. `limits.log` retains reviewed CLI/LSP output; the final focused range suite contains 35 passing cases. These feedback builds are not formal completion evidence. |
+| `20260930-111705-405-unit-ranges-review-diagnostics` | Failed build: a missing namespace import in the new display helper; repaired. |
+| `20260930-111848-972-unit-ranges-review-diagnostics-final` | Warning-free build, 392 tests and unchanged diagnostic snapshot passed; native step stopped because this checkout lacked `toolchain/windows_x64/kernel32.lib`. Retained as failed evidence. |
+| `ranges-review-resume-feedback/toolchain-setup.log` | The existing local setup script validated pinned LLVM identities, generated the shared import library and passed backend O0/O2 tests. No download or PATH change. |
+| `20260930-112258-944-unit-ranges-review-unit` | PASS on final compiler sources: warning-free non-incremental Release build, 393 tests, 122 native O0/O2 executions, Milestone 41 original-source O0/O2. Diagnostic snapshot: zero differences from the resumed checkpoint. The targeted new diagnostic changes are covered by their own public-record/output regressions. |
 
-**A complete Session rerun on the final sources remains pending**, deliberately deferred at the user's stopping point. The last repair limits early conversion evidence to literal fitting with an available read operand; it does not eagerly bind unrelated borrow conversions. CLI/LSP rendering of the new width-specific warning cases has not been individually inspected. Shared output adapters ran in the Session suite, but the outstanding diagnostic work below still needs its own output review. Evidence is ignored by Git and must be retained separately.
+Final Session verification and its commit reference will be appended after completion. No NativeAOT tests were run.
 
-## Resume here
+## Product boundaries
 
-1. Read this file, the checkpoint commit, AGENTS.md, CODEMAP.md and DIAGNOSTICS.md §10. Inspect `git status` before continuing; retain any later user changes. **First rerun the full Session and diagnostic snapshot** on the final sources. LSP discovery tests need permission to enumerate the OS temp directory and its ancestors; the previous Session used an elevated sandbox permission, not a source workaround.
-
-   ```powershell
-   ./scripts/verify.ps1 -Mode Session -DiagnosticSnapshot -Name ranges-review-resume
-   ```
-
-2. Finish **proposal §3.4 diagnostics** before declaring the integration complete. Appendix A.13 already requires repairs for non-iterable ranges, but the rejection currently publishes generic `UnsatisfiedConstraint_Kd` without a range-specific Reason, label or Advice. Reproduce:
-
-   ```kimi
-   for i in 1..^1 => ()
-   for i in ..3 => ()
-   for i in 1@i32..3@i64 => ()
-   ```
-
-   The first two should explain the unresolved boundaries and suggest `r.resolve(values.length)`; the third should suggest explicit conversion of the boundaries to the same integer Type. Valid counterparts are `for i in (1..^1).resolve(5) => ()`, `for i in (..3).resolve(5) => ()` and `for i in 1@i64..3@i64 => ()`. Entry naming must follow the actual Subject mode (`Iterable`, `UniqIterable` or `IntoIterable`), not a hard-coded entry. Relevant sources: `Binding.Sequences.FailIterationSubject`, `Binding.Diagnostics`, `Binding.ReportDiagnostics`, `DiagnosticCode.tinyhand`.
-3. Fix the **shadowed boundary diagnostic**:
-
-   ```kimi
-   struct Start
-   let r = ..3
-   let p: Start = r.start
-   ```
-
-   This rejects, but the primary span is the whole declaration and the generic message fails to distinguish the user Type from `Kimi.Start`. `FailMismatch` currently uses `BoundType.Name`, losing qualification and generic arguments; equal display strings discard mismatch evidence. Preserve the actual/expected facts and use the RHS location. Proposal §3.4 also requires qualified display for shadowed Kimi names. Hover is not currently implemented; record that product boundary separately rather than claiming it works.
-4. Check proposal §3.4's **range-shape mismatch advice** (PositionRange for resolution, appropriate iteration Contract/Item for enumeration, concrete shape for boundary access). Reconcile any missing formal requirements in the owning chapters and append their disposition to INTEGRATED.md. Do not weaken requirements to match implementation or reopen the frozen proposal. Investigate contextual advice at `Binding.Calls`' rejected-candidate recording; avoid speculative automatic edits or inferring arbitrary function intent.
-5. Preserve the diagnostic workflow: independent expected public records, valid counterparts, unrelated errors, prerequisite/recovery cases, Reason/primary location/Note/Advice, CLI and LSP output, limits and rebinding. Initial diagnostic-only tests were run and all four failed; their draft C# and logs are retained at `artifacts/verify/ranges-review-feedback/RangeDiagnosticTest.cs` and `diagnostic-repro.log`. They are deliberately outside the compiled test project at this checkpoint. Their intended expectations need refinement (notably the iteration entry), not blind acceptance. The source examples above are the durable reproducers if ignored artifacts are unavailable.
-6. Continue the remaining proposal-to-SPEC-to-implementation matrix, especially requirement versus implementation-policy distinctions in §3.4. Array/fixed-array read entries currently duplicate Slice resolution logic instead of delegating literally; determine whether a refactor has practical benefit without losing one-time receiver evaluation or Partial Move behavior. Fixed-array `length`/`indices` staying compiler metadata was explicitly allowed by the proposal. Existing `PositionModelTest` covers all 12 integers against an overflow-free model; retain native O0/O2 checks, receiver-once, closed maximum/exhaustion and rebind coverage.
-
-Use incremental test-project builds and selected xUnit methods for feedback, formal Unit verification once per completed unit, and Session verification at the end. The existing proposal/model tests are useful evidence, but passing them does not settle the unfinished diagnostic audit. A separate timing comparison of the changed hot paths remains unperformed; use Benchmark and identical input/configuration if making a performance claim.
+Hover and automatic repair/code-action support remain unimplemented; the language server publishes diagnostics. The range audit does not complete the separate parser-explanation, ownership-evidence or object-flow-refinement work tracked in DIAGNOSTICS.md §11. No new timing or whole-compiler performance claim is made.

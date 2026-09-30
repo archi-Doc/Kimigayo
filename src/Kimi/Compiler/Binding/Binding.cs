@@ -341,12 +341,23 @@ public sealed partial class Binding
             else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
             {
                 var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+                string? shapeNote = null;
                 for (var c = 0; c < rejected.Length; c++)
                 {
-                    candidates[c] = ("candidate", rejected[c], rejected[c].Name);
+                    var candidate = rejected[c];
+                    var label = candidate.Function.Name;
+                    if (candidate.Actual is { } actual && candidate.Expected is { } expected)
+                    {
+                        var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
+                        label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
+                        // Keep the compared Types even when the related-location limit omits this candidate.
+                        shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                    }
+
+                    candidates[c] = ("candidate", candidate.Function, label);
                 }
 
-                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates);
+                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null);
             }
             else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
             {
@@ -355,7 +366,15 @@ public sealed partial class Binding
             else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
             {
                 // The subject stays the failed node; the location is the syntax that shows the two Types.
-                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), at: mismatch.At, evidence: [mismatch.Actual, mismatch.Expected]);
+                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            }
+            else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
+            {
+                var subject = rangeFailure.Subject;
+                var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
+                var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
+                    "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
+                issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
             }
             else
             {

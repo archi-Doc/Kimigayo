@@ -76,6 +76,8 @@ Existing historical entries and their evidence are retained. This policy change 
 
 The frozen `Changes/2026-09-29 Redesign Ranges B.md` remains unchanged. Its §§2.6.2, 3.5 and 3.6 proposed two `tryGet` overloads. The subsequent formal-specification revision in `278a3091` retained `tryGet<P>` for positions and `trySlice<R>` for ranges (SPEC §4.6.6 and STYLE), because Constraints and return Types cannot distinguish their otherwise identical overload signatures (§9.1). Appendix A.13 now uses those names too. This records the later revision, not a change to the frozen proposal. SPEC §4.6.2 also clarifies that the no-arithmetic/no-Comparable rule applies to non-integer positions; integer positions retain integer operations. The incomplete follow-up audit and outstanding proposal §3.4 diagnostic requirements are tracked in `docs/dev/RANGES_REVIEW.md`.
 
+Follow-up intake (2026-09-30): proposal §3.4's diagnostic requirements are explicit in SPEC §4.6.1 (qualified Kimi Type display and conditional range-shape advice, with body verification before automatic repair) and §4.6.3.4 (selected iteration entry, boundary Types and the resolution/conversion repairs). Hover remains a required display behavior when provided, not a claim that the current diagnostic-only language server implements hover. The frozen proposal and its closed disposition remain unchanged.
+
 ## Proposal lifecycle
 
 1. Create dated proposals in `draft/Changes` or `draft/Design` when explicitly instructed. Unfrozen draft content also requires explicit instructions to edit.

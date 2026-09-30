@@ -69,6 +69,18 @@ internal static class DiagnosticText
             suffix++;
         }
 
+        // Do not trim the shared 'i' from i32/i64, or the shared name from Kimi.Start/Start. The differing Types must
+        // remain readable as names, rather than isolated digits or qualification punctuation.
+        while (prefix > 0 && NameCharacter(first[prefix - 1]))
+        {
+            prefix--;
+        }
+
+        while (suffix > 0 && NameCharacter(first[first.Length - suffix]))
+        {
+            suffix--;
+        }
+
         var common = prefix != 0 || suffix != 0;
         var (firstText, firstElided) = Bound(Differing(first, prefix, suffix));
         var (secondText, secondElided) = Bound(Differing(second, prefix, suffix));
@@ -77,5 +89,7 @@ internal static class DiagnosticText
         static string Differing(string text, int prefix, int suffix)
             => prefix == 0 && suffix == 0 ? text :
                 string.Concat(prefix == 0 ? string.Empty : Elision, text.AsSpan(prefix, text.Length - prefix - suffix), suffix == 0 ? string.Empty : Elision);
+
+        static bool NameCharacter(char value) => char.IsLetterOrDigit(value) || value == '_';
     }
 }

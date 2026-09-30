@@ -20,6 +20,11 @@ embedded, validated and implemented.
   own path (`match index.tryResolve(length)`, with `-1` on the `None` path) rather than a merged
   `PositionSyntax.resolved` value, where LLVM cannot relate the merged value to the length (as for
   the one-element move of `insert(^1, value)`).
+- Array and fixed-array read APIs retain small Kimigayo wrappers over the same Position/PositionRange
+  resolution used by Slice. Their required equivalence is observable behavior, not a fixed internal
+  call graph: delegation through a full Slice would create a whole-sequence view before a failed try
+  lookup. Keep the native API-equivalence, receiver-once and Partial Move checks when changing this
+  choice, and measure any claimed benefit before replacing the wrappers.
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
