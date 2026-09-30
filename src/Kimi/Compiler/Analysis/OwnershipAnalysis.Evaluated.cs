@@ -30,6 +30,11 @@ public sealed partial class OwnershipAnalysis
     // to isize, so the element access's one bounds check rejects every invalid position.
     private int SelectionKey(IndexKoto source, int receiver, int projection = -1, PlaceUseKind use = PlaceUseKind.Consume)
     {
+        if (source.DictionaryKeyReference is { } dictionaryKey)
+        {
+            return this.BorrowStruct(source.Right, dictionaryKey);
+        }
+
         var key = ElementAccess.KeySyntax(source);
         if (ReferenceEquals(key, source.Right))
         {

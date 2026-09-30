@@ -179,7 +179,7 @@ public sealed partial class Binding
     {
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
-            node.Report(requirement, code, at: target);
+            node.Report(requirement, code, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;
         }
 

@@ -138,7 +138,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code);
+            issue.Source.Report(DiagnosticRequirement.Ownership(issue.Failure), issue.Code, evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null);
         }
 
         // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
@@ -797,7 +797,7 @@ public sealed partial class OwnershipAnalysis
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
                 return this.ReadSlice(element, acquisition);
-            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType):
+            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType):
                 return this.ReadSlice(element, acquisition);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use, acquisition);

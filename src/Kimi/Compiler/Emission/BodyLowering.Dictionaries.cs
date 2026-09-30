@@ -103,6 +103,36 @@ internal sealed partial class BodyLowering
             : element.IsScalar ? this.PhysicalOperand(body, Input(body, id, operand)) : new(EmissionOperandKind.SlotAddress, place);
     }
 
+    private bool LowerDictionaryElementBorrow(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, BoundType dictionary, EmissionOperand receiver, BoundType reference, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var sequence = body.Sequences[(int)body.Values[id].Constant];
+        var result = ValueType(body, id);
+        if (operation.Source is not IndexKoto { DictionaryKeyReference: { } keyReference } index ||
+            dictionary.Components.Count != 2 || !ReferenceTypes.IsDictionary(reference) ||
+            result is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
+            !ReferenceEquals(result.Components[0], dictionary.Components[1]) || !ReferenceEquals(result.Origin, reference.Origin) ||
+            (result.Semantics == SemanticsKind.Uniq && reference.Semantics != SemanticsKind.Uniq) ||
+            (uint)sequence.Index >= (uint)id || !ReferenceEquals(ValueType(body, sequence.Index), SignatureType(this, keyReference)) ||
+            (body.IsReachable(id) && !this.Dominates(sequence.Index, id)) ||
+            !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value) ||
+            index.CodeContext.Compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
+            this.ComparisonHelpers?.GetValueOrDefault(comparison) is not { } equality ||
+            !this.TryGetLocation(index, directory, constants, out var location))
+        {
+            return Fail("Dictionary element borrow requires a matching receiver capability, key borrow and equality witness.", out failure);
+        }
+
+        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Find, key, value, equality: equality);
+        var found = body.Operations.Count + id;
+        function.AddCall(found, helper.Abi, [receiver, this.PhysicalOperand(body, sequence.Index)]);
+        function.AddScalar(EmissionOpcode.Sequence, id, [receiver, new(EmissionOperandKind.Value, found), new(EmissionOperandKind.Integer, helper.Stride), new(EmissionOperandKind.Integer, helper.ValueOffset)], place: found, location: location, op: "DictionaryLocate", check: ArithmeticCheckKind.MissingKey, representation: value.Value);
+        function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.ElementAddress, id)]);
+        this.dictionaryRuntimeUsed = true;
+        return true;
+    }
+
     private bool LowerDictionaryOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;

@@ -621,6 +621,8 @@
   + Name="TransferRequired_Kd"
     Category="Language"
     Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
+    Evidence="target:Text"
+    Label="{0} cannot be read as a Copy value"
 
   + Name="StaticMovePathRequired_Kd"
     Category="Language"
@@ -642,6 +644,8 @@
   + Name="SharedPathAccess_Kd"
     Category="Language"
     Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
+    Evidence="target:Text"
+    Label="{0} is reached through a shared path"
 
   + Name="ExclusivePathTake_Kd"
     Category="Language"

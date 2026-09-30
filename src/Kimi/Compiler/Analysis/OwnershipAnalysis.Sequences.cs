@@ -42,11 +42,32 @@ public sealed partial class OwnershipAnalysis
 
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
+        if (ReferenceTypes.IsDictionary(source.Left.BoundType))
+        {
+            if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } stored || !this.SupportsCopySnapshot(stored, source))
+            {
+                if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
+                {
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                }
+                else
+                {
+                    this.Unsupported(source);
+                }
+
+                return -1;
+            }
+
+            // Lookup produces the same borrowed Place used by explicit @ref; a bare read snapshots its Copy referent.
+            var reference = this.BorrowStruct(source, this.compilation.Binding.SharedReference(source.BoundType!, source.Left.BoundType!.Origin));
+            return reference < 0 ? -1 : this.LoadPointer(source, this.Value(reference));
+        }
+
         var depth = this.comparisonDepth++;
         var dynamicArray = source.Left.BoundType?.Kind == BoundTypeKind.Array;
         // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect
         // the handle throughout index evaluation so it cannot be resized underneath the read.
-        var keepPlace = dynamicArray || (ReferenceTypes.IsArray(source.Left.BoundType) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
+        var keepPlace = dynamicArray || ((ReferenceTypes.IsArray(source.Left.BoundType) || ReferenceTypes.IsDictionary(source.Left.BoundType)) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
         var receiver = this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
         if (dynamicArray && receiver >= 0)
         {

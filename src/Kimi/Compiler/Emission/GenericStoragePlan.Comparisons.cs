@@ -48,6 +48,24 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
+        for (var i = 0; i < body.Sequences.Count; i++)
+        {
+            var sequence = body.Sequences[i];
+            if (body.Operations[sequence.Operation].Source is not IndexKoto { DictionaryKeyReference: not null } index)
+            {
+                continue;
+            }
+
+            var receiver = body.Places[sequence.Receiver].Type;
+            var dictionary = ReferenceTypes.IsDictionary(receiver) ? receiver.Components[0] : receiver;
+            dictionary = context is null ? dictionary : compilation.Binding.InstantiateStorageType(dictionary, context);
+            if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
+                !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
+            {
+                return Fail(failure ?? "Dictionary element borrowing requires a finalized equality witness.", out failure);
+            }
+        }
+
         return true;
     }
 

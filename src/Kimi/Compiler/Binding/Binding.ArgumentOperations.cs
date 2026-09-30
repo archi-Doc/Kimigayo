@@ -207,7 +207,7 @@ public sealed partial class Binding
                 case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
                     index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                     return SemanticsKind.Ref; // SPEC 4.6.6: a Slice element Place is shared.
-                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType):
+                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
                     next = index.Left;
                     layer = index.Left.BoundType!.Semantics;
                     break;
@@ -588,7 +588,7 @@ public sealed partial class Binding
             return !exclusive;
         }
 
-        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType)))
+        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType)))
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }

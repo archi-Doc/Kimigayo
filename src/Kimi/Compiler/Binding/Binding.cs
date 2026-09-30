@@ -396,7 +396,7 @@ public sealed partial class Binding
             }
             else
             {
-                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node));
+                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
             }
         }
 

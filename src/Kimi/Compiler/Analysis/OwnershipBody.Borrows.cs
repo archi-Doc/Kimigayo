@@ -386,6 +386,15 @@ public sealed partial class OwnershipBody
                 return true;
             }
 
+            // The same key lifetime applies when indexed replacement reaches the Dictionary through a reference.
+            if (operation.Kind == OwnershipOperationKind.StorePointer && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } store &&
+                this.ValueOperands[store.Start] is >= 0 and var address && this.Values[address] is { Kind: OwnershipValueKind.Sequence } located &&
+                ReferenceEquals(this.Operations[address].Source, operation.Source) && operation.Source is IndexKoto { DictionaryKeyReference: not null } &&
+                this.Sequences[(int)located.Constant].Index is >= 0 and var key && ValuePlaceForBorrow(this.Operations[key]) == place)
+            {
+                return true;
+            }
+
             if (this.Values[id] is { Kind: OwnershipValueKind.Formatting, Count: 1 } formatting &&
                 ValuePlaceForBorrow(this.Operations[this.ValueOperands[formatting.Start]]) == place)
             {

@@ -105,13 +105,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
-            (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
+            (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ElementAccess.IsExclusiveArrayElement(element)))
         {
             // SPEC 4.6.9, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
             // Array is borrowed like an exclusive receiver; a fixed/dynamic array reference is read) and selects the element
             // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
             var depth = this.comparisonDepth++;
-            var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
+            var handle = element.Left.BoundType!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
                 ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
                 : this.Expression(element.Left, PlaceUseKind.Read);
             var subscript = handle < 0 ? -1 : this.Value(this.SelectionKey(element, handle));
@@ -124,7 +124,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
-            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
+            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType) || ReferenceTypes.IsDictionary(slice.Left.BoundType)))
         {
             // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
             // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.

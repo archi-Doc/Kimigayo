@@ -11,9 +11,10 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
-            if (receiver?.Kind == BoundTypeKind.Dictionary)
+            var dictionary = ReferenceTypes.IsDictionary(receiver) ? receiver!.Components[0] : receiver;
+            if (dictionary?.Kind == BoundTypeKind.Dictionary)
             {
-                var key = receiver.Components[0];
+                var key = dictionary.Components[0];
                 var actual = this.BindNode(source.Right, scope, key);
                 // A lookup borrows K itself, including when K is a reference value.
                 // An existing ref/K is reborrowed; it is never read into a key snapshot.
@@ -35,7 +36,7 @@ public sealed partial class Binding
                 }
 
                 ((IndexKoto)source).DictionaryKeyReference = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: this.PlaceOrigin(source.Right));
-                return Complete(source, receiver.Components[1]);
+                return Complete(source, dictionary.Components[1]);
             }
 
             if (ReferenceTypes.IsPointer(receiver))
