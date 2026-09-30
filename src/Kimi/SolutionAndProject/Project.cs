@@ -3,7 +3,6 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Checking;
@@ -254,7 +253,7 @@ public partial class Project
             {
                 reads.Add((path, inputs.ReadSource(path), null));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 reads.Add((path, null, ex));
             }
@@ -429,6 +428,7 @@ public partial class Project
         // command order, so a failure is reported exactly where the command reported it.
         var reads = graph is null ? this.ReadSources(inputs, testSources) : null;
         var testReads = compilation.IsTestBuild && testSources is not null ? ReadTestSources(inputs, testSources) : null;
+        var established = true;
 
         if (graph is not null)
         {
@@ -438,17 +438,7 @@ public partial class Project
                 foreach (var source in input.Sources)
                 {
                     var path = Path.Combine(Path.GetDirectoryName(input.Path)!, source.LogicalPath);
-                    try
-                    {
-                        var document = source.Content.CreateDocument(path);
-                        compilation.Diagnostics.AddInput(document, compilation.SourceModules[i]);
-                        compilation.SourceModules[i].AddSource(document);
-                    }
-                    catch (DecoderFallbackException)
-                    {
-                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidSourceEncoding_Kd, path);
-                        return false;
-                    }
+                    AddSource(path, source.Content, null, compilation.SourceModules[i]);
                 }
             }
         }
@@ -456,31 +446,7 @@ public partial class Project
         {
             foreach (var (path, content, exception) in reads!)
             {
-                if (exception is not null)
-                {
-                    if (exception is DesynchronizedInputException)
-                    {
-                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.DocumentDesynchronized_Kd, path);
-                    }
-                    else
-                    {
-                        compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, path, note: exception.Message);
-                    }
-
-                    return false;
-                }
-
-                try
-                {
-                    var document = content!.CreateDocument(path);
-                    compilation.Diagnostics.AddInput(document, projectKotonoha);
-                    projectKotonoha.AddSource(document);
-                }
-                catch (DecoderFallbackException)
-                {
-                    compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidSourceEncoding_Kd, path);
-                    return false;
-                }
+                AddSource(path, content, exception, projectKotonoha);
             }
         }
 
@@ -488,15 +454,15 @@ public partial class Project
         {
             foreach (var (path, content, exception) in testReads)
             {
-                if (exception is not null)
-                {
-                    ExceptionDispatchInfo.Throw(exception);
-                }
-
-                var document = content!.CreateDocument(path, isTestOnly: true);
-                compilation.Diagnostics.AddInput(document, projectKotonoha);
-                projectKotonoha.AddSource(document);
+                AddSource(path, content, exception, projectKotonoha, isTestOnly: true);
             }
+        }
+
+        // Every already-consumed input failure must have its own explanation before the blocked check returns.
+        // No semantic phase runs against a partial set of established source inputs.
+        if (!established)
+        {
+            return false;
         }
 
         foreach (var y in this.additionalSource)
@@ -527,6 +493,29 @@ public partial class Project
         }
 
         return accepted;
+
+        void AddSource(string path, SourceContent? content, Exception? failure, Kotonoha module, bool isTestOnly = false)
+        {
+            if (failure is not null)
+            {
+                var desynchronized = failure is DesynchronizedInputException;
+                compilation.Diagnostics.Report(DiagnosticPartition.Input, desynchronized ? DiagnosticCode.DocumentDesynchronized_Kd : DiagnosticCode.SourceReadFailed_Kd, path, note: desynchronized ? null : failure.Message);
+                established = false;
+                return;
+            }
+
+            try
+            {
+                var document = content!.CreateDocument(path, isTestOnly);
+                compilation.Diagnostics.AddInput(document, module);
+                module.AddSource(document);
+            }
+            catch (DecoderFallbackException)
+            {
+                compilation.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidSourceEncoding_Kd, path);
+                established = false;
+            }
+        }
     }
 
     // Emission is a later phase with its own result, rendered after the front-end result.
