@@ -29,6 +29,7 @@ The specification and implementation are not set in stone. The specification gui
 
 # Documentation Responsibilities
 
+- Consult [docs/dev/CODEMAP.md](docs/dev/CODEMAP.md) before compiler changes. It maps implementation entry points and language features to source and representative tests. Update the affected entries in the same commit when a change adds or moves a feature, changes a phase responsibility or entry point, or makes a listed source/test reference stale. Keep it concise and navigation-only; do not duplicate specification rules or support status.
 - `docs/SPEC.md` and its referenced specification chapters define required language behavior. Implementation limitations must not weaken these requirements.
 - The `draft` folder contains proposals. Once finalized, their content is incorporated into `docs/SPEC.md` and its referenced specification chapters. This flow is one-way: do not propagate changes from the formal specification back to `draft`. The formal specification must be self-contained and must not reference or depend on `draft`; do not use `draft` as an authority for required language behavior.
 - Record each formal-specification intake in `draft/INTEGRATED.md` in the same commit as the specification changes, identifying the integrated proposal sections and their target sections or commit. Implementation and test completion are not prerequisites for integration or freezing.
