@@ -16,7 +16,7 @@ public sealed partial class OwnershipBody
     private int[] slicePaths = [];
     private bool[] inspectionBorrows = [];
     private bool[] borrowedPlaces = [];
-    private Dictionary<(int Place, int Root), int>? dictionaryBorrowStarts;
+    private Dictionary<(int Place, int Root), int>? storedBorrowStarts;
 
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
     internal int BorrowDependencyCapacity => this.borrowDependencies.Length;
@@ -37,7 +37,7 @@ public sealed partial class OwnershipBody
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
     {
-        this.dictionaryBorrowStarts?.Clear();
+        this.storedBorrowStarts?.Clear();
         var count = this.Places.Count;
         var dependent = false;
         for (var p = 0; p < count && !dependent; p++)
@@ -101,7 +101,7 @@ public sealed partial class OwnershipBody
                     if (this.borrowDependencies[(entry.Input * count) + root] != LoanRequirement.None ||
                         this.borrowDependencies[(this.OperationSteps[id] * count) + root] != LoanRequirement.None)
                     {
-                        (this.dictionaryBorrowStarts ??= new()).TryAdd((entry.Place, root), id);
+                        (this.storedBorrowStarts ??= new()).TryAdd((entry.Place, root), id);
                     }
                 }
             }
@@ -239,8 +239,16 @@ public sealed partial class OwnershipBody
                                 operation.Place >= 0 && this.Places[operation.Place].Type.Semantics == SemanticsKind.Uniq;
                             var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore || exclusiveElement ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
-                            if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
+                            // Lending the slot that stores a reference does not access its external referent. The
+                            // subsequent reborrow/store checks that separate capability, including call activation.
+                            var referenceSlot = value.Kind == OwnershipValueKind.Sequence && operation.Place >= 0 &&
+                                ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
+                                ReferenceTypes.IsBorrow(this.Places[operation.Place].Type.Components[0]) && this.IsExclusiveBorrowInput(root) &&
+                                !ReferenceEquals(this.Places[root].Type.Components[0], this.Places[operation.Place].Type.Components[0]);
+                            if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
                                 (value.Kind != OwnershipValueKind.PointerStore || sourcePlace == root ||
+                                    (this.IsExclusiveBorrowInput(root) && ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
+                                        ReferenceEquals(this.Places[root].Type.Components[0], this.Places[sourcePlace].Type.Components[0])) ||
                                     this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
                                 (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
                             {
@@ -759,6 +767,27 @@ public sealed partial class OwnershipBody
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                         {
                             Merge(operation.Place, input.Place);
+                            // A writable referent may retain another argument when its complete stored Type names that
+                            // argument's Origin. Carry actual input capabilities through that public contract, not its body.
+                            if (input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } && RetainsInput(storage))
+                            {
+                                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming && ReferenceEquals(incoming.Source, operation.Source); argument--)
+                                {
+                                    if (incoming.Place == input.Place)
+                                    {
+                                        continue;
+                                    }
+
+                                    Merge(input.Place, incoming.Place, storage, id);
+                                    for (var borrow = entry - 1; borrow >= 0; borrow--)
+                                    {
+                                        if (this.Operations[borrow] is { Kind: OwnershipOperationKind.Borrow } receiver && receiver.Input == input.Place)
+                                        {
+                                            Merge(receiver.Place, incoming.Place, storage, id);
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         break;
@@ -798,7 +827,20 @@ public sealed partial class OwnershipBody
         }
         while (changed);
 
-        void Merge(int destination, int source)
+        bool RetainsInput(BoundType storage)
+        {
+            for (var root = 0; root < count; root++)
+            {
+                if (this.IsExclusiveBorrowInput(root) && NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        void Merge(int destination, int source, BoundType? storage = null, int storedAt = 0)
         {
             if (destination < 0 || source < 0 || destination == source)
             {
@@ -807,13 +849,31 @@ public sealed partial class OwnershipBody
 
             for (var root = 0; root < count; root++)
             {
+                if (storage is not null && (!this.IsExclusiveBorrowInput(root) ||
+                    NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None))
+                {
+                    continue;
+                }
+
                 ref var target = ref this.retainedBorrowAuthority[(destination * count) + root];
                 var input = this.retainedBorrowAuthority[(source * count) + root];
+                var start = this.storedBorrowStarts?.GetValueOrDefault((source, root)) ?? 0;
+                start = Math.Max(start, storedAt);
                 if (input != LoanRequirement.None && target == LoanRequirement.None && this.IsExclusiveBorrowInput(root) &&
                     NamedOriginRequirement(this.Places[destination].Type, this.Places[root].Type.Origin!) is not LoanRequirement.None and var requirement)
                 {
                     this.borrowDependencies[(destination * count) + root] = requirement;
                     target = requirement;
+                    changed = true;
+                    if (start > 0)
+                    {
+                        (this.storedBorrowStarts ??= new())[(destination, root)] = start;
+                    }
+                }
+                else if (input != LoanRequirement.None && target != LoanRequirement.None &&
+                    this.storedBorrowStarts is { } starts && starts.TryGetValue((destination, root), out var previous) && start < previous)
+                {
+                    starts[(destination, root)] = start;
                     changed = true;
                 }
 

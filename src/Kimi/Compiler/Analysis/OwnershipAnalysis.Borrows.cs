@@ -71,6 +71,12 @@ public sealed partial class OwnershipAnalysis
             this.referenceCalls.Add(placeCall);
         }
 
+        if (IsDictionaryElement(unwrapped) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
+            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
+        {
+            return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
+        }
+
         if (unwrapped is ConversionKoto storedFollow && this.ReadsStoredReference(storedFollow))
         {
             return this.BorrowStoredReference(storedFollow, type, reservation); // SPEC 13.5.5.1: a Reborrow through the stored reference.

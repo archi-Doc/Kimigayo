@@ -66,6 +66,9 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    private static bool IsDictionaryElement(Koto source)
+        => source is IndexKoto index && (index.Left.BoundType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(index.Left.BoundType));
+
     // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in an instance whose
     // binding is ref or uniq; for owner, and in the universal verification of the generic body, it selects the operand
     // Place itself, whose Loans cover every admitted case.
@@ -131,10 +134,10 @@ public sealed partial class OwnershipAnalysis
     private bool ReadsStoredReference(ConversionKoto conversion)
     {
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
-        // Built-in elements already acquire their stored pointer through the sequence borrow plan (SPEC 4.6.9).
+        // Dictionary elements acquire their complete stored reference through the ordinary element Place.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
             ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null) ||
-                (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
+                (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left) || IsDictionaryElement(left))));
     }
 
     // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
@@ -147,6 +150,26 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(Koto left, SemanticsKind mode)
     {
+        if (IsDictionaryElement(left))
+        {
+            var stored = this.Concrete(left.BoundType)!;
+            var slotType = this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            var slot = this.BorrowStruct(left, slotType);
+            if (slot < 0)
+            {
+                return -1;
+            }
+
+            // The slot is inspected only for its address value. A shared path yields the stored reference's shared
+            // capability, with the referent's own Origin; an exclusive path can lend its exclusive capability.
+            var acquired = mode == SemanticsKind.Ref && stored.Semantics == SemanticsKind.Uniq
+                ? this.compilation.Binding.SharedReference(stored.Components[0], stored.Origin) : stored;
+            var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, left, pointer);
+            this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
+            return this.RegisterTemporary(pointer);
+        }
+
         if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
         {
             // A published element Place is borrowed, in the mode its selection published, only to load the stored reference.
