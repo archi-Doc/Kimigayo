@@ -1246,10 +1246,7 @@ public sealed partial class Binding
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
-            // PLAN G35: the remaining fixed-array write through a uniq reference is permitted by SPEC 3.4.1.
-            var exclusiveElement = KotoHelper.UnwrapParentheses(binary.Left) is IndexKoto { Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
-                ReferenceTypes.IsArray(receiver);
-            return exclusiveElement ? this.Fail(binary, BindingFailure.Unsupported) : this.FailWrite(binary, binary.Left);
+            return this.FailWrite(binary, binary.Left);
         }
 
         var result = assignment ? BoundType.Unit : left;

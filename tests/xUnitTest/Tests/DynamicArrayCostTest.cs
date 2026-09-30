@@ -14,6 +14,11 @@ public class DynamicArrayCostTest
 
     [Trait("Purpose", "Allocation")]
     [Fact]
+    public void BorrowedFixedArrayUpdatesAllocateNoStorage()
+        => WriteCostFixture("BorrowedFixedWrite", "func edit(values: uniq/[2 of isize])\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: [2 of isize] = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 0, 0, growth: false);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
     public void SortingRetainsStorageWithoutFurtherAllocation()
         => WriteCostFixture("Sort", "var values: Array<isize> = [7, 3, 5, 1, 6, 2, 4, 3]\nvalues.sort()\nvalues.reverse()\nvalues.sort()\nrequire values[0] == 1 and values[7] == 7 and values.length == 8 else => $abort(\"sort\")\nvar empty: Array<isize> = []\nempty.sort()", 1, 0);
 
@@ -169,7 +174,7 @@ public class DynamicArrayCostTest
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 
-    private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true)
+    private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true, bool growth = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -177,7 +182,8 @@ public class DynamicArrayCostTest
         ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
         // Count only Array growth transfers; user payload construction and stable insert/remove are separate costs.
         const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
-        Assert.Equal(2, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
+        // Fixed storage must contain no Array growth helper at all; existing dynamic workloads require exactly one.
+        Assert.Equal(growth ? 2 : 1, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
         ir = ir.Replace(CopyAnchor, CopyAnchor + "  %previous_bytes = load i64, ptr @probe_transferred, align 8\n  %total_bytes = add i64 %previous_bytes, %used\n  store i64 %total_bytes, ptr @probe_transferred, align 8\n", StringComparison.Ordinal);
         var start = $$"""
             define void @__kimi_start() noreturn #0 {

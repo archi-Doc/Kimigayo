@@ -105,10 +105,10 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
-            (element.Left.BoundType?.Kind == BoundTypeKind.Array || (ReferenceTypes.IsDynamicArray(element.Left.BoundType) && element.Left.BoundType!.Semantics == SemanticsKind.Uniq)))
+            (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
         {
-            // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole Array exclusively (an owned
-            // Array is borrowed like an exclusive receiver; an exclusive reference is read) and splits the element off
+            // SPEC 4.6.9, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
+            // Array is borrowed like an exclusive receiver; a fixed/dynamic array reference is read) and selects the element
             // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
             var depth = this.comparisonDepth++;
             var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array

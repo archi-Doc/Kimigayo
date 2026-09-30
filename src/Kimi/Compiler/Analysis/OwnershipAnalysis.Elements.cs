@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     // SPEC 13.7: secure the RHS, select one exclusive element address, then destroy/store through the same replacement
-    // used by followed references and Place calls. The element borrow keeps its Array dependency until placement.
+    // used by followed references and Place calls. Fixed and dynamic arrays share the element borrow and replacement.
     private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);

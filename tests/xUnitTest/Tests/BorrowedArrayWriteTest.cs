@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Checking;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -22,7 +23,38 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
     [InlineData("AbruptRhs", "func key() -> isize\n    Console.writeLine(\"wrong\")\n    return 0\nfunc put(a: uniq/Array<i32>)\n    a[key()] = (do => return)\nvar a: Array<i32> = [1]\nput(a@uniq)\nrequire a[0] == 1 else => $abort(\"unchanged\")", "")]
     [InlineData("ReceiverOnce", "func receiver(a: uniq/Array<i32>) -> uniq/Array<i32> during a\n    Console.writeLine(\"receiver\")\n    return a\nvar a: Array<i32> = [1]\nreceiver(a@uniq)[0] += 41\nrequire a[0] == 42 else => $abort(\"value\")", "receiver\n")]
     public void Executes(string name, string source, string stdout)
-        => ScalarEmissionTest.EmitFixture("BorrowedArrayWrite" + name, source, stdout);
+    {
+        ScalarEmissionTest.EmitFixture("BorrowedArrayWrite" + name, source, stdout);
+        ScalarEmissionTest.EmitFixture("BorrowedFixedArrayWrite" + name, FixedArray(source), stdout);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBorrowedFixedArrayUpdatesAllocateNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func edit(a: uniq/[2 of i32])\n    a[0] = 2\n    a[^1] += a[0]\nvar a: [2 of i32] = [1, 2]\nedit(a@uniq)");
+        for (var i = 0; i < 32; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.Validate(out var error), error);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("Borrowed array Binding failed.");
+            }
+
+            c.Binding.CheckStartup(OutputKind.Application);
+            if (!c.Ownership.Analyze().IsVerified || !c.Emission.Validate(out _))
+            {
+                throw new InvalidOperationException("Borrowed array pipeline failed.");
+            }
+        }));
+    }
 
     [Theory]
     [InlineData("func put(a: ref/Array<i32>) => a[0] = 42", DiagnosticCode.SharedPathAccess_Kd)]
@@ -31,11 +63,14 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
     [InlineData("func put(a: uniq/Array<i32>)\n    let old = a[0]@ref\n    a[0] = 42\n    let n = old + 1", DiagnosticCode.ComparisonLoanConflict_Kd)]
     public void RejectsInvalidCapability(string source, DiagnosticCode code)
     {
-        var c = MinimalEmissionTest.Analyze(source);
-        c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
-        Assert.Contains(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Code == code.ToString());
-        Assert.False(c.Emission.Validate(out _));
+        foreach (var input in new[] { source, FixedArray(source) })
+        {
+            var c = MinimalEmissionTest.Analyze(input);
+            c.Binding.ReportDiagnostics();
+            c.Ownership.ReportDiagnostics();
+            Assert.Contains(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Code == code.ToString());
+            Assert.False(c.Emission.Validate(out _));
+        }
     }
 
     [Theory]
@@ -43,12 +78,20 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
     [InlineData("1")]
     [InlineData("^0")]
     public void RetainsBoundsChecks(string key)
-        => ScalarEmissionTest.EmitFixture(
+    {
+        ScalarEmissionTest.EmitFixture(
             "BorrowedArrayWriteBounds" + key.Replace("-", "Minus").Replace("^", "End"),
             $"func put(a: uniq/Array<i32>) => a[{key}] = 2\nvar a: Array<i32> = [1]\nput(a@uniq)",
             string.Empty,
             1,
             "Hello.kimi:1:33: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+        ScalarEmissionTest.EmitFixture(
+            "BorrowedFixedArrayWriteBounds" + key.Replace("-", "Minus").Replace("^", "End"),
+            $"func put(a: uniq/[1 of i32]) => a[{key}] = 2\nvar a: [1 of i32] = [1]\nput(a@uniq)",
+            string.Empty,
+            1,
+            "Hello.kimi:1:33: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    }
 
     [Fact]
     public void ConflictOutputIdentifiesTheExclusiveElementAccess()
@@ -77,4 +120,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
+
+    private static string FixedArray(string source)
+        => System.Text.RegularExpressions.Regex.Replace(source, @"Array<([^<>]+)>", "[1 of $1]");
 }
