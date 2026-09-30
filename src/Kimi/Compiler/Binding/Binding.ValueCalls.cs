@@ -230,7 +230,9 @@ public sealed partial class Binding
                     return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
-                operations[i] = new(source, actual, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);
+                // ArgumentType includes the already selected expected adaptation. Retain the original syntax
+                // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
+                operations[i] = new(source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);
                 instantiated[i] = parameter;
             }
 

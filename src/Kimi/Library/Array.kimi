@@ -164,6 +164,29 @@ public struct Array<T>
             low += 1
             high -= 1
 
+    /// Sorts the elements in nondecreasing `compare` order, without allocation; not stable.
+    public func sort(self: uniq/Self)
+        T is Comparable
+        // Keep the heap traversal aligned with the callback overload. Direct Contract calls avoid a generic
+        // Callable adapter until generic anonymous functions are supported.
+        var end = self.length
+        var start = end / 2
+        while end > 1
+            var parent: isize = 0
+            if start > 0
+                start -= 1
+                parent = start
+            else
+                end -= 1
+                self.swapAt(first: 0, second: end)
+            // Only parents with a child compute 2 * parent + 1, so the index cannot overflow.
+            while parent < end / 2
+                var child = parent * 2 + 1
+                if child + 1 < end and self[child].compare(self[child + 1]) < 0 => child += 1
+                if self[parent].compare(self[child]) >= 0 => exit
+                self.swapAt(first: parent, second: child)
+                parent = child
+
     /// Sorts the elements in nondecreasing order of `by`, which returns a negative, zero or positive value
     /// for less, equal or greater.
     ///
@@ -182,9 +205,8 @@ public struct Array<T>
             else
                 end -= 1
                 self.swapAt(first: 0, second: end)
-            while true
+            while parent < end / 2
                 var child = parent * 2 + 1
-                if child >= end => exit
                 if child + 1 < end and by(self[child], self[child + 1]) < 0 => child += 1
                 if by(self[parent], self[child]) >= 0 => exit
                 self.swapAt(first: parent, second: child)

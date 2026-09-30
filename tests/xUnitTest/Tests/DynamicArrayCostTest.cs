@@ -9,6 +9,11 @@ public class DynamicArrayCostTest
 {
     [Trait("Purpose", "Allocation")]
     [Fact]
+    public void SortingRetainsStorageWithoutFurtherAllocation()
+        => WriteCostFixture("Sort", "var values: Array<isize> = [7, 3, 5, 1, 6, 2, 4, 3]\nvalues.sort()\nvalues.reverse()\nvalues.sort()\nrequire values[0] == 1 and values[7] == 7 and values.length == 8 else => $abort(\"sort\")\nvar empty: Array<isize> = []\nempty.sort()", 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
     public void EmptyConstructionAndEmptyOperationsAllocateNothing()
         => WriteCostFixture("Empty", "var values: Array<isize> = []\nvalues@uniq.reserve(0)\nvalues@uniq.clear()\nvalues@uniq.shrinkToFit()\nmatch values@uniq.pop()\n    .None => ()\n    .Some(_) => $abort(\"empty\")\nfor value in values@move => $abort(\"iteration\")", 0, 0);
 

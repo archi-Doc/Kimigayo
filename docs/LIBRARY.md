@@ -243,7 +243,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `appendCopies(self: uniq/Self, values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order. |
 | `reverse(self: uniq/Self) -> ()` | Reverses the order. O(1 + n). |
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. |
-| `sort(self: uniq/Self) -> ()`, `T is Comparable` | Sorts in nondecreasing `compare` order; not stable, no allocation. |
+| `sort(self: uniq/Self) -> ()`, `T is Comparable` | Kimigayo heapsort in nondecreasing `compare` order; not stable, no allocation or element Copy/destruction. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison. |
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once, so earlier items stay valid across later steps. |

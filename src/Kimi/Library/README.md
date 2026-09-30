@@ -29,6 +29,12 @@ embedded, validated and implemented.
 - `Comparison.kimi` declares Equatable and Comparable as ordinary Contracts with
   validated recognized identities. Primitive witnesses use compiler lowering;
   user witnesses use ordinary calls with the same ownership and effect checks.
+- Array's two sorting overloads use the same heapsort traversal in Kimigayo. The
+  default overload calls Comparable directly: a generic anonymous Callable adapter
+  is not supported yet. The child-index calculation is bounded by the internal-node
+  test before multiplication. Both overloads swap initialized elements without
+  Copy, destruction or allocation; stored concrete callbacks execute through the
+  ordinary value-call path.
 - Dictionary algorithms belong in Kimigayo sources; see the implementation
   boundary below. Private storage functions are not public library APIs.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.

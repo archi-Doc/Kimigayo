@@ -128,8 +128,9 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. Resume §4 with P31, P40 and P26. Next independent source work: Array `sort()` using the existing heapsort, then `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
+1. Continue the P26 callback prerequisite exposed by Array sorting: directly supplied explicitly typed anonymous functions at a generic Callable parameter currently report `UnprovenConstraint_Kd`; saved concrete closures execute. Array `sort()` and its callable argument-source fix pass 195 tests and 142 native executions (`20260930-151620-581-unit-array-sort`).
 2. Continue parser explanations with Origin binding-set braces and the remaining declaration/expression families. Origin suffixes, relations and callable lists are verified (334 tests and six native executions, DIAGNOSTICS_REVIEW.md). The historical D0–D4 checkpoints do not certify every recorder; ownership evidence and per-recorder condition/Place multiplicity remain open (DIAGNOSTICS.md §11), and flow-refinement codes go with P33.
+3. Continue P31 Dictionary source migration/runtime literal/borrowed storage work and Array `init(! repeating:count:)`, then P40 and the remaining P26 work. `first`/`last` await P24; the Property/object track follows.
 
 Concurrent sessions use separate worktrees and stage only their own paths. Library bodies reached only through generic dispatch are collected through `CollectWitnesses`; keep that path in view when a body has no verified generic instance.
 
