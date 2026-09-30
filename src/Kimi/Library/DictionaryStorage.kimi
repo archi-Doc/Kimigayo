@@ -31,6 +31,17 @@ group DictionaryStorage
             Storage.destroyDictionaryEntries<K, V>((*handle).buffer, layout.1, (*handle).tail, (*handle).length)
             clearLinks(handle)
 
+    internal func removeEntry<K, V>(value: uniq/Dictionary<K, V>, key: ref/K) -> Option<(K, V)>
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            var state = Storage.borrowStorage(value@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            require link != 0 else => return .None
+            let slot = state.storage + (link - 1) * state.stride
+            unlink(layout.0@unsafe/Handle, layout.1, link)
+            return .Some((*Storage.keyAt<K, V>(slot), *Storage.valueAt<K, V>(slot)))
+
     unsafe func reserve(
         handle: unsafe/Handle, stride: isize, additional: isize, maximumSize: isize,
         allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (),

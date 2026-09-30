@@ -13,14 +13,18 @@ public struct Dictionary<K, V>
     public func clear(self: uniq/Self)
         DictionaryStorage.clearEntries(self)
 
+    /// Removes the matching stored pair, or returns None. The returned pair retains only its stored dependencies.
+    public func remove(self: uniq/Self, key: ref/K) -> Option<(K, V)>
+        return DictionaryStorage.removeEntry(self, key)
+
     /// Borrows the matching value, or returns None. Only the collection, not the search key, is a result dependency.
     public func tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>
         var state = Storage.borrowStorage(self)
-        loop
-            match Storage.splitFirst(state@uniq)
-                .Some((let storedKey, let value))
-                    if storedKey.equals(key) => return .Some(value)
-                .None => return .None
+        let link = Storage.findDictionaryLink(state@uniq, key)
+        require link != 0 else => return .None
+        unsafe
+            let slot = state.storage + (link - 1) * state.stride
+            return .Some(Storage.lendValue(state, slot))
 
     /// Starts a shared enumeration of the entries in insertion order.
     public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source

@@ -7,7 +7,7 @@ internal static partial class LlvmModuleWriter
     // ABI bridges only. Ordered-link algorithms are compiled from DictionaryStorage.kimi.
     private static void WriteDictionaryStorage(EmissionModule module, TextWriter output)
     {
-        if (module.DictionaryUnlink is not { } unlink || module.DictionaryAppendSlot is null ||
+        if (module.DictionaryAppendSlot is null ||
             module.DictionaryInitialize is not { } initialize || module.DictionaryClearLinks is null ||
             module.DictionaryAppend is null || module.DictionaryReserveStorage is null)
         {
@@ -15,9 +15,6 @@ internal static partial class LlvmModuleWriter
         }
 
         WriteDictionaryCapacity(module, output, append: true);
-        output.Write("define internal void @__kimi_dictionary_unlink(ptr %handle, i64 %stride, i64 %link) #0 {\nentry:\n  call void @");
-        output.Write(unlink.Name);
-        output.Write("(ptr %handle, i64 %stride, i64 %link)\n  ret void\n}\n\n");
         output.Write(WindowsLowering.DictionaryInit.GetDefinition(false));
         output.Write("entry:\n  call void @");
         output.Write(initialize.Name);

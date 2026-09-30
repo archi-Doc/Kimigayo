@@ -72,6 +72,16 @@ internal group Storage
                 _ = *valueAt<K, V>(slot)
                 _ = *keyAt<K, V>(slot)
 
+    /// Returns the matching live link, or zero; comparison uses stored.equals(search), with no entry acquisition.
+    internal func findDictionaryLink<K, V>(state: uniq/DictionaryRefRemainder<K, V>, key: ref/K) -> isize
+        K is Equatable
+        loop
+            let link = state.link
+            match splitFirst(state)
+                .Some((let storedKey, _))
+                    if storedKey.equals(key) => return link
+                .None => return 0
+
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>
         require state.count > 0 else => return .None

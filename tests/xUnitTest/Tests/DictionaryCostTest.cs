@@ -72,6 +72,7 @@ public class DictionaryCostTest
             var entries: Dictionary<(i32, i32), i32> = [:]
             _ = entries.tryInsert((1, 2), 3)
             entries[(1, 2)] = 4
+            _ = entries.remove((9, 9))
             let found = entries.tryGet((1, 2))
             match found
                 .Some(let value) => require value == 4 else => $abort("value")

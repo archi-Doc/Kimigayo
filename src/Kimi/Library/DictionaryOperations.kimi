@@ -3,5 +3,4 @@
 public func reserve(self: uniq/Self, additional: isize)
 public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
 public func insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>
-public func remove(self: uniq/Self, key: ref/K) -> Option<(K, V)>
 public func shrinkToFit(self: uniq/Self)

@@ -108,7 +108,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryReserve),
         new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryInsert),
         new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryInsertOrReplace),
-        new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryRemove),
+        new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, SourceFunction: true),
         new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, SourceFunction: true),
         new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, SourceFunction: true),
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),

@@ -38,7 +38,6 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), output, location, length], resultSlot: true),
-                DictionaryHelperKind.Remove => new(name, "void", [handle, new("ptr", "key"), output, location, length], resultSlot: true),
                 _ => new(name, "void", [handle, location, length]),
             };
             var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
@@ -190,30 +189,15 @@ internal sealed partial class BodyLowering
                 return Fail(failure ?? "Dictionary search requires a finalized equality witness and stored result.", out failure);
             }
 
-            DictionaryHelperKind kind;
-            if (operation is CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace)
+            if (operation is not (CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace) ||
+                !this.ArrayValueArgument(body, id, 1, key, out var keyArgument) || !this.ArrayValueArgument(body, id, 2, value, out var valueArgument))
             {
-                if (!this.ArrayValueArgument(body, id, 1, key, out var keyArgument) || !this.ArrayValueArgument(body, id, 2, value, out var valueArgument))
-                {
-                    return Fail("Dictionary insertion inputs are not acquired values.", out failure);
-                }
-
-                this.callOperands.Add(keyArgument);
-                this.callOperands.Add(valueArgument);
-                kind = operation == CompilerFunctionKind.DictionaryTryInsert ? DictionaryHelperKind.TryInsert : DictionaryHelperKind.InsertOrReplace;
-            }
-            else
-            {
-                var searchType = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
-                if (searchType is null || !this.ScalarArrayArgument(body, id, 1, searchType, out var search))
-                {
-                    return Fail("Dictionary search requires its acquired key borrow.", out failure);
-                }
-
-                this.callOperands.Add(search);
-                kind = DictionaryHelperKind.Remove;
+                return Fail("Dictionary insertion inputs are not acquired values.", out failure);
             }
 
+            this.callOperands.Add(keyArgument);
+            this.callOperands.Add(valueArgument);
+            var kind = operation == CompilerFunctionKind.DictionaryTryInsert ? DictionaryHelperKind.TryInsert : DictionaryHelperKind.InsertOrReplace;
             this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[id].Place));
             abi = this.GetDictionaryHelper(kind, key, value, result, equality).Abi;
         }

@@ -68,7 +68,6 @@ public enum CompilerFunctionKind : byte
     DictionaryReserve,
     DictionaryTryInsert,
     DictionaryInsertOrReplace,
-    DictionaryRemove,
     DictionaryShrinkToFit,
     StorageBorrowShared,
     StorageBorrowExclusive,

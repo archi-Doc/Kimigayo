@@ -9,6 +9,20 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void RemovalResultCompilesFromOrdinarySource()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.remove(1)\n    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
+        Assert.NotNull(function);
+        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.DoesNotContain("__kimi_dictionary_remove", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceRemove", ir, string.Empty);
+    }
+
+    [Fact]
     public void ClearingCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")");

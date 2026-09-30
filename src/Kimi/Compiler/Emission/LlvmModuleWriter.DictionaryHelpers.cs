@@ -164,10 +164,9 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteDictionarySearchOperation(TextWriter output, DictionaryHelper helper)
     {
-        var insertion = helper.Kind is DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace;
         var scalarKey = helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0;
         var scalarValue = helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0;
-        if (insertion && scalarKey)
+        if (scalarKey)
         {
             WriteDictionaryKeyStorage(output, helper);
         }
@@ -175,33 +174,18 @@ internal static partial class LlvmModuleWriter
         output.Write("  %link = call i64 @");
         output.Write(helper.Related!.Name);
         output.Write("(ptr %handle, ptr ");
-        output.Write(insertion && scalarKey ? "%key_slot" : "%key");
+        output.Write(scalarKey ? "%key_slot" : "%key");
         output.Write(")\n  %missing = icmp eq i64 %link, 0\n  br i1 %missing, label %absent, label %found\nfound:\n  %buffer = load ptr, ptr %handle, align 8\n");
         WriteDictionarySlot(output, helper);
         var result = helper.Result!;
-        if (helper.Kind is DictionaryHelperKind.TryInsert or DictionaryHelperKind.Remove)
+        if (helper.Kind == DictionaryHelperKind.TryInsert)
         {
-            var active = helper.Kind == DictionaryHelperKind.TryInsert ? 1 : 0;
-            var pair = result.Cases![active].Children[0]!;
+            var pair = result.Cases![1].Children[0]!;
             DictionaryAddress(output, "%result_key", "%result", result.PayloadOffset + pair.Offset(0));
             DictionaryAddress(output, "%result_value", "%result", result.PayloadOffset + pair.Offset(1));
-            if (insertion)
-            {
-                WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%result_key", "%key_rejected");
-                WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%result_value", "%value_rejected");
-            }
-            else
-            {
-                WriteStoredCopy(output, "%result_key", "%stored_key", helper.Key.Layout.Size);
-                WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
-                output.Write("  call void @__kimi_dictionary_unlink(ptr %handle, i64 ");
-                WriteNumber(output, helper.Stride);
-                output.Write(", i64 %link)\n");
-            }
-
-            output.Write("  store i32 ");
-            WriteNumber(output, active);
-            output.Write(", ptr %result, align 4\n");
+            WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%result_key", "%key_rejected");
+            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%result_value", "%value_rejected");
+            output.Write("  store i32 1, ptr %result, align 4\n");
         }
         else
         {
@@ -214,10 +198,7 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write("  ret void\nabsent:\n");
-        if (insertion)
-        {
-            WriteDictionaryInsertion(output, helper);
-        }
+        WriteDictionaryInsertion(output, helper);
 
         output.Write(helper.Kind == DictionaryHelperKind.TryInsert ? "  store i32 0, ptr %result, align 4\n" : "  store i32 1, ptr %result, align 4\n");
         output.Write("  ret void\n");
