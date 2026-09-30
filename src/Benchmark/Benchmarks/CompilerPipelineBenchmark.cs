@@ -1,17 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
 
 namespace Benchmark;
 
-/// <summary>Measures fresh compilation and retained-state phases on the same scalable, valid input.</summary>
+/// <summary>Measures fresh compilation; the phase runner uses the same five-stage pipeline.</summary>
 [Config(typeof(BenchmarkConfig))]
 public class CompilerPipelineBenchmark
 {
     private string source = string.Empty;
-    private Compilation compilation = null!;
 
     /// <summary>Gets or sets the number of helper functions and calls from main.</summary>
     [Params(1, 32, 128)]
@@ -21,7 +21,9 @@ public class CompilerPipelineBenchmark
     [Params(false, true)]
     public bool Branches { get; set; }
 
-    /// <summary>Validates full emission and warms the retained-state compilation.</summary>
+    internal string Source => this.source;
+
+    /// <summary>Constructs the input outside measurement and validates full emission.</summary>
     [GlobalSetup]
     public void Setup()
     {
@@ -45,54 +47,53 @@ public class CompilerPipelineBenchmark
 
         builder.Append("    return\n");
         this.source = builder.ToString();
-        this.compilation = this.FreshParse();
-        this.RebindAndStartup();
-        this.ReanalyzeOwnership();
         using var writer = new StringWriter();
-        Require(this.compilation.Emission.WriteIr(writer, out var failure), failure);
+        this.Compile(writer);
         Require(writer.GetStringBuilder().Length > 0, "Emission produced no IR.");
     }
 
-    /// <summary>Measures new compilation state, target preparation, source registration and parsing.</summary>
-    /// <returns>The parsed compilation, without semantic analysis.</returns>
+    /// <summary>Measures the complete fresh pipeline without per-stage instrumentation.</summary>
     [Benchmark]
-    public Compilation FreshParse()
+    public void FreshCompileToIr() => this.Compile(TextWriter.Null);
+
+    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once.
+    internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
+        if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != 6 || allocations.Length != 6))
+        {
+            throw new ArgumentException("Five-stage measurements require six timestamp and allocation boundaries.");
+        }
+
+        Capture(0, timestamps, allocations);
         var result = Compilation.CreateForTest();
         Require(result.Prepare("x86_64-pc-windows-msvc"), "Target preparation failed.");
         result.Kotonoha.AddSource(new SourceDocument("CompilerPipeline.kimi", this.source));
         Require(!result.Diagnostics.HasErrors, "Parsing failed.");
+        Capture(1, timestamps, allocations);
+
+        Require(result.Bind().IsComplete, "Binding failed.");
+        Require(result.Binding.CheckStartup(OutputKind.Application).IsComplete, "Startup failed.");
+        Capture(2, timestamps, allocations);
+
+        Require(result.Ownership.Analyze().IsVerified, "Ownership verification failed.");
+        Capture(3, timestamps, allocations);
+
+        Require(result.Emission.TryPrepare(out var module, out var failure), failure);
+        Capture(4, timestamps, allocations);
+
+        module.WriteIr(output);
+        Capture(5, timestamps, allocations);
         return result;
     }
 
-    /// <summary>Measures fresh state through checked IR serialization, without disk or native tools.</summary>
-    [Benchmark]
-    public void FreshCompileToIr()
+    private static void Capture(int boundary, Span<long> timestamps, Span<long> allocations)
     {
-        var result = this.FreshParse();
-        Require(result.Bind().IsComplete, "Binding failed.");
-        Require(result.Binding.CheckStartup(OutputKind.Application).IsComplete, "Startup failed.");
-        Require(result.Ownership.Analyze().IsVerified, "Ownership verification failed.");
-        Require(result.Emission.WriteIr(TextWriter.Null, out var failure), failure);
+        if (!timestamps.IsEmpty)
+        {
+            allocations[boundary] = GC.GetAllocatedBytesForCurrentThread();
+            timestamps[boundary] = Stopwatch.GetTimestamp();
+        }
     }
-
-    /// <summary>Measures rebinding existing syntax and checking startup with retained storage.</summary>
-    [Benchmark]
-    public void RebindAndStartup()
-    {
-        Require(this.compilation.Bind().IsComplete, "Binding failed.");
-        Require(this.compilation.Binding.CheckStartup(OutputKind.Application).IsComplete, "Startup failed.");
-    }
-
-    /// <summary>Measures control-flow and ownership analysis on an already bound compilation.</summary>
-    [Benchmark]
-    public void ReanalyzeOwnership()
-        => Require(this.compilation.Ownership.Analyze().IsVerified, "Ownership verification failed.");
-
-    /// <summary>Measures checked lowering and IR serialization on an already verified compilation.</summary>
-    [Benchmark]
-    public void ReemitIr()
-        => Require(this.compilation.Emission.WriteIr(TextWriter.Null, out var failure), failure);
 
     private static void Require(bool condition, string? failure)
     {
