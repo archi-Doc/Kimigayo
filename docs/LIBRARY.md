@@ -236,6 +236,7 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `trySlice<R>(self, range: R) -> Option<Slice<T> during self>`, `R is PositionRange` | A shared Slice, or None when `range` does not resolve. O(1). |
 | `splitAt<P>(self, index: P)`, `trySplitAt<P>(self, index: P)`, `P is Position` | The splits of §3.2 on `self[..]`, with results `during self`. |
 | `tryGetUniq<P>(self: uniq/Self, index: P) -> Option<uniq/T during self>`, `P is Position` | An exclusive element reference, or None for an invalid position. O(1). |
+| `tryGetPairUniq<P, Q>(self: uniq/Self ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during self, uniq/T during self)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation. |
 | `swap<P, Q>(self: uniq/Self, first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements without Copy or destruction; positions resolving to one element change nothing; invalid positions Abort. O(1). |
 | `swapRemove<P>(self: uniq/Self, index: P) -> T`, `P is Position` | Removes the element; the last element takes its position. O(1), order not preserved. |
 | `truncate(self: uniq/Self, length: isize) -> ()` | Destroys the elements from `length` in decreasing index order; a negative length Aborts. |
@@ -259,6 +260,7 @@ A fixed array `[N of T]` has no source declaration. Its members are receiver fun
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
 | `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
 | `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
+| `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
 
 `FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline in its private storage-boundary Field. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 

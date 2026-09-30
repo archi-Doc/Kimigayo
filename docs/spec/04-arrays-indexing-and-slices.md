@@ -655,6 +655,14 @@ Array and fixed arrays conform to `UniqIndexable<isize>`, Dictionary to `UniqInd
 
 A direct fixed-array element is a built-in projection selected with the same inputs and rules, not a call that borrows the whole array. With an in-range integer literal index it keeps its Take capability (§15.1.5), so a Partial Move, later use of the remaining elements and reinitialization of the missing element are possible. Abstract Indexable conformances and ordinary Place results publish neither Take nor Uninitialized Storage. Field access keeps the standard `get`/`set` permissions of §11.1.
 
+### 4.6.10. Disjoint exclusive element pairs
+
+`Array<E>` and `[N of E]` provide `tryGetPairUniq<P, Q>(self: uniq/Self ! first: P, second: Q) -> Option<(uniq/E during self, uniq/E during self)>`, where `P is Position` and `Q is Position`. Both arguments follow ordinary call evaluation and acquisition. The operation resolves the positions against the entry length and returns `None` if either is invalid, is the end boundary, or resolves to the same element as the other. Otherwise it returns two exclusive references in argument order, each to the selected element. Equality and disjointness are about logical element positions, including when zero-sized elements share an address.
+
+The operation splits the receiver's exclusive capability through the standard storage boundary (§22.1.2.5). The references may be used independently and keep the source collection borrowed under the ordinary Loan rules until their last uses. No conflicting whole-collection access, reallocation, destruction or Move is permitted while either reference remains live. The result keeps element-internal dependencies as well as its source dependency. The operation takes O(1) time, allocates nothing, changes no element, length, capacity or order, and calls no element copy, comparison or destructor.
+
+This API adds no inference from runtime inequalities to ordinary indexing: two separately formed exclusive element borrows still require the specified static non-overlap proof (§15.6.2). It introduces no exclusive Slice and grants no new capability to shared receivers.
+
 ## 4.7. Dynamic collection mutation
 
 ### 4.7.1. Common acquisition and outcomes
@@ -720,6 +728,7 @@ values.append(values[0])       // The element Copy finishes before receiver acti
 | `first`, `last: Option<ref/T>` | Read-only, `get(self: ref/Self) -> Option<ref/T during self>`; the first or last element, or `None` when empty |
 | `tryGet(index)`, `trySlice(range)`, `splitAt(index)`, `trySplitAt(index)` | The read operations of §4.6.6 on `self[..]`, with results `during self` |
 | `tryGetUniq<P>(index: P)`, `P is Position` | `Option<uniq/T during self>` with an exclusive receiver; `None` unless `index` resolves to an element position |
+| `tryGetPairUniq<P, Q>(! first: P, second: Q)`, `P is Position`, `Q is Position` | The disjoint exclusive pair operation of §4.6.10 |
 | `swap<P, Q>(first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements; positions resolving to the same element change nothing; an invalid position Aborts |
 | `swapRemove<P>(index: P) -> T`, `P is Position` | Removes and returns the element; the last element takes its position, so order is not preserved |
 | `truncate(length: isize) -> ()` | Destroys the elements from `length` to the end in decreasing index order; a length at or above the current length changes nothing, and a negative one Aborts |

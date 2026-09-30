@@ -46,6 +46,8 @@ embedded, validated and implemented.
   public syntax for declaring a user intrinsic or omitting a function body.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal
   unsafe `lend`/`split` capabilities, and owning `takeFirst` through typed raw reads.
+  Array and fixed-array `tryGetPairUniq` share its ordinary Kimigayo position resolution
+  and disjoint pair splitting, using logical positions even for zero-sized elements.
   Its owning remainder destroys unreturned elements in reverse order in a concrete
   generic `drop`, then calls the internal unsafe `release` primitive. Only handle
   construction, capability creation and raw region release remain compiler operations.

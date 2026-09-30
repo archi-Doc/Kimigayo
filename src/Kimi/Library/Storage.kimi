@@ -150,6 +150,37 @@ internal group Storage
         state.count -= 1
         unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position])
 
+    /// Consumes a contiguous exclusive remainder and splits two distinct positions, preserving argument order.
+    internal func tryGetPairUniq<E, P, Q>(
+        source: UniqRemainder<E> during a ! first: P, second: Q
+    ) -> Option<(uniq/E during a, uniq/E during a)>
+        P is Position
+        Q is Position
+        var state = source@move
+        let count = state.count
+        let firstPosition: isize = match first.tryResolve(count)
+            .Some(let position) => position
+            .None => return .None
+        let secondPosition: isize = match second.tryResolve(count)
+            .Some(let position) => position
+            .None => return .None
+        require firstPosition < count and secondPosition < count else => return .None
+        require firstPosition != secondPosition else => return .None
+        let low = if firstPosition < secondPosition => firstPosition else => secondPosition
+        let high = if firstPosition < secondPosition => secondPosition else => firstPosition
+        let start = state.position
+        unsafe
+            // Discard each skipped prefix's authority, then remove the selected element before splitting it.
+            // Logical positions, not pointer equality, prove disjointness even when E has zero size.
+            state.position = start + low + 1
+            state.count = count - low - 1
+            let lower = split(state@uniq, state.storage + start + low)
+            state.position = start + high + 1
+            state.count = count - high - 1
+            let upper = split(state@uniq, state.storage + start + high)
+            if firstPosition < secondPosition => return .Some((lower@move, upper@move))
+            return .Some((upper@move, lower@move))
+
     // SPEC 22.1, 22.1.2.2 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
     // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
@@ -198,3 +229,11 @@ internal group Storage
             match index.tryResolve(self.length)
                 .Some(let position) => return .Some((self[..position], self[position..]))
                 .None => return .None
+
+        /// Returns two disjoint exclusive element references in argument order, or `None` for invalid/equal positions.
+        public func tryGetPairUniq<E, length N, P, Q>(
+            self: uniq/[N of E] during source ! first: P, second: Q
+        ) -> Option<(uniq/E during source, uniq/E during source)>
+            P is Position
+            Q is Position
+            return Storage.tryGetPairUniq(borrowStorage(self), first: first, second: second)

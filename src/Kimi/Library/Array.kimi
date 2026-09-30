@@ -93,6 +93,14 @@ public struct Array<T>
                 return .Some(slot@move)
             .None => return .None
 
+    /// Returns two disjoint exclusive element references in argument order, or `None` for invalid/equal positions.
+    public func tryGetPairUniq<P, Q>(
+        self: uniq/Self ! first: P, second: Q
+    ) -> Option<(uniq/T during self, uniq/T during self)>
+        P is Position
+        Q is Position
+        return Storage.tryGetPairUniq(Storage.borrowStorage(self), first: first, second: second)
+
     /// Removes and returns the element `index` resolves to; the last element takes its position.
     ///
     /// Runs in O(1) and does not preserve order.
