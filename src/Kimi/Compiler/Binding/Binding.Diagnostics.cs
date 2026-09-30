@@ -32,6 +32,32 @@ public sealed partial class Binding
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
+    /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The check keys, or <see langword="null"/>.</returns>
+    internal DiagnosticKey[]? FailureCauses(Koto node)
+        => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
+            ? this.CauseKeys(node) : null;
+
+    // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
+    private static bool IsRecovery(Koto node, out DiagnosticKey cause)
+    {
+        if (node is ErrorKoto error)
+        {
+            cause = error.Cause ?? DiagnosticKey.Unresolved;
+            return true;
+        }
+
+        if (node.CodeContext.RecoveryCause(node) is { } recorded)
+        {
+            cause = recorded;
+            return true;
+        }
+
+        cause = default;
+        return false;
+    }
+
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
@@ -131,7 +157,7 @@ public sealed partial class Binding
     // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved; a
     // recovery node derives from its syntax error. A failure explained by the Origin rule, or any definite failure, is direct.
     private bool IsDerived(Koto node)
-        => node is ErrorKoto ||
+        => IsRecovery(node, out _) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null);
 
@@ -153,14 +179,20 @@ public sealed partial class Binding
         return false;
     }
 
+    /// <summary>Gets the check keys that explain why a node did not resolve: its own failure, or what it rests on.</summary>
+    /// <param name="node">The unresolved node.</param>
+    /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
+    private DiagnosticKey[] CauseKeys(Koto node)
+        => !IsRecovery(node, out _) && node.BindingFailure != BindingFailure.None ? [node.KeyOf(DiagnosticRequirement.Binding(node.BindingFailure))] : this.PrerequisiteKeys(node);
+
     /// <summary>Gets the check keys a derived failure rests on; a skipped prerequisite contributes its own prerequisites.</summary>
     /// <param name="node">The derived node.</param>
     /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
     private DiagnosticKey[] PrerequisiteKeys(Koto node)
     {
-        if (node is ErrorKoto recovery)
+        if (IsRecovery(node, out var own))
         {
-            return [recovery.Cause ?? DiagnosticKey.Unresolved];
+            return [own];
         }
 
         // The walk reuses its storage; only the published array is allocated.
@@ -176,7 +208,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var key = cause is ErrorKoto { Cause: { } syntax } ? syntax
+            var key = IsRecovery(cause, out var syntax) ? syntax
                 : cause.BindingFailure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))
                 : this.PushPrerequisites(cause, pending) ? (DiagnosticKey?)null
                 : DiagnosticKey.Unresolved;

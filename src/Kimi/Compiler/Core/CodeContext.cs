@@ -17,6 +17,10 @@ namespace Kimi.Compiler;
 /// </remarks>
 public sealed class CodeContext
 {
+    // DIAGNOSTICS.md §4.3: synthesized syntax that parser recovery kept in place of a rejected form, with the key of the
+    // syntax error it stands for. It lives with the nodes it maps and exists only after a recovery.
+    private Dictionary<Koto, DiagnosticKey>? recoveries;
+
     /// <summary>
     /// Gets the diagnostic destination for this context.
     /// </summary>
@@ -137,4 +141,16 @@ public sealed class CodeContext
             tokenizer.Dispose();
         }
     }
+
+    /// <summary>Gets the syntax error that a recovered node stands for; a check that depends on the node's guessed form rests on it.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The key of the syntax error, or <see langword="null"/> when the node is not a recovery.</returns>
+    internal DiagnosticKey? RecoveryCause(Koto node)
+        => this.recoveries is { } map && map.TryGetValue(node, out var cause) ? cause : null;
+
+    /// <summary>Records that synthesized syntax stands for a syntax error.</summary>
+    /// <param name="node">The synthesized node.</param>
+    /// <param name="cause">The key of the syntax error.</param>
+    internal void RecordRecovery(Koto node, DiagnosticKey cause)
+        => (this.recoveries ??= new(ReferenceEqualityComparer.Instance))[node] = cause;
 }

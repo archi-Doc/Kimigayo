@@ -569,6 +569,11 @@ public sealed partial class Binding
                 return this.BindUnary(unary, scope, expected);
             case ConversionKoto conversion:
                 return this.BindConversion(conversion, scope, expected);
+            case BinaryKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
+                // The parser's guess of a rejected form: its operands are checked on their own, its combination is not.
+                this.BindNode(recovered.Left, scope);
+                this.BindNode(recovered.Right, scope);
+                return Complete(node, null);
             case IsKoto { IsRuntimeTest: true } test:
                 return this.BindRuntimeTypeTest(test, scope);
             case BinaryKoto binary:

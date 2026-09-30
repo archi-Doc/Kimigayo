@@ -150,18 +150,18 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
-    [InlineData("func f() => 42", "effect-free")]
-    [InlineData("func isAdult(age: i32) => age >= 18", "effect-free")]
-    [InlineData("func f() => while true => ()", "Use loop")]
-    [InlineData("func compute() -> i32 => 1\nlet x = do\n    compute()", "Unit was inferred")]
-    [InlineData("func compute() -> i32 => 1\nlet x = do\n    if true => compute() else => compute()", "Unit was inferred")]
-    public void ReportsSpecifiedWarnings(string source, string message)
+    [InlineData("func f() => 42", Kimi.DiagnosticCode.DiscardedValue_Kd)]
+    [InlineData("func isAdult(age: i32) => age >= 18", Kimi.DiagnosticCode.DiscardedValue_Kd)]
+    [InlineData("func f() => while true => ()", Kimi.DiagnosticCode.StaticWhileTrue_Kd)]
+    [InlineData("func compute() -> i32 => 1\nlet x = do\n    compute()", Kimi.DiagnosticCode.DiscardedTail_Kd)]
+    [InlineData("func compute() -> i32 => 1\nlet x = do\n    if true => compute() else => compute()", Kimi.DiagnosticCode.DiscardedTail_Kd)]
+    public void ReportsSpecifiedWarnings(string source, Kimi.DiagnosticCode code)
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
-        Assert.Contains(flow.Warnings, warning => warning.Message.Contains(message));
+        Assert.Contains(flow.Warnings, warning => warning.Code == code);
         var count = flow.Warnings.Count;
         Assert.Equal(count, c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings.Count);
     }

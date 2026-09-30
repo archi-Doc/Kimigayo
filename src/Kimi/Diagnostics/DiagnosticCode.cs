@@ -93,8 +93,6 @@ public enum DiagnosticCode
     UnsupportedCompileTimeConditionType_Kd,
     UnsupportedEscape_Kd,
 
-    ControlFlow_Kd,
-
     MissingReturnType_Kd,
 
     EmptyExecutableBlock_Kd,
@@ -131,7 +129,6 @@ public enum DiagnosticCode
     InvalidPattern_Kd,
     NonExhaustiveMatch_Kd,
     UnreachablePattern_Kd,
-    ControlFlowWarning_Kd,
     OuterCloserInBody_Kd,
 
     GenerationFailed_Kd,
@@ -172,6 +169,28 @@ public enum DiagnosticCode
     IncompatibleSerializedSource_Kd,
     SourceReadFailed_Kd,
     PrerequisiteUnavailable_Kd,
+
+    // Control-flow requirements checked by control-flow analysis (SPEC 14, 5, 17).
+    InvalidJumpTarget_Kd,
+    UnlabeledYieldTarget_Kd,
+    RequireFallthrough_Kd,
+    FunctionFallthrough_Kd,
+    IncompatibleResult_Kd,
+    OverlappingLabel_Kd,
+    UntypedNull_Kd,
+    UntypedNullComparison_Kd,
+    InvalidPointerConversion_Kd,
+    InvalidDereference_Kd,
+    InvalidPointerArithmetic_Kd,
+    InvalidPointerComparison_Kd,
+    NonNumericOperand_Kd,
+    UnsafeBlockRequired_Kd,
+    StaticWhileTrue_Kd,
+    DiscardedTail_Kd,
+    DiscardedResult_Kd,
+    UnusedTrySuccess_Kd,
+    DiscardedValue_Kd,
+    OwningWriteArgument_Kd,
 
     Count, // Last sentinel
 }

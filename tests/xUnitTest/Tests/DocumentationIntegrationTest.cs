@@ -299,35 +299,17 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         Assert.Empty(TestDiagnostics.Of(c));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        // Each measurement retires the allocation context first, so a runtime pause cannot charge its unused tail to one side.
+        var baseline = AllocationMeasurement.Measure(() => Lex(ordinary, false), 64);
         var start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(ordinary, false);
-        }
-
-        var baseline = GC.GetAllocatedBytesForCurrentThread() - before;
-        before = GC.GetAllocatedBytesForCurrentThread();
-        start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(source, false);
-        }
-
+        var bytes = AllocationMeasurement.Measure(() => Lex(source, false), 64);
         var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(baseline, bytes);
-        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes/{elapsed:F2} ms");
-        before = GC.GetAllocatedBytesForCurrentThread();
+        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes/{elapsed:F2} ms with warm-up");
         start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(source, true);
-        }
-
+        bytes = AllocationMeasurement.Measure(() => Lex(source, true), 64);
         elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        output.WriteLine($"64 lexical passes, 256 documented declarations: enabled={bytes} bytes/{elapsed:F2} ms");
+        output.WriteLine($"64 lexical passes, 256 documented declarations: enabled={bytes} bytes/{elapsed:F2} ms with warm-up");
 
         void Lex(SourceDocument input, bool collect)
         {

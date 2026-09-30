@@ -27,6 +27,9 @@ public record ControlFlowType(string Name)
 public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable)
 {
     internal JumpKoto? Transfer { get; init; }
+
+    /// <summary>Gets a value indicating whether the source is the Unit fallthrough of a Block body, which a non-Unit function rejects as a fallthrough.</summary>
+    internal bool IsFallthrough { get; init; }
 }
 
 /// <summary>Supplies type-dependent facts without coupling control flow to a particular binder.</summary>

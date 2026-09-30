@@ -108,7 +108,7 @@ public class Utf8TryWriteTest
     {
         var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(42)\")");
         var warnings = c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings;
-        Assert.Contains(warnings, x => x.Message.Contains("$tryWrite", StringComparison.Ordinal));
+        Assert.Contains(warnings, x => x.Code == DiagnosticCode.OwningWriteArgument_Kd);
         Assert.Equal(2, warnings.Count);
     }
 

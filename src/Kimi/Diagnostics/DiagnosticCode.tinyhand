@@ -333,10 +333,6 @@
     Category="Language"
     Message="{0}"
 
-  + Name="ControlFlow_Kd"
-    Category="Language"
-    Message="{0}"
-
   + Name="InvalidTestDefinition_Kd"
     Category="Language"
     Message="Test requires one argument-free Attribute on a safe ordinary named function with a body, no parameters, captures or generic/Origin parameters, and an omitted or Unit return Type"
@@ -562,11 +558,6 @@
     Category="Language"
     Message="This Pattern is covered by earlier unguarded arm {0}"
 
-  + Name="ControlFlowWarning_Kd"
-    Severity="Warning"
-    Category="Language"
-    Message="{0}"
-
   + Name="OuterCloserInBody_Kd"
     Category="Language"
     Message="An outer closing delimiter cannot close an indented body on the same line"
@@ -622,3 +613,97 @@
     Category="Proof"
     Message="This requirement cannot be decided because its prerequisite could not be established"
     Label="this cannot be decided"
+
+  + Name="InvalidJumpTarget_Kd"
+    Category="Language"
+    Message="No valid target for {0}"
+
+  + Name="UnlabeledYieldTarget_Kd"
+    Category="Language"
+    Message="An unlabeled yield cannot target a discarded selection"
+    Advice="Name the intended target"
+
+  + Name="RequireFallthrough_Kd"
+    Category="Language"
+    Message="A require failure body must not continue normally to the statement after require"
+
+  + Name="FunctionFallthrough_Kd"
+    Category="Language"
+    Message="A non-Unit Block-bodied function cannot fall through"
+
+  + Name="IncompatibleResult_Kd"
+    Category="Language"
+    Message="A result of type {0} is incompatible with {1}"
+
+  + Name="OverlappingLabel_Kd"
+    Category="Language"
+    Message="Label {0} overlaps an enclosing Label"
+
+  + Name="UntypedNull_Kd"
+    Category="Language"
+    Message="A null literal or result requires an expected raw-pointer Type"
+
+  + Name="UntypedNullComparison_Kd"
+    Category="Language"
+    Message="A null comparison requires a pointer operand to determine its Type"
+
+  + Name="InvalidPointerConversion_Kd"
+    Category="Language"
+    Message="Pointer conversions support only another pointer Type or usize"
+
+  + Name="InvalidDereference_Kd"
+    Category="Language"
+    Message="Dereference requires a raw-pointer operand"
+
+  + Name="InvalidPointerArithmetic_Kd"
+    Category="Language"
+    Message="Pointer arithmetic and indexing require a pointer on the left and a signed isize offset"
+
+  + Name="InvalidPointerComparison_Kd"
+    Category="Language"
+    Message="Pointers compare only for equality, between operands of the same pointer Type"
+
+  + Name="NonNumericOperand_Kd"
+    Category="Language"
+    Message="An arithmetic operator requires numeric operands"
+
+  + Name="UnsafeBlockRequired_Kd"
+    Category="Language"
+    Message="This operation requires an Unsafe Block"
+    Advice="Write the operation inside an Unsafe Block; unsafe func does not grant permission to its body"
+
+  + Name="StaticWhileTrue_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="A while true loop retains a static false path"
+    Advice="Use loop for unconditional iteration"
+
+  + Name="DiscardedTail_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="Unit was inferred from this discarded tail"
+    Advice="Use yield, return, a named exit, or a single-item body to supply the value"
+
+  + Name="DiscardedResult_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="The Result is discarded"
+    Advice="Propagate and use success (or write _ = try ...), handle it with match, or write _ = ... to ignore errors too"
+
+  + Name="UnusedTrySuccess_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="The extracted try success value is unused"
+    Advice="Use it or write _ = try ..."
+
+  + Name="DiscardedValue_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="This effect-free value is discarded"
+    Advice="Use its value or add the intended return type"
+
+  + Name="OwningWriteArgument_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="This argument creates an owning string before writing"
+    Advice="Use $tryWrite(writer, literal) to write directly and skip later expressions after failure"

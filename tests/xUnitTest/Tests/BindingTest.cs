@@ -250,14 +250,7 @@ public class BindingTest
             Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         }
 
-        var start = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            compilation.Binding.Bind(BindingMode.Final);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - start;
-        Assert.Equal(0, allocated);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
     [Fact]

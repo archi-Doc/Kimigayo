@@ -3464,11 +3464,16 @@ CloseParameters:
 
             var rightBindingPower = InfixRightBindingPower[(byte)tokenKind];
             var token = reader.Read();
+            DiagnosticKey? chained = null;
             if (leftBindingPower == ComparisonBindingPower && IsNonAssociativeComparison(ref reader, tokenKind, left))
             {
                 // Keep parsing for recovery, but require explicit parentheses for all combinations
-                // of ordering, equality, and runtime is comparisons (SPEC 13.1).
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.ChainedComparison_Kd);
+                // of ordering, equality, and runtime is comparisons (SPEC 13.1). The combined node is
+                // the parser's guess: it stands for this error, and checks of its form rest on it.
+                if (reader.Diagnostic.Add(token.Span, DiagnosticCode.ChainedComparison_Kd))
+                {
+                    chained = reader.Diagnostic.LastError;
+                }
             }
 
             Koto right;
@@ -3476,6 +3481,7 @@ CloseParameters:
             {
                 reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 right = reader.NewErrorKoto();
+                left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
             }
             else if (token.Kind == TokenKind.Is && !reader.IsParsingCompileTimeCondition)
             {
@@ -3490,14 +3496,17 @@ CloseParameters:
                 test.IsRuntimeTest = true;
                 test.IsNegated = negated;
                 left = test;
-                continue;
             }
             else
             {
                 right = ParseExpression(ref reader, rightBindingPower);
+                left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
             }
 
-            left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
+            if (chained is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(left, cause);
+            }
         }
 
         return left;

@@ -131,7 +131,15 @@ public sealed partial class Binding
         for (var i = 0; i < this.startupIssues.Count; i++)
         {
             var issue = this.startupIssues[i];
-            issue.Node.AddDiagnostic(DiagnosticPartition.Startup, issue.Code);
+            if (issue.Code == DiagnosticCode.InvalidStartupMain_Kd && issue.Node is FunctionKoto { BoundSymbol.Type: null, ReturnType: { BindingState: not BindingState.Resolved } result })
+            {
+                // Whether main returns Unit cannot be decided when its written result Type failed.
+                issue.Node.ReportDerived(DiagnosticRequirement.Startup, this.CauseKeys(result));
+            }
+            else
+            {
+                issue.Node.Report(DiagnosticRequirement.Startup, issue.Code);
+            }
         }
     }
 
