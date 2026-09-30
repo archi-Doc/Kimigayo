@@ -28,8 +28,9 @@ Evidence: `artifacts/benchmarks/borrow-storage-review/string-{before,after}.json
 Earlier scalar-reference probes retain their dependency tables as required; their failed zero-table
 expectations and a stale incremental-build measurement are retained separately and are not results
 of this optimization. Unit `20260930-170137-557-unit-lazy-borrow-dependency-storage` passes a warning-free
-Release build, 300 tests, the diagnostic snapshot and 306 native O0/O2 executions. Completion also
-requires the final whole-solution Session build because Benchmark changed.
+Release build, 300 tests, the diagnostic snapshot and 306 native O0/O2 executions. The whole-solution
+Session `20260930-170613-497-session-review-fixes-final` also passes its warning-free build and all
+14,033 tests.
 
 Bodies with actual local dependencies still use quadratic tables. Large-body overflow/resource
 diagnostics and a more compact representation remain separate unfinished work.
