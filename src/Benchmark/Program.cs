@@ -8,6 +8,30 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--compiler-pipeline-check")
+        {
+            foreach (var functions in new[] { 1, 32, 128 })
+            {
+                foreach (var branches in new[] { false, true })
+                {
+                    var benchmark = new CompilerPipelineBenchmark { Functions = functions, Branches = branches };
+                    benchmark.Setup();
+                    for (var iteration = 0; iteration < 2; iteration++)
+                    {
+                        benchmark.FreshParse();
+                        benchmark.FreshCompileToIr();
+                        benchmark.RebindAndStartup();
+                        benchmark.ReanalyzeOwnership();
+                        benchmark.ReemitIr();
+                    }
+
+                    Console.WriteLine($"PASS compiler pipeline: functions={functions}, branches={branches}");
+                }
+            }
+
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--verification")
         {
             VerificationMeasurements.Run();
@@ -40,6 +64,7 @@ public class Program
 
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(CompilerPipelineBenchmark),
             typeof(DocumentationMarkdownBenchmark),
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),
