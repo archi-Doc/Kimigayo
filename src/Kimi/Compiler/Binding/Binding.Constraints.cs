@@ -567,6 +567,7 @@ public sealed partial class Binding
     {
         var positive = false;
         var negative = false;
+        var parameterIdentity = HasParameterIdentity(scope);
         var normalized = this.NormalizeProofConstraint(proposition, scope);
         var negation = this.NegateConstraint(normalized);
         for (var current = scope; current is not null; current = current.Parent)
@@ -583,7 +584,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, normalized);
             negative |= this.AvailableConstraintFact(environment, negation);
-            if (environment.HasAssociatedProjection)
+            if (environment.HasAssociatedProjection || parameterIdentity)
             {
                 foreach (var fact in environment.Facts)
                 {
@@ -621,7 +622,7 @@ public sealed partial class Binding
 
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope)
     {
-        if (!constraint.HasAssociatedProjection)
+        if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
         {
             return constraint;
         }
@@ -650,13 +651,18 @@ public sealed partial class Binding
 
     private BoundType NormalizeProofType(BoundType type, BindingScope scope)
     {
+        if (type.ContainsParameter && HasParameterIdentity(scope))
+        {
+            type = this.SubstituteIdentity(type, scope, parametersOnly: true);
+        }
+
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
             return this.ContractType(type, scope);
         }
 
-        // Keep a symbolic subject's identity: an exact assumption is not a choice of one
-        // satisfying Type. Only associated identities (including nested ones) are reduced.
+        // Keep symbolic subjects symbolic: share facts within a parameter equivalence class, but do not turn a
+        // concrete-Type assumption into an extra proof/refutation rule. Associated identities are reduced as before.
         var count = type.Components.Count;
         if (count == 0)
         {

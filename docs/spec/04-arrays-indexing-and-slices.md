@@ -261,7 +261,7 @@ public struct Start      // End has the same form.
 - **Members.** `FromEnd<T>` exposes `offset`. The three Types provide `tryResolve` and `resolve(self: Self, length: isize) -> isize`, and have no public constructor: `^x` constructs a `FromEnd<T>`, and omitted range boundaries construct `Start` and `End`.
 - **Construction checks nothing.** `^x` stores `x`; `^(-1)` is a valid value that fails to resolve. Only the evaluation of the operand itself can fail, as an overflow in `^(a - b)`.
 - **Equality.** `FromEnd<T>` compares offsets; all `Start` values are equal, and so are all `End` values. `0`, `^0` and `End` have different Types and cannot be compared.
-- **No other operations.** Positions provide neither Comparable, arithmetic nor implicit conversion; `^n + 1` is `(^n) + 1`, a Type error. Prefix `^` produces a storable, passable value outside indexing expressions too; infix `^` remains integer exclusive-or. Write `^(n + 1)` for a compound from-end distance.
+- **No other operations.** The non-integer position Types (`FromEnd<T>`, `Start` and `End`) provide neither Comparable, arithmetic nor implicit conversion; `^n + 1` is `(^n) + 1`, a Type error. Integer positions retain their ordinary integer operations. Prefix `^` produces a storable, passable value outside indexing expressions too; infix `^` remains integer exclusive-or. Write `^(n + 1)` for a compound from-end distance.
 
 A position is a read Type: a reference to a position is read as its value wherever a position is expected (§3.5.3), and a Type argument constrained to `Position` is inferred as the referent Type (§10.2.1). Element positions of every integer Type are accepted, so `values[n]` with `n: u8` needs no conversion.
 

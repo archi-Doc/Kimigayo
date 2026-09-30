@@ -15,56 +15,121 @@ public sealed partial class Binding
 
     private static long FixedLength(BoundType? core) => core is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } ? core.Length : -1;
 
-    // Whether a literal-only integer expression has a known value in the i32 arithmetic it is evaluated in; an operation
+    private static Int128 SignedLiteral(UInt128 bits, int width) => unchecked((Int128)(bits << (128 - width))) >> (128 - width);
+
+    // Whether a literal-only integer expression has a known value in its bound integer Type; an operation
     // that would Abort at run time (overflow, division by zero, an invalid shift count) has none.
-    private static bool TryLiteralValue(Koto node, out long value)
+    private bool TryLiteralValue(Koto node, out Int128 value)
     {
         value = 0;
         node = KotoHelper.UnwrapParentheses(node);
+        if (!this.TryLiteralBits(node, out var bits))
+        {
+            return false;
+        }
+
+        var width = ScalarTypes.Width(node.BoundType, this.compilation.PointerWidth);
+        var signed = ScalarTypes.Signed(node.BoundType!);
+        // Resolution only admits [0, isize.MaxValue]. Saturate outside that interval before forming inequalities,
+        // so even a u128 maximum or a negated i128 minimum cannot overflow their arithmetic.
+        var limit = (Int128)1 << (this.compilation.PointerWidth - 1);
+        value = signed ? Int128.Clamp(SignedLiteral(bits, width), -limit, limit) : bits >= (UInt128)limit ? limit : (Int128)bits;
+        return true;
+    }
+
+    // Fixed-width bit patterns keep the common literal path allocation-free, including 128-bit inputs.
+    private bool TryLiteralBits(Koto node, out UInt128 bits)
+    {
+        bits = 0;
+        node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundType is not { IsInteger: true } type || ScalarTypes.Width(type, this.compilation.PointerWidth) is not (> 0 and var width))
+        {
+            return false;
+        }
+
+        var signed = ScalarTypes.Signed(type);
+        var mask = UInt128.MaxValue >> (128 - width);
+        var sign = (UInt128)1 << (width - 1);
         switch (node)
         {
             case NumberLiteralKoto { IsInteger: true } number:
-                if (!number.TryGetIntegerMagnitude(out var magnitude) || magnitude > (UInt128)int.MaxValue + 1)
+                return number.TryGetIntegerMagnitude(out bits) && bits <= (signed ? sign - 1 : mask);
+            case PrefixMinusKoto { Operand: NumberLiteralKoto number }:
+                if (!number.TryGetIntegerMagnitude(out var magnitude) || magnitude > (signed ? sign : 0))
                 {
                     return false;
                 }
 
-                value = (long)magnitude;
+                bits = unchecked((UInt128)0 - magnitude) & mask;
                 return true;
             case PrefixMinusKoto negated:
-                if (!TryLiteralValue(negated.Operand, out var operand))
+                if (!this.TryLiteralBits(negated.Operand, out var operand) || (signed ? operand == sign : operand != 0))
                 {
                     return false;
                 }
 
-                value = -operand;
-                return value is >= int.MinValue and <= int.MaxValue;
+                bits = unchecked((UInt128)0 - operand) & mask;
+                return true;
             case PrefixPlusKoto plus:
-                return TryLiteralValue(plus.Operand, out value) && value <= int.MaxValue;
-            case BinaryKoto binary when TryLiteralValue(binary.Left, out var left) && TryLiteralValue(binary.Right, out var right) &&
-                left <= int.MaxValue && right <= int.MaxValue:
-                value = binary.Akind switch
+                return this.TryLiteralBits(plus.Operand, out bits);
+            case BinaryKoto binary when this.TryLiteralBits(binary.Left, out var left) && this.TryLiteralBits(binary.Right, out var right):
+                switch (binary.Akind)
                 {
-                    KotoKind.Plus => left + right,
-                    KotoKind.Minus => left - right,
-                    KotoKind.Asterisk => left * right,
-                    KotoKind.Slash when right != 0 && !(left == int.MinValue && right == -1) => left / right,
-                    KotoKind.Percent when right != 0 && !(left == int.MinValue && right == -1) => left % right,
-                    KotoKind.Ampersand => left & right,
-                    KotoKind.Bar => left | right,
-                    KotoKind.Caret => left ^ right,
-                    KotoKind.LessThanLessThan when right is >= 0 and < 32 => (int)left << (int)right,
-                    KotoKind.GreaterThanGreaterThan when right is >= 0 and < 32 => (int)left >> (int)right,
-                    _ => long.MinValue,
-                };
-                return value is >= int.MinValue and <= int.MaxValue;
+                    case KotoKind.Plus:
+                        bits = unchecked(left + right) & mask;
+                        return signed ? ((left ^ bits) & (right ^ bits) & sign) == 0 : left <= mask - right;
+                    case KotoKind.Minus:
+                        bits = unchecked(left - right) & mask;
+                        return signed ? ((left ^ right) & (left ^ bits) & sign) == 0 : left >= right;
+                    case KotoKind.Asterisk:
+                        var negativeLeft = signed && (left & sign) != 0;
+                        var negativeRight = signed && (right & sign) != 0;
+                        var a = negativeLeft ? unchecked((UInt128)0 - left) & mask : left;
+                        var b = negativeRight ? unchecked((UInt128)0 - right) & mask : right;
+                        var negative = negativeLeft != negativeRight;
+                        var limit = signed ? sign - (negative ? 0U : 1U) : mask;
+                        if (b != 0 && a > limit / b)
+                        {
+                            return false;
+                        }
+
+                        bits = negative ? unchecked((UInt128)0 - (a * b)) & mask : a * b;
+                        return true;
+                    case KotoKind.Slash or KotoKind.Percent:
+                        if (right == 0 || (signed && left == sign && right == mask))
+                        {
+                            return false;
+                        }
+
+                        bits = signed ? unchecked((UInt128)(binary.Akind == KotoKind.Slash
+                            ? SignedLiteral(left, width) / SignedLiteral(right, width)
+                            : SignedLiteral(left, width) % SignedLiteral(right, width))) & mask
+                            : binary.Akind == KotoKind.Slash ? left / right : left % right;
+                        return true;
+                    case KotoKind.Ampersand:
+                        bits = left & right;
+                        return true;
+                    case KotoKind.Bar:
+                        bits = left | right;
+                        return true;
+                    case KotoKind.Caret:
+                        bits = left ^ right;
+                        return true;
+                    case KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan when right < (uint)width:
+                        bits = binary.Akind == KotoKind.LessThanLessThan ? (left << (int)right) & mask
+                            : signed ? unchecked((UInt128)(SignedLiteral(left, width) >> (int)right)) & mask : left >> (int)right;
+                        return true;
+                    default:
+                        return false;
+                }
+
             default:
                 return false;
         }
     }
 
     // A literal position `c * L + k`: an integer literal (c = 0), `^a` (c = 1, k = -a), or an omitted start or end.
-    private static bool TryLiteralPosition(Koto? boundary, bool end, out bool fromLength, out long offset)
+    private bool TryLiteralPosition(Koto? boundary, bool end, out bool fromLength, out Int128 offset)
     {
         fromLength = end;
         offset = 0;
@@ -75,7 +140,7 @@ public sealed partial class Binding
 
         var node = KotoHelper.UnwrapParentheses(boundary);
         fromLength = node is FromEndIndexKoto;
-        if (!TryLiteralValue(node is FromEndIndexKoto fromEnd ? fromEnd.Operand : node, out var value))
+        if (!this.TryLiteralValue(node is FromEndIndexKoto fromEnd ? fromEnd.Operand : node, out var value))
         {
             return false;
         }
@@ -137,28 +202,29 @@ public sealed partial class Binding
     private void CheckLiteralPosition(Koto node, LiteralRole role, long fixedLength)
     {
         var syntax = KotoHelper.UnwrapParentheses(node);
+        var maximumLength = this.compilation.PointerWidth == 32 ? int.MaxValue : long.MaxValue;
         bool everyLength;
         bool atLength;
         if (role == LiteralRole.Range)
         {
-            if (syntax is not RangeKoto range || !TryLiteralPosition(range.Start, false, out var startFromLength, out var start) ||
-                !TryLiteralPosition(range.End, true, out var endFromLength, out var end))
+            if (syntax is not RangeKoto range || !this.TryLiteralPosition(range.Start, false, out var startFromLength, out var start) ||
+                !this.TryLiteralPosition(range.End, true, out var endFromLength, out var end))
             {
                 return;
             }
 
-            everyLength = !RangeResolves(range.IsInclusive, startFromLength, start, endFromLength, end, -1);
-            atLength = fixedLength >= 0 && !RangeResolves(range.IsInclusive, startFromLength, start, endFromLength, end, fixedLength);
+            everyLength = !RangeResolves(range.IsInclusive, startFromLength, start, endFromLength, end, -1, maximumLength);
+            atLength = fixedLength >= 0 && !RangeResolves(range.IsInclusive, startFromLength, start, endFromLength, end, fixedLength, maximumLength);
         }
         else
         {
-            if (syntax is RangeKoto || !TryLiteralPosition(syntax, false, out var fromLength, out var offset))
+            if (syntax is RangeKoto || !this.TryLiteralPosition(syntax, false, out var fromLength, out var offset))
             {
                 return;
             }
 
-            everyLength = !PositionResolves(role, fromLength, offset, -1);
-            atLength = fixedLength >= 0 && !PositionResolves(role, fromLength, offset, fixedLength);
+            everyLength = !PositionResolves(role, fromLength, offset, -1, maximumLength);
+            atLength = fixedLength >= 0 && !PositionResolves(role, fromLength, offset, fixedLength, maximumLength);
         }
 
         if (!everyLength && !atLength)
@@ -178,9 +244,9 @@ public sealed partial class Binding
         // A position that fails at every length has no length to name; one that fails at a fixed array's only length names it.
         this.positionWarnings.Add((node, kind, everyLength ? -1 : fixedLength));
 
-        static bool PositionResolves(LiteralRole role, bool fromLength, long offset, long length)
+        static bool PositionResolves(LiteralRole role, bool fromLength, Int128 offset, long length, long maximumLength)
         {
-            var interval = new LengthInterval(length);
+            var interval = new LengthInterval(length, maximumLength);
             if (role == LiteralRole.Element)
             {
                 interval.RequireElement(fromLength, offset);
@@ -193,9 +259,9 @@ public sealed partial class Binding
             return !interval.IsEmpty;
         }
 
-        static bool RangeResolves(bool closed, bool startFromLength, long start, bool endFromLength, long end, long length)
+        static bool RangeResolves(bool closed, bool startFromLength, Int128 start, bool endFromLength, Int128 end, long length, long maximumLength)
         {
-            var interval = new LengthInterval(length);
+            var interval = new LengthInterval(length, maximumLength);
             interval.RequireBoundary(startFromLength, start);
             if (closed)
             {
@@ -222,31 +288,31 @@ public sealed partial class Binding
     // The lengths L >= 0 (or the one fixed length) that satisfy every added inequality `a * L + b >= 0`, a in {-1, 0, 1}.
     private struct LengthInterval
     {
-        private long low;
-        private long high;
+        private Int128 low;
+        private Int128 high;
 
-        internal LengthInterval(long length)
+        internal LengthInterval(long length, long maximumLength)
         {
-            (this.low, this.high) = length >= 0 ? (length, length) : (0, long.MaxValue);
+            (this.low, this.high) = length >= 0 ? (length, length) : (0, maximumLength);
         }
 
         internal readonly bool IsEmpty => this.low > this.high;
 
         // A boundary `c * L + k` in [0, L].
-        internal void RequireBoundary(bool fromLength, long offset)
+        internal void RequireBoundary(bool fromLength, Int128 offset)
         {
             this.Require(fromLength ? 1 : 0, offset);
             this.Require(fromLength ? 0 : 1, -offset);
         }
 
         // An element position `c * L + k` in [0, L - 1].
-        internal void RequireElement(bool fromLength, long offset)
+        internal void RequireElement(bool fromLength, Int128 offset)
         {
             this.Require(fromLength ? 1 : 0, offset);
             this.Require(fromLength ? 0 : 1, -offset - 1);
         }
 
-        internal void Require(long a, long b)
+        internal void Require(long a, Int128 b)
         {
             if (a == 0)
             {
@@ -257,11 +323,11 @@ public sealed partial class Binding
             }
             else if (a > 0)
             {
-                this.low = Math.Max(this.low, -b);
+                this.low = Int128.Max(this.low, -b);
             }
             else
             {
-                this.high = Math.Min(this.high, b);
+                this.high = Int128.Min(this.high, b);
             }
         }
     }

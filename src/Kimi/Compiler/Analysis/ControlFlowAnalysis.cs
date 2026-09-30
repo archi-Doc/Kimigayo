@@ -776,7 +776,9 @@ public sealed class ControlFlowAnalysis
                     }
                 }
 
-                flow = flow with { Type = flow.Normal ? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
+                // SPEC 10.2: the explicit conversion runs first, then its selected expected-Type adaptation supplies
+                // the result (for example, a value read of `position@ref` in a range-valued branch).
+                flow = flow with { Type = flow.Normal ? this.types.GetExpressionType(conversion) ?? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
                 if (destinationType is null)
                 {
                     this.pending.Add(conversion);

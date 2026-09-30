@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -27,6 +28,11 @@ public class TypeIdentityTest
     [InlineData("func same<A, B>(a: A, b: B) -> B\n    B is A\n    let y: B = a@move\n    return y@move")]
     [InlineData("func less<A, B>(a: A, b: B) -> bool\n    A is PrimitiveInteger\n    B is A\n    return a < b")]
     [InlineData("func take<T>(x: T, y: T) -> () => ()\nfunc pass<A, B>(a: A, b: B) -> ()\n    B is A\n    A is Copy\n    take(a, b)")]
+    [InlineData("func same<A, B>(b: B) -> A\n    A is B\n    B is A\n    return b@move")]
+    [InlineData("func same<A, B, C>(b: B) -> C\n    A is B\n    A is C\n    return b@move")]
+    [InlineData("func less<A, B, C>(b: B, c: C) -> bool\n    A is B\n    A is C\n    C is PrimitiveInteger\n    return b < c")]
+    [InlineData("func less<A, B, C>(b: B, c: C) -> bool\n    A is C\n    A is B\n    B is PrimitiveInteger\n    return b < c")]
+    [InlineData("func same<A, B, C>(b: Array<B>) -> Array<C>\n    A is B\n    A is C\n    return b@move")]
     public void PremiseMakesOneTypeInItsFunction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");
@@ -44,6 +50,39 @@ public class TypeIdentityTest
     [Fact]
     public void ConditionalConformanceUsesItsIdentityCondition()
         => ScalarEmissionTest.EmitFixture("TypeIdentityConformance", Pair + Uses, "ok\n");
+
+    [Fact]
+    public void EquivalentBoundaryTypesKeepTheirIntegerCapability()
+    {
+        const string Source = "func total<A, B, C>(a: B, b: C) -> B\n" +
+            "    A is B\n    A is C\n    C is PrimitiveInteger\n" +
+            "    var sum: B = a\n    for i in a..=b\n        sum = sum + i\n    return sum\n" +
+            "require total<i32, i32, i32>(0, 3) == 6 else => $abort(\"equivalent boundaries\")\nConsole.writeLine(\"ok\")";
+        ScalarEmissionTest.EmitFixture("TypeIdentityRange", Source, "ok\n");
+    }
+
+    [Fact]
+    public void IdentityChainsAreNotLimitedToSixteenSteps()
+    {
+        var parameters = string.Join(", ", Enumerable.Range(0, 24).Select(i => $"T{i}"));
+        var premises = string.Join("\n", Enumerable.Range(0, 23).Select(i => $"    T{i} is T{i + 1}"));
+        var c = MinimalEmissionTest.Analyze($"func same<{parameters}>(x: T0) -> T23\n{premises}\n    return x@move\n()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void IdentityClosureReusesItsScratchStorage()
+    {
+        var c = CompilationTestHelper.ParseSuccess("func same<A, B, C>(b: B) -> C\n    A is B\n    A is C\n    return b@move\n()");
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+    }
 
     [Fact]
     public void RefutedIdentityLeavesTheMemberInapplicable()

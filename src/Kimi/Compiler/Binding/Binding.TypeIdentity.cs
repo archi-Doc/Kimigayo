@@ -9,8 +9,7 @@ namespace Kimi.Compiler;
 // substitution, not an equation solver: only premises whose subject is a Type parameter are applied.
 public sealed partial class Binding
 {
-    // A chain of premises (A is B, B is C) is followed at most this far; a longer chain or a cycle stops substituting.
-    private const int IdentityChainLimit = 16;
+    private readonly HashSet<BoundType> identityExpansions = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>Fits <paramref name="actual"/> to <paramref name="expected"/> after substituting the Type-identity premises
     /// of the scope that contains <paramref name="use"/>; flow analysis compares written Types this way (SPEC 8.3).</summary>
@@ -53,19 +52,32 @@ public sealed partial class Binding
             return type;
         }
 
-        return this.SubstituteIdentity(type, scope, 0);
+        return this.SubstituteIdentity(type, scope);
     }
 
-    private BoundType SubstituteIdentity(BoundType type, BindingScope scope, int depth)
+    private BoundType SubstituteIdentity(BoundType type, BindingScope scope, bool parametersOnly = false)
     {
-        if (!type.ContainsParameter || depth > IdentityChainLimit)
+        if (!type.ContainsParameter)
         {
             return type;
         }
 
         if (type.Kind == BoundTypeKind.Parameter)
         {
-            return this.IdentityPremise(type, scope) is { } required ? this.SubstituteIdentity(required, scope, depth + 1) : type;
+            if (!this.identityExpansions.Add(type))
+            {
+                return type; // A recursive structural premise must not expand without bound.
+            }
+
+            try
+            {
+                var required = this.IdentityPremise(type, scope, parametersOnly);
+                return required.Kind == BoundTypeKind.Parameter ? required : this.SubstituteIdentity(required, scope, parametersOnly);
+            }
+            finally
+            {
+                this.identityExpansions.Remove(type);
+            }
         }
 
         var count = type.Components.Count;
@@ -75,7 +87,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.SubstituteIdentity(type.Components[i], scope, depth);
+                components[i] = this.SubstituteIdentity(type.Components[i], scope, parametersOnly);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
@@ -89,26 +101,88 @@ public sealed partial class Binding
         }
     }
 
-    // The Type an available premise identifies with the Type parameter `parameter`, or null.
-    private BoundType? IdentityPremise(BoundType parameter, BindingScope scope)
+    // Parameter identities form equivalence classes, not directed rewrite chains. Close only over the finite
+    // parameter premises in scope, then choose the same representative for every member. No structural unification
+    // or inference of missing premises is performed. Scratch storage is reused across queries and rebinding.
+    private BoundType IdentityPremise(BoundType parameter, BindingScope scope, bool parametersOnly)
     {
+        var capacity = 1;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
+            if (current.Constraints is { Invalid: false, HasParameterIdentity: true } environment)
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, parameter) && fact.RequiredType is { } required &&
-                    !ReferenceEquals(required, parameter) && this.AvailableConstraintFact(environment, fact))
-                {
-                    return required;
-                }
+                capacity += environment.Facts.Count * 2;
             }
         }
 
-        return null;
+        var members = this.RentTypes(capacity);
+        var count = 1;
+        members[0] = parameter;
+        try
+        {
+            var changed = true;
+            while (changed)
+            {
+                changed = false;
+                for (var current = scope; current is not null; current = current.Parent)
+                {
+                    if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
+                    {
+                        continue;
+                    }
+
+                    foreach (var fact in environment.Facts)
+                    {
+                        if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType.Kind: BoundTypeKind.Parameter } ||
+                            !this.AvailableConstraintFact(environment, fact))
+                        {
+                            continue;
+                        }
+
+                        var hasSubject = members.AsSpan(0, count).Contains(fact.Subject);
+                        var hasRequired = members.AsSpan(0, count).Contains(fact.RequiredType);
+                        if (hasSubject != hasRequired)
+                        {
+                            members[count++] = hasSubject ? fact.RequiredType : fact.Subject;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            BoundType? representative = null;
+            for (var current = scope; current is not null; current = current.Parent)
+            {
+                if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
+                {
+                    continue;
+                }
+
+                foreach (var fact in environment.Facts)
+                {
+                    if (fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: { } required } &&
+                        members.AsSpan(0, count).Contains(fact.Subject) && this.AvailableConstraintFact(environment, fact))
+                    {
+                        if (required.Kind != BoundTypeKind.Parameter)
+                        {
+                            if (!parametersOnly)
+                            {
+                                return required;
+                            }
+
+                            continue;
+                        }
+
+                        representative ??= required;
+                    }
+                }
+            }
+
+            return representative ?? parameter;
+        }
+        finally
+        {
+            this.typeScratch.Return(members, clearArray: true);
+        }
     }
 }

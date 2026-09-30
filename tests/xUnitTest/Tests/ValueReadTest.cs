@@ -39,6 +39,39 @@ public class ValueReadTest
     public void PositionsAreReadInEveryForm()
         => ScalarEmissionTest.EmitFixture("ValueReadForms", Forms, "ok\n");
 
+    [Theory]
+    [InlineData("let a = ^1\nlet b = ^2\nlet r = if true => a@ref\nelse => b")]
+    [InlineData("let a = 0..3\nlet b = 1..4\nlet r = if true => a@ref\nelse => b")]
+    [InlineData("let a = ^1\nlet r = if true => a@ref\nelse => ^2")]
+    [InlineData("let a = 0..3\nlet r = if true => a@ref\nelse => 1..4")]
+    [InlineData("let a = 0..3\nlet r = if true => 1..4\nelse => a@ref")]
+    [InlineData("let a = ^1\nlet b = a@ref\nlet r = if true => b@ref\nelse => a")]
+    [InlineData("func select<P>(a: ref/P, b: P) -> P\n    P is Position\n    let r = if true => a\n    else => b\n    return r\n()")]
+    [InlineData("func select<R>(a: ref/R, b: R) -> R\n    R is PositionRange\n    let r = if true => a\n    else => b\n    return r\n()")]
+    [InlineData("let a = 0..3\nlet choice: Option<Range<i32, i32>> = .Some(1..4)\nlet r = match choice\n    .Some(let x) => x\n    .None => a")]
+    public void BranchesUnifyReadTypesThroughReferences(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
+        Assert.Equal(SemanticsKind.Owner, result.NameKoto.BoundType?.Semantics);
+    }
+
+    [Fact]
+    public void BranchValueReadsCopySnapshotsAndReleaseTheirBorrows()
+    {
+        const string Source = "func choose(flag: bool) -> i32\n" +
+            "    var p = ^1\n    var r = 0..3\n" +
+            "    let picked = if flag => p@ref\n    else => ^2\n" +
+            "    let window = if flag => 1..2\n    else => r@ref\n" +
+            "    p = ^3\n    r = 2..4\n" +
+            "    let data: [4 of i32] = [10, 20, 30, 40]\n" +
+            "    return data[picked] + data[window].length@i32\n" +
+            "require choose(true) == 41 and choose(false) == 33 else => $abort(\"branch snapshots\")\nConsole.writeLine(\"ok\")";
+        ScalarEmissionTest.EmitFixture("ValueReadBranches", Source, "ok\n");
+    }
+
     [Fact]
     public void AnUnannotatedLocalKeepsTheReference()
     {
@@ -46,6 +79,16 @@ public class ValueReadTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var kept = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "kept");
         Assert.Equal(SemanticsKind.Ref, kept.NameKoto.BoundType?.Semantics);
+    }
+
+    [Fact]
+    public void MatchingReferenceLayersKeepTheirDependency()
+    {
+        var c = MinimalEmissionTest.Analyze("var a = ^1\nlet b = ^2\nlet r = if true => a@ref\nelse => b@ref\na = ^3\nlet p: FromEnd<i32> = r");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
+        Assert.Equal(SemanticsKind.Ref, result.NameKoto.BoundType?.Semantics);
+        Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 
     // A Copy struct is not a read Type: a reference to it is not read at a by-value parameter.

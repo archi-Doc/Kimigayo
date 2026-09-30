@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -36,12 +38,22 @@ public class PositionWarningTest
     [InlineData("let s = values[..]\nlet p = s.trySplitAt(-1)", "The position -1 fails to resolve for every length")]
     [InlineData("let r = (2..=1).tryResolve(5)", "fails to resolve for every length")]
     [InlineData("let p = (^(-1)).resolve(3)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i64>(1 << 63)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>(127 << 1)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i128>(1 << 127)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<u128>(340282366920938463463374607431768211455)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i128>(-170141183460469231731687303715884105728)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>((-16) * 8)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>((-128) >> 7)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>((-127) / 2)", "fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>((-127) % 2)", "fails to resolve for every length")]
     public void CertainFailuresAreWarned(string statement, string message)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var warning = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+        Assert.Equal(DiagnosticSeverity.Warning, warning.Severity);
 
         // The kind is in the message, the position is the underlined text, and a fixed length is in the label.
         const string Suffix = " fails to resolve for every length it can take";
@@ -76,11 +88,38 @@ public class PositionWarningTest
     [InlineData("let r = (1..^1).tryResolve(5)")]
     [InlineData("let p = (^3).tryResolve(2)")]
     [InlineData("let n = 0\nlet p = values.tryGet(n - 1)")]
+    [InlineData("let a = values.tryGet<u8>(1 << 8)")]
+    [InlineData("let a = values.tryGet<u8>(255 + 1)")]
+    [InlineData("let a = values.tryGet<u8>(255 << 1)")]
+    [InlineData("let a = values.tryGet<u8>(0 - 1)")]
+    [InlineData("let a = values.tryGet<i8>(-(-128))")]
+    [InlineData("let a = values.tryGet<i8>((-128) / (-1))")]
+    [InlineData("let a = values.tryGet<i128>((-170141183460469231731687303715884105728) / (-1))")]
+    [InlineData("let a = values.tryGet<i128>((-170141183460469231731687303715884105728) % (-1))")]
+    [InlineData("let a = values.tryGet<i8>((-128) - 1)")]
+    [InlineData("let a = values.tryGet<i8>(127 + 1)")]
+    [InlineData("let a = values.tryGet<i8>(-(127 + 1))")]
+    [InlineData("let a = values.tryGet<i8>((-16) * 9)")]
+    [InlineData("let a = values.tryGet<i128>(170141183460469231731687303715884105728)")]
+    [InlineData("let a = values.tryGet<u128>(340282366920938463463374607431768211455 + 1)")]
     public void ResolvableOrNonLiteralKeysAreNotWarned(string statement)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WideLiteralWarningsReuseTheirStorage()
+    {
+        var c = CompilationTestHelper.ParseSuccess(Prelude + "let a = values.tryGet<i128>(1 << 127)");
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.True(c.Bind().IsComplete);
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
     // SPEC 17.4.4: the warned access still compiles and Aborts only when executed.
