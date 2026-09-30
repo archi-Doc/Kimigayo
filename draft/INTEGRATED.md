@@ -78,9 +78,9 @@ The frozen `Changes/2026-09-29 Redesign Ranges B.md` remains unchanged. Its §§
 
 Follow-up intake (2026-09-30): proposal §3.4's diagnostic requirements are explicit in SPEC §4.6.1 (qualified Kimi Type display and conditional range-shape advice, with body verification before automatic repair) and §4.6.3.4 (selected iteration entry, boundary Types and the resolution/conversion repairs). Hover remains a required display behavior when provided, not a claim that the current diagnostic-only language server implements hover. The frozen proposal and its closed disposition remain unchanged.
 
-## Proposal lifecycle
-
 Diagnostics review clarification (2026-09-30): the frozen `Design/2026-09-29 Diagnostics.md` remains unchanged. Its prerequisite model (§4.3), also recorded in `docs/dev/DIAGNOSTICS.md` §4.3, is explicit in SPEC §23.3.6.4: a prerequisite identifies a check independently of codes and must account for every Error at that check. A direct Error cannot hide an unresolved or cyclic Error at the same check.
+
+## Proposal lifecycle
 
 1. Create dated proposals in `draft/Changes` or `draft/Design` when explicitly instructed. Unfrozen draft content also requires explicit instructions to edit.
 2. Incorporate finalized content into `docs/SPEC.md` and its referenced chapters. Update this register in the same commit, identifying the integrated proposal sections and target specification sections or commit. Do not wait for implementation or test completion.

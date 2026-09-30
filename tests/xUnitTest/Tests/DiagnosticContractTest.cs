@@ -154,6 +154,18 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AnEmptyPrerequisiteSetKeepsTheDirectCodesFacts()
+    {
+        var owner = new DiagnosticOwner();
+        var target = owner.GetOrAddCollection("main").For(new("main.kimi", "x"));
+        var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Syntax);
+        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.InvalidIndentation_Kd, 4, null, null, null, [], null);
+        var record = Assert.Single(owner.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(new DiagnosticValue("spaces", DiagnosticValueKind.Number, "4"), Assert.Single(record.Reason!));
+        Assert.Null(record.Related);
+    }
+
+    [Fact]
     public void WarningOnlyAndInvalidatedPrerequisitesDoNotSuppressErrors()
     {
         var owner = new DiagnosticOwner();

@@ -6,6 +6,7 @@ using System.Text.Json;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Benchmark;
 
@@ -41,6 +42,17 @@ internal static class DiagnosticMeasurements
 
         var manyProject = WriteProject(directory, "ManyErrors", many.ToString());
         results["check-300-errors"] = Measure(() => Check(manyProject), 8);
+
+        // Input line indexing is already established. Record formation should depend on the quoted window, not on
+        // the length of the unquoted prefix. Keep identical windows and sample conditions at both input sizes.
+        foreach (var prefix in new[] { 2000, 1000000 })
+        {
+            var owner = new DiagnosticOwner();
+            var document = new SourceDocument("excerpt.kimi", new string('x', prefix) + "bad" + new string('z', 300));
+            owner.GetOrAddCollection("excerpt").For(document).Add(new(prefix, 3), DiagnosticCode.IdentifierExpected_Kd);
+            owner.Finalize();
+            results[$"finalize-excerpt-{prefix}-prefix"] = Measure(() => owner.Finalize(), 8);
+        }
 
         var warm = Compilation.CreateForTest();
         Require(warm.Prepare(Target));

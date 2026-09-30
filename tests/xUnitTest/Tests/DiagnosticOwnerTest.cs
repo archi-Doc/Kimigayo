@@ -69,6 +69,57 @@ public sealed class DiagnosticOwnerTest
     }
 
     [Fact]
+    public void ALongTabbedExcerptPreservesItsAnchorAndOriginalRange()
+    {
+        var owner = new DiagnosticOwner();
+        var prefix = string.Concat(Enumerable.Repeat("\tab", 1000));
+        var document = new SourceDocument("tabs.kimi", prefix + "bad" + new string('z', 500));
+        owner.GetOrAddCollection("tabs").For(document).Add(new(prefix.Length, 3), DiagnosticCode.IdentifierExpected_Kd);
+        var record = Assert.Single(owner.Finalize().Diagnostics);
+        var line = Assert.Single(record.Display!.Excerpt);
+        Assert.True(line.Text.Length <= DiagnosticLimits.ExcerptWidth + 2);
+        Assert.Equal("bad", line.Text.Substring(line.Start, line.Length));
+        Assert.Equal(new SourceRange(new(0, prefix.Length), new(0, prefix.Length + 3)), record.Display.Range);
+        Assert.StartsWith("…", line.Text, StringComparison.Ordinal);
+        Assert.EndsWith("…", line.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALongLineEndInsertionKeepsOneCaretAfterItsText()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("end.kimi", new string('x', 10000));
+        owner.GetOrAddCollection("end").For(document).Add(new(10000, 0), DiagnosticCode.IdentifierExpected_Kd);
+        var line = Assert.Single(Assert.Single(owner.Finalize().Diagnostics).Display!.Excerpt);
+        Assert.Equal(line.Text.Length, line.Start);
+        Assert.Equal(1, line.Length);
+    }
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public sealed class AllocationTests
+    {
+        [Fact]
+        public void ExcerptAllocationDoesNotGrowWithUnquotedLineLength()
+        {
+            var small = Create(2000);
+            var large = Create(1000000);
+            var smallBytes = AllocationMeasurement.Measure(() => small.Finalize());
+            var largeBytes = AllocationMeasurement.Measure(() => large.Finalize());
+            Assert.True(largeBytes <= smallBytes, $"Short: {smallBytes}; long: {largeBytes}");
+
+            static DiagnosticOwner Create(int prefix)
+            {
+                var owner = new DiagnosticOwner();
+                var document = new SourceDocument("long.kimi", new string('x', prefix) + "bad" + new string('z', 300));
+                owner.GetOrAddCollection("long").For(document).Add(new(prefix, 3), DiagnosticCode.IdentifierExpected_Kd);
+                owner.Finalize(); // Source line indexing is input preparation; measure only repeated record formation.
+                return owner;
+            }
+        }
+    }
+
+    [Fact]
     public void TheFaultRecordMatchesTheCatalogAndReplacesOrKeepsRecords()
     {
         Assert.True(DiagnosticEntries.TryGet(DiagnosticCode.CheckFaulted_Kd, out var entry));

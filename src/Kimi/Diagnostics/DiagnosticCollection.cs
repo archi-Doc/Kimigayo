@@ -175,7 +175,7 @@ public sealed class DiagnosticCollection
         var source = this.SourceOf(document);
         var isError = entry.Severity == DiagnosticSeverity.Error;
         var length = document is null ? -1 : range.Length;
-        var causes = derivedFrom?.Distinct().ToArray();
+        var causes = derivedFrom is { Length: > 0 } ? derivedFrom.Distinct().ToArray() : null;
         var capturedRelated = related is null ? null : DiagnosticOwner.OrderRelated(related.Distinct().ToArray());
         this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, causes, DiagnosticOwner.Capture(evidence), capturedRelated), isError);
         return isError;

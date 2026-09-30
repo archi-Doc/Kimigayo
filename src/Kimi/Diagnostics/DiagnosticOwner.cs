@@ -603,10 +603,14 @@ public sealed class DiagnosticOwner
         var text = document.GetLineSpan(line);
         startCharacter = Math.Clamp(startCharacter, 0, text.Length);
         endCharacter = Math.Clamp(endCharacter, startCharacter, text.Length);
-        var expanded = ExpandTabs(text);
-        var start = DisplayWidth(text[..startCharacter]);
-        var length = Math.Max(1, DisplayWidth(text[..endCharacter]) - start);
-        if (expanded.Length <= DiagnosticLimits.ExcerptWidth)
+        // Restrict work before copying or expanding tabs. Even a million-character line needs only a bounded window.
+        // Tabs in a clipped window are expanded relative to that window; the record's Range keeps exact source offsets.
+        var windowStart = text.Length <= DiagnosticLimits.ExcerptWidth ? 0 : Math.Max(0, startCharacter - DiagnosticLimits.ExcerptLead);
+        var window = text.Slice(windowStart, Math.Min(text.Length - windowStart, DiagnosticLimits.ExcerptWidth + DiagnosticLimits.ExcerptLead));
+        var expanded = ExpandTabs(window);
+        var start = DisplayWidth(window[..(startCharacter - windowStart)]);
+        var length = Math.Max(1, DisplayWidth(window[..Math.Min(endCharacter - windowStart, window.Length)]) - start);
+        if (windowStart == 0 && window.Length == text.Length && expanded.Length <= DiagnosticLimits.ExcerptWidth)
         {
             return new(line + 1, expanded, start, length);
         }
@@ -614,8 +618,10 @@ public sealed class DiagnosticOwner
         // Clip a long line to a window around the underline, marking each cut with an ellipsis.
         var from = Math.Clamp(start - DiagnosticLimits.ExcerptLead, 0, expanded.Length);
         var to = Math.Min(expanded.Length, from + DiagnosticLimits.ExcerptWidth);
-        var clipped = string.Concat(from > 0 ? "…" : string.Empty, expanded.AsSpan(from, to - from), to < expanded.Length ? "…" : string.Empty);
-        var clippedStart = start - from + (from > 0 ? 1 : 0);
+        var prefix = windowStart > 0 || from > 0;
+        var suffix = windowStart + window.Length < text.Length || to < expanded.Length;
+        var clipped = string.Concat(prefix ? "…" : string.Empty, expanded.AsSpan(from, to - from), suffix ? "…" : string.Empty);
+        var clippedStart = start - from + (prefix ? 1 : 0);
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
     }
 

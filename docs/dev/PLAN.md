@@ -126,7 +126,7 @@ Features that a program's source does not use belong to the milestone that owns 
 
 ## 6. Next actions
 
-1. The Diagnostics track (D0–D4) is complete. Its open items each need their own stage: parser explanations and ownership evidence (DIAGNOSTICS.md §11); flow-refinement codes go with P33.
+1. The historical Diagnostics track (D0–D4) checkpoints are complete; they do not certify every recorder. [DIAGNOSTICS_REVIEW.md](DIAGNOSTICS_REVIEW.md) records the follow-up contract, input, declaration and excerpt repairs. Open work remains parser explanations, ownership evidence and per-recorder condition/Place multiplicity (DIAGNOSTICS.md §11); flow-refinement codes go with P33.
 2. Resume §4 with P31, P40 and P26. Independent P31 source work remains `sort()` using the existing heapsort and `init(! repeating:count:)`; `first`/`last` wait for P24, followed by the Property/object track.
 
 Concurrent sessions use separate worktrees and stage only their own paths. Library bodies reached only through generic dispatch are collected through `CollectWitnesses`; keep that path in view when a body has no verified generic instance.
