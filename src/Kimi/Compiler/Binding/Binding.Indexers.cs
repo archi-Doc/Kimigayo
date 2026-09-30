@@ -78,7 +78,7 @@ public sealed partial class Binding
                 this.BindNode(source.Right, scope);
                 if (!this.IndexableForKey(owner, indexable, source.Right))
                 {
-                    result = Fail(source, BindingFailure.Ambiguous);
+                    result = this.Fail(source, BindingFailure.Ambiguous);
                     return true;
                 }
 

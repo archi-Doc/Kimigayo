@@ -126,7 +126,8 @@ internal ref struct Tokenizer
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
-        this.diagnostics = diagnostics.For(sourceDocument);
+        this.diagnostics = diagnostics;
+        diagnostics.Register(sourceDocument);
         this.sourceDocument = sourceDocument;
         this.sourceText = sourceDocument.AsSpan()[..range.End];
         this.position = range.Start;
@@ -181,7 +182,7 @@ internal ref struct Tokenizer
             if (!char.IsHighSurrogate(this.sourceText[offset]) ||
                 offset + 1 == this.sourceText.Length || !char.IsLowSurrogate(this.sourceText[offset + 1]))
             {
-                this.diagnostics.Add(new SourceSpan(offset, 1), DiagnosticCode.InvalidSourceEncoding_Kd);
+                this.Report(new SourceSpan(offset, 1), DiagnosticCode.InvalidSourceEncoding_Kd);
                 return;
             }
 
@@ -354,7 +355,7 @@ Loop:
                     }
 
                 case Constants.SemicolonChar:
-                    this.diagnostics.Add(this.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
+                    this.Report(this.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
                     // Recover as a separator so the parser can still inspect following syntax.
                     // This does not end the physical line or alter indentation.
                     this.AddTokenAndSlice(TokenKind.Separator, 1);
@@ -728,14 +729,14 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            this.Report(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
         var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
         if (this.tokenCount == 0 && indentLevel > 0)
         {
-            this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
             indentLevel = 0;
         }
 
@@ -788,7 +789,7 @@ LineContent:
 
             if (indentDelta > 1)
             {
-                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                 indentDelta = 1;
             }
 
@@ -863,7 +864,7 @@ LineContent:
                         // Close the malformed delimiter before the next source item.
                         this.AddToken(new(GetClosingTokenKind(indentSource), this.CurrentRange, true));
 
-                        this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                         indentationMismatch = true;
                         break;
                     }
@@ -875,7 +876,7 @@ LineContent:
                 }
                 else
                 {
-                    this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                     indentationMismatch = true;
                     break;
                 }
@@ -1224,7 +1225,7 @@ EndOfFile:
         {// Starts with a digit but is not a valid numeric literal.
          // Emit a single Invalid token with a diagnostic instead of silently falling back
          // to the identifier path, which would produce bogus Identifier tokens.
-            this.diagnostics.Add(this.NewRange(numberLiteralLength), DiagnosticCode.InvalidNumericLiteral_Kd);
+            this.Report(this.NewRange(numberLiteralLength), DiagnosticCode.InvalidNumericLiteral_Kd);
             this.AddTokenAndSlice(TokenKind.Invalid, numberLiteralLength);
             return true;
         }
@@ -1246,7 +1247,7 @@ EndOfFile:
         var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
         if (!IdentifierHelper.IsValidIdentifier(spelling))
         {
-            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
+            this.Report(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
             kind = TokenKind.Invalid;
         }
 
@@ -1256,7 +1257,7 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ReadInvalidCharacter(ReadOnlySpan<char> span)
     {
-        this.diagnostics.Add(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, span[0]);
+        this.Report(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, span[0]);
         this.AddTokenAndSlice(TokenKind.Invalid, 1);
     }
 
@@ -1268,7 +1269,7 @@ EndOfFile:
         }
         else
         {
-            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
+            this.Report(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
             this.AddTokenAndSlice(TokenKind.Invalid, length);
         }
     }
@@ -1296,7 +1297,7 @@ EndOfFile:
         }
         else
         {// Invalid
-            this.diagnostics.Add(this.NewRange(1), DiagnosticCode.MissingStringLiteralEnd_Kd);
+            this.Report(this.NewRange(1), DiagnosticCode.MissingStringLiteralEnd_Kd);
             this.Slice(stringLiteralLength);
         }
     }
@@ -1310,7 +1311,7 @@ EndOfFile:
             var length = this.span.IndexOf("*/");
             if (length < 0)
             {
-                this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
+                this.Report(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
                 this.Slice(this.span.Length);
                 return true;
             }
@@ -1331,7 +1332,7 @@ EndOfFile:
 
             if (!this.span.IsEmpty && this.span[0] is not ('\r' or '\n') && !this.span.StartsWith("//"))
             {
-                this.diagnostics.Add(this.NewRange(1), DiagnosticCode.CodeAfterMultilineComment_Kd);
+                this.Report(this.NewRange(1), DiagnosticCode.CodeAfterMultilineComment_Kd);
             }
 
             // Consume the closing line (including invalid trailing code for recovery).
@@ -1364,6 +1365,10 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private SourceSpan NewRange(int length)
         => new(this.position, length);
+
+    // A lexical problem of this document; the target need not be bound to it, so lexing allocates no target.
+    private void Report(SourceSpan range, DiagnosticCode code, object? argument = null)
+        => this.diagnostics.Add(range, code, argument, null, this.sourceDocument);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Slice(int length)
@@ -1459,7 +1464,7 @@ EndOfFile:
                 if (!closesBody)
                 {
                     closesBody = true;
-                    this.diagnostics.Add(this.NewRange(1), DiagnosticCode.OuterCloserInBody_Kd);
+                    this.Report(this.NewRange(1), DiagnosticCode.OuterCloserInBody_Kd);
                 }
 
                 this.indentCount--;
@@ -1500,7 +1505,7 @@ EndOfFile:
             _ => DiagnosticCode.UnmatchedBracket_Kd,
         };
 
-        this.diagnostics.Add(this.NewRange(1), diagnostic);
+        this.Report(this.NewRange(1), diagnostic);
     }
 
     private void ClearIndentStack()
@@ -1526,7 +1531,7 @@ EndOfFile:
             if (indentSource != IndentSource.LineContinuation)
             {
                 var closingKind = GetClosingTokenKind(indentSource);
-                this.diagnostics.Add(missingRange, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
+                this.Report(missingRange, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
                 this.AddToken(new(closingKind, missingRange, true));
             }
         }

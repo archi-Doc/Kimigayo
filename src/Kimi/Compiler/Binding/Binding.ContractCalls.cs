@@ -170,7 +170,7 @@ public sealed partial class Binding
             }
             else if (expected != current)
             {
-                Fail(member, BindingFailure.ReceiverShapeMismatch);
+                this.Fail(member, BindingFailure.ReceiverShapeMismatch);
                 group.Active = false;
                 return null;
             }

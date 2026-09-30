@@ -61,7 +61,7 @@ public sealed partial class Binding
             var type = this.BindType(syntax, scope);
             if (syntax.BindingState == BindingState.Invalid || type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
             {
-                Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;
             }
             else if (valid && !this.ValidateInheritedNames(structure, type, scope))
@@ -73,7 +73,7 @@ public sealed partial class Binding
         this.inheritanceStates[symbol] = valid ? (byte)2 : (byte)3;
         if (!valid)
         {
-            Fail(structure, BindingFailure.InvalidTypeFormation);
+            this.Fail(structure, BindingFailure.InvalidTypeFormation);
         }
 
         return valid;
@@ -85,8 +85,8 @@ public sealed partial class Binding
         {
             if (this.LookupTypeMember(baseType, nested.Name, scope, typeRole: true).Member is not null)
             {
-                Fail(nested, BindingFailure.Duplicate);
-                Fail(structure, BindingFailure.Duplicate);
+                this.Fail(nested, BindingFailure.Duplicate);
+                this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
         }
@@ -108,7 +108,7 @@ public sealed partial class Binding
             // The original derived receiver supplies protected access, including Properties.
             if (this.LookupTypeMember(baseType, entry.Key, scope, this.SelfType(structure.BoundSymbol!)).Member is not null)
             {
-                Fail(structure, BindingFailure.Duplicate);
+                this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
         }

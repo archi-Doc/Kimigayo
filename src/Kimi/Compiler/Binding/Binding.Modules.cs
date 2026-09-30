@@ -23,7 +23,7 @@ public sealed partial class Binding
             var scope = this.scopes[module.RootKoto];
             if (scope.Types.TryGetValue("Kimi", out var reserved) || scope.Values.TryGetValue("Kimi", out reserved))
             {
-                Fail(reserved.Declaration, BindingFailure.Duplicate);
+                this.Fail(reserved.Declaration, BindingFailure.Duplicate);
             }
 
             if (!this.moduleSymbols.TryGetValue(module, out var symbol) || !ReferenceEquals(symbol.Declaration, module.RootKoto))
@@ -38,7 +38,7 @@ public sealed partial class Binding
                 {
                     if (scope.Types.TryGetValue(name, out var conflict) || scope.Values.TryGetValue(name, out conflict))
                     {
-                        Fail(conflict.Declaration, BindingFailure.Duplicate);
+                        this.Fail(conflict.Declaration, BindingFailure.Duplicate);
                     }
                 }
             }

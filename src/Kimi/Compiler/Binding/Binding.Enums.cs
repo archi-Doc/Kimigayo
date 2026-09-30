@@ -209,14 +209,14 @@ public sealed partial class Binding
     {
         if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
         {
-            Fail(reference, BindingFailure.MissingType, true);
+            this.Fail(reference, BindingFailure.MissingType, true);
             return null;
         }
 
         var member = this.LookupTypeMember(expected, name.IdentifierName, scope).Member;
         if (member?.EnumCase is null)
         {
-            Fail(reference, BindingFailure.MissingName);
+            this.Fail(reference, BindingFailure.MissingName);
             return null;
         }
 
@@ -234,7 +234,7 @@ public sealed partial class Binding
         if (!EnumArityMatches(payload.Length, call) || symbol.Declaration.BindingState == BindingState.Invalid || declaration.BindingState == BindingState.Invalid ||
             (reference is MemberAccessKoto member && member.Left.BoundSymbol?.Kind != BindingSymbolKind.Type))
         {
-            return Fail(use, BindingFailure.TypeMismatch);
+            return this.Fail(use, BindingFailure.TypeMismatch);
         }
 
         var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
@@ -259,14 +259,14 @@ public sealed partial class Binding
             {
                 if (expected.Semantics != SemanticsKind.Owner || !ReferenceEquals(expected.Symbol, enumeration.Owner))
                 {
-                    return Fail(use, BindingFailure.TypeMismatch);
+                    return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
                 for (var i = 0; i < slots; i++)
                 {
                     if (i >= expected.Components.Count || (arguments[i] is { } fixedType && !ReferenceEquals(fixedType, expected.Components[i])))
                     {
-                        return Fail(use, BindingFailure.TypeMismatch);
+                        return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
                     arguments[i] = expected.Components[i];
@@ -292,7 +292,7 @@ public sealed partial class Binding
 
                     if (call.GetArgumentLabel(i) is not null || payload[i].BoundType is not { } pattern)
                     {
-                        return Fail(use, BindingFailure.TypeMismatch);
+                        return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
                     var hint = this.SubstituteType(pattern, declaration, arguments.AsSpan(0, slots));
@@ -316,14 +316,14 @@ public sealed partial class Binding
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
                         // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
-                        return Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
+                        return this.Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
                     if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
-                        return Fail(use, BindingFailure.TypeMismatch);
+                        return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
                     operations[i] = new(source, actual, null, kind, quality, ParameterIndex: i);
@@ -334,7 +334,7 @@ public sealed partial class Binding
             {
                 if (arguments[i] is null)
                 {
-                    return Fail(use, BindingFailure.MissingType, true);
+                    return this.Fail(use, BindingFailure.MissingType, true);
                 }
             }
 
@@ -342,14 +342,14 @@ public sealed partial class Binding
             {
                 if (origins[i] is null)
                 {
-                    return Fail(use, BindingFailure.MissingOrigin, true);
+                    return this.Fail(use, BindingFailure.MissingOrigin, true);
                 }
             }
 
             var result = this.InternType(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                return Fail(use, BindingFailure.TypeMismatch);
+                return this.Fail(use, BindingFailure.TypeMismatch);
             }
 
             for (var i = 0; i < count; i++)
@@ -358,7 +358,7 @@ public sealed partial class Binding
                 var operation = operations[i];
                 if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !this.FitsTypeAt(adapted, type, operation.Source!))
                 {
-                    return Fail(use, BindingFailure.TypeMismatch);
+                    return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
                 operations[i] = operation with { ParameterType = type, Kind = kind, Adaptation = quality };
@@ -367,7 +367,7 @@ public sealed partial class Binding
             var proof = this.CheckConstraints(declaration.ConstraintNodes, declaration, arguments.AsSpan(0, slots), scope);
             if (proof != ConstraintProof.Proven)
             {
-                return Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+                return this.Fail(use, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
             }
 
             if (!this.enumConstructions.TryGetValue(use, out var plan))
@@ -406,7 +406,7 @@ public sealed partial class Binding
             if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
-                Fail(entry.Key, BindingFailure.InvalidTypeFormation);
+                this.Fail(entry.Key, BindingFailure.InvalidTypeFormation);
                 continue;
             }
 
@@ -420,7 +420,7 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                Fail(entry.Key, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
+                this.Fail(entry.Key, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
                 continue;
             }
 
@@ -431,13 +431,13 @@ public sealed partial class Binding
                 if (proof == ConstraintProof.Error)
                 {
                     plan.IsValid = false;
-                    Fail(entry.Key, BindingFailure.InvalidConstraint);
+                    this.Fail(entry.Key, BindingFailure.InvalidConstraint);
                 }
                 else if (proof != ConstraintProof.Proven && operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource))
                 {
                     // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
                     plan.IsValid = false;
-                    Fail(payloadSource, BindingFailure.TransferRequired);
+                    this.Fail(payloadSource, BindingFailure.TransferRequired);
                 }
 
                 plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);

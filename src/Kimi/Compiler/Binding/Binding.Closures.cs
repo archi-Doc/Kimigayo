@@ -62,7 +62,7 @@ public sealed partial class Binding
 
         if (!this.ClosureSignatureFits(function, expected))
         {
-            return Fail(function, expected is null ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);
+            return this.Fail(function, expected is null ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);
         }
 
         var plan = function.ClosureStorage ??= new();
@@ -86,30 +86,30 @@ public sealed partial class Binding
                 var transfer = capture.Operation == Constants.MoveOperation;
                 if (capture.IsMutable || (capture.Operation is not null && !transfer))
                 {
-                    return Fail(function, BindingFailure.Unsupported);
+                    return this.Fail(function, BindingFailure.Unsupported);
                 }
 
                 if (scope.Values.ContainsKey(capture.Name))
                 {
-                    return Fail(function, BindingFailure.Duplicate);
+                    return this.Fail(function, BindingFailure.Duplicate);
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
                 if (source?.Type is { } captureType && !(ScalarTypes.Supports(captureType) || ReferenceEquals(captureType, BoundType.Unit)))
                 {
-                    return Fail(function, BindingFailure.Unsupported);
+                    return this.Fail(function, BindingFailure.Unsupported);
                 }
 
                 if (source is null || this.Capture(function, source, scope) is not { } environment)
                 {
-                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : Fail(function, BindingFailure.Capture);
+                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
                 }
 
                 // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
                 environment.TransferCapture = transfer;
                 if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
                 {
-                    return Fail(function, BindingFailure.TransferRequired);
+                    return this.Fail(function, BindingFailure.TransferRequired);
                 }
             }
         }
@@ -156,7 +156,7 @@ public sealed partial class Binding
                 (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
                     ReferenceTypes.IsStorage(type) || ObjectTypes.IsOwner(type)))))
         {
-            Fail(function, BindingFailure.Unsupported);
+            this.Fail(function, BindingFailure.Unsupported);
             return null;
         }
 
@@ -213,18 +213,18 @@ public sealed partial class Binding
                 var transfer = capture.Operation == Constants.MoveOperation;
                 if (capture.Operation is not null && !transfer)
                 {
-                    return Fail(function, BindingFailure.Unsupported);
+                    return this.Fail(function, BindingFailure.Unsupported);
                 }
 
                 if (scope.Values.ContainsKey(capture.Name))
                 {
-                    return Fail(function, BindingFailure.Duplicate);
+                    return this.Fail(function, BindingFailure.Duplicate);
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
                 if (source is null || this.Capture(function, source, scope) is not { } environment)
                 {
-                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : Fail(function, BindingFailure.Capture);
+                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
                 }
 
                 environment.MutableCapture = capture.IsMutable;
@@ -232,7 +232,7 @@ public sealed partial class Binding
                 environment.TransferCapture = transfer;
                 if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
                 {
-                    return Fail(function, BindingFailure.TransferRequired);
+                    return this.Fail(function, BindingFailure.TransferRequired);
                 }
             }
         }
@@ -242,7 +242,7 @@ public sealed partial class Binding
             // Unannotated block results still need the general result-inference pass.
             if (symbol.Type is null)
             {
-                return Fail(function, BindingFailure.Unsupported);
+                return this.Fail(function, BindingFailure.Unsupported);
             }
 
             this.BindNode(block, scope);

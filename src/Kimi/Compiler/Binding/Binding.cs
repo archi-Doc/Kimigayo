@@ -91,7 +91,7 @@ public sealed partial class Binding
             this.issues.Clear();
             this.libraryImports.Clear();
             this.constraintDiagnosticCauses?.Clear();
-            this.diagnosticDependencies?.Clear();
+            this.ResetPrerequisites();
             this.objectPayloadCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
@@ -154,7 +154,7 @@ public sealed partial class Binding
             this.kimiValid = this.Library.ValidateDeclarations();
             if (!this.kimiValid)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
                 // A malformed compiler library must not enter indexing/overload chains.
                 return this.Result = this.Check(mode);
             }
@@ -294,7 +294,7 @@ public sealed partial class Binding
             this.kimiValid = this.Library.ValidateBoundDeclarations();
             if (!this.kimiValid)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
             this.Result = this.Check(mode);
@@ -309,50 +309,66 @@ public sealed partial class Binding
     /// <summary>Records Binding's facts, replacing any it recorded before. Invoke after final analysis, not between Mods.</summary>
     public void ReportDiagnostics()
     {
-        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Binding);
+        var diagnostics = this.compilation.Diagnostics;
+        diagnostics.Invalidate(DiagnosticPartition.Binding);
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            var requirement = DiagnosticRequirement.Binding(issue.Failure);
             if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
                 this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
                 cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
             {
-                continue;
+                // The recorded missing Name of the Constraint is its prerequisite.
+                issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
             }
-
-            if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
+            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
             {
-                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, plan.Coverage.Describe());
+                issue.Node.Report(requirement, issue.Code, plan.Coverage.Describe());
             }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
-                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, this.DescribeTryFailure(issue.Node));
+                issue.Node.Report(requirement, issue.Code, this.DescribeTryFailure(issue.Node));
             }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
-                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
+                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
             }
             else
             {
-                issue.Node.AddDiagnostic(DiagnosticPartition.Binding, issue.Code, note: this.BorrowOriginHint(issue.Node));
+                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node));
             }
+        }
+
+        foreach (var node in this.derivedIssues)
+        {
+            node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
         }
 
         if (this.Result.Mode == BindingMode.Final)
         {
+            var warning = DiagnosticRequirement.Binding(BindingFailure.None);
             foreach (var alias in this.aliasWarnings)
             {
-                alias.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.HiddenNamedAlias_Kd);
+                alias.Report(warning, DiagnosticCode.HiddenNamedAlias_Kd);
             }
 
-            foreach (var warning in this.patternWarnings)
+            foreach (var pattern in this.patternWarnings)
             {
-                warning.Pattern.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
+                pattern.Pattern.Report(warning, DiagnosticCode.UnreachablePattern_Kd, pattern.CoveringArm + 1);
             }
 
-            foreach (var warning in this.positionWarnings)
+            foreach (var position in this.positionWarnings)
             {
-                warning.Node.AddDiagnostic(DiagnosticPartition.Binding, DiagnosticCode.PositionAlwaysFails_Kd, warning.Message);
+                position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Message);
+            }
+
+            // SPEC 23.3.3: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
+            // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
+            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) &&
+                this.nodes.Find(static x => x.BindingState != BindingState.Resolved) is { } first)
+            {
+                first.ReportDerived(DiagnosticRequirement.Binding(first.BindingFailure == BindingFailure.None ? BindingFailure.MissingType : first.BindingFailure), [DiagnosticKey.Unresolved]);
             }
         }
     }
@@ -375,7 +391,7 @@ public sealed partial class Binding
         this.issues.Clear();
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
-        this.diagnosticDependencies?.Clear();
+        this.ResetPrerequisites();
         this.obligations.Clear();
         this.obligationSet.Clear();
         this.associatedOrigins.Clear();
@@ -421,18 +437,6 @@ public sealed partial class Binding
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
             function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
-
-    private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
-    {
-        if (node.BindingFailure != BindingFailure.None)
-        {
-            return null;
-        }
-
-        node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
-        node.BindingFailure = failure;
-        return null;
-    }
 
     private static BoundType? Complete(Koto node, BoundType? type)
     {
@@ -486,6 +490,24 @@ public sealed partial class Binding
         return true;
     }
 
+    private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
+    {
+        // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
+        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        {
+            this.consulted.Add(node);
+        }
+
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            return null;
+        }
+
+        node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
+        node.BindingFailure = failure;
+        return null;
+    }
+
     private BindingResult Check(BindingMode mode)
     {
         if (mode == BindingMode.Final)
@@ -494,7 +516,7 @@ public sealed partial class Binding
             {
                 if (this.obligations[i].Deadline == BindingDeadline.Definition)
                 {
-                    Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
+                    this.Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
                 }
             }
         }
@@ -540,7 +562,11 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && !this.IsDependentDiagnostic(node))
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && this.IsDerived(node))
+            {
+                this.derivedIssues.Add(node);
+            }
+            else if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
             {
                 var code = node.BindingFailure switch
                 {
@@ -603,19 +629,7 @@ public sealed partial class Binding
                     code = DiagnosticCode.InvalidTry_Kd;
                 }
 
-                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code));
-            }
-        }
-
-        if (mode == BindingMode.Final && unresolved != 0 && this.issues.Count == 0)
-        {
-            for (var i = 0; i < this.nodes.Count; i++)
-            {
-                if (this.nodes[i].BindingState == BindingState.Unresolved)
-                {
-                    this.issues.Add(new(this.nodes[i], DiagnosticCode.UnresolvedBinding_Kd));
-                    break;
-                }
+                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code) { Failure = node.BindingFailure });
             }
         }
 
@@ -667,8 +681,8 @@ public sealed partial class Binding
             if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
                 !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
             {
-                Fail(node, BindingFailure.Duplicate);
-                Fail(previous.Declaration, BindingFailure.Duplicate);
+                this.Fail(node, BindingFailure.Duplicate);
+                this.Fail(previous.Declaration, BindingFailure.Duplicate);
             }
         }
 
@@ -708,7 +722,7 @@ public sealed partial class Binding
                 var receiver = function.Parameters[symbol.ReceiverIndex];
                 if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
                 {
-                    Fail(function, BindingFailure.InvalidTypeFormation);
+                    this.Fail(function, BindingFailure.InvalidTypeFormation);
                 }
             }
         }
@@ -745,8 +759,8 @@ public sealed partial class Binding
                         {
                             if (ReceiverShape(b) is { } other && other != shape)
                             {
-                                Fail(fa, BindingFailure.ReceiverShapeMismatch);
-                                Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
+                                this.Fail(fa, BindingFailure.ReceiverShapeMismatch);
+                                this.Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
                             }
                         }
                     }
@@ -772,8 +786,8 @@ public sealed partial class Binding
 
                         if (equal)
                         {
-                            Fail(fa, BindingFailure.Duplicate);
-                            Fail(fb, BindingFailure.Duplicate);
+                            this.Fail(fa, BindingFailure.Duplicate);
+                            this.Fail(fb, BindingFailure.Duplicate);
                         }
                     }
                 }
@@ -804,10 +818,10 @@ public sealed partial class Binding
                     }
                     else if (expected != current)
                     {
-                        Fail(contract, BindingFailure.ReceiverShapeMismatch);
+                        this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
                         if (ReferenceEquals(members[i].Declaration.Parent, contract))
                         {
-                            Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
+                            this.Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
                         }
                     }
                 }
@@ -840,7 +854,7 @@ public sealed partial class Binding
             if (marker is not null)
             {
                 marker.BindingFailure = BindingFailure.None;
-                Fail(marker, BindingFailure.InvalidTestDefinition);
+                binding.Fail(marker, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(marker);
             }
 
@@ -946,9 +960,9 @@ public sealed partial class Binding
                 if (!TestDefinition.IsValidSyntax(test))
                 {
                     marker.BindingFailure = BindingFailure.None;
-                    Fail(marker, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(marker, BindingFailure.InvalidTestDefinition);
                     binding.nodes.Add(marker);
-                    Fail(test, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(test, BindingFailure.InvalidTestDefinition);
                 }
                 else
                 {
@@ -964,7 +978,7 @@ public sealed partial class Binding
 
                             // No Mod marker registry exists yet; selection does not recognize an unknown marker.
                             attribute.BindingFailure = BindingFailure.None;
-                            Fail(attribute, BindingFailure.Unsupported, true);
+                            binding.Fail(attribute, BindingFailure.Unsupported, true);
                             binding.nodes.Add(attribute);
                         }
                     }
@@ -988,11 +1002,11 @@ public sealed partial class Binding
                     return;
                 }
 
-                Fail(node, BindingFailure.InvalidTestDefinition);
+                binding.Fail(node, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(node);
                 if (AttributeTarget(invalidTest) is { } invalidTarget)
                 {
-                    Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
                 }
 
                 if (invalidTest.AttributeChain is { } precedingMarker)
@@ -1034,7 +1048,7 @@ public sealed partial class Binding
             {
                 // Layout/Test are handled above. Unrecognized markers and non-function
                 // LibraryImport targets cannot certify; retain syntax and diagnostics.
-                Fail(target, BindingFailure.InvalidTypeFormation);
+                binding.Fail(target, BindingFailure.InvalidTypeFormation);
             }
 
             if (node is ConversionKoto conversion)
@@ -1163,7 +1177,7 @@ public sealed partial class Binding
                                 {
                                     if (symbol.ReceiverIndex >= 0)
                                     {
-                                        Fail(function, BindingFailure.InvalidTypeFormation);
+                                        binding.Fail(function, BindingFailure.InvalidTypeFormation);
                                     }
 
                                     symbol.ReceiverIndex = p;
@@ -1216,7 +1230,7 @@ public sealed partial class Binding
                         Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
                         if (!bound.IsStored && getter is null)
                         {
-                            Fail(property, BindingFailure.InvalidTypeFormation);
+                            binding.Fail(property, BindingFailure.InvalidTypeFormation);
                         }
                     }
 
@@ -1239,7 +1253,7 @@ public sealed partial class Binding
                         typeSymbol.Pair = semanticsSymbol;
                         if (!this.Scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                         {
-                            Fail(node, BindingFailure.Duplicate);
+                            binding.Fail(node, BindingFailure.Duplicate);
                         }
                     }
 

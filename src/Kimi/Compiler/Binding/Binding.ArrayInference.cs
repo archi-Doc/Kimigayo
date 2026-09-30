@@ -31,7 +31,7 @@ public sealed partial class Binding
         var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
         if (length is null || element is null)
         {
-            return Fail(fill, BindingFailure.InvalidTypeFormation);
+            return this.Fail(fill, BindingFailure.InvalidTypeFormation);
         }
 
         if (this.ProveCopy(element, fill) != ConstraintProof.Proven)
@@ -63,7 +63,7 @@ public sealed partial class Binding
                 var common = element is null ? actual : this.CommonOriginType(element, actual);
                 if (common is null)
                 {
-                    Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    this.Fail(literal.Elements[i], BindingFailure.TypeMismatch);
                     complete = false;
                 }
                 else
@@ -75,7 +75,7 @@ public sealed partial class Binding
 
         if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || expected.Length != literal.Elements.Count))
         {
-            return Fail(literal, BindingFailure.TypeMismatch);
+            return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
         return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Length) : null);
@@ -107,7 +107,7 @@ public sealed partial class Binding
         }
         else
         {
-            Fail(hole, BindingFailure.MissingType, true);
+            this.Fail(hole, BindingFailure.MissingType, true);
         }
     }
 
@@ -141,7 +141,7 @@ public sealed partial class Binding
             var common = established is null ? actual : this.CommonOriginType(established, actual);
             if (common is null)
             {
-                return Fail(literal, BindingFailure.TypeMismatch);
+                return this.Fail(literal, BindingFailure.TypeMismatch);
             }
 
             established = common;
@@ -149,7 +149,7 @@ public sealed partial class Binding
 
         if ((established ?? literalDefault) is not { } element)
         {
-            return Fail(literal, BindingFailure.MissingType, true);
+            return this.Fail(literal, BindingFailure.MissingType, true);
         }
 
         for (var i = 0; i < literal.Elements.Count; i++)
@@ -200,7 +200,7 @@ public sealed partial class Binding
         {
             if (actual.Kind != BoundTypeKind.FixedArray)
             {
-                Fail(source, BindingFailure.TypeMismatch);
+                this.Fail(source, BindingFailure.TypeMismatch);
                 return false;
             }
 
@@ -210,7 +210,7 @@ public sealed partial class Binding
 
         if (established is not null && !ReferenceEquals(established, actual))
         {
-            Fail(source, BindingFailure.TypeMismatch);
+            this.Fail(source, BindingFailure.TypeMismatch);
             return false;
         }
 

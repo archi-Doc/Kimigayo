@@ -261,18 +261,18 @@ public sealed partial class Binding
                 if (container.Parent is not (GroupKoto or StructKoto) &&
                     container.Parent is not CodeBlockKoto { DeclarationContext: Lexing.TokenKind.Group or Lexing.TokenKind.Struct })
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
 
                 if (container.HasIncompatibleBindingHeader)
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
 
                 parameters = container.GenericParameterNodes;
                 if (HasLengthParameter(container))
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation); // The invalid header is kept for recovery.
+                    this.Fail(node, BindingFailure.InvalidTypeFormation); // The invalid header is kept for recovery.
                 }
 
                 origins = container.OriginNames;
@@ -341,13 +341,13 @@ public sealed partial class Binding
                 origin.LoanRequirement = LoanRequirement.None;
                 if (i < origins.Count && scope.Parent is { } enclosing && FindAbstractOrigin(origin.Name, enclosing) is not null)
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
 
                 scope.Origins ??= new(StringComparer.Ordinal);
                 if (!scope.Origins.TryAdd(origin.Name, origin.Origin))
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
             }
         }
@@ -433,11 +433,11 @@ public sealed partial class Binding
                 return origin;
             }
 
-            Fail(use, BindingFailure.InvalidOrigin);
+            this.Fail(use, BindingFailure.InvalidOrigin);
             return null;
         }
 
-        Fail(use, BindingFailure.MissingOrigin, true);
+        this.Fail(use, BindingFailure.MissingOrigin, true);
         return null;
     }
 
@@ -490,7 +490,7 @@ public sealed partial class Binding
 
         if (result is null)
         {
-            Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Fail(syntax, BindingFailure.InvalidOrigin);
         }
         else
         {
@@ -499,7 +499,7 @@ public sealed partial class Binding
             syntax.BoundOrigin = result;
             if (!OriginVisible(result, syntax))
             {
-                Fail(syntax, BindingFailure.InvalidOrigin);
+                this.Fail(syntax, BindingFailure.InvalidOrigin);
             }
         }
 
@@ -580,7 +580,7 @@ public sealed partial class Binding
             {
                 if (!guaranteedBorrow && (requirement == LoanRequirement.Uniq || (aggregateSlot >= 0 && !OwnedWithoutConditionalBorrows())))
                 {
-                    Fail(use, BindingFailure.MissingOrigin);
+                    this.Fail(use, BindingFailure.MissingOrigin);
                     return null;
                 }
 
@@ -595,7 +595,7 @@ public sealed partial class Binding
                     {
                         if (BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
                         {
-                            Fail(use, BindingFailure.MissingOrigin);
+                            this.Fail(use, BindingFailure.MissingOrigin);
                             return null;
                         }
                     }
@@ -605,7 +605,7 @@ public sealed partial class Binding
             }
         }
 
-        Fail(use, BindingFailure.MissingOrigin);
+        this.Fail(use, BindingFailure.MissingOrigin);
         return null;
 
         bool OwnedWithoutConditionalBorrows()

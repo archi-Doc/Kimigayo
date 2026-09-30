@@ -40,10 +40,10 @@ public sealed partial class Binding
 
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
-            Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
             if (target is not null)
             {
-                Fail(target, BindingFailure.InvalidTypeFormation);
+                this.Fail(target, BindingFailure.InvalidTypeFormation);
             }
         }
         else
@@ -70,7 +70,7 @@ public sealed partial class Binding
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
-                Fail(attribute, BindingFailure.InvalidLibraryImport);
+                this.Fail(attribute, BindingFailure.InvalidLibraryImport);
                 continue;
             }
 
@@ -83,7 +83,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(Kernel32Imports.Symbols, symbol) < 0)
                 {
                     // SPEC 20.8.2.4: the reserved supply exports only the reviewed project-owned definition.
-                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
             else if (name is WindowsProfile.BackendLibrary)
@@ -92,7 +92,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
                 {
                     // SPEC 21.5.7: the backend archive supplies only its catalog, whose names are reserved above.
-                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
             else
@@ -103,7 +103,7 @@ public sealed partial class Binding
                 var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 if (requirement is null && supply is null)
                 {
-                    Fail(attribute, BindingFailure.MissingNativeRequirement);
+                    this.Fail(attribute, BindingFailure.MissingNativeRequirement);
                 }
                 else
                 {
@@ -113,7 +113,7 @@ public sealed partial class Binding
 
             if (!this.TryGetImportAbi(function, out var signature))
             {
-                Fail(attribute, BindingFailure.UnsupportedImportSignature);
+                this.Fail(attribute, BindingFailure.UnsupportedImportSignature);
             }
             else if (signature is not null)
             {
@@ -122,7 +122,7 @@ public sealed partial class Binding
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (name != Kernel32Imports.LibraryName || declared != signature))
                 {
-                    Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
+                    this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
                 }
 
                 // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical
@@ -133,11 +133,11 @@ public sealed partial class Binding
                     var previous = symbols[symbol];
                     if (previous.Signature != signature)
                     {
-                        Fail(attribute, BindingFailure.ConflictingImportSignature);
+                        this.Fail(attribute, BindingFailure.ConflictingImportSignature);
                     }
                     else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
                     {
-                        Fail(attribute, BindingFailure.ConflictingImportSupply);
+                        this.Fail(attribute, BindingFailure.ConflictingImportSupply);
                     }
                 }
             }
@@ -290,8 +290,8 @@ public sealed partial class Binding
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
                     field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
                 {
-                    Fail(field, BindingFailure.InvalidCLayout);
-                    Fail(container, BindingFailure.InvalidTypeFormation);
+                    this.Fail(field, BindingFailure.InvalidCLayout);
+                    this.Fail(container, BindingFailure.InvalidTypeFormation);
                 }
             }
         }
@@ -319,7 +319,7 @@ public sealed partial class Binding
             {
                 if (this.StoredType(field, type) is { } stored && this.HasZeroStride(stored))
                 {
-                    Fail(syntax, BindingFailure.InvalidCLayout);
+                    this.Fail(syntax, BindingFailure.InvalidCLayout);
                     return;
                 }
             }
@@ -349,7 +349,7 @@ public sealed partial class Binding
 
                 if (previousFragment == attribute.FragmentOrdinal)
                 {
-                    Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+                    this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
                 }
 
                 valid &= attribute.BindingState != BindingState.Invalid;
@@ -359,7 +359,7 @@ public sealed partial class Binding
                 {
                     if (mode is not null && mode != explicitMode)
                     {
-                        Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
                         valid = false;
                     }
                     else if (mode is null)
@@ -378,7 +378,7 @@ public sealed partial class Binding
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
-                        Fail(field, BindingFailure.SplitCLayoutStorage);
+                        this.Fail(field, BindingFailure.SplitCLayoutStorage);
                         valid = false;
                     }
 
@@ -390,7 +390,7 @@ public sealed partial class Binding
             // SPEC 21.1: C layout rejects open, derived and empty structs.
             if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
             {
-                Fail(latestSpecification!, BindingFailure.InvalidCLayout);
+                this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
                 valid = false;
             }
             else if (mode == "C" && valid)
@@ -400,7 +400,7 @@ public sealed partial class Binding
 
             if (!valid)
             {
-                Fail(container, BindingFailure.InvalidTypeFormation);
+                this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
     }

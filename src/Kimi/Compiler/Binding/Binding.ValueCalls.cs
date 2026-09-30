@@ -155,14 +155,14 @@ public sealed partial class Binding
         {
             if (receiverType.Semantics == SemanticsKind.Ref)
             {
-                return Fail(call, BindingFailure.InvalidAssignment);
+                return this.Fail(call, BindingFailure.InvalidAssignment);
             }
 
             // SPEC 7.3, 7.6.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
             // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
             if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
             {
-                return Fail(call, BindingFailure.InvalidAssignment);
+                return this.Fail(call, BindingFailure.InvalidAssignment);
             }
         }
 
@@ -170,13 +170,13 @@ public sealed partial class Binding
         {
             if (receiverType.Kind == BoundTypeKind.Semantics && this.ProveCopy(receiverType.Components[0], call) != ConstraintProof.Proven)
             {
-                return Fail(call, BindingFailure.InvalidAssignment);
+                return this.Fail(call, BindingFailure.InvalidAssignment);
             }
 
             // SPEC 7.6.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
             if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
             {
-                return Fail(call, BindingFailure.TransferRequired);
+                return this.Fail(call, BindingFailure.TransferRequired);
             }
         }
 
@@ -184,14 +184,14 @@ public sealed partial class Binding
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
         if (call.Method is GenericsKoto || count != call.ArgumentNodes.Count)
         {
-            return Fail(call, BindingFailure.NoApplicableCandidate);
+            return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
         // This slice supports independent results and fresh direct input Origins.
         // Fixed external/result dependencies still need the full callable contract.
         if (!PerCallSignature(signature))
         {
-            return Fail(call, BindingFailure.Unsupported);
+            return this.Fail(call, BindingFailure.Unsupported);
         }
 
         var operations = this.argumentOperationScratch.Rent(count);
@@ -202,7 +202,7 @@ public sealed partial class Binding
             {
                 if (call.GetArgumentLabel(i) is not null)
                 {
-                    return Fail(call, BindingFailure.NoApplicableCandidate);
+                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 var source = call.ArgumentNodes[i];
@@ -217,7 +217,7 @@ public sealed partial class Binding
                 actual = this.ArgumentType(source, actual);
                 if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
                 {
-                    return Fail(call, BindingFailure.NoApplicableCandidate);
+                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 if (parameter.Origin is { Kind: OriginKind.Input } && adapted.Origin is { } argumentOrigin)
@@ -227,7 +227,7 @@ public sealed partial class Binding
 
                 if (!this.CheckTypeUse(adapted, parameter, source))
                 {
-                    return Fail(call, BindingFailure.NoApplicableCandidate);
+                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 operations[i] = new(source, actual, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);

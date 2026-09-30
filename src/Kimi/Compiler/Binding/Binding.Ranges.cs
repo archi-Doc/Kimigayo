@@ -214,7 +214,7 @@ public sealed partial class Binding
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {
-            Fail(source.Right, BindingFailure.TypeMismatch);
+            this.Fail(source.Right, BindingFailure.TypeMismatch);
             result = Complete(source, null);
             return true;
         }
@@ -284,7 +284,7 @@ public sealed partial class Binding
         failed = false;
         if (range.IsInclusive && range.End is null)
         {
-            Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
+            this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
             failed = true;
             return false;
         }
@@ -344,7 +344,7 @@ public sealed partial class Binding
 
         if (fromEnd is not null)
         {
-            Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: `^x` needs an integer operand.
+            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.2: `^x` needs an integer operand.
             failed = true;
         }
 
@@ -376,7 +376,7 @@ public sealed partial class Binding
     {
         if (range.IsInclusive && range.End is null)
         {
-            return Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
+            return this.Fail(range, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: an inclusive end cannot be omitted.
         }
 
         var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
@@ -438,7 +438,7 @@ public sealed partial class Binding
         }
         else if (!this.ProvesClosedContract(type, this.Library.Position, scope))
         {
-            Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: each boundary satisfies Position.
+            this.Fail(boundary, BindingFailure.TypeMismatch); // SPEC 4.6.3.1: each boundary satisfies Position.
             failed = true;
             return null;
         }
@@ -476,7 +476,7 @@ public sealed partial class Binding
         }
 
         var offset = this.BindPositionKey(node.Operand, scope);
-        return offset is null || ReferenceEquals(offset, BoundType.Never) || this.IsIntegerOperand(offset, scope) ? offset : Fail(node, BindingFailure.TypeMismatch);
+        return offset is null || ReferenceEquals(offset, BoundType.Never) || this.IsIntegerOperand(offset, scope) ? offset : this.Fail(node, BindingFailure.TypeMismatch);
     }
 
     // A synthesized call of the PositionSyntax function `name`, cached per source node, with the Type arguments `firstType`

@@ -127,9 +127,12 @@ public class ConversionEmissionTest
     [Fact]
     public void UnresolvedConversionTargetReportsItsCause()
     {
+        // SPEC 13.5: a grouped target is a Type, so (ref) names no Type; the missing Type is reported where it is written.
         var c = MinimalEmissionTest.Analyze("let x = 1\nx@(ref)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal("UnresolvedBinding_Kd", Assert.Single(c.Binding.Issues).Code.ToString());
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
+        Assert.Equal("ref", issue.Node.ToString());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

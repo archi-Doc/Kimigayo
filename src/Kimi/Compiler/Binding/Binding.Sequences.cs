@@ -38,7 +38,7 @@ public sealed partial class Binding
         };
         if (!valid)
         {
-            result = Fail(source, BindingFailure.MissingName);
+            result = this.Fail(source, BindingFailure.MissingName);
             return true;
         }
 
@@ -116,7 +116,7 @@ public sealed partial class Binding
         this.BindNode(source.Body, scope);
         if (duplicate)
         {
-            return Fail(source, BindingFailure.Duplicate);
+            return this.Fail(source, BindingFailure.Duplicate);
         }
 
         if (iterable is null)
@@ -131,7 +131,7 @@ public sealed partial class Binding
 
         if (source.IsTupleBinding && (tuple?.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count))
         {
-            return Fail(source, BindingFailure.TypeMismatch);
+            return this.Fail(source, BindingFailure.TypeMismatch);
         }
 
         return this.FinishResult(source, result);
@@ -146,10 +146,10 @@ public sealed partial class Binding
         var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
         if (proof == ConstraintProof.Proven)
         {
-            return Fail(source, BindingFailure.Unsupported);
+            return this.Fail(source, BindingFailure.Unsupported);
         }
 
-        Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
+        this.Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
         return Complete(source, null);
     }
 
@@ -226,7 +226,7 @@ public sealed partial class Binding
             if (loop.EntryCall?.BoundCall is { } call && loop.Iteration?.Next.BoundCall is { } next &&
                 !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
             {
-                Fail(loop, BindingFailure.Ambiguous);
+                this.Fail(loop, BindingFailure.Ambiguous);
             }
         }
     }
@@ -297,7 +297,7 @@ public sealed partial class Binding
         if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
             option.Components.Count != 1 || !ReferenceEquals(option.Components[0], item))
         {
-            Fail(source, BindingFailure.TypeMismatch);
+            this.Fail(source, BindingFailure.TypeMismatch);
             return;
         }
 

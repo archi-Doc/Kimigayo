@@ -345,7 +345,7 @@ public sealed partial class Binding
                 if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
                     (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
                 {
-                    Fail(relation.Syntax, BindingFailure.InvalidOrigin);
+                    this.Fail(relation.Syntax, BindingFailure.InvalidOrigin);
                 }
             }
         }

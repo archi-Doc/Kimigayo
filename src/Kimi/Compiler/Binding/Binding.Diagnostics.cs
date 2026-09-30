@@ -1,41 +1,178 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 23.3.6.4: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
+    // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
+    // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
+    private readonly List<Koto> consulted = [];
+    private readonly List<Koto> derivedIssues = [];
+    private readonly List<Koto> prerequisiteStore = [];
+    private readonly Dictionary<Koto, (int Start, int Count)> prerequisites = new(ReferenceEqualityComparer.Instance);
+    private readonly List<DiagnosticKey> prerequisiteKeys = [];
+    private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
+    private readonly Stack<Koto> prerequisitePending = new();
+
     // Keep proof failures intact. Only diagnostic publication follows these recorded
     // missing-name causes; later validators must still see an invalid declaration.
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
     private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
-    private DiagnosticDependencyVisitor? diagnosticDependencyVisitor;
-    private Dictionary<Koto, Koto>? diagnosticDependencies;
+    private int consultationStart = -1;
+    private Koto? consultationNode;
+
+    /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
+    internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
-        (this.diagnosticDependencies ??= new(ReferenceEqualityComparer.Instance))[node] = cause;
+        this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
+        this.prerequisiteStore.Add(cause);
         return Complete(node, null);
     }
 
-    // This affects publication only: invalid/unresolved state is retained, so a suppressed
-    // derivative diagnostic never becomes permission to emit code.
-    private bool IsDependentDiagnostic(Koto use)
+    private void ResetPrerequisites()
     {
-        if (use.BindingFailure is not (BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported))
+        this.prerequisites.Clear();
+        this.prerequisiteStore.Clear();
+        this.derivedIssues.Clear();
+        this.consulted.Clear();
+        this.consultationStart = -1;
+        this.consultationNode = null;
+    }
+
+    private (int Start, Koto? Node) BeginConsultation(Koto node)
+    {
+        var parent = (this.consultationStart, this.consultationNode);
+        this.consultationStart = this.consulted.Count;
+        this.consultationNode = node;
+        return parent;
+    }
+
+    private void EndConsultation(Koto node, (int Start, Koto? Node) parent)
+    {
+        var start = this.consultationStart;
+        var count = this.consulted.Count - start;
+        if (count != 0)
+        {
+            if (node.BindingState != BindingState.Resolved)
+            {
+                this.prerequisites[node] = (this.prerequisiteStore.Count, count);
+                for (var i = start; i < start + count; i++)
+                {
+                    this.prerequisiteStore.Add(this.consulted[i]);
+                }
+            }
+
+            this.consulted.RemoveRange(start, count);
+        }
+
+        (this.consultationStart, this.consultationNode) = parent;
+    }
+
+    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite.</summary>
+    /// <param name="dependency">The node whose result was read.</param>
+    private void Consulted(Koto dependency)
+    {
+        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode))
+        {
+            this.consulted.Add(dependency);
+        }
+    }
+
+    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved; a
+    // recovery node derives from its syntax error. A failure explained by the Origin rule, or any definite failure, is direct.
+    private bool IsDerived(Koto node)
+        => node is ErrorKoto ||
+            (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
+            this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null);
+
+    // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
+    // operands still unresolved when Binding ends are prerequisites.
+    private bool HasUnresolvedPrerequisite(Koto node)
+    {
+        if (this.prerequisites.TryGetValue(node, out var range))
+        {
+            for (var i = range.Start; i < range.Start + range.Count; i++)
+            {
+                if (this.prerequisiteStore[i].BindingState != BindingState.Resolved)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Gets the check keys a derived failure rests on; a skipped prerequisite contributes its own prerequisites.</summary>
+    /// <param name="node">The derived node.</param>
+    /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
+    private DiagnosticKey[] PrerequisiteKeys(Koto node)
+    {
+        if (node is ErrorKoto recovery)
+        {
+            return [recovery.Cause ?? DiagnosticKey.Unresolved];
+        }
+
+        // The walk reuses its storage; only the published array is allocated.
+        var keys = this.prerequisiteKeys;
+        var visited = this.prerequisiteVisited;
+        var pending = this.prerequisitePending;
+        visited.Add(node);
+        this.PushPrerequisites(node, pending);
+        while (pending.TryPop(out var cause))
+        {
+            if (!visited.Add(cause))
+            {
+                continue;
+            }
+
+            var key = cause is ErrorKoto { Cause: { } syntax } ? syntax
+                : cause.BindingFailure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))
+                : this.PushPrerequisites(cause, pending) ? (DiagnosticKey?)null
+                : DiagnosticKey.Unresolved;
+            if (key is { } found && !keys.Contains(found))
+            {
+                keys.Add(found);
+            }
+        }
+
+        DiagnosticKey[] result = keys.Count == 0 ? [DiagnosticKey.Unresolved] : [.. keys];
+        keys.Clear();
+        visited.Clear();
+        return result;
+    }
+
+    private bool PushPrerequisites(Koto node, Stack<Koto> pending)
+    {
+        if (!this.prerequisites.TryGetValue(node, out var range))
         {
             return false;
         }
 
-        var visitor = this.diagnosticDependencyVisitor ??= new(this);
-        return visitor.HasCause(use) && this.BorrowOriginHint(use) is null;
+        var pushed = false;
+        for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
+        {
+            if (this.prerequisiteStore[i].BindingState != BindingState.Resolved)
+            {
+                pending.Push(this.prerequisiteStore[i]);
+                pushed = true;
+            }
+        }
+
+        return pushed;
     }
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
-    private bool ReportUnavailableQualifier(Koto syntax, BindingScope scope)
+    // Returns the inaccessible qualifier it failed, which explains the failed lookup.
+    private Koto? ReportUnavailableQualifier(Koto syntax, BindingScope scope)
     {
         if (syntax is GenericsKoto generic)
         {
@@ -44,37 +181,37 @@ public sealed partial class Binding
 
         if (syntax is not MemberAccessKoto member)
         {
-            return false;
+            return null;
         }
 
-        if (this.ReportUnavailableQualifier(member.Left, scope))
+        if (this.ReportUnavailableQualifier(member.Left, scope) is { } inner)
         {
-            return true;
+            return inner;
         }
 
         if (this.TypeName(member.Left, scope, false) is not { } qualifier || !this.scopes.TryGetValue(qualifier.Declaration, out var members) ||
             TypeSpelling(member.Right) is not { } name || !members.Types.TryGetValue(name, out var first))
         {
-            return false;
+            return null;
         }
 
         for (var candidate = first; candidate is not null; candidate = candidate.Next)
         {
             if (this.Accessible(candidate, scope))
             {
-                return false;
+                return null;
             }
         }
 
-        Fail(member, BindingFailure.Access);
-        return true;
+        this.Fail(member, BindingFailure.Access);
+        return member;
     }
 
     /// <summary>Rejects an object form, creation, cast or runtime test over a Type that opts out of ObjectPayload, naming the declaring Type (SPEC 8.4.7.2).</summary>
     private BoundType? FailObjectPayload(Koto use, BindingSymbol renounced)
     {
         (this.objectPayloadCauses ??= new(ReferenceEqualityComparer.Instance))[use] = renounced;
-        return Fail(use, BindingFailure.NotObjectPayload);
+        return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
@@ -84,7 +221,7 @@ public sealed partial class Binding
             return;
         }
 
-        Fail(use, BindingFailure.InvalidConstraint);
+        this.Fail(use, BindingFailure.InvalidConstraint);
         if (diagnosticCause is null && use is IsKoto clause)
         {
             diagnosticCause = this.FindMissingConformanceName(clause);
@@ -150,48 +287,6 @@ public sealed partial class Binding
             }
 
             node.VisitChildren(this);
-        }
-    }
-
-    private sealed class DiagnosticDependencyVisitor(Binding binding) : KotoVisitor
-    {
-        private readonly HashSet<Koto> seen = new(ReferenceEqualityComparer.Instance);
-        private bool found;
-
-        public override void Visit(Koto node)
-        {
-            if (this.found || !this.seen.Add(node))
-            {
-                return;
-            }
-
-            if (node.BindingFailure != BindingFailure.None)
-            {
-                this.found = true;
-                return;
-            }
-
-            if (binding.diagnosticDependencies?.TryGetValue(node, out var cause) == true)
-            {
-                this.Visit(cause);
-            }
-
-            if (node.BoundSymbol?.Declaration is VariableKoto { InitializerKoto: { } initializer } declaration &&
-                declaration.BindingState != BindingState.Resolved)
-            {
-                this.Visit(initializer);
-            }
-
-            node.VisitChildren(this);
-        }
-
-        internal bool HasCause(Koto node)
-        {
-            this.seen.Clear();
-            this.seen.Add(node);
-            this.found = false;
-            node.VisitChildren(this);
-            return this.found;
         }
     }
 }

@@ -103,7 +103,7 @@ public sealed partial class Binding
                 var declaration = this.OriginDeclarationFor(owner);
                 if (!declaration.Sets.TryAdd(label, annotation))
                 {
-                    Fail(annotation, BindingFailure.Duplicate);
+                    this.Fail(annotation, BindingFailure.Duplicate);
                 }
 
                 if (owner is VariableKoto and not PropertyKoto && owner.BoundSymbol is { } local)
@@ -111,7 +111,7 @@ public sealed partial class Binding
                     local.Scope.OriginSets ??= new(StringComparer.Ordinal);
                     if (!local.Scope.OriginSets.TryAdd(label, annotation))
                     {
-                        Fail(annotation, BindingFailure.Duplicate);
+                        this.Fail(annotation, BindingFailure.Duplicate);
                     }
                 }
 
@@ -247,7 +247,7 @@ public sealed partial class Binding
             {
                 if (!written.Contains(name) && !existing)
                 {
-                    Fail(owner, BindingFailure.InvalidOrigin);
+                    this.Fail(owner, BindingFailure.InvalidOrigin);
                 }
 
                 names.RemoveAt(i);
@@ -258,7 +258,7 @@ public sealed partial class Binding
                 // Headerless stored names cannot accidentally capture an inherited slot.
                 if (owner is StructKoto or EnumKoto)
                 {
-                    Fail(owner, BindingFailure.InvalidOrigin);
+                    this.Fail(owner, BindingFailure.InvalidOrigin);
                 }
 
                 names.RemoveAt(i);
@@ -268,7 +268,7 @@ public sealed partial class Binding
 
         if (owner is StructKoto or EnumKoto && !closed && names.Count > 1)
         {
-            Fail(owner, BindingFailure.InvalidOrigin);
+            this.Fail(owner, BindingFailure.InvalidOrigin);
         }
 
         if (owner is FunctionKoto function)
@@ -306,7 +306,7 @@ public sealed partial class Binding
                 var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ?? current.OriginSets?.GetValueOrDefault(entry.Key);
                 if (scalar || value || (set is not null && !ReferenceEquals(set, entry.Value)))
                 {
-                    Fail(entry.Value, BindingFailure.Duplicate);
+                    this.Fail(entry.Value, BindingFailure.Duplicate);
                     break;
                 }
             }
@@ -335,7 +335,7 @@ public sealed partial class Binding
             var sets = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets;
             if (visibleValue && (current.Origins?.ContainsKey(name) == true || sets?.ContainsKey(name) == true))
             {
-                Fail(use, BindingFailure.Duplicate);
+                this.Fail(use, BindingFailure.Duplicate);
                 return true;
             }
 
@@ -764,7 +764,7 @@ public sealed partial class Binding
                 node.BoundOrigin = binding.ResolveOrigin(origin, declaration);
                 if (!OriginVisible(node.BoundOrigin, node))
                 {
-                    Fail(node, BindingFailure.InvalidOrigin);
+                    binding.Fail(node, BindingFailure.InvalidOrigin);
                 }
             }
 

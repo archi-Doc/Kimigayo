@@ -50,7 +50,7 @@ public sealed partial class Binding
         {
             if (type.Symbol?.Schema is not { Origins.Count: > 0 })
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             annotation!.OriginExpression!.BindingState = BindingState.Resolved;
@@ -59,20 +59,20 @@ public sealed partial class Binding
 
         if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
         {
-            return Fail(use, BindingFailure.InvalidOrigin);
+            return this.Fail(use, BindingFailure.InvalidOrigin);
         }
 
         if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
             if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (written && type.Kind == BoundTypeKind.Parameter)
@@ -105,7 +105,7 @@ public sealed partial class Binding
 
             if (origin?.Kind == OriginKind.Static && IsExclusive(type.Semantics))
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (!ReferenceEquals(origin, type.Origin))
@@ -135,7 +135,7 @@ public sealed partial class Binding
             if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
                 (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
@@ -352,7 +352,7 @@ public sealed partial class Binding
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
-                        Fail(node, BindingFailure.InvalidOrigin);
+                        this.Fail(node, BindingFailure.InvalidOrigin);
                     }
                 }
             }
@@ -368,7 +368,7 @@ public sealed partial class Binding
                 this.borrowVisiting.Clear();
                 if (this.RetainsBorrow(type, this.borrowVisiting))
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
             }
         }

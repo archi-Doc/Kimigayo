@@ -93,7 +93,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.cyclicInlineLayouts.Count; i++)
         {
-            Fail(this.cyclicInlineLayouts[i], BindingFailure.InvalidInlineLayout);
+            this.Fail(this.cyclicInlineLayouts[i], BindingFailure.InvalidInlineLayout);
         }
     }
 
@@ -175,7 +175,7 @@ public sealed partial class Binding
             var scope = this.scopes[container];
             if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
             {
-                Fail(container, BindingFailure.InvalidTypeFormation);
+                this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
 
             for (var i = 0; i < container.Bases.Count; i++)
@@ -192,7 +192,7 @@ public sealed partial class Binding
                 {
                     if (container is EnumKoto)
                     {
-                        Fail(member, BindingFailure.InvalidTypeFormation);
+                        this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 
                     var syntax = field.TypeKoto ?? field;
@@ -211,7 +211,7 @@ public sealed partial class Binding
                 {
                     if (member.AttributeChain is not null)
                     {
-                        Fail(member, BindingFailure.InvalidTypeFormation);
+                        this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
 
                     if (member.BoundSymbol?.EnumCase is { } enumeration)
@@ -228,7 +228,7 @@ public sealed partial class Binding
                         shape.Types.Add(syntax);
                         if (syntax.BoundType is { } type && !TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
                         {
-                            Fail(member, BindingFailure.Access);
+                            this.Fail(member, BindingFailure.Access);
                         }
                     }
                 }
@@ -237,18 +237,18 @@ public sealed partial class Binding
                     shape.HasDestructor = true;
                     if (container is EnumKoto)
                     {
-                        Fail(member, BindingFailure.InvalidTypeFormation);
+                        this.Fail(member, BindingFailure.InvalidTypeFormation);
                     }
                 }
                 else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
                 {
-                    Fail(member, BindingFailure.InvalidTypeFormation);
+                    this.Fail(member, BindingFailure.InvalidTypeFormation);
                 }
             }
 
             if (container is EnumKoto && shape.CaseCount == 0)
             {
-                Fail(container, BindingFailure.InvalidTypeFormation);
+                this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
 

@@ -30,7 +30,7 @@ public sealed partial class Binding
             {
                 if (this.DefaultAliasTarget(module.RootKoto, path) is null)
                 {
-                    Fail(module.RootKoto, BindingFailure.MissingName, true);
+                    this.Fail(module.RootKoto, BindingFailure.MissingName, true);
                 }
             }
         }
@@ -110,7 +110,7 @@ public sealed partial class Binding
 
         if (imported.Kind != BindingSymbolKind.Function || candidate.Kind != BindingSymbolKind.Function)
         {
-            Fail(use, BindingFailure.Ambiguous, true);
+            this.Fail(use, BindingFailure.Ambiguous, true);
             return false;
         }
 

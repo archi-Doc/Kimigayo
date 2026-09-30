@@ -242,7 +242,7 @@ public sealed partial class Binding
                 // An invalid required declaration invalidates the implementing Type.
                 // A path-local witness failure must preserve independent conformances.
                 var previous = implementation.BindingState;
-                Fail(implementation, failed.BindingFailure);
+                this.Fail(implementation, failed.BindingFailure);
                 changed |= previous != implementation.BindingState;
             }
 
@@ -260,7 +260,7 @@ public sealed partial class Binding
                     if (InvalidDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
-                        Fail(contract, BindingFailure.UnsatisfiedConstraint);
+                        this.Fail(contract, BindingFailure.UnsatisfiedConstraint);
                         changed |= previous != contract.BindingState;
                         break;
                     }
@@ -352,14 +352,14 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Refuted)
         {
-            Fail(use, BindingFailure.UnsatisfiedConstraint);
+            this.Fail(use, BindingFailure.UnsatisfiedConstraint);
         }
         else if (proof == ConstraintProof.Unknown)
         {
             // The provisional pass can gain bindings/conformance evidence across the Mod boundary.
             if (mode == BindingMode.Final)
             {
-                Fail(use, BindingFailure.UnprovenConstraint);
+                this.Fail(use, BindingFailure.UnprovenConstraint);
             }
             else if (use.BindingState != BindingState.Invalid)
             {

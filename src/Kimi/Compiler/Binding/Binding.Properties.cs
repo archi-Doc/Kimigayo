@@ -223,7 +223,7 @@ public sealed partial class Binding
                 var node = visitor.Snapshots[i].Node;
                 if (node.BindingFailure != BindingFailure.None)
                 {
-                    Fail(setter.Binder, node.BindingFailure);
+                    this.Fail(setter.Binder, node.BindingFailure);
                 }
             }
 
@@ -252,7 +252,7 @@ public sealed partial class Binding
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
             if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
             {
-                Fail(declaration!, BindingFailure.Access);
+                this.Fail(declaration!, BindingFailure.Access);
             }
 
             this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
@@ -270,7 +270,7 @@ public sealed partial class Binding
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
             if (property.Type is { } type && !TypeAccessCovers(type, domain, domain))
             {
-                Fail(syntax, BindingFailure.Access);
+                this.Fail(syntax, BindingFailure.Access);
             }
 
             var proof = this.ValidateAccessor(property.Getter);
@@ -323,7 +323,7 @@ public sealed partial class Binding
 
         if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
         {
-            Fail(syntax, BindingFailure.Access);
+            this.Fail(syntax, BindingFailure.Access);
             return ConstraintProof.Error;
         }
 
@@ -337,7 +337,7 @@ public sealed partial class Binding
             ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
             : accessor.Receiver is not null)
         {
-            Fail(syntax!, BindingFailure.InvalidTypeFormation);
+            this.Fail(syntax!, BindingFailure.InvalidTypeFormation);
             return ConstraintProof.Error;
         }
 
@@ -346,7 +346,7 @@ public sealed partial class Binding
             var semantics = accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq;
             if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(owner.BoundSymbol!)))
             {
-                Fail(syntax!, BindingFailure.TypeMismatch);
+                this.Fail(syntax!, BindingFailure.TypeMismatch);
                 return ConstraintProof.Error;
             }
         }
@@ -359,7 +359,7 @@ public sealed partial class Binding
 
         if (((property.IsStored || accessor.Kind == PropertyAccessorKind.Get) && !SameType(compared, property.Type)) || (accessor.Kind == PropertyAccessorKind.Set && !SameType(accessor.Result, BoundType.Unit)))
         {
-            Fail(syntax!, BindingFailure.TypeMismatch);
+            this.Fail(syntax!, BindingFailure.TypeMismatch);
             return ConstraintProof.Error;
         }
 
@@ -368,7 +368,7 @@ public sealed partial class Binding
             (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)) ||
             (accessor.Receiver is { } receiverType && !TypeAccessCovers(receiverType, domain, domain)))
         {
-            Fail(syntax!, BindingFailure.Access);
+            this.Fail(syntax!, BindingFailure.Access);
             return ConstraintProof.Error;
         }
 
@@ -388,7 +388,7 @@ public sealed partial class Binding
             if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
                 actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
             {
-                Fail(body, BindingFailure.TypeMismatch);
+                this.Fail(body, BindingFailure.TypeMismatch);
             }
         }
 

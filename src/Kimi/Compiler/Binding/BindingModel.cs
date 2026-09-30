@@ -387,7 +387,11 @@ internal sealed class BindingScope(Koto owner)
 }
 
 /// <summary>A final unresolved or invalid node, retaining its original source context.</summary>
-public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code);
+public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
+{
+    /// <summary>Gets the failure that the code reports; its requirement identifies the problem.</summary>
+    internal BindingFailure Failure { get; init; }
+}
 
 /// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
 public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)

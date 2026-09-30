@@ -114,7 +114,7 @@ public sealed partial class Binding
         reference = foundReference;
         if (ambiguous)
         {
-            Fail(use, BindingFailure.Ambiguous);
+            this.Fail(use, BindingFailure.Ambiguous);
             return null;
         }
 
@@ -162,7 +162,7 @@ public sealed partial class Binding
         {
             if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
             qualifier = contract;
@@ -191,7 +191,7 @@ public sealed partial class Binding
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
         {
-            return Fail(syntax, BindingFailure.InvalidAssociatedType);
+            return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
         }
 
         var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
@@ -276,7 +276,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
             return;
         }
 
@@ -298,7 +298,7 @@ public sealed partial class Binding
 
             if (qualifier?.Declaration is not ContractKoto)
             {
-                Fail(clause, BindingFailure.InvalidAssociatedType);
+                this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;
             }
 
@@ -310,14 +310,14 @@ public sealed partial class Binding
         var ambiguous = false;
         if (associated is null || this.ConformanceByDeclaration(self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
         {
-            Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
+            this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
             return;
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
         {
-            Fail(clause, BindingFailure.InvalidAssociatedType);
+            this.Fail(clause, BindingFailure.InvalidAssociatedType);
             return;
         }
 
@@ -336,7 +336,7 @@ public sealed partial class Binding
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
         if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
         {
-            Fail(clause, BindingFailure.Unsupported, true);
+            this.Fail(clause, BindingFailure.Unsupported, true);
             return;
         }
 

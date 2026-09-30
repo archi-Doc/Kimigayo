@@ -358,7 +358,7 @@ public sealed partial class Binding
         if (!this.LengthTypeEvidence(syntax, scope, ref type) ||
             !this.EvaluateLength(syntax, scope, type ?? BoundType.ISize, out var value, out var symbolic))
         {
-            Fail(syntax, BindingFailure.InvalidTypeFormation);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
         }
 
@@ -366,7 +366,7 @@ public sealed partial class Binding
         {
             if (scope.Function is { } function && !IsSignatureLength(syntax, function) && !this.ProveLength(symbolic, function))
             {
-                Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 return null;
             }
 
@@ -377,7 +377,7 @@ public sealed partial class Binding
         var maximum = ((UInt128)1 << (this.compilation.PointerWidth - 1)) - 1;
         if (value > maximum)
         {
-            Fail(syntax, BindingFailure.InvalidTypeFormation);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
         }
 

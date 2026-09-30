@@ -70,7 +70,7 @@ public sealed partial class Binding
                 function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
                 candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
             {
-                return Fail(use, BindingFailure.Unsupported, true);
+                return this.Fail(use, BindingFailure.Unsupported, true);
             }
 
             if (!this.Accessible(candidate, scope) || !this.FunctionReferenceFits(use, candidate, function, required))
@@ -80,12 +80,12 @@ public sealed partial class Binding
 
             if ((function.Modifier & ModifierKind.Unsafe) != 0)
             {
-                return Fail(use, BindingFailure.UnsafeFunctionValue);
+                return this.Fail(use, BindingFailure.UnsafeFunctionValue);
             }
 
             if (selected is not null)
             {
-                return Fail(use, BindingFailure.Ambiguous, true);
+                return this.Fail(use, BindingFailure.Ambiguous, true);
             }
 
             selected = candidate;
@@ -93,7 +93,7 @@ public sealed partial class Binding
 
         if (selected is null)
         {
-            return Fail(use, BindingFailure.TypeMismatch);
+            return this.Fail(use, BindingFailure.TypeMismatch);
         }
 
         use.BoundSymbol = selected;

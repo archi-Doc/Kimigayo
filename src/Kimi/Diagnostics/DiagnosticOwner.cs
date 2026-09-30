@@ -327,66 +327,67 @@ public sealed class DiagnosticOwner
     }
 
     // SPEC 23.3.6.4: a derived fact is explained when every prerequisite leads, without an unresolved link or a cycle, to a
-    // direct Error. The least fixed point is computed without recursion: a cycle never becomes explained.
+    // direct Error. Satisfied keys propagate through a queue: each derived fact counts its unsatisfied prerequisites, and one
+    // that reaches zero satisfies its own key. This is linear in facts and prerequisites; a cycle never becomes explained.
     private static bool[] Explain(List<DiagnosticFact> facts)
     {
         var explained = new bool[facts.Count];
-        var derivedCount = 0;
-        Dictionary<DiagnosticKey, int>? directErrors = null;
-        Dictionary<DiagnosticKey, List<int>>? derivedByKey = null;
+        Dictionary<DiagnosticKey, List<int>>? watchers = null;
+        int[]? pending = null;
         for (var i = 0; i < facts.Count; i++)
         {
-            var fact = facts[i];
-            if (fact.Legacy)
+            if (facts[i] is { Legacy: false, DerivedFrom: { } prerequisites })
             {
-                continue;
-            }
-
-            if (fact.DerivedFrom is not null)
-            {
-                derivedCount++;
-                derivedByKey ??= [];
-                if (!derivedByKey.TryGetValue(fact.Key, out var list))
+                watchers ??= [];
+                pending ??= new int[facts.Count];
+                foreach (var key in prerequisites)
                 {
-                    derivedByKey.Add(fact.Key, list = []);
-                }
+                    // An unresolved mark is never satisfied, so the fact stays pending.
+                    pending[i]++;
+                    if (!key.IsUnresolved)
+                    {
+                        if (!watchers.TryGetValue(key, out var list))
+                        {
+                            watchers.Add(key, list = []);
+                        }
 
-                list.Add(i);
-            }
-            else if (DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
-            {
-                (directErrors ??= [])[fact.Key] = i;
+                        list.Add(i);
+                    }
+                }
             }
         }
 
-        if (derivedCount == 0)
+        if (watchers is null)
         {
             return explained;
         }
 
-        for (var changed = true; changed;)
+        var satisfied = new HashSet<DiagnosticKey>();
+        var queue = new Queue<DiagnosticKey>();
+        foreach (var fact in facts)
         {
-            changed = false;
-            for (var i = 0; i < facts.Count; i++)
+            if (!fact.Legacy && fact.DerivedFrom is null && DiagnosticEntries.TryGet(fact.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error && satisfied.Add(fact.Key))
             {
-                if (explained[i] || facts[i].DerivedFrom is not { } prerequisites)
-                {
-                    continue;
-                }
+                queue.Enqueue(fact.Key);
+            }
+        }
 
-                var satisfied = true;
-                foreach (var key in prerequisites)
+        while (queue.TryDequeue(out var key))
+        {
+            if (!watchers.TryGetValue(key, out var list))
+            {
+                continue;
+            }
+
+            foreach (var index in list)
+            {
+                if (--pending![index] == 0)
                 {
-                    if (key.IsUnresolved || !(directErrors?.ContainsKey(key) == true || (derivedByKey!.TryGetValue(key, out var derived) && derived.Exists(x => explained[x]))))
+                    explained[index] = true;
+                    if (satisfied.Add(facts[index].Key))
                     {
-                        satisfied = false;
-                        break;
+                        queue.Enqueue(facts[index].Key);
                     }
-                }
-
-                if (satisfied)
-                {
-                    explained[i] = changed = true;
                 }
             }
         }

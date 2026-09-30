@@ -154,7 +154,7 @@ public sealed partial class Binding
             {
                 if (this.importedContainerEnvironments.TryGetValue(use, out var previous) && !ReferenceEquals(previous, importedEnvironment))
                 {
-                    Fail(use, BindingFailure.Ambiguous, true);
+                    this.Fail(use, BindingFailure.Ambiguous, true);
                     return null;
                 }
 
@@ -221,7 +221,7 @@ public sealed partial class Binding
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
-                    Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                    this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                     return null;
                 }
 
@@ -231,7 +231,7 @@ public sealed partial class Binding
                 reference = alias.BoundType!;
                 if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
                 {
-                    Fail(alias, BindingFailure.InvalidOrigin);
+                    this.Fail(alias, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
@@ -250,19 +250,19 @@ public sealed partial class Binding
             var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), declarationScope, alias, false) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
             if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
-                Fail(alias, BindingFailure.MissingName, true);
+                this.Fail(alias, BindingFailure.MissingName, true);
                 return null;
             }
 
             if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 } or DeclarationContainerKoto { OriginNames.Count: > 0 })
             {
-                Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                 return null;
             }
 
             if (symbol.Declaration is DeclarationContainerKoto { HasIncompatibleBindingHeader: true })
             {
-                Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                 return null;
             }
 
@@ -272,7 +272,7 @@ public sealed partial class Binding
 
         if (alias.QualifiedName.Count == 0 || (alias.Name is not null && scope.Owner is not GroupKoto))
         {
-            Fail(alias, BindingFailure.InvalidTypeFormation, true);
+            this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
             return null;
         }
 
@@ -407,9 +407,11 @@ public sealed partial class Binding
 
         if (!this.resolvingTypes.Add(syntax))
         {
-            return Fail(syntax, BindingFailure.Cycle, true);
+            return this.Fail(syntax, BindingFailure.Cycle, true);
         }
 
+        // A Type expression is checked like an expression: the components that failed are its prerequisites.
+        var frame = this.BeginConsultation(syntax);
         try
         {
             var owner = OriginOwner(syntax);
@@ -429,6 +431,8 @@ public sealed partial class Binding
         finally
         {
             this.resolvingTypes.Remove(syntax);
+            this.EndConsultation(syntax, frame);
+            this.Consulted(syntax);
         }
     }
 
@@ -463,7 +467,7 @@ public sealed partial class Binding
                 // Function Types and anonymous functions with Place results remain a boundary).
                 if (place.Parent is not FunctionKoto { IsAnonymous: false } owner || !ReferenceEquals(owner.ReturnType, place))
                 {
-                    return Fail(place, BindingFailure.Unsupported);
+                    return this.Fail(place, BindingFailure.Unsupported);
                 }
 
                 return this.BindType(place.Type, scope, context);
@@ -510,7 +514,7 @@ public sealed partial class Binding
                         var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
-                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
 
                         syntax.BoundSymbol = parameter;
@@ -550,7 +554,7 @@ public sealed partial class Binding
                         }
                         else if (inner.Semantics != SemanticsKind.Owner || ReferenceEquals(inner, BoundType.Never))
                         {
-                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
                         else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
                         {
@@ -581,7 +585,7 @@ public sealed partial class Binding
                 var length = this.BindLength(array.Length, scope);
                 if (length is null)
                 {
-                    return Fail(array, BindingFailure.InvalidTypeFormation);
+                    return this.Fail(array, BindingFailure.InvalidTypeFormation);
                 }
 
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
@@ -610,27 +614,27 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return Fail(syntax, BindingFailure.MissingType, true);
+            return this.Fail(syntax, BindingFailure.MissingType, true);
         }
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
         if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
         {
-            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
 
         if (symbol.Kind == BindingSymbolKind.AssociatedType)
         {
             if (this.UnappliedFamily(symbol.Declaration, applyingOrigins))
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
             var self = this.EnclosingContractSelf(scope);
             if (self is null)
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
             symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax, out var reference);
@@ -666,12 +670,12 @@ public sealed partial class Binding
     {
         if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
         {
-            return Fail(generic, BindingFailure.InvalidTypeFormation);
+            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
         if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            return Fail(generic, BindingFailure.TypeMismatch);
+            return this.Fail(generic, BindingFailure.TypeMismatch);
         }
 
         generic.Identifier!.BoundSymbol = definition;

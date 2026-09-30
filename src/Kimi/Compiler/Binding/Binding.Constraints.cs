@@ -311,7 +311,7 @@ public sealed partial class Binding
                     // SPEC 8.4, Appendix D: a Contract declares Type parameters; Contract-owned Origin parameters are not introduced.
                     if (container is ContractKoto && container.OriginNames.Count != 0)
                     {
-                        Fail(container, BindingFailure.InvalidConstraint);
+                        this.Fail(container, BindingFailure.InvalidConstraint);
                     }
 
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
@@ -388,7 +388,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
-            Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
             return;
         }
 
@@ -404,7 +404,7 @@ public sealed partial class Binding
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject ? BoundType.Unit : subject, semantics, bindingScope);
         if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
         {
-            Fail(clause, BindingFailure.Unsupported, true);
+            this.Fail(clause, BindingFailure.Unsupported, true);
             return;
         }
 
@@ -439,7 +439,7 @@ public sealed partial class Binding
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
-            Fail(clause, BindingFailure.InvalidConstraint);
+            this.Fail(clause, BindingFailure.InvalidConstraint);
         }
 
         clause.BoundConstraint = requirement;
@@ -514,7 +514,7 @@ public sealed partial class Binding
 
         if (result.Kind == ConstraintKind.Error)
         {
-            Fail(node, BindingFailure.InvalidConstraint);
+            this.Fail(node, BindingFailure.InvalidConstraint);
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)
         {

@@ -194,8 +194,8 @@ public sealed partial class Binding
                 {
                     if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause && !ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
                     {
-                        Fail(clause, BindingFailure.Access);
-                        Fail(premises.Parent!, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(premises.Parent!, BindingFailure.Access);
                         return Invalid(BindingFailure.Access);
                     }
                 }
@@ -424,7 +424,7 @@ public sealed partial class Binding
         ConstraintProof Invalid(BindingFailure failure)
         {
             conformance.Invalid = true;
-            Fail(conformance.Use, failure);
+            this.Fail(conformance.Use, failure);
             return ConstraintProof.Error;
         }
     }

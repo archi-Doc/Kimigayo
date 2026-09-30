@@ -26,7 +26,7 @@ public sealed partial class Binding
 
                 if (actual is null || !this.CheckTypeUse(actual, key, source.Right))
                 {
-                    return Fail(source, BindingFailure.TypeMismatch);
+                    return this.Fail(source, BindingFailure.TypeMismatch);
                 }
 
                 ((IndexKoto)source).DictionaryKeyReference = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: this.PlaceOrigin(source.Right));
@@ -39,7 +39,7 @@ public sealed partial class Binding
                 var offset = this.RequireType(source.Right, scope, BoundType.ISize);
                 return offset is not null && FitsType(offset, BoundType.ISize) &&
                     KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
-                    ? Complete(source, receiver!.Components[0]) : Fail(source, BindingFailure.TypeMismatch);
+                    ? Complete(source, receiver!.Components[0]) : this.Fail(source, BindingFailure.TypeMismatch);
             }
 
             if (receiver is not null && this.TryBindKeyedSelection((IndexKoto)source, scope, receiver, out var keyed))
@@ -68,7 +68,7 @@ public sealed partial class Binding
             if (receiver is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !ReferenceEquals(receiver, BoundType.Never))
             {
                 this.BindNode(source.Right, scope);
-                return Fail(source, BindingFailure.Unsupported);
+                return this.Fail(source, BindingFailure.Unsupported);
             }
 
             if (ReferenceEquals(receiver, BoundType.Never))
@@ -92,7 +92,7 @@ public sealed partial class Binding
             if (ReferenceTypes.IsTuple(receiver))
             {
                 return ElementAccess.TryBorrowedTupleElement(source, out var borrowedElement, out _)
-                    ? Complete(source, borrowedElement) : Fail(source, BindingFailure.TypeMismatch);
+                    ? Complete(source, borrowedElement) : this.Fail(source, BindingFailure.TypeMismatch);
             }
         }
 
@@ -103,7 +103,7 @@ public sealed partial class Binding
 
         if (!ElementAccess.TryType(source, out var element, out _))
         {
-            return Fail(source, receiver?.Kind == BoundTypeKind.Tuple ? BindingFailure.TypeMismatch : BindingFailure.Unsupported);
+            return this.Fail(source, receiver?.Kind == BoundTypeKind.Tuple ? BindingFailure.TypeMismatch : BindingFailure.Unsupported);
         }
 
         return Complete(source, element);

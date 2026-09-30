@@ -76,10 +76,7 @@ public static class DiagnosticRequirements
             yield return DiagnosticRequirement.Syntax;
             foreach (var failure in Enum.GetValues<BindingFailure>())
             {
-                if (failure != BindingFailure.None)
-                {
-                    yield return DiagnosticRequirement.Binding(failure);
-                }
+                yield return DiagnosticRequirement.Binding(failure);
             }
 
             yield return DiagnosticRequirement.Startup;
@@ -103,7 +100,7 @@ public static class DiagnosticRequirements
     {
         DiagnosticPartition.Input => "Input",
         DiagnosticPartition.Syntax => "Syntax",
-        DiagnosticPartition.Binding => "Binding." + (BindingFailure)requirement.Kind,
+        DiagnosticPartition.Binding => requirement.Kind == 0 ? "Binding" : "Binding." + (BindingFailure)requirement.Kind,
         DiagnosticPartition.Startup => "Startup",
         DiagnosticPartition.ControlFlow => "ControlFlow",
         DiagnosticPartition.Ownership => "Ownership." + (OwnershipFailure)requirement.Kind,

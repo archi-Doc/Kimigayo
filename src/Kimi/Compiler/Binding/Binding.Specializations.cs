@@ -236,7 +236,7 @@ public sealed partial class Binding
             // restated parameter matched at the original's position (SPEC 8.8.1).
             if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
-                Fail(function, BindingFailure.Unsupported, true);
+                this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
@@ -245,7 +245,7 @@ public sealed partial class Binding
             if (function.Modifier != ModifierKind.NoModifier || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 ||
                 HasParameterDefaults(function))
             {
-                Fail(function, BindingFailure.IncompatibleImplementation);
+                this.Fail(function, BindingFailure.IncompatibleImplementation);
                 continue;
             }
 
@@ -277,7 +277,7 @@ public sealed partial class Binding
 
             if (!closed)
             {
-                Fail(function, BindingFailure.InvalidTypeFormation);
+                this.Fail(function, BindingFailure.InvalidTypeFormation);
                 continue;
             }
 
@@ -316,14 +316,14 @@ public sealed partial class Binding
             if (matches != 1)
             {
                 // SPEC 8.8.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
-                Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
                 continue;
             }
 
             var definition = (FunctionKoto)original!.Declaration;
             if (definition.AttributeChain is not null || HasParameterAttributes(definition))
             {
-                Fail(function, BindingFailure.Unsupported, true);
+                this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
@@ -331,7 +331,7 @@ public sealed partial class Binding
             var constraints = this.CheckConstraints(definition.TypeConstraints, definition, arguments, scope, null, null, lengths);
             if (constraints != ConstraintProof.Proven)
             {
-                Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : constraints == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, constraints == ConstraintProof.Unknown);
+                this.Fail(function, constraints == ConstraintProof.Error ? BindingFailure.InvalidConstraint : constraints == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, constraints == ConstraintProof.Unknown);
                 continue;
             }
 
@@ -343,7 +343,7 @@ public sealed partial class Binding
 
             if (!valid)
             {
-                Fail(function, BindingFailure.IncompatibleImplementation);
+                this.Fail(function, BindingFailure.IncompatibleImplementation);
                 continue;
             }
 
@@ -358,8 +358,8 @@ public sealed partial class Binding
                 var previous = this.specializations[siblings[i]];
                 if (SameSpecializationArguments(previous.Arguments, arguments) && SameSpecializationLengths(previous.Lengths, lengths))
                 {
-                    Fail(siblings[i], BindingFailure.Duplicate);
-                    Fail(function, BindingFailure.Duplicate);
+                    this.Fail(siblings[i], BindingFailure.Duplicate);
+                    this.Fail(function, BindingFailure.Duplicate);
                     valid = false;
                 }
             }

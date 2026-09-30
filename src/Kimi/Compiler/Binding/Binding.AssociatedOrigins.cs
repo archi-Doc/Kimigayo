@@ -143,14 +143,14 @@ public sealed partial class Binding
         var qualifier = this.TypeName(member.Left, scope, false);
         if (qualifier?.Declaration is not ContractKoto || ReferenceEquals(qualifier, owner) || !IsRefinement(owner, qualifier) || TypeSpelling(member.Right) is not { } name)
         {
-            return Fail(clause, BindingFailure.InvalidAssociatedType);
+            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
         var self = this.ContractSelfType(owner);
         var associated = this.FindAssociated(self, scope, name, qualifier, clause, out var reference);
         if (associated is null || this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count)
         {
-            return Fail(clause, BindingFailure.InvalidAssociatedType);
+            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
         }
 
         var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: this.AssociatedParameters(associated.Declaration));
@@ -184,7 +184,7 @@ public sealed partial class Binding
                 var syntax = application.ArgumentNodes[i];
                 if (syntax is not IdentifierNameKoto { IdentifierName: not ("_" or "static") } name)
                 {
-                    Fail(node, BindingFailure.InvalidOrigin);
+                    this.Fail(node, BindingFailure.InvalidOrigin);
                     continue;
                 }
 
@@ -196,14 +196,14 @@ public sealed partial class Binding
                         enclosing.OriginSets?.ContainsKey(name.IdentifierName) == true ||
                         this.originDeclarations.GetValueOrDefault(enclosing.Owner)?.Sets.ContainsKey(name.IdentifierName) == true)
                     {
-                        Fail(node, BindingFailure.Duplicate);
+                        this.Fail(node, BindingFailure.Duplicate);
                     }
                 }
 
                 scope.Origins ??= new(StringComparer.Ordinal);
                 if (!scope.Origins.TryAdd(name.IdentifierName, origin))
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
 
                 Complete(syntax, BoundType.Unit);
@@ -219,7 +219,7 @@ public sealed partial class Binding
         if (projection?.Kind != BoundTypeKind.AssociatedProjection || projection.Symbol is not { } associated ||
             this.AssociatedParameters(associated.Declaration).Length != application.ArgumentNodes.Count || application.ArgumentNodes.Count == 0)
         {
-            return Fail(application, BindingFailure.InvalidAssociatedType);
+            return this.Fail(application, BindingFailure.InvalidAssociatedType);
         }
 
         var arguments = this.originScratch.Rent(application.ArgumentNodes.Count);
@@ -229,7 +229,7 @@ public sealed partial class Binding
             {
                 if (this.BindOrigin(application.ArgumentNodes[i], scope) is not { } origin)
                 {
-                    return Fail(application, BindingFailure.InvalidOrigin);
+                    return this.Fail(application, BindingFailure.InvalidOrigin);
                 }
 
                 arguments[i] = origin;
@@ -267,7 +267,7 @@ public sealed partial class Binding
                 definition = this.SubstituteStoredOrigins(definition, associated.Declaration, this.AssociatedParameters(node));
                 if (!this.CheckAssociatedFormation(definition, node))
                 {
-                    Fail(node, BindingFailure.InvalidOrigin);
+                    this.Fail(node, BindingFailure.InvalidOrigin);
                 }
             }
         }
@@ -287,7 +287,7 @@ public sealed partial class Binding
             if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven ||
                 (formation is not null && !this.CheckAssociatedFormation(formation, use)))
             {
-                Fail(use, BindingFailure.InvalidOrigin);
+                this.Fail(use, BindingFailure.InvalidOrigin);
             }
         }
     }

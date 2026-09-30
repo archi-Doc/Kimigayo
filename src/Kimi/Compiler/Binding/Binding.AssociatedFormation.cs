@@ -69,13 +69,13 @@ public sealed partial class Binding
 
         if (!IsAssociatedRequirement(declaration) || (declaration is IsKoto clause && AssociatedIdentityType(clause.BoundConstraint) is not null))
         {
-            Fail(declaration, BindingFailure.InvalidAssociatedType);
+            this.Fail(declaration, BindingFailure.InvalidAssociatedType);
             return;
         }
 
         if (this.BindType(syntax, scope) is { } type && !HasSupportedAssociatedFormation(type))
         {
-            Fail(declaration, BindingFailure.Unsupported);
+            this.Fail(declaration, BindingFailure.Unsupported);
         }
     }
 

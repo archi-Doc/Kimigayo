@@ -13,7 +13,7 @@ public sealed partial class Binding
         if (expected is not { Kind: BoundTypeKind.Dictionary, Components.Count: 2 })
         {
             this.BindUnknownChildren(literal, scope);
-            return Fail(literal, BindingFailure.Unsupported);
+            return this.Fail(literal, BindingFailure.Unsupported);
         }
 
         BoundType? key = null;
@@ -43,7 +43,7 @@ public sealed partial class Binding
             var syntax = literal.Entries[i].Key;
             if (syntax.BoundType is { } actual && this.TryDictionaryLiteralKey(syntax, actual, out var constant) && !this.dictionaryLiteralKeys.Add(constant))
             {
-                Fail(syntax, BindingFailure.DuplicateDictionaryKey);
+                this.Fail(syntax, BindingFailure.DuplicateDictionaryKey);
                 complete = false;
             }
         }

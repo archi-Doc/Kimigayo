@@ -36,7 +36,7 @@ public sealed partial class Binding
         var inherited = parent?.BoundSymbol?.Schema;
         if (own.Length != declaration.GenericParameterNodes.Count)
         {
-            return Fail(syntax, BindingFailure.TypeMismatch);
+            return this.Fail(syntax, BindingFailure.TypeMismatch);
         }
 
         BoundType? environment = this.ImportedEnvironment(syntax);
@@ -94,7 +94,7 @@ public sealed partial class Binding
 
         if (environment is null || environment.Components.Count != inherited.GenericSlots.Count)
         {
-            return Fail(syntax, BindingFailure.TypeMismatch);
+            return this.Fail(syntax, BindingFailure.TypeMismatch);
         }
 
         var count = own.Length + environment.Components.Count;

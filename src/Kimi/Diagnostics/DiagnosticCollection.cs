@@ -51,6 +51,11 @@ public sealed class DiagnosticCollection
         return new(this.Owner, this.Name, this.Unit, module, document);
     }
 
+    /// <summary>Registers a document in the source table in consumption order, without creating a target.</summary>
+    /// <param name="document">The document.</param>
+    public void Register(SourceDocument document)
+        => this.SourceOf(document);
+
     /// <summary>Reports a lexical or syntax problem of this target's module; its subject is its span.</summary>
     /// <param name="range">The span; it must be the default value when no source applies.</param>
     /// <param name="code">The code.</param>

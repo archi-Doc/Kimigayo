@@ -61,14 +61,14 @@ public sealed partial class Binding
             };
             if (!allowed)
             {
-                Fail(member, BindingFailure.InvalidConstraint);
+                this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
         }
 
         if (!valid)
         {
-            Fail(syntax, BindingFailure.InvalidConstraint);
+            this.Fail(syntax, BindingFailure.InvalidConstraint);
             (this.scopes[syntax].Constraints ??= new()).Invalid = true;
         }
     }
@@ -95,7 +95,7 @@ public sealed partial class Binding
                     this.BindAssociatedSpecification(clause, scope, owner.BoundSymbol!);
                     if (scope.ConformancePath is not { } declaringPath || !declaringPath.RootContract.Contract!.AssociatedStorage.Contains(clause.BoundSymbol!))
                     {
-                        Fail(clause, BindingFailure.InvalidAssociatedType);
+                        this.Fail(clause, BindingFailure.InvalidAssociatedType);
                     }
                 }
             }

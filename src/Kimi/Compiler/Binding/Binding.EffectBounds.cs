@@ -49,7 +49,7 @@ public sealed partial class Binding
         {
             if (this.EffectBoundViolation(this.activeConformancePaths[i], false) is { } path)
             {
-                Fail(path.Use, BindingFailure.IncompatibleImplementation);
+                this.Fail(path.Use, BindingFailure.IncompatibleImplementation);
             }
         }
     }

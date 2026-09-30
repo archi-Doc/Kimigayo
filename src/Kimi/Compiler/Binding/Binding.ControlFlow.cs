@@ -418,7 +418,7 @@ public sealed partial class Binding
         types.Clear();
         if (context.Invalid)
         {
-            return Fail(node, BindingFailure.TypeMismatch);
+            return this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Pending)

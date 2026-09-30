@@ -30,7 +30,7 @@ public sealed partial class Binding
         {
             if (unwrapped is not GenericsKoto generic || generic.TypeArguments.Count != container.GenericParameterNodes.Count)
             {
-                Fail(syntax, BindingFailure.TypeMismatch);
+                this.Fail(syntax, BindingFailure.TypeMismatch);
                 return null;
             }
 
@@ -47,7 +47,7 @@ public sealed partial class Binding
         reference = reference is null ? null : this.CompleteOrigins(reference, syntax as TypeSemanticsKoto, syntax, scope, context);
         if (reference is null || reference.OriginArguments.Count != declaration.Schema.Origins.Count || reference.OriginArguments.Contains(null!))
         {
-            Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Fail(syntax, BindingFailure.InvalidOrigin);
             return null;
         }
 

@@ -285,7 +285,7 @@ public sealed partial class Binding
         {
             if (shape.State == 1)
             {
-                Fail(contract, BindingFailure.Cycle);
+                this.Fail(contract, BindingFailure.Cycle);
                 return false;
             }
 
@@ -299,7 +299,7 @@ public sealed partial class Binding
             var syntax = contract.Bases[i];
             if (!IsRefinementName(syntax))
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
             }
@@ -327,7 +327,7 @@ public sealed partial class Binding
             if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
                 (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
             }
@@ -360,7 +360,7 @@ public sealed partial class Binding
                 var arguments = this.BindTypeList(generic, generic.TypeArguments, this.scopes[contract], this.TypeContext(generic, this.scopes[contract]).Nested, BoundTypeKind.Constructed, parent);
                 if (arguments is null)
                 {
-                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    this.Fail(syntax, BindingFailure.InvalidConstraint);
                     valid = false;
                     continue;
                 }
@@ -402,7 +402,7 @@ public sealed partial class Binding
             }
             else
             {
-                Fail(member, BindingFailure.InvalidConstraint);
+                this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
         }
@@ -434,7 +434,7 @@ public sealed partial class Binding
 
         if (!valid)
         {
-            Fail(contract, BindingFailure.InvalidConstraint);
+            this.Fail(contract, BindingFailure.InvalidConstraint);
         }
 
         return valid;
@@ -486,7 +486,7 @@ public sealed partial class Binding
             }
             else if (constraint.Contract is { } closed && this.IsClosedContractGrant(closed, type))
             {
-                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
             }
             else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
@@ -494,11 +494,11 @@ public sealed partial class Binding
             }
             else if (constraint.Contract?.Intrinsic == IntrinsicKind.Sealed)
             {
-                Fail(use, BindingFailure.InvalidConstraint);
+                this.Fail(use, BindingFailure.InvalidConstraint);
             }
             else if (constraint.Contract?.Intrinsic is IntrinsicKind.ObjectPayload or IntrinsicKind.PrimitiveInteger)
             {
-                Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2-3: users cannot grant ObjectPayload or PrimitiveInteger.
+                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.4.7.2-3: users cannot grant ObjectPayload or PrimitiveInteger.
             }
             else if (constraint.Kind == ConstraintKind.Not)
             {
@@ -509,7 +509,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    Fail(use, BindingFailure.InvalidSelfClause);
+                    this.Fail(use, BindingFailure.InvalidSelfClause);
                 }
             }
         }
@@ -553,8 +553,8 @@ public sealed partial class Binding
                     this.ContractBindingsMayCollide(identity.Contract, contract, scope))
                 {
                     identity.Invalid = true;
-                    Fail(clause, BindingFailure.Duplicate);
-                    Fail(use, BindingFailure.Duplicate);
+                    this.Fail(clause, BindingFailure.Duplicate);
+                    this.Fail(use, BindingFailure.Duplicate);
                 }
             }
         }
@@ -563,8 +563,8 @@ public sealed partial class Binding
         if (direct.Identity.DirectClause is { } previous)
         {
             direct.Identity.Invalid = true;
-            Fail(use, BindingFailure.Duplicate);
-            Fail(previous, BindingFailure.Duplicate);
+            this.Fail(use, BindingFailure.Duplicate);
+            this.Fail(previous, BindingFailure.Duplicate);
         }
 
         direct.Identity.DirectClause = use;
@@ -808,7 +808,7 @@ public sealed partial class Binding
                     if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !ReferenceEquals(ta, previous))
                     {
                         environment.Invalid = true;
-                        Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
+                        this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
                     }
 
                     this.associatedIdentityChecks[a.Subject] = ta;
@@ -824,7 +824,7 @@ public sealed partial class Binding
             {
                 if (!AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
                 {
-                    Fail(contract, BindingFailure.Access);
+                    this.Fail(contract, BindingFailure.Access);
                 }
             }
 
@@ -840,14 +840,14 @@ public sealed partial class Binding
                     var declaringContract = members[i].Scope.Owner.BoundSymbol!;
                     if (a.BoundSymbol!.Type is { } result && !TypeAccessCovers(result, declaringContract, declaringContract))
                     {
-                        Fail(a, BindingFailure.Access);
+                        this.Fail(a, BindingFailure.Access);
                     }
 
                     for (var p = 0; p < a.Parameters.Count; p++)
                     {
                         if (a.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, declaringContract, declaringContract))
                         {
-                            Fail(a, BindingFailure.Access);
+                            this.Fail(a, BindingFailure.Access);
                         }
                     }
 
@@ -855,7 +855,7 @@ public sealed partial class Binding
                     {
                         if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, declaringContract))
                         {
-                            Fail(a, BindingFailure.Access);
+                            this.Fail(a, BindingFailure.Access);
                         }
                     }
 
@@ -882,7 +882,7 @@ public sealed partial class Binding
 
                         if (sameSignature && (differentLabels || !SameGenericShape(a, b)))
                         {
-                            Fail(contract, BindingFailure.InvalidConstraint);
+                            this.Fail(contract, BindingFailure.InvalidConstraint);
                         }
                     }
                 }
@@ -892,8 +892,8 @@ public sealed partial class Binding
             {
                 if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, shape.Symbol) || (shape.ClauseStorage[i].Left.BoundType is { } subject && !TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
                 {
-                    Fail(shape.ClauseStorage[i], BindingFailure.Access);
-                    Fail(contract, BindingFailure.Access);
+                    this.Fail(shape.ClauseStorage[i], BindingFailure.Access);
+                    this.Fail(contract, BindingFailure.Access);
                 }
             }
         }

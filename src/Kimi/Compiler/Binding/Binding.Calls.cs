@@ -182,7 +182,7 @@ public sealed partial class Binding
             {
                 if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
                 {
-                    Fail(member.Left, BindingFailure.InvalidOrigin);
+                    this.Fail(member.Left, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
@@ -230,7 +230,7 @@ public sealed partial class Binding
 
         if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
-            Fail(member, BindingFailure.Ambiguous, true);
+            this.Fail(member, BindingFailure.Ambiguous, true);
             return null;
         }
 
@@ -252,7 +252,7 @@ public sealed partial class Binding
 
             if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
             {
-                Fail(member, BindingFailure.Access);
+                this.Fail(member, BindingFailure.Access);
                 return null;
             }
 
@@ -319,7 +319,10 @@ public sealed partial class Binding
         }
         else if (callee is MemberAccessKoto member)
         {
+            // The callee is checked in its own frame: what its lookup consults is its prerequisite, not the call's.
+            var frame = this.BeginConsultation(member);
             group = this.Member(member, scope, expected);
+            this.EndConsultation(member, frame);
         }
         else if (callee is SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred)
         {
@@ -335,7 +338,7 @@ public sealed partial class Binding
         {
             return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
                 ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
-                : Fail(call, BindingFailure.NotCallable);
+                : this.Fail(call, BindingFailure.NotCallable);
         }
 
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
@@ -370,15 +373,25 @@ public sealed partial class Binding
 
             if (!IsUnfittedLiteral(argument) && this.BindNode(argument, scope) is null)
             {
+                if (argument is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
+                {
+                    // A function group resolves for call selection only; passing it as a value is not yet implemented (P26).
+                    this.Fail(argument, BindingFailure.Unsupported, true);
+                }
+
                 unknownArgument = true;
             }
         }
 
         if (group is null)
         {
-            if (!this.ReportUnavailableQualifier(callee, scope))
+            if (this.ReportUnavailableQualifier(callee, scope) is { } qualifier)
             {
-                Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
+                this.CompleteDependent(callee, qualifier);
+            }
+            else
+            {
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
             }
 
             return Complete(call, null);
@@ -386,7 +399,7 @@ public sealed partial class Binding
 
         if (group.Kind != BindingSymbolKind.Function)
         {
-            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : Fail(call, BindingFailure.NotCallable);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
         if (unknownArgument)
@@ -474,7 +487,7 @@ public sealed partial class Binding
                         {
                             // Both namespaces can supply this spelling. Do not silently choose
                             // a kind before candidate-local dual-namespace binding is available.
-                            return Fail(call, BindingFailure.Unsupported, true);
+                            return this.Fail(call, BindingFailure.Unsupported, true);
                         }
 
                         isLength = !typeSlot;
@@ -541,18 +554,18 @@ public sealed partial class Binding
 
             if (error)
             {
-                return Fail(call, BindingFailure.InvalidConstraint);
+                return this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (pending)
             {
-                return Fail(call, BindingFailure.UnprovenConstraint, true);
+                return this.Fail(call, BindingFailure.UnprovenConstraint, true);
             }
 
             if (applicable == 0)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                return Fail(call, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate, true);
+                return this.Fail(call, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate, true);
             }
 
             if (applicable > 1)
@@ -560,7 +573,7 @@ public sealed partial class Binding
                 winnerIndex = SelectBest(evaluated.AsSpan(0, count), operations, operationStride);
                 if (winnerIndex < 0)
                 {
-                    return Fail(call, BindingFailure.Ambiguous, true);
+                    return this.Fail(call, BindingFailure.Ambiguous, true);
                 }
             }
 
@@ -581,14 +594,14 @@ public sealed partial class Binding
             {
                 if (selected.GenericArguments[i] is LengthParameterKoto ? lengthArguments[i] is null : scratch[i] is null)
                 {
-                    return Fail(call, BindingFailure.MissingType, true);
+                    return this.Fail(call, BindingFailure.MissingType, true);
                 }
             }
 
             var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
             if (result is null)
             {
-                return Fail(call, BindingFailure.MissingType, true);
+                return this.Fail(call, BindingFailure.MissingType, true);
             }
 
             var selectedOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
@@ -602,7 +615,7 @@ public sealed partial class Binding
                     // Pending effect verification is an implementation boundary, not a
                     // completed public NotProven guarantee (SPEC 12.4.4.1).
                     var pendingEffects = receiverOperation.ObjectCompatibility == ConstraintProof.Unknown;
-                    return Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
+                    return this.Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
                 }
             }
 
@@ -646,7 +659,7 @@ public sealed partial class Binding
                         if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
                             this.CallType(pattern, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) is not { } parameterType)
                         {
-                            return Fail(call, BindingFailure.MissingType, true);
+                            return this.Fail(call, BindingFailure.MissingType, true);
                         }
 
                         defaults[defaultIndex++] = new(expression, this.ParameterSymbol(selected, i), parameterType);

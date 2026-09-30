@@ -201,7 +201,7 @@ public sealed partial class Binding
         {
             if (subject?.Kind != BoundTypeKind.Constructed || subject.Semantics != SemanticsKind.Owner || (subject.Symbol != this.Library.Option && subject.Symbol != this.Library.Result))
             {
-                return Fail(match, BindingFailure.TypeMismatch);
+                return this.Fail(match, BindingFailure.TypeMismatch);
             }
 
             propagation.SelectOption(subject.Symbol == this.Library.Option);
@@ -224,7 +224,7 @@ public sealed partial class Binding
         if (subject is null)
         {
             plan.Pending = true;
-            return Fail(match, BindingFailure.Unsupported, true);
+            return this.Fail(match, BindingFailure.Unsupported, true);
         }
 
         for (var i = 0; i < match.Arms.Count; i++)
@@ -255,7 +255,7 @@ public sealed partial class Binding
                 // Implicit shared inspection needs candidate/body Loan semantics before
                 // the ordinary expression binder may use these Pattern bindings.
                 this.MarkUnsupportedTree(arm.Body);
-                Fail(arm.Body, BindingFailure.Unsupported, true);
+                this.Fail(arm.Body, BindingFailure.Unsupported, true);
                 pendingBody = true;
                 continue;
             }
@@ -266,8 +266,8 @@ public sealed partial class Binding
                 {
                     this.MarkUnsupportedTree(guard);
                     this.MarkUnsupportedTree(arm.Body);
-                    Fail(guard, BindingFailure.Unsupported, true);
-                    Fail(arm.Body, BindingFailure.Unsupported, true);
+                    this.Fail(guard, BindingFailure.Unsupported, true);
+                    this.Fail(arm.Body, BindingFailure.Unsupported, true);
                     pendingBody = true;
                     continue;
                 }
@@ -276,7 +276,7 @@ public sealed partial class Binding
                 pendingBody |= guardType is null;
                 if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
                 {
-                    Fail(guard, BindingFailure.TypeMismatch);
+                    this.Fail(guard, BindingFailure.TypeMismatch);
                     plan.Invalid = true;
                 }
             }
@@ -293,12 +293,12 @@ public sealed partial class Binding
 
         if (plan.Invalid)
         {
-            return Fail(match, BindingFailure.InvalidPattern);
+            return this.Fail(match, BindingFailure.InvalidPattern);
         }
 
         if (plan.Pending || pendingBody)
         {
-            return Fail(match, BindingFailure.Unsupported, true);
+            return this.Fail(match, BindingFailure.Unsupported, true);
         }
 
         plan.ResultType = this.FinishResult(match, resultContext);
@@ -409,7 +409,7 @@ public sealed partial class Binding
         if (structural && type.Semantics != SemanticsKind.Owner)
         {
             plan.Invalid = true;
-            Fail(syntax, BindingFailure.InvalidPattern);
+            this.Fail(syntax, BindingFailure.InvalidPattern);
             return index;
         }
 
@@ -469,7 +469,7 @@ public sealed partial class Binding
                     if (payload is null)
                     {
                         plan.Invalid = true;
-                        Fail(children[i], BindingFailure.InvalidPattern);
+                        this.Fail(children[i], BindingFailure.InvalidPattern);
                     }
                     else
                     {
@@ -497,12 +497,12 @@ public sealed partial class Binding
         if (position.Kind == BoundPatternKind.Invalid)
         {
             plan.Invalid = true;
-            Fail(syntax, BindingFailure.InvalidPattern);
+            this.Fail(syntax, BindingFailure.InvalidPattern);
         }
         else if (unsupported)
         {
             plan.Pending = true;
-            Fail(syntax, BindingFailure.Unsupported, true);
+            this.Fail(syntax, BindingFailure.Unsupported, true);
         }
         else
         {
@@ -597,7 +597,7 @@ public sealed partial class Binding
 
         plan.Invalid |= proof != ConstraintProof.Unknown;
         plan.Pending |= proof == ConstraintProof.Unknown;
-        Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+        this.Fail(syntax, proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
         return false;
     }
 
@@ -632,13 +632,13 @@ public sealed partial class Binding
                 {
                     plan.Invalid = true;
                     plan.Coverage = new(MatchCoverageState.Invalid);
-                    Fail(position.Source, BindingFailure.InvalidConstraint);
+                    this.Fail(position.Source, BindingFailure.InvalidConstraint);
                 }
             }
 
             if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
             {
-                Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
+                this.Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);
             }
 
             // Publish coverage warnings only after all Pattern Type checks have completed.

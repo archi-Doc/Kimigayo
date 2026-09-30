@@ -36,14 +36,19 @@ public sealed partial class Binding
     internal static bool IsCopyOperation(ConversionKoto conversion)
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
 
+    // SPEC 13.5: a bare Semantics name or operation directly after @ completes the operation. A grouped target is a Type,
+    // so a grouped bare name such as (ref) is bound, and rejected, as a Type; grouping stays transparent for complete targets.
+    // A bare owning shorthand names no Core wherever it is written and keeps its own diagnostic (SPEC 13.5.3).
     private static Koto ConversionTargetSyntax(ConversionKoto conversion)
     {
         var syntax = conversion.Right;
+        var grouped = false;
         while (true)
         {
             if (syntax is ParenthesizedTypeKoto parentheses)
             {
                 syntax = parentheses.Type;
+                grouped = true;
             }
             else if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
             {
@@ -51,7 +56,9 @@ public sealed partial class Binding
             }
             else
             {
-                return syntax;
+                return grouped && syntax is TypeSemanticsKoto { Type: null } bare &&
+                    !(CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+                    ? conversion.Right : syntax;
             }
         }
     }
@@ -61,7 +68,7 @@ public sealed partial class Binding
     {
         if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
         {
-            return Fail(conversion, BindingFailure.TransferRequired);
+            return this.Fail(conversion, BindingFailure.TransferRequired);
         }
 
         conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
@@ -76,7 +83,7 @@ public sealed partial class Binding
         {
             // SPEC 15.1.5: only an owned path offers Take; a followed pair layer never does, even for owner (SPEC 13.5.5.1).
             var failure = AccessFailure(conversion.Left, take: true);
-            return Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
+            return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
         }
 
         // SPEC 11.1: consuming var storage requires its accessible standard setter,
@@ -89,12 +96,12 @@ public sealed partial class Binding
             {
                 if (!property.Setter.IsStandard)
                 {
-                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 if (!this.Accessible(property.Symbol, scope, property.Setter.Access, (source as MemberAccessKoto)?.Left.BoundType))
                 {
-                    return Fail(conversion, BindingFailure.Access);
+                    return this.Fail(conversion, BindingFailure.Access);
                 }
             }
 
@@ -193,7 +200,7 @@ public sealed partial class Binding
                 // SPEC 13.5.5.1: a pair layer is followed only when its admitted set lies in value or valueborrow.
                 if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
                 {
-                    return Fail(conversion, BindingFailure.UnprovenConstraint);
+                    return this.Fail(conversion, BindingFailure.UnprovenConstraint);
                 }
 
                 this.pairFollows[conversion] = admitted;
@@ -202,7 +209,7 @@ public sealed partial class Binding
                 return Complete(conversion, pairTarget);
             }
 
-            return Fail(conversion, BindingFailure.TypeMismatch);
+            return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
@@ -230,7 +237,7 @@ public sealed partial class Binding
             // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
             {
-                return Fail(conversion, BindingFailure.TypeMismatch);
+                return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
@@ -250,7 +257,7 @@ public sealed partial class Binding
                 !FitsType(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
             {
-                return Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
             var result = pattern.Origin is null ? adapted : pattern;
@@ -290,7 +297,7 @@ public sealed partial class Binding
 
             if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
             {
-                return Fail(conversion, BindingFailure.NonCopyOperand);
+                return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
 
             conversion.ConversionBinding = ConversionBinding.Identity;
@@ -313,7 +320,7 @@ public sealed partial class Binding
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
-                    return Fail(conversion, semantics == SemanticsKind.ObjUniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, semantics == SemanticsKind.ObjUniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
                 }
 
                 Complete(conversion.Right, adapted);
@@ -330,7 +337,7 @@ public sealed partial class Binding
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
-                    return Fail(conversion, semantics == SemanticsKind.Uniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, semantics == SemanticsKind.Uniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
                 }
 
                 Complete(conversion.Right, adapted);
@@ -343,11 +350,11 @@ public sealed partial class Binding
             if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
             {
                 Complete(conversion.Right, operandType);
-                return Fail(conversion, BindingFailure.BareOwningShorthand);
+                return this.Fail(conversion, BindingFailure.BareOwningShorthand);
             }
 
-            Fail(conversion.Right, BindingFailure.Unsupported, true);
-            return Fail(conversion, BindingFailure.Unsupported, true);
+            this.Fail(conversion.Right, BindingFailure.Unsupported, true);
+            return this.Fail(conversion, BindingFailure.Unsupported, true);
         }
 
         var target = this.BindType(conversion.Right, scope);
@@ -399,7 +406,7 @@ public sealed partial class Binding
                 return Complete(conversion, target);
             }
 
-            return Fail(conversion, BindingFailure.TypeMismatch);
+            return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
         if (ObjectTypes.IsOwner(target) && (ObjectTypes.IsOwner(source) || ObjectTypes.IsBorrow(source)))
@@ -409,7 +416,7 @@ public sealed partial class Binding
 
         if (!plain)
         {
-            return Fail(conversion, BindingFailure.Unsupported, true);
+            return this.Fail(conversion, BindingFailure.Unsupported, true);
         }
 
         // SPEC 13.5.3: an explicitly written owning Semantics on an unchanged Type is the same-Type
@@ -447,7 +454,7 @@ public sealed partial class Binding
                     return Complete(conversion, target);
                 }
 
-                return Fail(conversion, BindingFailure.Unsupported, true);
+                return this.Fail(conversion, BindingFailure.Unsupported, true);
             }
 
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
@@ -465,6 +472,6 @@ public sealed partial class Binding
 
         // Other ownership/borrow adaptations require their own verified paths.
         var unsupported = !SupportsIdentityAcquisition(source) || !SupportsIdentityAcquisition(target);
-        return Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
+        return this.Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
     }
 }

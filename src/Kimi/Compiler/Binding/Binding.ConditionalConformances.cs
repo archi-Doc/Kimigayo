@@ -152,8 +152,8 @@ public sealed partial class Binding
                 if (!same)
                 {
                     identity.Invalid = true;
-                    Fail(a.Declaration, BindingFailure.IncompatibleImplementation);
-                    Fail(b.Declaration, BindingFailure.IncompatibleImplementation);
+                    this.Fail(a.Declaration, BindingFailure.IncompatibleImplementation);
+                    this.Fail(b.Declaration, BindingFailure.IncompatibleImplementation);
                     proof = ConstraintProof.Error;
                 }
             }
@@ -177,7 +177,7 @@ public sealed partial class Binding
 
             if (container is not (StructKoto or EnumKoto) || syntax.Operands.Length is not (2 or 3) || syntax.Operands[0] is not IsKoto target || syntax.Operands[1] is not SyntaxFormKoto premises)
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 continue;
             }
 
@@ -189,13 +189,13 @@ public sealed partial class Binding
                 this.BindConstraint(target, outer);
                 if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
                 {
-                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
                 }
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
-                    Fail(target, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                    this.Fail(target, BindingFailure.InvalidSelfClause); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
                 }
                 else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
@@ -208,7 +208,7 @@ public sealed partial class Binding
                 else
                 {
                     // SPEC 8.4.7.2: ObjectPayload is never granted, conditionally or otherwise.
-                    Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
+                    this.Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
                 continue;
@@ -252,7 +252,7 @@ public sealed partial class Binding
             }
             else
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 (scope.Constraints ??= new()).Invalid = true;
             }
         }

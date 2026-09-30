@@ -7,6 +7,9 @@
   + Name="Syntax"
     Description="the source follows the grammar"
 
+  + Name="Binding"
+    Description="the declarations and expressions are valid"
+
   + Name="Binding.MissingName"
     Description="a Name or member resolves to a declaration"
 
