@@ -19,7 +19,11 @@ At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi de
 ./scripts/verify.ps1 -Mode Session
 ```
 
-Verify expands outer class/method selections to include nested `AllocationTests`, so existing focused selections retain their regression coverage. `-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. A zero-test selection fails, rather than counting as evidence. Select relevant native fixtures and milestones explicitly as before.
+Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified forms; short names use the repository's `XunitTest` namespace. A wildcard `*` may occur at the beginning or end. Invalid pattern syntax is rejected before building. Verify expands outer selections to include nested `AllocationTests`, so focused selections retain their allocation coverage.
+
+After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
+
+`-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
 
 ## Three purposes
 

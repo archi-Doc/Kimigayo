@@ -52,6 +52,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
+. (Join-Path $PSScriptRoot 'verification-selection.ps1')
+$Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
+$Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
 $repo = Split-Path -Parent $PSScriptRoot
 $buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
@@ -137,19 +140,34 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     Add-Step "tests $configuration $tag" ($code -eq 0 -and $total -gt 0) "$(if ($summary) { $summary.Line.Trim() } else { 'no summary' }); $log" $timer.Elapsed.TotalSeconds
 }
 
+function Test-Selection([string] $configuration, [string[]] $filters) {
+    $timer = Start-Step 'test selection'
+    $dll = Join-Path $repo "tests/xUnitTest/bin/$configuration/net10.0/xUnitTest.dll"
+    $catalog = Join-Path $evidence 'discovered-methods.json'
+    $selected = Join-Path $evidence 'selected-methods.json'
+    try {
+        & dotnet $dll -noLogo -list methods/json > $catalog
+        if ($LASTEXITCODE -ne 0) { throw "Test discovery failed; see $catalog" }
+        $methods = @(Get-Content -LiteralPath $catalog -Raw | ConvertFrom-Json)
+        Assert-KimiTestSelections $Class $Method $methods
+        # The runner applies the actual class/method intersection and trait rules.
+        & dotnet $dll -noLogo -list methods/json @filters > $selected
+        if ($LASTEXITCODE -ne 0) { throw "Selected test discovery failed; see $selected" }
+        $count = @(Get-Content -LiteralPath $selected -Raw | ConvertFrom-Json).Count
+        if ($count -eq 0) { throw 'No test methods match the combined class, method and purpose filters.' }
+        Add-Step 'test selection' $true "$count selected methods; $selected" $timer.Elapsed.TotalSeconds
+    }
+    catch { Add-Step 'test selection' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
+}
+
 $head = (& git -C $repo rev-parse --short HEAD).Trim()
 $dirty = [bool](& git -C $repo status --porcelain --untracked-files=no)
 $filters = @()
 foreach ($c in $Class) {
-    $filters += @('-class', $c)
-    # A trailing wildcard already includes nested classes; appending would put it in the middle.
-    if (-not $c.EndsWith('*') -and -not $c.EndsWith('+AllocationTests')) { $filters += @('-class', "$c+AllocationTests") }
+    foreach ($pattern in (Get-KimiTestAlternatives $c)) { $filters += @('-class', $pattern) }
 }
 foreach ($m in $Method) {
-    $filters += @('-method', $m)
-    # Preserve selections after allocation tests move into a nested, isolated class.
-    $separator = $m.LastIndexOf('.')
-    if ($separator -ge 0) { $filters += @('-method', ($m.Insert($separator, '+AllocationTests'))) }
+    foreach ($pattern in (Get-KimiTestAlternatives $m -Method)) { $filters += @('-method', $pattern) }
 }
 if ($Mode -eq 'Session') { $filters = @() }
 $hasTestSelection = $filters.Count -gt 0
@@ -180,6 +198,9 @@ if (-not $failed -and (Invoke-Build $Configuration)) {
         $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
         Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
     }
+}
+if (-not $failed -and $Mode -eq 'Unit' -and ($hasTestSelection -or $TestPurpose -ne 'All')) {
+    Test-Selection $Configuration $filters
 }
 if (-not $failed) {
     if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
