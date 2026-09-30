@@ -694,7 +694,7 @@ public sealed partial class Binding
         private void Target(BoundCall call, Koto use)
         {
             var kind = call.Target.CompilerFunction;
-            if (kind is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.Replace)
+            if (kind is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
             {
                 // The receiver's replaced or cleared elements are destroyed.
                 var receiver = call.ReceiverOperation.ParameterType;
@@ -825,10 +825,10 @@ public sealed partial class Binding
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
-                CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryClear or CompilerFunctionKind.DictionaryShrinkToFit or
+                CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit or
                 CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageInlineBase => true,
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageDictionaryLayout => true,
             _ => false,
         };
 

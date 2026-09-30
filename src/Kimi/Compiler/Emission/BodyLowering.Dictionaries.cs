@@ -181,10 +181,6 @@ internal sealed partial class BodyLowering
                 this.callOperands.Add(additional);
             }
         }
-        else if (operation == CompilerFunctionKind.DictionaryClear)
-        {
-            abi = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value).Abi;
-        }
         else
         {
             if (this.ComparisonCalls?.GetValueOrDefault(plan) is not { } equality ||

@@ -9,6 +9,18 @@ namespace XunitTest;
 public class DictionaryLibraryTest
 {
     [Fact]
+    public void ClearingCompilesFromOrdinarySource()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
+        Assert.NotNull(function);
+        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceClear", CompilationTestHelper.WriteIr(c), string.Empty);
+    }
+
+    [Fact]
     public void LookupCompilesFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => $abort(\"missing\")");

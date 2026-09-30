@@ -82,7 +82,9 @@ allocation. The compiler passes the selected equality witness and typed entry
 destruction, preserving comparison direction and value-before-key cleanup.
 
 `Dictionary.tryGet` in [Dictionary.kimi](Dictionary.kimi) searches through the standard shared storage remainder and
-constructs its optional reference through ordinary generic source. The three iteration entries also use Kimigayo.
+constructs its optional reference through ordinary generic source. `clear` uses a private unsafe projection of the mutable
+handle and entry stride, and shares typed reverse destruction with the owning remainder. The projection acquires no entries
+and exposes no public ABI. The three iteration entries also use Kimigayo.
 The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
 still contains compiler-recognized mutation signatures. Generic mutation/result
 dispatch and typed indexed access remain compiler code.

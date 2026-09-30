@@ -56,14 +56,21 @@ internal group Storage
         // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
         drop
             let storage: unsafe/u8 = self.storage
-            while self.count > 0
-                self.count -= 1
-                unsafe
-                    let slot = storage + (self.tail - 1) * self.stride
-                    self.tail = (slot@unsafe/isize)[0]
-                    _ = *valueAt<K, V>(slot)
-                    _ = *keyAt<K, V>(slot)
-            unsafe => release(storage)
+            unsafe
+                destroyDictionaryEntries<K, V>(storage, self.stride, self.tail, self.count)
+                release(storage)
+
+    /// Destroys a live suffix in reverse insertion order without releasing its storage.
+    internal unsafe func destroyDictionaryEntries<K, V>(storage: unsafe/u8, stride: isize, tail: isize, count: isize)
+        var link = tail
+        var remaining = count
+        while remaining > 0
+            remaining -= 1
+            unsafe
+                let slot = storage + (link - 1) * stride
+                link = (slot@unsafe/isize)[0]
+                _ = *valueAt<K, V>(slot)
+                _ = *keyAt<K, V>(slot)
 
     /// Transfers the first unreturned element to its new owner and advances the owning remainder.
     internal func takeFirst<E>(state: uniq/OwnedRemainder<E>) -> Option<E>

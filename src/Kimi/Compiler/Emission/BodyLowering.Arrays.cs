@@ -335,6 +335,11 @@ internal sealed partial class BodyLowering
             return this.LowerStorageInlineBase(body, function, id, call, plan, out failure);
         }
 
+        if (kind == CompilerFunctionKind.StorageDictionaryLayout)
+        {
+            return this.LowerDictionaryLayout(body, function, id, call, plan, out failure);
+        }
+
         if (kind is >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageSplitValue)
         {
             return this.LowerDictionaryStorageOperation(body, function, id, call, plan, out failure);

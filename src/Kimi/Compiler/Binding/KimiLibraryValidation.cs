@@ -59,6 +59,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive => this.ValidFixedStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
                         KimiDeclarationId.StorageOwnFixed or KimiDeclarationId.StorageInlineBase => this.ValidFixedOwningOperation(symbol, entry.Id),
+                        KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });

@@ -110,7 +110,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryInsertOrReplace),
         new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryRemove),
         new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, SourceFunction: true),
-        new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryClear),
+        new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, SourceFunction: true),
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
         new(KimiDeclarationId.Indexable, "Indexable"),
         new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
@@ -148,6 +148,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.PositionRange, "PositionRange"),
         new(KimiDeclarationId.Start, "Start"),
         new(KimiDeclarationId.End, "End"),
+        new(KimiDeclarationId.StorageDictionaryLayout, "dictionaryStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDictionaryLayout),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -158,7 +159,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageInlineBase;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageDictionaryLayout;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 

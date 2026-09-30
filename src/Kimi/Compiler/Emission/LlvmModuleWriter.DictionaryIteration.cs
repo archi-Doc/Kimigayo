@@ -9,6 +9,35 @@ internal static partial class LlvmModuleWriter
         var operands = function.GetOperands(instruction);
         var address = operands[0];
         var id = instruction.Operation;
+        if (instruction.ScalarOperator == "DictionaryLayout")
+        {
+            output.Write("  store ptr ");
+            Address();
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n");
+            for (var i = 1; i < operands.Length; i++)
+            {
+                output.Write("  %dlayout");
+                WriteNumber(output, id);
+                output.Write('_');
+                WriteNumber(output, i);
+                output.Write(" = getelementptr i8, ptr ");
+                WriteSlot(output, function, instruction.Place);
+                output.Write(", i64 ");
+                WriteNumber(output, i * 8);
+                output.Write("\n  store i64 ");
+                WriteNumber(output, operands[i].Value);
+                output.Write(", ptr %dlayout");
+                WriteNumber(output, id);
+                output.Write('_');
+                WriteNumber(output, i);
+                output.Write(", align 8\n");
+            }
+
+            return;
+        }
+
         if (instruction.ScalarOperator == "DictionaryEntryAddress")
         {
             // A key or value inside a validated live slot (SPEC 22.1.2.5).

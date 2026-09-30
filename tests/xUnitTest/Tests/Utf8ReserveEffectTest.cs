@@ -156,6 +156,27 @@ public class Utf8ReserveEffectTest
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ClearingBorrowedDictionariesChecksSourceDestruction(bool key, bool noisy)
+    {
+        var prefix = State + "struct Item\n    Self is Equatable\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n    drop => " + (noisy ? "State.value += 1\n" : "()\n");
+        var source = prefix + "struct Writer {source}\n    Self is BufferWriter\n    let items: uniq/Dictionary<" + (key ? "Item, i32" : "i32, Item") + "> during source\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.items.clear()\n        return .Err(BufferFull.init())";
+        var c = MinimalEmissionTest.Analyze(source);
+        if (noisy)
+        {
+            MinimalEmissionTest.AssertEffectBoundRejected(c);
+        }
+        else
+        {
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        }
+    }
+
+    [Theory]
     [InlineData("_ = values.tryGet(Key.init())", false)]
     [InlineData("_ = values.remove(Key.init())", false)]
     [InlineData("_ = values.tryInsert(Key.init(), 1)", false)]

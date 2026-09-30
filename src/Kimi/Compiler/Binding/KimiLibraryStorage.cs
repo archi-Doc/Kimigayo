@@ -50,6 +50,11 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
+        if (id == KimiDeclarationId.StorageDictionaryLayout)
+        {
+            return this.ValidBoundDictionaryLayout(symbol);
+        }
+
         if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)
         {
             return ValidBoundRemainder(symbol, id);

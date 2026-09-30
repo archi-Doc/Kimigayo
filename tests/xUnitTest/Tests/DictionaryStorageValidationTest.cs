@@ -58,6 +58,10 @@ public class DictionaryStorageValidationTest
     [InlineData(KimiDeclarationId.StorageKeyAt, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageKeyAt, "result-mode")]
     [InlineData(KimiDeclarationId.StorageValueAt, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageDictionaryLayout, "input-mode")]
+    [InlineData(KimiDeclarationId.StorageDictionaryLayout, "input-key")]
+    [InlineData(KimiDeclarationId.StorageDictionaryLayout, "result-swapped")]
+    [InlineData(KimiDeclarationId.StorageDictionaryLayout, "result-static")]
     public void OperationsKeepTheirCompleteSignatures(KimiDeclarationId id, string mutation)
     {
         var c = Compilation.CreateForTest();
@@ -140,6 +144,7 @@ public class DictionaryStorageValidationTest
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
     [InlineData("unsafe => _ = Kimi.Storage.lendKey(map@ref, null@unsafe/u8)")]
+    [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
     [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]
     public void UserSourceCannotReachTheDictionaryBoundary(string use)
     {

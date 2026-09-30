@@ -23,3 +23,6 @@ internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRem
 internal func borrowStorage<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
 internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
 internal unsafe func inlineBase<E, A>(storage: uniq/InlineStorage<A>) -> unsafe/E
+// Private physical projection: mutable handle address and entry stride. No entry is acquired.
+internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (unsafe/u8, isize)
+    K is Equatable

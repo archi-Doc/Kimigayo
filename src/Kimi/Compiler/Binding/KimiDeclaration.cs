@@ -131,6 +131,7 @@ public enum KimiDeclarationId : byte
     PositionRange,
     Start,
     End,
+    StorageDictionaryLayout,
 }
 
 public enum KimiDeclarationState : byte

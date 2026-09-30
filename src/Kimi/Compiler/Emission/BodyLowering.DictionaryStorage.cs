@@ -6,6 +6,41 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    private bool LowerDictionaryLayout(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter is not [0] || target.Parameters.Count != 1 ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
+            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
+            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
+            address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), result) ||
+            this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } layout || layout.Offset(0) != 0 || layout.Offset(1) != 8)
+        {
+            return Fail("Dictionary layout projection requires its mutable handle and physical metadata result.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ValidateSlotCallResult(body, id, out failure) || !this.ScalarArrayArgument(body, id, 0, input, out var handle))
+        {
+            return Fail(failure ?? "Dictionary layout projection has no acquired handle.", out failure);
+        }
+
+        var helper = this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value);
+        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, helper.Stride)], place: body.Operations[id].Place, op: "DictionaryLayout");
+        return true;
+    }
+
     // SPEC 22.1.2.5: borrowStorage over a Dictionary copies the handle's slot buffer, first link and live count into the
     // shared remainder with the concrete slot stride; lendKey and lendValue publish one slot's key or value address.
     // Storage.kimi checks the untaken count and follows the links before lending.

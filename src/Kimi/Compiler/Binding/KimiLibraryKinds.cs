@@ -69,7 +69,6 @@ public enum CompilerFunctionKind : byte
     DictionaryTryInsert,
     DictionaryInsertOrReplace,
     DictionaryRemove,
-    DictionaryClear,
     DictionaryShrinkToFit,
     StorageBorrowShared,
     StorageBorrowExclusive,
@@ -90,4 +89,5 @@ public enum CompilerFunctionKind : byte
     StorageBorrowFixedExclusive,
     StorageOwnFixed,
     StorageInlineBase,
+    StorageDictionaryLayout,
 }
