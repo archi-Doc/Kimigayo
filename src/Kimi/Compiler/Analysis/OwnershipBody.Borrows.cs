@@ -210,7 +210,10 @@ public sealed partial class OwnershipBody
                         {
                             var receiver = this.ValueOperands[value.Start];
                             var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
-                            var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate ? LoanRequirement.Uniq
+                            var exclusiveElement = value.Kind == OwnershipValueKind.Sequence &&
+                                this.Sequences[(int)value.Constant].Kind == SequenceOperation.Borrow &&
+                                operation.Place >= 0 && this.Places[operation.Place].Type.Semantics == SemanticsKind.Uniq;
+                            var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate || exclusiveElement ? LoanRequirement.Uniq
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             if (sourcePlace >= 0 && this.borrowDependencies[(sourcePlace * count) + root] != LoanRequirement.None &&
                                 (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))

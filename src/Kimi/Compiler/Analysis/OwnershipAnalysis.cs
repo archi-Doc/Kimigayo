@@ -919,6 +919,11 @@ public sealed partial class OwnershipAnalysis
                 return this.WriteBorrowedField(binary, borrowedField);
             }
 
+            if (target is IndexKoto borrowedElement && ElementAccess.IsExclusiveArrayElement(borrowedElement))
+            {
+                return this.WriteBorrowedArrayElement(binary, borrowedElement);
+            }
+
             if (target is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(target))
             {
                 return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);

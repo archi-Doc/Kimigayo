@@ -9,6 +9,11 @@ public class DynamicArrayCostTest
 {
     [Trait("Purpose", "Allocation")]
     [Fact]
+    public void BorrowedElementUpdatesReuseTheBuffer()
+        => WriteCostFixture("BorrowedWrite", "func edit(values: uniq/Array<isize>)\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: Array<isize> = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
     public void SortingRetainsStorageWithoutFurtherAllocation()
         => WriteCostFixture("Sort", "var values: Array<isize> = [7, 3, 5, 1, 6, 2, 4, 3]\nvalues.sort()\nvalues.reverse()\nvalues.sort()\nrequire values[0] == 1 and values[7] == 7 and values.length == 8 else => $abort(\"sort\")\nvar empty: Array<isize> = []\nempty.sort()", 1, 0);
 

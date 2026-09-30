@@ -4,6 +4,8 @@ Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required beh
 
 ## Summary
 
+- **Borrowed Array writes (2026-10-01):** elements selected through `uniq/Array<T>` support replacement, numeric compound assignment and integer prefix/postfix updates. Generic replacement, strings, Non-Copy destruction, zero-sized elements, RHS-first evaluation, one receiver evaluation and bounds Abort execute at O0/O2. Exclusive element borrows now conflict with live shared child borrows. Fixed-array writes through references remain G35. Unit `20260930-154039-413-unit-borrowed-array-write-complete` passes 396 tests, the diagnostic snapshot and 68 native executions; the preceding run retains passing coverage for 396 further native element/Place regressions.
+
 - **Array sorting (2026-10-01):** `Array<T>.sort()` is implemented in Kimigayo with direct Comparable dispatch and allocation-free heapsort. Native O0/O2 cases cover every primitive integer family, string/Tuple composition, generic forwarding, Non-Copy user witnesses and destruction order; live views and immutable receivers remain rejected. Saved concrete comparators also execute through `sort(by:)`: callable argument plans now retain the original source Type when an expected adaptation supplies a borrow or referent read. Direct anonymous arguments and function items remain outside this verified boundary. Unit `20260930-151620-581-unit-array-sort` passes 195 tests and 142 native executions, including storage-allocation regressions.
 
 - **Unterminated-string diagnostics (2026-09-30):** a missing string delimiter is reported at its opening quotation marks with the expected delimiter and repair advice. Recovery retains the invalid argument and links enclosing missing-closer checks to that lexical cause, avoiding false overload errors. Nested recovery preserves the next statement's scope; independent name, Type and delimiter errors remain visible. Ordinary/raw strings, LF/CRLF/CR and EOF, source isolation, rebinding, repaired acceptance and CLI/LSP output are covered by `StringDiagnosticTest`. No insertion point is guessed and no automatic repair is offered.
@@ -281,7 +283,7 @@ Numeric tuple selectors and isize fixed-array indices read supported Copy elemen
 
 ### 4.4. Simple Assignment to Copy Elements of Tuples and Fixed Arrays
 
-Initialized local var tuple/array elements support Copy assignment. The RHS is secured first, then location/bounds are resolved; an exclusive Loan covers old-value destruction and placement. Nested indices and zero-size elements retain evaluation and checks. Parameter/temporary mutation and initial construction through element writes are not supported.
+Initialized local var tuple/array elements support Copy assignment. The RHS is secured first, then location/bounds are resolved; an exclusive Loan covers old-value destruction and placement. Nested indices and zero-size elements retain evaluation and checks. Dynamic Array elements also support replacement through `uniq/Array<T>` parameters, locals and returned references. Fixed-array reference writes, other parameter/temporary mutation and initial construction through element writes remain unsupported.
 
 ### 4.5. Numeric Element Updates in Tuples and Fixed Arrays
 

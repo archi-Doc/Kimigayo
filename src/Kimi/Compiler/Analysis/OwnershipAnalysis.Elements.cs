@@ -6,6 +6,54 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // SPEC 13.7: secure the RHS, select one exclusive element address, then destroy/store through the same replacement
+    // used by followed references and Place calls. The element borrow keeps its Array dependency until placement.
+    private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
+    {
+        var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
+        var type = this.Concrete(target.BoundType);
+        if (type is null || operation == KotoKind.Invalid || (operation != KotoKind.Equals && !type.IsNumeric))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var right = source is BinaryKoto binary ? this.Expression(binary.Right) : -1;
+        if (source is BinaryKoto && right < 0)
+        {
+            return -1;
+        }
+
+        var address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, target.Left.BoundType!.Origin));
+        var pointer = this.Value(address);
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        var value = right;
+        var previous = -1;
+        if (operation != KotoKind.Equals)
+        {
+            var loaded = this.Place(target, type, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, target, loaded);
+            this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [pointer]);
+            this.RegisterTemporary(loaded);
+            previous = this.Value(loaded);
+            var operand = source is BinaryKoto ? this.Value(right) : this.IncrementOne(source);
+            value = operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+                ? this.ComputeUpdate(source, type, previous, operand, operation) : -1;
+        }
+
+        if (value < 0)
+        {
+            return -1;
+        }
+
+        this.StorePointer(target, pointer, value);
+        return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
+    }
+
     private int BorrowStringElement(BinaryKoto source, InvocationKoto? call, BoundType? type, out int loan)
     {
         loan = -1;

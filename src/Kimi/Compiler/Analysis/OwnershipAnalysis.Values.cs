@@ -199,6 +199,11 @@ public sealed partial class OwnershipAnalysis
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
             KotoHelper.UnwrapParentheses(unary.Operand) is BinaryKoto element && ElementAccess.IsSyntax(element) && !this.SpecialField(element))
         {
+            if (element is IndexKoto borrowed && ElementAccess.IsExclusiveArrayElement(borrowed))
+            {
+                return this.WriteBorrowedArrayElement(unary, borrowed);
+            }
+
             return this.UpdateElement(unary, element);
         }
 

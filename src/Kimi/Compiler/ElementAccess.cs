@@ -19,6 +19,11 @@ internal static class ElementAccess
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
         (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
 
+    // SPEC 3.4.1: the referent of an exclusive Array handle offers element replacement, without requiring a mutable
+    // binding for the reference itself. Shared layers on its path are checked separately by Binding.
+    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto, Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
+        ReferenceTypes.IsDynamicArray(receiver) && !IsSlicing(source);
+
     // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
     // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
     internal static bool IsPlaceCall(Koto source)

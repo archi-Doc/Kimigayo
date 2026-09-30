@@ -80,6 +80,11 @@ public sealed partial class Binding
             return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.6.9: an update selects indexUniq.
         }
 
+        if (ElementAccess.IsExclusiveArrayElement(node))
+        {
+            return true;
+        }
+
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
             ElementAccess.BorrowedPathRoot(nested) is { } root)
         {
@@ -1241,10 +1246,9 @@ public sealed partial class Binding
         if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
-            // PLAN G35: SPEC 3.4.1 selects an element through a uniq reference to a built-in array or Array, so the
-            // write is permitted; its lowering is not yet implemented.
+            // PLAN G35: the remaining fixed-array write through a uniq reference is permitted by SPEC 3.4.1.
             var exclusiveElement = KotoHelper.UnwrapParentheses(binary.Left) is IndexKoto { Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
-                (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver));
+                ReferenceTypes.IsArray(receiver);
             return exclusiveElement ? this.Fail(binary, BindingFailure.Unsupported) : this.FailWrite(binary, binary.Left);
         }
 
