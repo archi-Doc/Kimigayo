@@ -154,7 +154,9 @@ public sealed class ControlFlowAnalysis
         // and its warning is dropped. Structural checks stay independent of Binding, but require valid syntax.
         foreach (var issue in this.issues)
         {
-            if (issue.Node.CodeContext.RecoveryCause(issue.Node) is { } syntax)
+            // A recovered operand does not invalidate independently parsed target syntax.
+            if (issue.Node is LabeledKoto or JumpKoto { Label: "" } &&
+                issue.Node.CodeContext.RecoveryCause(issue.Node) is { } syntax)
             {
                 issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, [syntax]);
             }

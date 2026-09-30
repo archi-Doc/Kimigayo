@@ -117,6 +117,9 @@ public class ContextualLabelTest
     {
         var c = Parse("exit to\nnext()");
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "TransferTargetExpected_Kd");
+        var jump = Assert.IsType<ExitKoto>(ParseTestHelper.GetChildren(c.Kotonoha.RootKoto)[0]);
+        Assert.Equal(string.Empty, jump.Label);
+        Assert.StartsWith("exit to", jump.ToString(), StringComparison.Ordinal);
         Assert.IsType<InvocationKoto>(ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).Last());
     }
 
@@ -197,6 +200,14 @@ public class ContextualLabelTest
         var written = ParseTestHelper.Unparse(Parse(Source).Kotonoha);
         ScalarEmissionTest.EmitFixture("ContextualLabelsRoundTrip", written, "defer 2\ndrop\nok\n");
     }
+
+    [Theory]
+    [InlineData("label work: do => exit to missing: 1", "InvalidJumpTarget_Kd", "TransferOperandExpected_Kd")]
+    [InlineData("label work: do => exit to missing(1)", "InvalidJumpTarget_Kd", "TransferOperandSeparation_Kd")]
+    [InlineData("label work: do => yield to work: 1", "InvalidJumpTarget_Kd", "TransferOperandExpected_Kd")]
+    [InlineData("if true => yield: ()", "UnlabeledYieldTarget_Kd", "TransferOperandExpected_Kd")]
+    public void OperandRecoveryDoesNotHideAnIndependentTargetProblem(string source, string targetCode, string operandCode)
+        => Assert.Equal(new[] { targetCode, operandCode }.Order(), Publish(source).Select(x => x.Code).Order());
 
     [Fact]
     public void DictionaryKeysAndValuesBindWithUngroupedLabels()

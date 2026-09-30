@@ -3184,6 +3184,7 @@ CloseParameters:
                 reader.Diagnostic.Add(sameLine ? reader.CurrentTokenRange : new SourceSpan(end, 0), DiagnosticCode.TransferTargetExpected_Kd);
                 recovery = reader.Diagnostic.LastError;
                 validTarget = false;
+                label = string.Empty; // A malformed named target must not become an unnamed transfer.
             }
             else
             {
