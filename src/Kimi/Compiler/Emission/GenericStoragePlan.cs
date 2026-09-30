@@ -301,7 +301,7 @@ internal sealed partial class GenericStoragePlan
         // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
         var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
         entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
-            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol)), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
                 ConcreteCalls = new BoundCall[template.DirectCalls.Length],
             };
@@ -467,7 +467,7 @@ internal sealed partial class GenericStoragePlan
             if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
                 ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
                 previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
-                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts))
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol)))
             {
                 return previous;
             }

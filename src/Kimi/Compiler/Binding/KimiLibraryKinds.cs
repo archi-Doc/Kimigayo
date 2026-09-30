@@ -89,4 +89,5 @@ public enum CompilerFunctionKind : byte
     StorageOwnFixed,
     StorageInlineBase,
     StorageDictionaryLayout,
+    StorageMissingDictionaryKey,
 }

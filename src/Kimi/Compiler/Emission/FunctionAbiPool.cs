@@ -20,10 +20,11 @@ internal sealed class FunctionAbiPool
     /// <param name="parameters">The closed parameter Types in declaration order.</param>
     /// <param name="resultSlot">Whether the result is returned through a caller-provided slot.</param>
     /// <param name="layouts">The layout pool for aggregate Types.</param>
+    /// <param name="callerLocation">Whether this standard source entry forwards its caller's diagnostic location.</param>
     /// <returns>The physical signature; zero-sized parameters have no physical slot.</returns>
-    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts)
+    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false)
     {
-        var physical = new List<AbiParameter>(parameters.Length + 1);
+        var physical = new List<AbiParameter>(parameters.Length + 1 + (callerLocation ? 2 : 0));
         if (resultSlot)
         {
             physical.Add(new("ptr", "ret", AbiParameterKind.ResultSlot));
@@ -38,7 +39,13 @@ internal sealed class FunctionAbiPool
             }
         }
 
-        return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot);
+        if (callerLocation)
+        {
+            physical.Add(new("ptr", "location", AbiParameterKind.Location));
+            physical.Add(new("i64", "location_length", AbiParameterKind.LocationLength));
+        }
+
+        return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot, callerLocation);
     }
 
     /// <summary>Whether an ABI made by <see cref="Build"/> still describes the signature under the current layouts.</summary>
@@ -47,10 +54,11 @@ internal sealed class FunctionAbiPool
     /// <param name="parameters">The substituted parameter Types.</param>
     /// <param name="resultSlot">Whether the result is returned through a slot.</param>
     /// <param name="layouts">The current aggregate layouts.</param>
+    /// <param name="callerLocation">Whether the source entry forwards the caller's location.</param>
     /// <returns>Whether <see cref="Build"/> would produce the same physical signature.</returns>
-    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts)
+    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false)
     {
-        if (abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
+        if (abi.CallerLocation != callerLocation || abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
         {
             return false;
         }
@@ -72,7 +80,7 @@ internal sealed class FunctionAbiPool
             physical++;
         }
 
-        return physical == abi.Parameters.Length;
+        return physical + (callerLocation ? 2 : 0) == abi.Parameters.Length;
     }
 
     internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
@@ -85,7 +93,8 @@ internal sealed class FunctionAbiPool
 
         var logical = new ParameterShape[function.Parameters.Count];
         var resultSlot = FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
-        var count = (resultSlot ? 1 : 0) + (function.IsAnonymous ? 2 : 0);
+        var callerLocation = KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol);
+        var count = (resultSlot ? 1 : 0) + (function.IsAnonymous ? 2 : 0) + (callerLocation ? 2 : 0);
         for (var i = 0; i < logical.Length; i++)
         {
             logical[i] = Shape(function.Parameters[i].Type.BoundType!, layouts);
@@ -118,7 +127,13 @@ internal sealed class FunctionAbiPool
         }
 
         var never = ReferenceEquals(result, BoundType.Never);
-        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result, layouts)!, parameters, never, resultSlot);
+        if (callerLocation)
+        {
+            parameters[physical++] = new("ptr", "location", AbiParameterKind.Location);
+            parameters[physical++] = new("i64", "location_length", AbiParameterKind.LocationLength);
+        }
+
+        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result, layouts)!, parameters, never, resultSlot, callerLocation);
         var signature = new Signature(FunctionAbi.ResultType(result, layouts)!, resultSlot, never, function.IsAnonymous, function.BoundClosure?.EnvironmentType is not null, logical, abi);
         if (ordinal == this.signatures.Count)
         {
@@ -147,7 +162,8 @@ internal sealed class FunctionAbiPool
         internal bool Matches(FunctionKoto function, BoundType result, AggregateLayoutPool? layouts)
         {
             if (this.Closure != function.IsAnonymous || this.Concrete != (function.BoundClosure?.EnvironmentType is not null) || this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
-                this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count)
+                this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count ||
+                this.Abi.CallerLocation != KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol))
             {
                 return false;
             }

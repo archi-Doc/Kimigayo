@@ -159,8 +159,9 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        Assert.Equal(112, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(120, c.Library.Declarations.Length);
+        // Dictionary's two source Indexable entries and two private storage primitives are catalog identities too.
+        Assert.Equal(116, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(124, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

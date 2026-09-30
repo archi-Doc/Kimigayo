@@ -340,6 +340,18 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryLayout(body, function, id, call, plan, out failure);
         }
 
+        if (kind == CompilerFunctionKind.StorageMissingDictionaryKey)
+        {
+            if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
+            {
+                return Fail("Missing Dictionary key failure requires the standard entry's forwarded caller location.", out failure);
+            }
+
+            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, WindowsLowering.MissingKeyReason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
+            function.Add(EmissionOpcode.Unreachable, id);
+            return true;
+        }
+
         if (kind is >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageSplitValue)
         {
             return this.LowerDictionaryStorageOperation(body, function, id, call, plan, out failure);

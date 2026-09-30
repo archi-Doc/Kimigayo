@@ -132,6 +132,9 @@ public enum KimiDeclarationId : byte
     Start,
     End,
     StorageDictionaryLayout,
+    DictionaryIndex,
+    DictionaryIndexUniq,
+    StorageMissingDictionaryKey,
 }
 
 public enum KimiDeclarationState : byte

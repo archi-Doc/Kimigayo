@@ -2,12 +2,29 @@
 // Ordered storage algorithms are ordinary source in DictionaryStorage.kimi.
 public struct Dictionary<K, V>
     K is Equatable
+    Self is UniqIndexable<K>
+    associate Element is V
     Self is Iterable
     associate Iterable.IteratorType(source) is DictionaryIterator<K, V> during source
     Self is UniqIterable
     associate UniqIterable.IteratorType(source) is DictionaryUniqIterator<K, V> during source
     Self is IntoIterable
     associate IntoIterable.IteratorType is DictionaryOwningIterator<K, V>
+
+    /// Publishes the matching value Place for shared access; absence Aborts at the caller's access.
+    public func index(self: ref/Self, key: ref/K) -> place ref/V during self
+        match self.tryGet(key)
+            .Some(let value) => return value@follow
+            .None => Storage.missingDictionaryKey()
+
+    /// Publishes the matching value Place for exclusive access; keys remain shared during lookup.
+    public func indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self
+        var state = Storage.borrowStorage(self)
+        loop
+            match Storage.splitFirst(state@uniq)
+                .Some((let storedKey, let value))
+                    if storedKey.equals(key) => return value@follow
+                .None => Storage.missingDictionaryKey()
 
     /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.
     public func clear(self: uniq/Self)

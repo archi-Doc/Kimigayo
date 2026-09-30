@@ -603,6 +603,8 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:
                 case EmissionOperandKind.NullAddress:
+                case EmissionOperandKind.CallerLocation:
+                case EmissionOperandKind.CallerLocationLength:
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:

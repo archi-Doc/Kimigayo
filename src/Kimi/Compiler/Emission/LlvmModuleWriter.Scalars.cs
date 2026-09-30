@@ -12,6 +12,12 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
     {
+        if (operand.Kind is EmissionOperandKind.CallerLocation or EmissionOperandKind.CallerLocationLength)
+        {
+            output.Write(operand.Kind == EmissionOperandKind.CallerLocation ? "%location" : "%location_length");
+            return;
+        }
+
         if (operand.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64)
         {
             // LLVM's hexadecimal float spelling uses the exactly extended double bits.

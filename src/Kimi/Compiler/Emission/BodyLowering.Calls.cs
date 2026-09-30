@@ -304,7 +304,13 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if ((!runtime && creation is null) || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, directory, constants, out location)))
+                if (callee.CallerLocation && function.Abi.CallerLocation)
+                {
+                    this.callOperands.Add(new(physical.Kind == AbiParameterKind.Location ? EmissionOperandKind.CallerLocation : EmissionOperandKind.CallerLocationLength, 0));
+                    continue;
+                }
+
+                if ((!runtime && creation is null && !callee.CallerLocation) || (location < 0 && !this.TryGetLocation(ReferenceEquals(plan.Target, library.Abort) ? call.Parent! : call, directory, constants, out location)))
                 {
                     return Fail("A runtime call has no diagnostic source location.", out failure);
                 }

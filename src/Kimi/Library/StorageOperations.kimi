@@ -26,3 +26,5 @@ internal unsafe func inlineBase<E, A>(storage: uniq/InlineStorage<A>) -> unsafe/
 // Private physical projection: mutable handle address and entry stride. No entry is acquired.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (unsafe/u8, isize)
     K is Equatable
+// Fails with the caller location carried by the standard operation's private ABI.
+internal func missingDictionaryKey() -> Never

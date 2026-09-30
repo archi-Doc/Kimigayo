@@ -50,6 +50,7 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
                         KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
+                        KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
                         >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageRelease => this.ValidStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder => this.ValidDictionaryRemainder(symbol, entry.Id),
@@ -60,6 +61,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
                         KimiDeclarationId.StorageOwnFixed or KimiDeclarationId.StorageInlineBase => this.ValidFixedOwningOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
+                        KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -159,7 +161,8 @@ public sealed partial class KimiLibrary
         {
             var clause = array.ConstraintNodes[i];
             if (clause.IsNegated || clause.FormationType is not null || clause.AttributeChain is not null ||
-                !(clause.IsAssociatedConstraint || (BareName(clause.Left, "Self") && (BareName(clause.Right, "Iterable") || BareName(clause.Right, "UniqIterable") || BareName(clause.Right, "IntoIterable")))))
+                !(clause.IsAssociatedConstraint || (BareName(clause.Left, "Self") && (BareName(clause.Right, "Iterable") || BareName(clause.Right, "UniqIterable") || BareName(clause.Right, "IntoIterable") ||
+                    (array.Name == "Dictionary" && clause.Right is GenericsKoto { TypeArguments: [var key] } indexing && BareName(indexing.Identifier, "UniqIndexable") && BareName(key, "K"))))))
             {
                 return false;
             }

@@ -92,6 +92,10 @@ internal enum EmissionOperandKind : byte
     /// <summary>The UTF-8 byte length of a pooled constant.</summary>
     ConstantLength,
 
+    /// <summary>The current standard source entry's forwarded diagnostic context.</summary>
+    CallerLocation,
+    CallerLocationLength,
+
     /// <summary>An integer of the parameter's ABI Type.</summary>
     Integer,
 

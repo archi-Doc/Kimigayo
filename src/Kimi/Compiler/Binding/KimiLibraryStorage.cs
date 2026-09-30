@@ -50,6 +50,11 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
+        if (id == KimiDeclarationId.StorageMissingDictionaryKey)
+        {
+            return ReferenceEquals(symbol.Type, BoundType.Never);
+        }
+
         if (id == KimiDeclarationId.StorageDictionaryLayout)
         {
             return this.ValidBoundDictionaryLayout(symbol);

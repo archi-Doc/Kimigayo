@@ -272,6 +272,8 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 
 | Member | Guarantee |
 | --- | --- |
+| `index(self: ref/Self, key: ref/K) -> place ref/V during self` | The Indexable entry publishes the existing value Place; an absent key Aborts at the access. |
+| `indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self` | The UniqIndexable entry publishes the value exclusively; the search key is not a result dependency. |
 | `dict[key]` | A Place for the existing value; an absent key Aborts. Indexed replacement preserves the stored key and position. |
 | `tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>` | Appends a new entry; a duplicate returns both inputs in Err and leaves the collection unchanged. |
 | `insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>` | A new entry returns None. Replacement returns the old value, retains the stored key and position, and destroys the unused input key. |
