@@ -74,6 +74,24 @@
     Label="relation is not permitted in the schema header"
     Advice="If a relation between these Origins is required, write an 'origin' clause under the declaration."
 
+  + Name="OriginBindingSetName_Kd"
+    Category="Language"
+    Message="A Type binding-set suffix contains one new set Name, not Origin values, lists or mappings"
+    Label="expected one binding-set Name in braces"
+    Advice="If this Type needs a named binding set, write {name} and relate its slots in attached 'origin' clauses. Use 'during (a and b)' for a borrow Origin intersection."
+
+  + Name="OriginBindingSetTarget_Kd"
+    Category="Language"
+    Message="An Origin binding set must attach directly to a named Type"
+    Label="this Type form cannot carry a binding-set suffix"
+    Advice="If a named Type inside this Type needs a binding set, attach the braces directly to that name. For a borrow Origin, use 'Semantics/Type during Origin'."
+
+  + Name="LegacyBorrowOrigin_Kd"
+    Category="Language"
+    Message="A Semantics prefix cannot carry an Origin annotation in braces"
+    Label="borrow Origin belongs after the complete Type"
+    Advice="For a borrow annotation, write 'Semantics/Type during Origin'; in an adaptation, let the operation infer the borrow Origin."
+
   + Name="HiddenNamedAlias_Kd"
     Severity="Warning"
     Category="Language"

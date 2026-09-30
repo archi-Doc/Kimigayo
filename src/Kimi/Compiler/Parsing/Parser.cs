@@ -1582,50 +1582,52 @@ CloseParameters:
         if (type is ParenthesizedTypeKoto or TupleTypeKoto or FunctionTypeKoto or FixedArrayTypeKoto ||
             type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false })
         {
-            reader.Diagnostic.Add(type.Span, DiagnosticCode.UnexpectedToken_Kd, "a binding set requires a named Type; borrow Origins use 'Semantics/Type during Origin'");
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetTarget_Kd);
         }
 
         var annotated = type as TypeSemanticsKoto ?? new TypeSemanticsKoto(ref reader, type.Span, type);
-        annotated.SetOrigin(origin.Expression, origin.Arguments, origin.End);
-        if (origin.Arguments is not null || origin.Expression is not IdentifierNameKoto { IdentifierName: not ("static" or "_") })
+        annotated.SetOrigin(origin.Expression, origin.Arguments, origin.Span.End);
+        if (origin.InvalidContent || origin.Arguments is not null ||
+            (origin.Expression is not ErrorKoto && origin.Expression is not IdentifierNameKoto { IdentifierName: not ("static" or "_") }))
         {
-            reader.Diagnostic.Add(type.Span, DiagnosticCode.UnexpectedToken_Kd, "a Type suffix names one Origin binding set");
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetName_Kd);
         }
 
         annotated.MarkBindingSet(reader.CurrentTokenKind == TokenKind.Slash);
-        if (reportLegacyBorrow && annotated.IsLegacyBorrowCandidate && CompilerHelper.TryParse(annotated.Identifier, out _))
+        if (reportLegacyBorrow && annotated.IsLegacyBorrowCandidate)
         {
-            reader.Diagnostic.Add(type.Span, DiagnosticCode.UnexpectedToken_Kd, "brace borrow annotations were removed; use 'Semantics/Type during Origin' in Types, or infer the Origin in adaptations");
+            reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
+            var cause = reader.Diagnostic.LastError;
+            reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
+            var target = ParseType(ref reader);
+            return new ErrorKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, Math.Max(origin.Span.End, target.Span.End))) { Cause = cause };
         }
 
         return annotated;
     }
 
-    private static (Koto? Expression, OriginArgument[]? Arguments, int End) ParseOriginBraces(ref TokenReader reader)
+    private static (Koto? Expression, OriginArgument[]? Arguments, SourceSpan Span, bool InvalidContent) ParseOriginBraces(ref TokenReader reader)
     {
         var open = reader.Read();
         Koto? expression = null;
         // Named lists are short; grow the result array directly instead of a list plus a copy.
         OriginArgument[]? arguments = null;
         var argumentCount = 0;
+        var invalidContent = false;
         var end = open.Span.End;
         reader.SkipSeparators();
-        if (reader.CurrentTokenKind == TokenKind.CloseBrace)
-        {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
 
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
-            if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+            if (reader.CurrentTokenKind == TokenKind.Underscore)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin mappings were removed; name a binding set and attach relations");
+                invalidContent = true;
+                reader.Advance();
+            }
+            else if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+            {
                 var name = reader.GetIdentifier(reader.Read());
                 reader.Advance();
-                if (expression is not null)
-                {
-                    reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "mixed positional and named Origins");
-                }
 
                 if (arguments is null)
                 {
@@ -1640,11 +1642,7 @@ CloseParameters:
             }
             else
             {
-                if (expression is not null || arguments is not null)
-                {
-                    reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "use named Origin arguments, or 'and' for an intersection");
-                }
-
+                invalidContent |= expression is not null || arguments is not null;
                 expression = ParseOriginExpression(ref reader);
             }
 
@@ -1667,7 +1665,7 @@ CloseParameters:
             Array.Resize(ref arguments, argumentCount);
         }
 
-        return (expression, arguments, end);
+        return (expression, arguments, SourceSpan.FromBounds(open.Span.Start, end), invalidContent);
     }
 
     private static Koto ParseOriginExpression(ref TokenReader reader)

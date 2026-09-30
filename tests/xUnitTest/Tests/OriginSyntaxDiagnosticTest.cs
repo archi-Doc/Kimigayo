@@ -12,6 +12,61 @@ namespace XunitTest;
 public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
 {
     [Theory]
+    [InlineData("View<i32>{}", "{}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{static}", "{static}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{_}", "{_}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a.source}", "{a.source}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a and b}", "{a and b}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a, b}", "{a, b}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a => static}", "{a => static}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a, b => static}", "{a, b => static}", "OriginBindingSetName_Kd")]
+    [InlineData("View<i32>{a => static, b}", "{a => static, b}", "OriginBindingSetName_Kd")]
+    [InlineData("(ref/i32){a}", "{a}", "OriginBindingSetTarget_Kd")]
+    [InlineData("[2 of i32]{a}", "{a}", "OriginBindingSetTarget_Kd")]
+    [InlineData("ref{a}/i32", "{a}", "LegacyBorrowOrigin_Kd")]
+    [InlineData("s{a}/i32", "{a}", "LegacyBorrowOrigin_Kd")]
+    public void ExplainsBindingSetSuffixAtTheSuffix(string type, string marked, string code)
+    {
+        var source = $"func f(x: {type}) => ()";
+        var error = Assert.Single(Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(code, error.Code);
+        Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), marked.Length), error.Span);
+        Assert.Equal(DiagnosticCategory.Language, error.Category);
+        Assert.False(string.IsNullOrWhiteSpace(error.Label));
+        Assert.False(string.IsNullOrWhiteSpace(error.Advice));
+    }
+
+    [Theory]
+    [InlineData("View<i32>{set}")]
+    [InlineData("View<i32>{set,}")]
+    [InlineData("(View<i32>{set})")]
+    [InlineData("ref/View<i32>{set} during a")]
+    public void BindingSetsStillNameOneOccurrence(string type)
+        => Assert.Empty(Parse($"func f(x: {type}) => ()").Diagnostics.Finalize().Diagnostics);
+
+    [Fact]
+    public void BindingSetRecoveryKeepsIndependentProblems()
+    {
+        const string source = "func f(x: (ref/i32){static}, y: ref{a}/i32, z: ref/i32 during b?) => ()\nlet n = (1";
+        var errors = Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics;
+        Assert.Equal(["OriginBindingSetName_Kd", "OriginBindingSetTarget_Kd", "LegacyBorrowOrigin_Kd", "BorrowOriginSuffixOrder_Kd", "MissingExpectedToken_Kd"], errors.Select(static x => x.Code));
+    }
+
+    [Fact]
+    public void LegacyBindingSetRecoveryKeepsIndependentBindingErrors()
+    {
+        const string source = "func f(x: ref{a}/i32) => ()\nlet n: i32 = true";
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        var result = c.Diagnostics.Finalize(rejected: true);
+        Assert.Equal(["LegacyBorrowOrigin_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
+        Assert.False(c.Emission.Validate(out _));
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
+    }
+
+    [Theory]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b)\n    origin a b\n    ()", "b\n", "OriginRelationOperator_Kd")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b)\n    origin a > b\n    ()", "> b", "OriginRelationOperator_Kd")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b)\n    origin a = b\n    ()", "= b", "OriginRelationOperator_Kd")]
@@ -117,6 +172,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("func f(x: ref/i32 during a?) => ()", "An optional suffix cannot follow an Origin annotation in the same Type", "optional suffix follows the annotation")]
     [InlineData("func f(x: ref/i32 during a and b) => ()", "An Origin intersection after 'during' requires parentheses", "intersection is outside parentheses")]
+    [InlineData("func f(x: View<i32>{a, b}) => ()", "A Type binding-set suffix contains one new set Name, not Origin values, lists or mappings", "expected one binding-set Name in braces")]
     public void CliAndLspExplainAnnotationOrder(string source, string message, string label)
     {
         var path = Path.GetFullPath("origin-syntax.kimi");
