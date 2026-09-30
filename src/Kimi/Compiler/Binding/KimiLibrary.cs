@@ -40,6 +40,7 @@ public sealed partial class KimiLibrary
         this.DictionaryInitialize = (FunctionKoto)FindDeclaration(dictionaryStorage, "initialize", true)!;
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
         this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "find", true)!;
+        this.DictionaryRequireAbsent = (FunctionKoto)FindDeclaration(dictionaryStorage, "requireAbsent", true)!;
         this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clear", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.DictionaryShrink = (FunctionKoto)FindDeclaration(dictionaryStorage, "shrinkToFit", true)!;
@@ -274,6 +275,8 @@ public sealed partial class KimiLibrary
     internal FunctionKoto DictionaryClearLinks { get; }
 
     internal FunctionKoto DictionaryFind { get; }
+
+    internal FunctionKoto DictionaryRequireAbsent { get; }
 
     internal FunctionKoto DictionaryClear { get; }
 

@@ -287,6 +287,11 @@ internal sealed partial class BodyLowering
             return this.LowerPointer(body, function, constants, projectDirectory, index, out failure);
         }
 
+        if (operation.Kind is OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry)
+        {
+            return this.LowerDictionaryLiteral(body, function, constants, projectDirectory, index, out failure);
+        }
+
         if (body.Values[index].Kind == OwnershipValueKind.Sequence)
         {
             return this.LowerSequence(library, body, function, constants, projectDirectory, index, out failure);

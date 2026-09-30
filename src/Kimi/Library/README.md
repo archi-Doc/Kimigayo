@@ -75,7 +75,7 @@ ObjectOwnership ID is reserved; ownership-family completeness is a separate quer
 [DictionaryStorage.kimi](DictionaryStorage.kimi) is compiled through ordinary
 Binding, ownership analysis and generation. It implements initialization, ordered
 search, insertion links, free-slot reuse, unlinking, reverse cleanup, compaction
-and shrink-to-fit decisions. Its private `Handle` and `Links` records use explicit
+and shrink-to-fit decisions, plus the literal's duplicate-key rejection. Its private `Handle` and `Links` records use explicit
 C layout to agree with the backend; they do not define a public collection ABI.
 Callbacks use the ordinary Function Type ABI with stack handles, without heap
 allocation. The compiler passes the selected equality witness and typed entry
@@ -88,7 +88,10 @@ Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified
 typed ownership operations remain compiler responsibilities. Keep the original
-operation's Abort location when bridging platform failures.
+operation's Abort location when bridging platform failures. Nonempty literals initialize a live empty handle, acquire
+and check each key before acquiring its value, and transfer each completed pair through the same typed placement bridge
+as insertion. The partial handle and pending key use ordinary temporary cleanup on an early return. The duplicate-key
+Abort callback retains the later key's location; it and the equality adapter use stack handles only.
 
 `DictionaryLibraryTest` checks ordinary source compilation, private access,
 symbol identity, record layout and omission from programs that do not use

@@ -51,6 +51,7 @@ internal sealed partial class BodyLowering
                 OwnershipValueKind.PointerProject => value.Count is 1 or 2 ? value.Count : -1,
                 OwnershipValueKind.Sequence => value.Count is 0 or 1 ? value.Count : -1,
                 OwnershipValueKind.Formatting => value.Count is 0 or 1 ? value.Count : -1,
+                OwnershipValueKind.DictionaryLiteral => body.Operations[id].Kind == OwnershipOperationKind.CheckDictionaryKey ? 1 : 2,
                 OwnershipValueKind.Phi or OwnershipValueKind.Closure => value.Count,
                 OwnershipValueKind.Capture => 0,
                 _ => -1,

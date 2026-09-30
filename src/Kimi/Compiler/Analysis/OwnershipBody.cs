@@ -241,6 +241,17 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.CheckDictionaryKey:
+            case OwnershipOperationKind.StoreDictionaryEntry:
+                this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                if (operation.Kind == OwnershipOperationKind.StoreDictionaryEntry)
+                {
+                    var value = this.OperationSteps[index];
+                    this.CheckInitialized(operation, value, this.CompleteState(value));
+                }
+
+                break;
             case OwnershipOperationKind.UpdateBorrowed:
                 this.CheckInitialized(operation, (int)this.Values[index].Constant, this.CompleteState((int)this.Values[index].Constant));
                 this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
@@ -328,6 +339,10 @@ public sealed partial class OwnershipBody
 
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.StoreDictionaryEntry:
+                this.Move(operation.Input);
+                this.Move(this.OperationSteps[index]);
+                break;
             case OwnershipOperationKind.DecomposeCase:
                 var decomposition = this.DecompositionStorage[this.OperationSteps[index]];
                 this.Move(place);

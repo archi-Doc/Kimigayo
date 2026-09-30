@@ -242,6 +242,8 @@ internal sealed class EmissionModule
 
     internal FunctionAbi? DictionaryAppendSlot { get; set; }
 
+    internal FunctionAbi? DictionaryRequireAbsent { get; set; }
+
     internal FunctionAbi? DictionaryInitialize { get; set; }
 
     internal FunctionAbi? DictionaryClearLinks { get; set; }
@@ -293,6 +295,7 @@ internal sealed class EmissionModule
         this.NeedsDictionaryRuntime = false;
         this.DictionaryUnlink = null;
         this.DictionaryAppendSlot = null;
+        this.DictionaryRequireAbsent = null;
         this.DictionaryInitialize = null;
         this.DictionaryClearLinks = null;
         this.DictionaryFind = null;
@@ -377,6 +380,8 @@ internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueL
 
 internal enum DictionaryHelperKind : byte
 {
+    CheckKey,
+    Place,
     Find,
     TryInsert,
     InsertOrReplace,

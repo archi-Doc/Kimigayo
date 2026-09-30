@@ -17,6 +17,22 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareDictionaryProjections(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
     {
         failure = null;
+        for (var i = 0; i < body.Constructions.Count; i++)
+        {
+            var construction = body.Constructions[i];
+            if (body.Places[construction.Place] is not { Type.Kind: BoundTypeKind.Dictionary, Source: DictionaryLiteralKoto { Entries.Count: > 0 } } place)
+            {
+                continue;
+            }
+
+            var dictionary = context is null ? place.Type : compilation.Binding.InstantiateStorageType(place.Type, context);
+            if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
+                !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
+            {
+                return Fail(failure ?? "Dictionary construction requires a finalized equality witness.", out failure);
+            }
+        }
+
         foreach (var projection in body.Projections)
         {
             if (body.Operations[projection.Operation].Source is not IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } index)

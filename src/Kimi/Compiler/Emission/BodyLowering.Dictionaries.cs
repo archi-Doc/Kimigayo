@@ -35,6 +35,8 @@ internal sealed partial class BodyLowering
             FunctionAbi abi = kind switch
             {
                 DictionaryHelperKind.Find => new(name, "i64", [handle, new("ptr", "key")]),
+                DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
+                DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), output, location, length], resultSlot: true),
                 DictionaryHelperKind.Remove or DictionaryHelperKind.TryGet => new(name, "void", [handle, new("ptr", "key"), output, location, length], resultSlot: true),
                 _ => new(name, "void", [handle, location, length]),
@@ -48,6 +50,57 @@ internal sealed partial class BodyLowering
 
         this.dictionaryHelpers.Add(cacheKey, helper);
         return helper;
+    }
+
+    private bool LowerDictionaryLiteral(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var inserting = operation.Kind == OwnershipOperationKind.StoreDictionaryEntry;
+        var valuePlace = inserting ? body.OperationSteps[id] : -1;
+        if ((uint)operation.Place >= (uint)body.Places.Count || (uint)operation.Input >= (uint)body.Places.Count ||
+            body.Places[operation.Place] is not { Type: { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary, Source: DictionaryLiteralKoto } ||
+            !ReferenceEquals(body.Places[operation.Input].Type, dictionary.Components[0]) ||
+            (inserting && ((uint)valuePlace >= (uint)body.Places.Count || !ReferenceEquals(body.Places[valuePlace].Type, dictionary.Components[1]))) ||
+            !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value) ||
+            !this.TryGetLocation(operation.Source, directory, constants, out var location))
+        {
+            return Fail("Dictionary literal requires an initialized handle and matching acquired key/value storage.", out failure);
+        }
+
+        if (body.IsReachable(id) && ((body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0 ||
+            (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0 ||
+            (inserting && (body.GetInputState(id, valuePlace) & PlaceState.MustInit) == 0)))
+        {
+            return Fail("Dictionary literal cannot inspect or transfer an uninitialized entry.", out failure);
+        }
+
+        FunctionAbi? equality = null;
+        if (!inserting && (operation.Source.CodeContext.Compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
+            (equality = this.ComparisonHelpers?.GetValueOrDefault(comparison)) is null))
+        {
+            return Fail("Dictionary literal requires a finalized equality witness.", out failure);
+        }
+
+        var helper = this.GetDictionaryHelper(inserting ? DictionaryHelperKind.Place : DictionaryHelperKind.CheckKey, key, value, equality: equality);
+        this.callOperands.Clear();
+        this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+        this.callOperands.Add(Argument(operation.Input, key, 0));
+        if (inserting)
+        {
+            this.callOperands.Add(Argument(valuePlace, value, 1));
+        }
+
+        this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
+        this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
+        function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
+        this.dictionaryRuntimeUsed = true;
+        this.arrayRuntimeUsed = true;
+        return true;
+
+        EmissionOperand Argument(int place, in ArrayElement element, int operand) => element.IsZeroSized
+            ? new(EmissionOperandKind.NullAddress, 0)
+            : element.IsScalar ? this.PhysicalOperand(body, Input(body, id, operand)) : new(EmissionOperandKind.SlotAddress, place);
     }
 
     private bool LowerDictionaryOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)

@@ -84,6 +84,8 @@ public enum OwnershipOperationKind : byte
     TestAbort,
     ActivateCallBorrows,
     StorePointer,
+    CheckDictionaryKey,
+    StoreDictionaryEntry,
 }
 
 public enum PlacementKind : byte
@@ -425,6 +427,7 @@ internal enum OwnershipValueKind : byte
     StringComparison,
     ContractComparison,
     RuntimeTypeTest,
+    DictionaryLiteral,
     Element,
     Borrow,
     Phi,

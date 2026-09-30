@@ -5,10 +5,20 @@ namespace Kimi.Compiler;
 internal static partial class LlvmModuleWriter
 {
     // These adapters expose allocation/release/byte transfer to ordinary source.
-    private const string DictionaryMemoryAdapters = """
+    private static readonly string DictionaryMemoryAdapters = """
         @__kimi_dictionary_allocate_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_allocate, ptr null, ptr null }, align 8
         @__kimi_dictionary_release_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_release, ptr null, ptr null }, align 8
         @__kimi_dictionary_transfer_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_transfer, ptr null, ptr null }, align 8
+        @__kimi_dictionary_duplicate_table = private constant { ptr, ptr, ptr } { ptr @__kimi_dictionary_duplicate, ptr null, ptr null }, align 8
+        define internal void @__kimi_dictionary_duplicate(i64 %environment, ptr %context) #0 {
+        entry:
+          %origin = inttoptr i64 %environment to ptr
+          %location = load ptr, ptr %origin, align 8
+          %length_ptr = getelementptr i8, ptr %origin, i64 8
+          %location_length = load i64, ptr %length_ptr, align 8
+          call void @__kimi_abort(i32 REASON_DUPLICATE, ptr %location, i64 %location_length, i64 -2)
+          unreachable
+        }
         define internal ptr @__kimi_dictionary_allocate(i64 %environment, i64 %bytes, ptr %context) #0 {
         entry:
           %process_heap = call ptr @GetProcessHeap()
@@ -35,7 +45,7 @@ internal static partial class LlvmModuleWriter
           ret void
         }
 
-        """;
+        """.Replace("REASON_DUPLICATE", Reason(WindowsLowering.DuplicateKeyReason), StringComparison.Ordinal);
 
     // The first three words are the common growable buffer prefix. Dictionary's
     // fourth word is its live count; subsequent words hold insertion and free links.
@@ -48,7 +58,8 @@ internal static partial class LlvmModuleWriter
     {
         output.Write(DictionaryMemoryAdapters);
         output.Write(WindowsLowering.DictionaryShrink.GetDefinition(false));
-        output.Write("entry:\n  %origin = alloca { ptr, i64 }, align 8\n  store ptr %location, ptr %origin, align 8\n  %length_ptr = getelementptr i8, ptr %origin, i64 8\n  store i64 %location_length, ptr %length_ptr, align 8\n  %environment = ptrtoint ptr %origin to i64\n");
+        output.Write("entry:\n");
+        WriteDictionaryOrigin(output);
         WriteDictionaryCallbackHandle(output, "__kimi_dictionary_allocate", "%allocate", "0");
         WriteDictionaryCallbackHandle(output, "__kimi_dictionary_release", "%release", "%environment");
         WriteDictionaryCallbackHandle(output, "__kimi_dictionary_transfer", "%transfer", "0");
@@ -56,4 +67,7 @@ internal static partial class LlvmModuleWriter
         output.Write(module.DictionaryShrink!.Name);
         output.Write("(ptr %handle, i64 %stride, ptr %allocate, ptr %release, ptr %transfer)\n  ret void\n}\n\n");
     }
+
+    private static void WriteDictionaryOrigin(TextWriter output)
+        => output.Write("  %origin = alloca { ptr, i64 }, align 8\n  store ptr %location, ptr %origin, align 8\n  %length_ptr = getelementptr i8, ptr %origin, i64 8\n  store i64 %location_length, ptr %length_ptr, align 8\n  %environment = ptrtoint ptr %origin to i64\n");
 }

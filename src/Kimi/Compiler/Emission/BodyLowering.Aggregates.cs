@@ -157,7 +157,7 @@ internal sealed partial class BodyLowering
                 type = type.StoredCases![selected.Ordinal];
                 offset = ownerLayout.PayloadOffset;
             }
-            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto { Entries.Count: 0 }))
+            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
             {
                 return Fail("Aggregate construction has no matching source shape.", out failure);
             }

@@ -736,8 +736,8 @@ public sealed partial class OwnershipAnalysis
             case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.Array:
                 // SPEC 4.3, 4.7.4: an Array literal acquires its elements as payloads that construction moves into the buffer.
                 return this.ConstructAggregate(array, array.Elements);
-            case DictionaryLiteralKoto { Entries.Count: 0, BoundType.Kind: BoundTypeKind.Dictionary } dictionary:
-                return this.ConstructAggregate(dictionary, []);
+            case DictionaryLiteralKoto { BoundType.Kind: BoundTypeKind.Dictionary } dictionary:
+                return this.ConstructDictionary(dictionary);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
             case InvocationKoto call when ElementAccess.IsPlaceCall(call) && !this.referenceCalls.Remove(call):

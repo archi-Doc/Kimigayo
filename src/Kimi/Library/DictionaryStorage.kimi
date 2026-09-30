@@ -17,6 +17,12 @@ group DictionaryStorage
         public var previous: isize
         public var next: isize
 
+    // Literal construction checks before evaluating the corresponding value.
+    // The backend supplies the failure callback solely to retain the key's source location.
+    func requireAbsent(link: isize, duplicate: () -> ())
+        if link != 0
+            duplicate()
+
     unsafe func shrinkToFit(handle: unsafe/Handle, stride: isize, allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (), transfer: (unsafe/u8, unsafe/u8, isize) -> ())
         unsafe
             let length = (*handle).length

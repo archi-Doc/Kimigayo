@@ -21,6 +21,13 @@ internal static partial class LlvmModuleWriter
             output.Write("entry:\n");
             switch (helper.Kind)
             {
+                case DictionaryHelperKind.CheckKey:
+                    WriteDictionaryKeyCheck(output, helper, module.DictionaryRequireAbsent!);
+                    break;
+                case DictionaryHelperKind.Place:
+                    WriteDictionaryInsertion(output, helper);
+                    output.Write("  ret void\n");
+                    break;
                 case DictionaryHelperKind.Find:
                     WriteDictionaryFind(output, helper, module.DictionaryFind!);
                     break;
@@ -136,9 +143,7 @@ internal static partial class LlvmModuleWriter
     {
         if (DictionaryNeedsDestruction(helper))
         {
-            output.Write("  %origin = alloca { ptr, i64 }, align 8\n  store ptr %location, ptr %origin, align 8\n");
-            DictionaryAddress(output, "%length_ptr", "%origin", 8);
-            output.Write("  store i64 %location_length, ptr %length_ptr, align 8\n  %environment = ptrtoint ptr %origin to i64\n");
+            WriteDictionaryOrigin(output);
             WriteDictionaryCallbackHandle(output, helper.Abi.Name, "%callback", "%environment");
             output.Write("  call void @");
             output.Write(clear.Name);
@@ -164,12 +169,7 @@ internal static partial class LlvmModuleWriter
         var scalarValue = helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0;
         if (insertion && scalarKey)
         {
-            output.Write("  %key_slot = alloca ");
-            output.Write(helper.Key.Layout.StorageType);
-            output.Write(", align ");
-            WriteNumber(output, helper.Key.Layout.Alignment);
-            output.Write('\n');
-            WriteStoredArgument(output, helper.Key, true, "%key", "%key_slot", "%key_input");
+            WriteDictionaryKeyStorage(output, helper);
         }
 
         output.Write("  %link = call i64 @");
@@ -223,16 +223,52 @@ internal static partial class LlvmModuleWriter
         output.Write("  ret void\nabsent:\n");
         if (insertion)
         {
-            output.Write("  %new_slot = call ptr @__kimi_dictionary_append_slot(ptr %handle, i64 ");
-            WriteNumber(output, helper.Stride);
-            output.Write(", ptr %location, i64 %location_length)\n");
-            DictionaryAddress(output, "%new_key", "%new_slot", helper.KeyOffset);
-            DictionaryAddress(output, "%new_value", "%new_slot", helper.ValueOffset);
-            WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%new_key", "%key_inserted");
-            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%new_value", "%value_inserted");
+            WriteDictionaryInsertion(output, helper);
         }
 
         output.Write(helper.Kind == DictionaryHelperKind.TryInsert ? "  store i32 0, ptr %result, align 4\n" : "  store i32 1, ptr %result, align 4\n");
         output.Write("  ret void\n");
+    }
+
+    private static void WriteDictionaryKeyStorage(TextWriter output, DictionaryHelper helper)
+    {
+        output.Write("  %key_slot = alloca ");
+        output.Write(helper.Key.Layout.StorageType);
+        output.Write(", align ");
+        WriteNumber(output, helper.Key.Layout.Alignment);
+        output.Write('\n');
+        WriteStoredArgument(output, helper.Key, true, "%key", "%key_slot", "%key_input");
+    }
+
+    private static void WriteDictionaryKeyCheck(TextWriter output, DictionaryHelper helper, FunctionAbi requireAbsent)
+    {
+        var scalar = helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0;
+        if (scalar)
+        {
+            WriteDictionaryKeyStorage(output, helper);
+        }
+
+        output.Write("  %link = call i64 @");
+        output.Write(helper.Related!.Name);
+        output.Write("(ptr %handle, ptr ");
+        output.Write(scalar ? "%key_slot" : "%key");
+        output.Write(")\n");
+        WriteDictionaryOrigin(output);
+        WriteDictionaryCallbackHandle(output, "__kimi_dictionary_duplicate", "%duplicate", "%environment");
+        output.Write("  call void @");
+        output.Write(requireAbsent.Name);
+        output.Write("(i64 %link, ptr %duplicate)\n  ret void\n");
+    }
+
+    private static void WriteDictionaryInsertion(TextWriter output, DictionaryHelper helper)
+    {
+        // Typed placement only; the ordinary source appendSlot body owns ordering and free-slot reuse.
+        output.Write("  %new_slot = call ptr @__kimi_dictionary_append_slot(ptr %handle, i64 ");
+        WriteNumber(output, helper.Stride);
+        output.Write(", ptr %location, i64 %location_length)\n");
+        DictionaryAddress(output, "%new_key", "%new_slot", helper.KeyOffset);
+        DictionaryAddress(output, "%new_value", "%new_slot", helper.ValueOffset);
+        WriteStoredArgument(output, helper.Key, helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0, "%key", "%new_key", "%key_inserted");
+        WriteStoredArgument(output, helper.Value, helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0, "%value", "%new_value", "%value_inserted");
     }
 }
