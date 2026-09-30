@@ -230,7 +230,7 @@ public sealed partial class OwnershipBody
                         var rootLost = !external && (this.BorrowRootState(p, root) & PlaceState.MustInit) == 0;
                         var conflict = rootLost || (!external && accessConflict);
                         var value = this.Values[accessId];
-                        if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore && value.Count > 0)
+                        if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad && value.Count > 0)
                         {
                             var receiver = this.ValueOperands[value.Start];
                             var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
@@ -246,9 +246,11 @@ public sealed partial class OwnershipBody
                                 ReferenceTypes.IsBorrow(this.Places[operation.Place].Type.Components[0]) && this.IsExclusiveBorrowInput(root) &&
                                 !ReferenceEquals(this.Places[root].Type.Components[0], this.Places[operation.Place].Type.Components[0]);
                             if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
-                                (value.Kind != OwnershipValueKind.PointerStore || sourcePlace == root ||
-                                    (this.IsExclusiveBorrowInput(root) && ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
-                                        ReferenceEquals(this.Places[root].Type.Components[0], this.Places[sourcePlace].Type.Components[0])) ||
+                                (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad) || sourcePlace == root ||
+                                    (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
+                                        ReferenceEquals(
+                                            this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type,
+                                            this.Places[sourcePlace].Type.Components[0])) ||
                                     this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
                                 (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
                             {

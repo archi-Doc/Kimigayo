@@ -106,7 +106,7 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
         Assert.Equal(new SourceSpan(source.IndexOf("r[0] =", StringComparison.Ordinal), 4), error.Span);
-        Assert.Equal("This operation conflicts with an active inspection, argument, or element access loan", error.Message);
+        Assert.Equal("This operation conflicts with an active loan", error.Message);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(error.Message, console.Text, StringComparison.Ordinal);

@@ -14,6 +14,20 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     private const string Header = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = entries.tryInsert(1, value@move)\n";
 
     [Theory]
+    [InlineData("ref", "entries[1]@follow = 99")]
+    [InlineData("uniq", "let snapshot: i32 = entries[1]@follow")]
+    public void LocalStoredParentsCannotBypassTheirChildren(string mode, string access)
+    {
+        var source = "var value = 42\nvar entries = [1: value@uniq]\nlet child = entries[1]@follow@" + mode + "\n" + access + "\nrequire child == 42 else => $abort(\"value\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [Trait("Purpose", "Allocation")]
     [InlineData("Owned", "entries", "")]
     [InlineData("Shared", "view", "let view = entries@ref\n    ")]
     [InlineData("Exclusive", "view", "let view = entries@uniq\n    ")]

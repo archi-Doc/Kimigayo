@@ -677,7 +677,7 @@
 
   + Name="ComparisonLoanConflict_Kd"
     Category="Language"
-    Message="This operation conflicts with an active inspection, argument, or element access loan"
+    Message="This operation conflicts with an active loan"
 
   + Name="CallReservationConflict_Kd"
     Category="Language"

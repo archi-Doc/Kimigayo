@@ -13,6 +13,78 @@ namespace XunitTest;
 public class StoredReferenceLoanTest(ITestOutputHelper output)
 {
     [Theory]
+    [InlineData("", "value@follow")]
+    [InlineData(" during a", "value@follow")]
+    [InlineData(" during a", "value")]
+    public void ExclusiveChildrenSuspendParentValueReads(string origin, string read)
+    {
+        var source = "func run(value: uniq/i32" + origin + ")\n    let child = value@follow@uniq\n    let snapshot: i32 = " + read + "\n    child@follow = 99";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData("Shared", "ref", "value@follow")]
+    [InlineData("Child", "uniq", "child@follow")]
+    public void CompatibleReadsRemainAllowed(string name, string mode, string read)
+    {
+        var source = "func run(value: uniq/i32 during a)\n    let child = value@follow@" + mode + "\n    let snapshot: i32 = " + read + "\n    require child == snapshot else => $abort(\"value\")\nvar value = 42\nrun(value@uniq)";
+        ScalarEmissionTest.EmitFixture("StoredReferenceLoanRead" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParentReadDiagnosticsIdentifyEachReadAndTheExclusiveChild(bool independent)
+    {
+        var source = "func run(value: uniq/i32 during a)\n    let child = value@follow@uniq\n    let first: i32 = value\n" +
+            (independent ? "    let second: i32 = value\n" : string.Empty) + "    child@follow = 99";
+        var path = Path.GetFullPath("parent-read.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete);
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        Assert.Equal(independent ? 2 : 1, result.Diagnostics.Length);
+        foreach (var error in result.Diagnostics)
+        {
+            Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+            Assert.Equal(DiagnosticSeverity.Error, error.Severity);
+            Assert.Equal("value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.Equal("This operation conflicts with an active loan", error.Message);
+            var retained = Assert.Single(error.Related!);
+            Assert.Equal("loan", retained.Role);
+            Assert.Contains("child", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+        }
+
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("value retaining the conflicting loan", console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity];
+            Assert.Equal(result.Diagnostics.Length, sent.Length);
+            for (var i = 0; i < sent.Length; i++)
+            {
+                Assert.Equal(result.Diagnostics[i].Display!.Range, sent[i].Range);
+                if (related)
+                {
+                    Assert.Equal(result.Diagnostics[i].Related![0].Range, Assert.Single(sent[i].RelatedInformation!).Location.Range);
+                }
+                else
+                {
+                    Assert.Contains("value retaining the conflicting loan", sent[i].Message, StringComparison.Ordinal);
+                }
+            }
+        }
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData(" during a")]
     public void ASharedChildSuspendsExclusiveParentAccess(string origin)
@@ -127,10 +199,12 @@ public class StoredReferenceLoanTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void NamedInputBorrowAnalysisReusesItsStorage()
+    [Theory]
+    [InlineData("ref")]
+    [InlineData("uniq")]
+    public void NamedInputBorrowAnalysisReusesItsStorage(string mode)
     {
-        var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let found = value@follow@ref\n    require found == 42 else => $abort(\"value\")\n    value@follow = 99");
+        var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    let found = value@follow@" + mode + "\n    require found == 42 else => $abort(\"value\")\n    value@follow = 99");
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Ownership.Analyze().IsVerified);
