@@ -66,9 +66,6 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private static bool IsDictionaryElement(Koto source)
-        => source is IndexKoto index && (index.Left.BoundType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(index.Left.BoundType));
-
     // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in an instance whose
     // binding is ref or uniq; for owner, and in the universal verification of the generic body, it selects the operand
     // Place itself, whose Loans cover every admitted case.
@@ -134,10 +131,10 @@ public sealed partial class OwnershipAnalysis
     private bool ReadsStoredReference(ConversionKoto conversion)
     {
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
-        // Dictionary elements acquire their complete stored reference through the ordinary element Place.
+        // Published Places acquire their complete stored reference through the ordinary Place call.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
             ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null) ||
-                (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left) || IsDictionaryElement(left))));
+                (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
     }
 
     // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
@@ -150,7 +147,7 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(Koto left, SemanticsKind mode)
     {
-        if (IsDictionaryElement(left))
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
         {
             var stored = this.Concrete(left.BoundType)!;
             var slotType = this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
@@ -165,21 +162,6 @@ public sealed partial class OwnershipAnalysis
             var acquired = mode == SemanticsKind.Ref && stored.Semantics == SemanticsKind.Uniq
                 ? this.compilation.Binding.SharedReference(stored.Components[0], stored.Origin) : stored;
             var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
-            this.Emit(OwnershipOperationKind.Produce, left, pointer);
-            this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
-            return this.RegisterTemporary(pointer);
-        }
-
-        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
-        {
-            // A published element Place is borrowed, in the mode its selection published, only to load the stored reference.
-            var slot = this.BorrowStruct(left, this.compilation.Binding.Reference(mode, left.BoundType!));
-            if (slot < 0)
-            {
-                return -1;
-            }
-
-            var pointer = this.Place(left, left.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, left, pointer);
             this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
             return this.RegisterTemporary(pointer);

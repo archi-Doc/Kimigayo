@@ -59,7 +59,7 @@ public sealed partial class OwnershipAnalysis
             return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
         }
 
-        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped) || IsDictionaryElement(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
+        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
             ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
         {
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
@@ -89,35 +89,14 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStruct(selected.Left, type, reservation);
         }
 
-        if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } dictionaryIndex && type.Semantics == SemanticsKind.Ref)
-        {
-            var depth = this.comparisonDepth++;
-            var projection = this.LocateElement(dictionaryIndex);
-            if (projection < 0)
-            {
-                this.EndComparisonLoans(depth, source);
-                this.comparisonDepth = depth;
-                return -1;
-            }
-
-            var plan = this.body.Projections[projection];
-            var elementReference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
-            var borrow = this.Emit(OwnershipOperationKind.Borrow, source, plan.Root, elementReference, loanMode: LoanRequirement.Ref, projection: projection);
-            this.SetValue(borrow, OwnershipValueKind.Address, [], constant: plan.Root);
-            this.body.Projections[projection] = plan with { Borrow = borrow };
-            this.EndComparisonLoans(depth, source);
-            this.comparisonDepth = depth;
-            return this.RegisterTemporary(elementReference);
-        }
-
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
-            (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ElementAccess.IsExclusiveArrayElement(element)))
+            (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
         {
             // SPEC 4.6.9, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
             // Array is borrowed like an exclusive receiver; a fixed/dynamic array reference is read) and selects the element
             // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
             var depth = this.comparisonDepth++;
-            var handle = element.Left.BoundType!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
+            var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
                 ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
                 : this.Expression(element.Left, PlaceUseKind.Read);
             var subscript = handle < 0 ? -1 : this.Value(this.SelectionKey(element, handle));
@@ -130,7 +109,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
-            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType) || ReferenceTypes.IsDictionary(slice.Left.BoundType)))
+            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
         {
             // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
             // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.

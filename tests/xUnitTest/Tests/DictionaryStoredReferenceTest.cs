@@ -14,6 +14,29 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     private const string Header = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = entries.tryInsert(1, value@move)\n";
 
     [Theory]
+    [InlineData("Shared", "index", "ref", "require found == 42 else => $abort(\"value\")")]
+    [InlineData("Exclusive", "indexUniq", "uniq", "found@follow = 99")]
+    public void DirectPlaceEntriesPreserveTheStoredCapability(string name, string entry, string mode, string use)
+    {
+        var source = Header + "    let found = entries." + entry + "(1)@follow@" + mode + "\n    entries.clear()\n    " + use +
+            "\nvar value = 42\nrun(value@uniq)\nrequire value == " + (mode == "uniq" ? "99" : "42") + " else => $abort(\"result\")";
+        ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceDirect" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("entries.index(1)@follow@ref", "entries.indexUniq(1)@follow = 99")]
+    [InlineData("entries.indexUniq(1)@follow@uniq", "let read: i32 = entries.index(1)@follow")]
+    public void DirectPlaceEntriesCannotBypassStoredChildren(string child, string access)
+    {
+        var source = Header + "    let found = " + child + "\n    " + access + "\n    require found == 42 else => $abort(\"value\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
     [InlineData("ref", "entries[1]@follow = 99")]
     [InlineData("uniq", "let snapshot: i32 = entries[1]@follow")]
     public void LocalStoredParentsCannotBypassTheirChildren(string mode, string access)
