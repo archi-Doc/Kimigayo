@@ -40,7 +40,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)) &&
+            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)) &&
                 this.compilation.Binding.ProveOwned(type, source) == ConstraintProof.Proven);
     }
 

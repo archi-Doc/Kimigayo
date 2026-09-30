@@ -30,7 +30,7 @@ internal static class MatchTypes
         // Repeated payload Types share one proof. A pending entry also rejects
         // a cycle defensively, even if called with unprepared storage.
         cache[type] = false;
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
             for (var i = 0; i < type.Components.Count; i++)
             {

@@ -454,7 +454,7 @@ internal sealed partial class BodyLowering
         // The Array layout describes its handle; the indexed storage has T's own layout.
         var stored = dynamicElement ? receiverType.Components[dictionary ? 1 : 0] : null;
         var representation = dynamicElement ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : layout.Fields[field];
-        var elementLayout = dynamicElement ? this.aggregateLayouts.Get(stored!) : layout.Children[field];
+        var elementLayout = dynamicElement ? this.aggregateLayouts.GetStored(stored!) : layout.Children[field];
         if (representation is null)
         {
             return Fail("Array element has no supported storage representation.", out failure);

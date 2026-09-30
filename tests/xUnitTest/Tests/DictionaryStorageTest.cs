@@ -46,10 +46,10 @@ public class DictionaryStorageTest
 
     [Theory]
     [InlineData("let values: Array<Dictionary<i32, i32>> = [[:]]")]
-    public void UnimplementedStorageOperationsRefuseGeneration(string source)
+    public void NestedStorageHasRecursiveDestruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 }

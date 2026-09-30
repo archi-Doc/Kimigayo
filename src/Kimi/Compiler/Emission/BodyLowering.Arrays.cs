@@ -31,14 +31,20 @@ internal sealed partial class BodyLowering
             (body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array ||
              body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
-    // SPEC 4.5, 16.3.2: the drop helper that destroys an Array field's elements and releases its buffer with the containing struct.
-    private string? ArrayFieldDrop(BoundType array)
+    // SPEC 4.5, 16.3.2: the same recursive destruction applies in fields, payloads and collection slots.
+    private string? CollectionFieldDrop(BoundType collection)
     {
-        return array.Kind == BoundTypeKind.Array && array.Components.Count == 1 && this.TryGetArrayElement(array.Components[0], out var element)
-            ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name : null;
+        if (collection.Kind == BoundTypeKind.Array && collection.Components.Count == 1 && this.TryGetArrayElement(collection.Components[0], out var element))
+        {
+            return this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name;
+        }
+
+        return collection.Kind == BoundTypeKind.Dictionary && collection.Components.Count == 2 &&
+            this.TryGetArrayElement(collection.Components[0], out var key) && this.TryGetArrayElement(collection.Components[1], out var value)
+            ? this.GetDictionaryHelper(DictionaryHelperKind.Drop, key, value).Abi.Name : null;
     }
 
-    // SPEC 4.5: every complete element Type except a nested handle has a storage plan; a zero-sized element has stride zero,
+    // SPEC 4.5: every supported complete element Type has a recursive storage plan; a zero-sized element has stride zero,
     // and its Array keeps the substitute buffer of the capacity routines.
     private bool TryGetArrayElement(BoundType type, out ArrayElement element)
     {
@@ -66,8 +72,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        // Nested handles wait for element destruction that releases inner buffers.
-        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Never) || this.aggregateLayouts.Get(type) is not { } layout)
+        if (ReferenceEquals(type, BoundType.Never) || this.aggregateLayouts.GetStored(type) is not { } layout)
         {
             return false;
         }

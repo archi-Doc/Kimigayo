@@ -48,7 +48,7 @@ internal sealed partial class BodyLowering
             return Fail("Borrowed update requires matching initialized exclusive targets and acquired inputs.", out failure);
         }
 
-        var layout = exchange || swap ? this.aggregatePlaces[operation.Place] : this.aggregateLayouts.Get(type);
+        var layout = exchange || swap ? this.aggregatePlaces[operation.Place] : this.aggregateLayouts.GetStored(type);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
         if (representation is null || (!ScalarTypes.Supports(type) && layout is null && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String)))
         {

@@ -32,14 +32,14 @@ internal sealed class AggregateLayoutPool
     private AggregateLayout? functionHandle;
     private AggregateLayout? objectHandle;
 
-    /// <summary>Gets or sets the source of the element-specific drop helper that an Array field's destruction calls; it
+    /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
     internal Func<BoundType, string?>? CollectionDrop { get; set; }
 
     /// <summary>Gets or sets the reservation of a concrete generic destructor entry, before its body is lowered.</summary>
     internal Func<BoundType, string?>? InstantiateDestructor { get; set; }
 
-    /// <summary>Gets the Array field layouts of the current body, whose destructors release the buffers.</summary>
+    /// <summary>Gets the stored collection layouts of the current body, whose destructors release the buffers.</summary>
     internal List<AggregateLayout> UsedCollectionFields => this.usedCollectionFields;
 
     internal void RegisterDestructor(FunctionKoto function, int ordinal) => this.destructors[function] = ordinal;
@@ -60,9 +60,12 @@ internal sealed class AggregateLayoutPool
 
     internal AggregateLayout? Get(BoundType type) => this.Get(type, 0);
 
+    internal AggregateLayout? GetStored(BoundType type)
+        => type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary ? this.CollectionField(type, 0) : this.Get(type, 0);
+
     private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
-    // An Array field: the handle layout of the Array, destroyed through the element-specific drop helper.
+    // A stored collection: its handle layout, destroyed through the element-specific drop helper.
     private AggregateLayout? CollectionField(BoundType array, int depth)
     {
         if (this.CollectionDrop?.Invoke(array) is not { } drop || this.Get(array, depth + 1) is not { } handle)
@@ -189,8 +192,8 @@ internal sealed class AggregateLayoutPool
                 AggregateLayout? child;
                 if (component.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
                 {
-                    // SPEC 4.5, 16.3.2: a struct's Array field is destroyed with the struct, releasing its elements and buffer.
-                    if (!structure || component.Kind == BoundTypeKind.Dictionary || this.CollectionField(component, depth) is not { } collection)
+                    // SPEC 4.5, 16.3.2: destruction follows the stored Type in every containing aggregate.
+                    if (this.CollectionField(component, depth) is not { } collection)
                     {
                         this.resolved[type] = null;
                         return null;
@@ -232,7 +235,7 @@ internal sealed class AggregateLayoutPool
                 var equal = true;
                 for (var i = 0; i < candidate.Fields.Length; i++)
                 {
-                    equal &= ReferenceEquals(candidate.Fields[i], this.fields[start + i]);
+                    equal &= ReferenceEquals(candidate.Fields[i], this.fields[start + i]) && ReferenceEquals(candidate.Children[i], this.children[start + i]);
                 }
 
                 if (equal)

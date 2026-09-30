@@ -35,8 +35,8 @@ internal sealed partial class BodyLowering
 
     internal BodyLowering()
     {
-        // Array fields are destroyed through the element-specific drop helper of this lowering (SPEC 16.3.2).
-        this.aggregateLayouts.CollectionDrop = this.ArrayFieldDrop;
+        // Stored collection handles keep their element-specific recursive destruction (SPEC 16.3.2).
+        this.aggregateLayouts.CollectionDrop = this.CollectionFieldDrop;
     }
 
     // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);

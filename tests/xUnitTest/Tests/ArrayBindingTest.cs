@@ -33,20 +33,18 @@ public class ArrayBindingTest
             "func make() -> Array<i32> => []\nfunc take(values: Array<i32>) -> isize => values.length\nlet a = make()\nrequire a.length == 0 else => $abort(\"make\")\nlet b: Array<i32> = []\nrequire take(b@move) == 0 and take(make()) == 0 else => $abort(\"take\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // A Tuple or Dictionary field holding a handle would have to release it during its own destruction; struct Array
-    // fields are destroyed with the struct (ArrayMembersTest).
+    // SPEC 4.5, 16.3.2: a stored handle releases its contents with its containing aggregate.
     [Theory]
     [InlineData("let pair: (Array<i32>, i32) = ([], 1)")]
     [InlineData("struct Table\n    var entries: Dictionary<i32, i32> = [:]\nlet table = Table.init()")]
-    public void AggregatesHoldingHandlesAreNotGeneratedYet(string source)
+    public void AggregatesHoldingHandlesHaveRecursiveDestruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
+        Assert.True(c.Emission.WriteIr(output, out var error), error);
+        Assert.NotEmpty(output.ToString());
     }
 
     // SPEC 4.5: Array is Non-Copy and its Owned classification follows the element Type.
@@ -94,14 +92,14 @@ public class ArrayBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
-    // A nested independent literal is an Array of handles, which ownership analysis does not support yet (PLAN P29).
+    // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
-    public void NestedIndependentLiteralsAreRejectedByOwnershipAnalysis()
+    public void NestedIndependentLiteralsHaveRecursiveStorage()
     {
         var c = MinimalEmissionTest.Analyze("let nested = [[1], [2]]");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.Validate(out _));
     }
 
     // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.

@@ -10,18 +10,15 @@ public class DynamicArrayBoundaryTest
     [Theory]
     [InlineData("let values: Array<Array<i32>> = [[1]]")]
     [InlineData("func count<T>(values: Array<T>) -> isize => values.length\nlet n = count<Array<i32>>([[1]])")]
-    public void UnsupportedNeighboringShapesNeverPublishPartialIr(string source)
+    public void NestedOwnedHandlesHaveRecursiveStorage(string source)
     {
-        // These are valid specification forms, deliberately outside the verified generation boundary:
-        // ownership analysis reports them as Unsupported before any generation is attempted.
+        // SPEC 4.5: stored handles keep their element-specific cleanup, including through generic substitution.
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Result.IsVerified);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out var error));
-        Assert.False(string.IsNullOrWhiteSpace(error));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        Assert.NotEmpty(writer.ToString());
     }
 
     [Theory]

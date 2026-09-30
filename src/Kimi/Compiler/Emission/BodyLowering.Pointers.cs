@@ -134,7 +134,7 @@ internal sealed partial class BodyLowering
             return Fail("Pointer write requires a dominating acquired value of the pointee Type.", out failure);
         }
 
-        var layout = this.aggregatePlaces[place.Id];
+        var layout = store ? this.aggregateLayouts.GetStored(type) : this.aggregatePlaces[place.Id];
         var text = ReferenceEquals(type, BoundType.String);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
         if (representation is null ||

@@ -118,7 +118,9 @@ public sealed partial class OwnershipAnalysis
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(element, type, SequenceOperation.Borrow, handle, index: subscript);
             this.EndComparisonLoans(depth, element);
             this.comparisonDepth = depth;
-            return borrowedElement;
+            // A call reservation needs a real Reborrow of the selected address, not the Sequence operation that
+            // computed it. This keeps the parent capability and makes activation refer to the acquired element.
+            return borrowedElement >= 0 && reservation >= 0 ? this.BorrowThrough(source, borrowedElement, type, reservation) : borrowedElement;
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
