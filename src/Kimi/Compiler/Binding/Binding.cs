@@ -314,6 +314,11 @@ public sealed partial class Binding
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
+            {
+                continue; // Pairwise declaration failures are normalized as one group below.
+            }
+
             var requirement = DiagnosticRequirement.Binding(issue.Failure);
             if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
                 this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
@@ -389,6 +394,7 @@ public sealed partial class Binding
 
         if (this.Result.Mode == BindingMode.Final)
         {
+            this.ReportDuplicateDeclarations();
             var warning = DiagnosticRequirement.Binding(BindingFailure.None);
             foreach (var alias in this.aliasWarnings)
             {
@@ -723,8 +729,7 @@ public sealed partial class Binding
             if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
                 !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
             {
-                this.Fail(node, BindingFailure.Duplicate);
-                this.Fail(previous.Declaration, BindingFailure.Duplicate);
+                this.FailDuplicate(node, previous.Declaration);
             }
         }
 
@@ -828,8 +833,7 @@ public sealed partial class Binding
 
                         if (equal)
                         {
-                            this.Fail(fa, BindingFailure.Duplicate);
-                            this.Fail(fb, BindingFailure.Duplicate);
+                            this.FailDuplicate(fa, fb);
                         }
                     }
                 }

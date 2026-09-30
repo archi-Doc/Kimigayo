@@ -2,6 +2,8 @@
 
 ## 2026-09-30: diagnostic contract audit
 
+- Normalized paired declaration collisions and preserved function signature spans for explanations. Unit `20260930-120724-830-unit-diagnostics-duplicate-audit`: warning-free Release, 345 tests, 12 specialization native O0/O2 executions, unchanged diagnostic snapshot and zero-allocation warm duplicate checks. Source-local runtime declarations are positive controls; cross-source collisions are tested in shared group fragments.
+
 - Source-input follow-up: unified product/dependency/test-source decoding and input-failure reporting, retained every consumed failure and preserved pending/cancelled test reads. Four independent reproducer cases failed before the fix; six new cases and related regressions pass Unit `20260930-115609-661-unit-diagnostics-input-audit` (warning-free Release, 119 tests, unchanged diagnostic snapshot). Same evidence directory for feedback; declaration normalization audit continues.
 
 - Audited DIAGNOSTICS against SPEC §23 and the shared recording/publication path. Fixed all-Error prerequisite resolution, related-evidence union/capture/source ordering, typed-value/catalog/related-range contract checks and fault ordering/Note limits; clarified the prerequisite rule in SPEC and corrected developer documentation. Unit `20260930-114809-063-unit-diagnostics-contract-audit`: warning-free Release build, 247 tests, unchanged diagnostic snapshot. Evidence and intermediate failures: `artifacts/verify/diagnostics-audit-feedback/`. Broader source-input and reporting-site audit continues.

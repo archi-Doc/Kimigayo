@@ -238,7 +238,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         }
     }
 
-    private sealed class DiagnosticConsole : IConsoleService
+    internal sealed class DiagnosticConsole : IConsoleService
     {
         private readonly StringBuilder text = new();
 

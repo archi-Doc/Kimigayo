@@ -199,6 +199,7 @@ public sealed partial class Binding
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.rejectedCandidates?.Clear();
+        this.duplicateDeclarations?.Clear();
         this.prerequisites.Clear();
         this.prerequisiteStore.Clear();
         this.derivedIssues.Clear();

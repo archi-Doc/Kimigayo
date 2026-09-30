@@ -67,6 +67,9 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the function name.</summary>
     public string Name { get; private set; } = string.Empty;
 
+    /// <summary>Gets the parsed signature span before the function's span is extended by its body.</summary>
+    internal SourceSpan SignatureSpan { get; }
+
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
@@ -304,6 +307,7 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Modifier = context.ModifierKind;
         this.IsExcluded = context.IsExcluded;
         this.Name = name;
+        this.SignatureSpan = range;
         this.genericArguments = genericArguments;
         this.parameters = parameters;
         this.ReturnType = returnType;

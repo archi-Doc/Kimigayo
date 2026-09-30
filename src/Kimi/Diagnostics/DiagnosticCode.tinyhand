@@ -28,6 +28,8 @@
   + Name="DuplicateBinding_Kd"
     Category="Language"
     Message="A declaration with the same Name or normalized Signature already exists in this scope"
+    Evidence="name:Text"
+    Label="'{0}' is declared again"
 
   + Name="DuplicateDictionaryKey_Kd"
     Category="Language"

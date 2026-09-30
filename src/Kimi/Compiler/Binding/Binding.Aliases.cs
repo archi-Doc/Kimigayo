@@ -56,8 +56,7 @@ public sealed partial class Binding
             {
                 if (!ReferenceEquals(previous.BoundSymbol, alias.BoundSymbol) || !ReferenceEquals(previous.BoundType, alias.BoundType) || previous.BindingState == BindingState.Invalid)
                 {
-                    this.Fail(previous, BindingFailure.Duplicate, true);
-                    this.Fail(alias, BindingFailure.Duplicate, true);
+                    this.FailDuplicate(previous, alias, true);
                 }
             }
             else

@@ -553,8 +553,7 @@ public sealed partial class Binding
                     this.ContractBindingsMayCollide(identity.Contract, contract, scope))
                 {
                     identity.Invalid = true;
-                    this.Fail(clause, BindingFailure.Duplicate);
-                    this.Fail(use, BindingFailure.Duplicate);
+                    this.FailDuplicate(clause, use);
                 }
             }
         }
@@ -563,8 +562,7 @@ public sealed partial class Binding
         if (direct.Identity.DirectClause is { } previous)
         {
             direct.Identity.Invalid = true;
-            this.Fail(use, BindingFailure.Duplicate);
-            this.Fail(previous, BindingFailure.Duplicate);
+            this.FailDuplicate(use, previous);
         }
 
         direct.Identity.DirectClause = use;

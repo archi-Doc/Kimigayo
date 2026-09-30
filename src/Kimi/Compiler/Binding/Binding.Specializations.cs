@@ -358,8 +358,7 @@ public sealed partial class Binding
                 var previous = this.specializations[siblings[i]];
                 if (SameSpecializationArguments(previous.Arguments, arguments) && SameSpecializationLengths(previous.Lengths, lengths))
                 {
-                    this.Fail(siblings[i], BindingFailure.Duplicate);
-                    this.Fail(function, BindingFailure.Duplicate);
+                    this.FailDuplicate(siblings[i], function);
                     valid = false;
                 }
             }
