@@ -47,6 +47,8 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --verification > artifact
 
 This command reports input sizes, retained record counts, iteration counts and timings, and fails if an input stops binding or verifying. Allocation guarantees are checked by xUnit, separately from timing. Documentation measurements remain available through the existing Benchmark entries; normal documentation regressions retain their allocation comparisons without timing-only output or unasserted measurement passes. See the measurement-specific documents in `src/Benchmark` for their commands. Compare repeated runs on the same configuration before claiming a speedup.
 
+`Benchmark --borrow-storage` measures the shared string-inspection workload's first analysis allocation, retained dependency-table cells and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Stored references and conflicting later call arguments remain functional controls in `BorrowDependencyStorageTest`.
+
 ## Native fixtures
 
 `verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit codes, dependency checks and divergent-fixture timeouts are unchanged.

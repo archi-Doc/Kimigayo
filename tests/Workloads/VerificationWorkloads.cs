@@ -7,6 +7,24 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
+    internal static string InspectionLoans(int count, bool stored = false)
+    {
+        var source = new StringBuilder("func inspect(value: ref/string) -> bool => value == \"x\"\nfunc check()\n");
+        for (var i = 0; i < count; i++)
+        {
+            source.Append("    var value").Append(i).Append(" = \"x\"\n");
+            if (stored)
+            {
+                source.Append("    let loan").Append(i).Append(" = value").Append(i).Append("@ref\n");
+            }
+
+            source.Append("    let read").Append(i).Append(" = inspect(").Append(stored ? "loan" : "value").Append(i).Append(")\n");
+            source.Append("    require read").Append(i).Append(" else => $abort(\"inspection\")\n");
+        }
+
+        return source.Append("check()").ToString();
+    }
+
     internal static string GuardHistories(int count)
     {
         var arms = new StringBuilder();

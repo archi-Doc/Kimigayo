@@ -17,6 +17,9 @@ public sealed partial class OwnershipBody
     private bool[] inspectionBorrows = [];
     private bool[] borrowedPlaces = [];
 
+    /// <summary>Gets retained cells in the local borrow dependency table.</summary>
+    internal int BorrowDependencyCapacity => this.borrowDependencies.Length;
+
     internal PlaceState GetBorrowInputState(int operation)
     {
         if (!this.IsReachable(operation) && !this.HasCheckingState(operation))
@@ -65,10 +68,6 @@ public sealed partial class OwnershipBody
             }
         }
 
-        Grow(ref this.borrowDependencies, checked(count * count));
-        this.borrowDependencies.AsSpan(0, count * count).Clear();
-        Grow(ref this.borrowRootLoss, count);
-        this.borrowRootLoss.AsSpan(0, count).Clear();
         var any = false;
         for (var p = 0; p < count; p++)
         {
@@ -332,6 +331,22 @@ public sealed partial class OwnershipBody
 
                 void Record(int root)
                 {
+                    if (mode == LoanRequirement.None)
+                    {
+                        return;
+                    }
+
+                    if (!any)
+                    {
+                        // Projected Origins may describe only call inspections or caller-owned storage.
+                        // Allocate and clear the table only when a local dependency actually exists.
+                        Grow(ref this.borrowDependencies, checked(count * count));
+                        this.borrowDependencies.AsSpan(0, count * count).Clear();
+                        Grow(ref this.borrowRootLoss, count);
+                        this.borrowRootLoss.AsSpan(0, count).Clear();
+                        any = true;
+                    }
+
                     var index = (place * count) + root;
                     if (this.borrowDependencies[index] >= mode)
                     {
@@ -339,7 +354,6 @@ public sealed partial class OwnershipBody
                     }
 
                     this.borrowDependencies[index] = (LoanRequirement)Math.Max((int)this.borrowDependencies[index], (int)mode);
-                    any = true;
                     var source = this.Places[root].Type;
                     if (ReferenceTypes.IsBorrow(source) || ReferenceTypes.IsString(source))
                     {
