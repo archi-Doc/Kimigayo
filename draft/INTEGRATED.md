@@ -1,12 +1,16 @@
 # 取り込み済み記録一覧
 
-`draft` の文書は提案・設計・実装記録である。内容が `SPEC.md` とその参照先に取り込まれた文書は、この一覧に「取り込み済み」と印付けし、以後は固定する（編集しない）。正式仕様は `draft` を参照せず、`draft` を必須挙動の根拠にも用いない（`AGENTS.md`）。取り込みの流れは一方向であり、正式仕様側の変更を `draft` に反映しない。
+The `draft` folder holds proposals, designs and implementation records. Integration into `docs/SPEC.md` and its referenced chapters is one-way: the formal specification is self-contained, does not depend on draft files, and is not copied back into them. The lifecycle rules are defined in `AGENTS.md` and summarized below.
 
-| 状態 | 意味 |
+| Status | Meaning |
 | --- | --- |
-| 取り込み済み | 内容は `SPEC.md` と参照先に反映済み。文書は固定。 |
-| 実装記録 | 仕様変更ではなく実装増分の記録。仕様への取り込み対象ではない。文書は固定。 |
-| 保留 | 採用されず、仕様に反映していない。文書は固定。 |
+| 一部取り込み | Partially integrated. Record the integrated proposal sections, their specification targets and the unresolved items. The integrated scope is frozen; unresolved content may be edited only when explicitly instructed. |
+| 取り込み済み | Integrated and closed. At least one proposal item was incorporated, and every item has a recorded disposition: incorporated, rejected with a reason, or transferred to an identified separate proposal. The whole file is frozen. This does not imply implementation or test completion. |
+| 完了 | Closed without integration. All proposal items were rejected with reasons or transferred to identified separate proposals. The whole file is frozen. |
+| 実装記録 | A historical implementation record, not a specification proposal. The file is frozen. |
+| 保留 | A legacy status for proposals not adopted into the specification. Existing files with this status remain frozen; it does not mean they are editable unresolved proposals. |
+
+Existing historical entries and their evidence are retained. This policy change does not reopen frozen files or reclassify existing records. The exceptional historical status 原案取り込み済み・改訂未反映 records an explicitly requested revision after the original intake; it is not the workflow for new revisions.
 
 ## Changes
 
@@ -67,8 +71,10 @@
 
 `Decisions` は判断の記録、`Obsolete` は廃止済みの文書であり、いずれも固定。仕様への取り込み対象ではない。
 
-## 新しい文書の扱い
+## Proposal lifecycle
 
-1. 提案は `draft/Changes` または `draft/Design` に日付付きで作成する。
-2. 確定した内容を `SPEC.md` と参照先に取り込む。
-3. 取り込んだら、この一覧に文書と取り込み先（章・節、コミット）を追記し、文書を固定する。
+1. Create dated proposals in `draft/Changes` or `draft/Design` when explicitly instructed. Unfrozen draft content also requires explicit instructions to edit.
+2. Incorporate finalized content into `docs/SPEC.md` and its referenced chapters. Update this register in the same commit, identifying the integrated proposal sections and target specification sections or commit. Do not wait for implementation or test completion.
+3. If proposal items remain unresolved, use 一部取り込み and list both the integrated scope and the open items. Freeze the integrated scope immediately; explicit instructions may authorize edits to the remaining content only.
+4. Close the whole file when every proposal item is recorded as incorporated, rejected with a reason, or transferred to an identified separate proposal. Record closure in the same commit as the final disposition and any final specification changes; the whole file is frozen at that point. Use 取り込み済み if any item was incorporated, otherwise 完了. Transferred items are tracked in the destination proposal and no longer prevent closure of the source file.
+5. Preserve frozen text, including typos. Append corrections and explanatory notes here, identifying the affected file and scope. Make later specification changes in the formal specification and create separate draft files for new proposals. This register remains editable for status updates and appended notes; it is not frozen with the proposal files.
