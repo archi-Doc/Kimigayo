@@ -1005,14 +1005,12 @@ public class ForeignEmissionTest
     [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
-    public void DependentPointerReadsRemainUnsupported(string type)
+    public void DependentPointerReadsPreserveTheirCompleteType(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func read(p: unsafe/({type}))\n    unsafe\n        let value = *p\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        CompilationTestHelper.WriteIr(c);
     }
 
     [Theory]

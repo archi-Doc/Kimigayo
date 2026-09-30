@@ -69,20 +69,18 @@ public class GenericPointerEmissionTest
     [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
-    public void DependentInstantiationsRemainUnsupported(string type)
+    public void DependentInstantiationsPreserveTheCompletePointee(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc read(pointer: unsafe/({type})) => take(pointer)\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        CompilationTestHelper.WriteIr(c);
     }
 
     [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
-    public void VerifiedTemplateStillRefusesDependentConcreteReads(string type)
+    public void VerifiedTemplateBuildsDependentConcreteReads(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc input(pointer: unsafe/({type})) => ()\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
@@ -91,7 +89,7 @@ public class GenericPointerEmissionTest
         var element = input.Function.Parameters[0].Type.BoundType!.Components[0];
         var call = new BoundCall();
         call.Set(generic.Function.BoundSymbol!, element, null, [0], [element]);
-        Assert.Null(c.Ownership.AnalyzeInstance(generic, call));
+        Assert.NotNull(c.Ownership.AnalyzeInstance(generic, call));
     }
 
     [Fact]

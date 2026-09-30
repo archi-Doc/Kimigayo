@@ -35,6 +35,7 @@ public class MatchOwnershipTest
     [InlineData("func f(x: Option<string>) -> Option<string> => match x@move\n    .Some(let s) => .Some(s@move)\n    .None => .None")]
     [InlineData("func f(x: bool) -> i32 => match x\n    true => match (yield 1)\n        _ => 2\n    false => 0")]
     [InlineData("func f<T>(x: ref/T) => match x\n    let r => ()")]
+    [InlineData("func f(x: ref/i32 during static) => match x\n    let r => ()")]
     // SPEC 15.1.6: a bare owned Subject is shared-borrowed, even a generic one, so no unknown Copy/Move acquisition is needed.
     [InlineData("func f<T>(x: T) => match x\n    let value => ()")]
     [InlineData("func f<T>(x: T) => match x\n    _ => ()")]
@@ -42,18 +43,6 @@ public class MatchOwnershipTest
     {
         var c = Parse(source);
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-    }
-
-    [Theory]
-    [InlineData("func f(x: ref/i32 during static) => match x\n    let r => ()")]
-    public void BoundButUnsupportedMatchCannotVerify(string source)
-    {
-        var c = Parse(source);
-        Assert.True(c.Binding.Result.IsComplete);
-        var result = c.Ownership.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.True(result.UnsupportedCount > 0, Describe(c));
-        Assert.Contains(c.Ownership.Issues, i => i.Failure == OwnershipFailure.Unsupported && i.Source is MatchKoto);
     }
 
     [Theory]
@@ -331,21 +320,24 @@ public class MatchOwnershipTest
     }
 
     [Fact]
-    public void ChangedPayloadStorageCannotReuseOldMatchOrDecompositionPlans()
+    public void ChangedPayloadStorageRebuildsMatchAndDecompositionPlans()
     {
         var c = Parse("enum E\n    One(i32)\nfunc f(x: E) => match x@move\n    .One(let a) => ()\n    _ => ()");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var matches = body.Matches;
         var decompositions = body.Decompositions;
+        var originalCases = body.Places[matches[0].Subject].Type.StoredCases!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(decompositions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, i => i.Source is MatchKoto && i.Failure == OwnershipFailure.Unsupported);
-        Assert.Empty(matches);
-        Assert.Empty(decompositions);
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        var rebuilt = body.Places[Assert.Single(matches).Subject].Type;
+        Assert.Single(originalCases);
+        Assert.NotSame(originalCases, rebuilt.StoredCases);
+        Assert.Equal(2, rebuilt.StoredCases!.Length);
+        Assert.Single(decompositions);
     }
 
     private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
