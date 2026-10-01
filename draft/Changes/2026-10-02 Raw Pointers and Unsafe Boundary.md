@@ -2,71 +2,34 @@
 
 日付：2026-10-02
 
-状態：草案。方針（本書 2）と本書 3 の主要な決定は採用済み。精査の結果（本書 10）を反映し、決定待ちの事項を本書 9 に挙げる。正式仕様への取り込みと実装は未実施。
+状態：最終版。方針と決定事項は確定済み（精査の記録は本書 9）。正式仕様への取り込みと実装は未実施。
 
-本書で変更する事項は SPEC とその参照先より優先し、変更しない事項には既存仕様を適用する。SPEC の節は「SPEC §n」、実装仕様の節は「impl §n」、本書の節は「本書 n」と表記する。例の「エラー」行は意図した拒否例である。
+本書で変更する事項は SPEC とその参照先より優先し、変更しない事項には既存仕様を適用する。SPEC の節は「SPEC §n」、実装仕様の節は「impl §n」、本書の節は「本書 n」と表記する。例の「エラー」「未定義動作」行は意図した例である。
 
 ## 1. 現仕様の問題
 
-### 1.1. unsafe の位置づけが定まっていない
-
-当初の `unsafe/T` は、Kimigayo の所有権・寿命の管理の外に置き、オブジェクトツリーの循環参照をライブラリーの責任で扱うためのものだった。一方、現行の SPEC §5 は「unsafe 文脈は検証できない操作を許すが、義務を免除しない」としており、pointee の Origin も追跡する（SPEC §15.2.3）。正式仕様の規則はこの立場で一貫しているが、それを支配原則として述べた規定がなく、当初の意図との違いが文書から読み取れない（原則 2）。
-
-### 1.2. 一つの語が二つの概念を表す
-
-`unsafe` は、型（`unsafe/T`）と、許可と義務の場所（`unsafe func`、Unsafe Block）の両方を表す。ポインターを保持・Copy・比較することは safe なのに、型名が unsafe を名乗る。そのため `unsafe` を検索しても、検証を委ねた場所だけを見つけることができない（原則 1、原則 4）。
-
-### 1.3. unsafe 文脈の基準が一つでない
-
-SPEC §5 の表は、未定義動作が起こり得る操作（参照、位置の計算、unsafe func の呼び出し）と、それ自体は何も壊さない操作（ポインターの型変換、ポインターと整数の変換）の両方に unsafe 文脈を要求する。基準は表の列挙からしか分からない（原則 2）。
-
-### 1.4. safe と raw の境界が個別の primitive に分散している
-
-safe な値と raw pointer の変換は SPEC §5.6 で保留され、代わりに compiler-known な internal primitive が用途ごとに追加されてきた（`lend`、`split`、`lendKey`、`lendValue`、`splitValue`、`keyAt`、`valueAt`、`release`、`inlineBase`、`dictionaryStorage`、`placeEntry`、`placeValue`、`addressOfI64`）。
-
-- `lendKey`・`lendValue`・`splitValue` は、`lend`・`split` と `keyAt`・`valueAt` の組み合わせにすぎない（原則 1）。
-- `addressOfI64` は型ごとの primitive であり、FFI の型が増えるたびに同種の primitive が増える（原則 1）。
-- 利用者のコードは、有効なポインターを作れない。得られるのは `null`、整数からの変換、外部関数の戻り値だけである。そのため、当初の目的だった「ライブラリーが unsafe の責任を負ってデータ構造を実装する」ことは、標準ライブラリーにしかできない（Coding Guidelines：コアライブラリーは Kimigayo で書く）。
-
-### 1.5. FFI で、型で表せる意味を散文に移している
-
-`QueryPerformanceCounter` は「呼び出しの間だけ排他的に借り、保持しない」引数をとる。これは `uniq/i64` で表せるが、外部関数の引数に借用を使えないため、`Storage.addressOfI64` で `unsafe/i64` に落とし、その意味を `- safety:` の散文に移している（原則 3）。また、すべての外部関数が `unsafe func` でなければならないため、呼び出し側に確認することが何もない関数でも、呼び出しに Unsafe Block が要る。
-
-### 1.6. 格納のない依存と分散を、標準型だけが intrinsic なメタデータで持つ
-
-Kimigayo で宣言された標準型のうち、次の型は raw pointer の Field しか持たず、スロットの分散と Loan 要求を compiler-known なメタデータで与えられている。
-
-| 型 | メタデータ |
-| --- | --- |
-| `RefRemainder<E>`、`DictionaryRefRemainder<K, V>` | `source` は共変、Loan 要求は `ref`（SPEC §22.1.2.5） |
-| `UniqRemainder<E>`、`DictionaryUniqRemainder<K, V>` | `source` は共変、Loan 要求は `uniq` |
-| `FixedBuffer`、`WriteWindow`、`Utf8Writer` | スロットは共変、Loan 要求は `uniq`（SPEC utf8-formatting §1.1） |
-| `Slice<T>` | `source` は共変、Loan 要求は `ref`、`T` は共変 |
-
-利用者の型が `{source}` を宣言しても、格納のないスロットは Phantom Origin になり、Loan 要求は `none`、分散は不変に決まる（SPEC §15.3.5）。そのため、「この値は source の排他 Loan を保持する」ことも、「`T` について共変である」ことも書けない（原則 1：標準型だけの例外）。
-
-また、SPEC は `unsafe/T` の `T` についての分散を定めていない。実装は不変として扱っている（原則 2：仕様の欠落）。
-
-### 1.7. raw Place からの取り出しが既定の取得規則と食い違う
-
-SPEC §5.2 は `let value = *pointer` を Non-Copy の pointee の Move の例とする。しかし SPEC §3.5 の既定の取得では、Non-Copy の Place の bare acquisition はエラーで、転送は `@move` と書く。`@move` は Take を提供する Movable Place を要求するが、SPEC §15.1.5 の Take の一覧に raw Place はない。
+1. **位置づけが述べられていない（原則 2）：** 当初の `unsafe/T` は、所有権・寿命の管理の外で循環参照をライブラリーの責任で扱うためのものだった。現行の SPEC §5 は「unsafe 文脈は義務を免除しない」とし、pointee の Origin も追跡する（SPEC §15.2.3）。規則はこの立場で一貫しているが、支配原則として述べた規定がない。
+2. **一つの語が二つの概念を表す（原則 1、4）：** `unsafe` は型（`unsafe/T`）と、約束の場所（`unsafe func`、Unsafe Block）の両方を表す。保持や比較は safe なのに型名が unsafe を名乗り、`unsafe` を検索しても約束の場所だけを見つけられない。
+3. **unsafe 文脈の基準が一つでない（原則 2）：** 未定義動作が起こり得る操作と、それ自体は何も壊さない変換の両方に unsafe 文脈を要求する。基準は表の列挙からしか分からない。
+4. **境界が用途ごとの primitive に分散している（原則 1、Coding Guidelines）：** safe と raw の変換は SPEC §5.6 で保留され、代わりに 13 個の compiler-known な internal primitive が追加された。`lendKey`・`lendValue`・`splitValue` は `lend`・`split` と `keyAt`・`valueAt` の組み合わせにすぎず、`addressOfI64` は型ごとの primitive である。利用者のコードは有効なポインターを作れず、ライブラリーが unsafe の責任でデータ構造を実装するという当初の目的は、標準ライブラリーにしか果たせない。
+5. **FFI で、型で表せる意味を散文に移している（原則 3）：** 外部関数は借用を受け取れないので、「呼び出しの間だけ排他的に借り、保持しない」引数を `unsafe/i64` に落とし、意味を `- safety:` に書いている。また、外部関数はすべて unsafe なので、呼び出し側に確かめることがなくても Unsafe Block が要る。
+6. **スロットの性質を、標準型だけがメタデータで持つ（原則 1、2）：** remainder 4 型と Formatting 3 型（`FixedBuffer`、`WriteWindow`、`Utf8Writer`）は raw pointer の Field しか持たず、スロットの分散と Loan 要求を compiler-known なメタデータで与えられている（SPEC §22.1.2.5、utf8-formatting §1.1）。利用者の型の格納のないスロットは Phantom Origin になり、Loan 要求は `none` になる（SPEC §15.3.5）。また、`unsafe/T` の分散は仕様に定めがない（実装は不変）。
+7. **raw Place からの取り出しが既定の取得と食い違う：** SPEC §5.2 の `let value = *pointer`（Non-Copy の Move）は、SPEC §3.5 の bare acquisition の規則（Non-Copy はエラー）にも、SPEC §15.1.5 の Take の一覧（raw Place がない）にも合わない。
 
 ## 2. 理想的な動作
 
 判断基準：**unsafe は検証の委譲であり、規則の免除ではない。**
 
-1. 所有権・Loan・Origin・初期化・一度だけの破棄・効果上限・別名の規則は、unsafe なコードを含むすべてのプログラムに適用される。unsafe は、コンパイラが検証できない規則を書き手が満たすと約束する場所を示すだけである。
-2. 約束の場所は、Unsafe Block、unsafe func の契約、`#LibraryImport` の宣言の三つに限る。unsafe 文脈が要るのは、未定義動作が起こり得る操作だけである。約束が正しい限り、safe なコードだけでは未定義動作は起こらない。
+1. 所有権・Loan・Origin・初期化・一度だけの破棄・効果上限・別名の規則は、unsafe なコードにも適用される。
+2. 約束の場所は、Unsafe Block、unsafe func の契約、`#LibraryImport` の宣言の三つである。unsafe 文脈が要るのは、未定義動作が起こり得る操作だけである。約束が正しい限り、safe なコードだけでは未定義動作は起こらない。
 3. 型名は能力を表し、`unsafe` は約束の場所だけを表す。raw pointer は `raw/T` と書く。
-4. safe と raw の変換は、既存の Borrow 操作の延長として書く。型ごと・用途ごとの primitive は作らない。標準ライブラリーと利用者のライブラリーは、同じ道具を使う。
-5. 外部関数の宣言は、その signature どおりに振る舞うという約束である。借用の意味は型で表し、`unsafe func` にするのは、呼び出し側に型で表せない義務があるときだけである。
-6. Kimigayo で宣言した型のスロットの性質（Loan 要求・分散）は、格納から決まる。格納を持たない依存は、サイズ 0 の格納 `Kimi.Loan<T>` で表す。
+4. safe と raw の変換は、既存の操作（Borrow、`@` の変換）の延長として書く。標準ライブラリーと利用者のライブラリーは同じ道具を使う。
+5. 外部関数の宣言は、signature どおりに振る舞うという約束である。借用の意味は型で表し、`unsafe func` にするのは、呼び出し側に型で表せない義務があるときだけである。
+6. Kimigayo で宣言した型のスロットの性質は、格納から決まる。格納のない依存は、サイズ 0 の `Kimi.Loan<T>` で表す。
 
 ## 3. 仕様の変更点
 
 ### 3.1. 位置づけ（SPEC §5 冒頭）
-
-SPEC §5 の冒頭に、本書 2 の判断基準を規範として置く。
 
 > An unsafe context delegates verification; it never exempts a program from a rule. Every ownership, Loan, Origin, initialization, destruction, effect-bound, aliasing and data-race rule applies to unsafe code. Unsafe Blocks, unsafe function contracts and foreign-function declarations mark where the programmer promises what the compiler cannot verify; breaking such a promise is undefined behavior.
 
@@ -74,16 +37,14 @@ SPEC §5 の冒頭に、本書 2 の判断基準を規範として置く。
 
 | 対象 | 現行 | 変更後 |
 | --- | --- | --- |
-| raw pointer の型 | `unsafe/T` | `raw/T` |
-| 型付き null | `null@unsafe/i32` | `null@raw/i32` |
+| 型 | `unsafe/T`、`unsafe/(ref/T during a)` | `raw/T`、`raw/(ref/T during a)` |
+| 型付き null、変換 | `null@unsafe/i32`、`p@unsafe/u8` | `null@raw/i32`、`p@raw/u8` |
 | Semantics の具体名 | `s is unsafe` | `s is raw` |
-| Semantics の分類 | 木の「Unsafe: unsafe」、表の「Unsafe／Pointer」 | 「Raw: raw」、「Raw／Pointer／Raw pointer」 |
-| 入れ子の型 | `unsafe/(ref/T during a)` | `raw/(ref/T during a)` |
-| ポインターの変換 | `p@unsafe/u8` | `p@raw/u8` |
+| 型の木と Semantics の表 | 「Unsafe: unsafe」「Unsafe／Pointer」 | 「Raw: raw」「Raw／Pointer／Raw pointer」 |
 
-- **字句：** `raw` は、Semantics の位置と `@` の直後でだけ予約される文脈キーワードとする（SPEC §2 の表）。`unsafe` は、`func` の前と、Unsafe Statement を始める Body の前でだけ認識する。それ以外の `raw` は通常の Name である（Field `raw` など）。
-- **分類：** `reference` は `raw` を含む。`s is owning or borrow` は `raw` 以外のすべてを許す（現行の `unsafe` と同じ扱い）。
-- **ファイル名：** SPEC §5 のファイル名と見出しは変えない。用語は「raw pointer」に統一する。
+- **字句：** `raw` は、Semantics の位置と `@` の直後でだけ予約される（SPEC §2）。それ以外では通常の Name である（Field `raw` など）。`unsafe` は、`func` の前と、Unsafe Statement の Body の前でだけ認識する。
+- **分類：** `reference` は `raw` を含み、`s is owning or borrow` は `raw` を除く（現行の `unsafe` と同じ）。
+- **用語：** SPEC §5 のファイル名と見出しは変えず、用語を「raw pointer」に統一する。
 
 ### 3.3. unsafe 文脈の基準（SPEC §5 の表）
 
@@ -91,76 +52,80 @@ SPEC §5 の冒頭に、本書 2 の判断基準を規範として置く。
 
 | 操作 | unsafe 文脈 |
 | --- | --- |
-| raw pointer の宣言・保持・Copy・Move・受け渡し・破棄 | 不要 |
-| `null`、同じ型の等値比較、`null` との比較 | 不要 |
-| raw pointer の `@` による取得と変換（同じ型、異なる raw pointer 型、`usize` との間） | **不要（変更）** |
+| raw pointer の宣言・保持・Copy・Move・受け渡し・破棄、`null`、同じ型の等値比較と `null` との比較 | 不要 |
+| `@raw/U` による取得と変換（同じ型、異なる raw pointer 型、`usize` との間、型付き null） | **不要（変更）** |
 | `@raw` によるアドレスの取得（本書 3.5） | **不要（新規）** |
-| `*p`、`p[n]` による raw Place の形成 | 必要 |
+| `*p`、`p[n]` による raw Place の形成。raw Place の借用と取り出し（本書 3.6、3.7）を含む | 必要 |
 | `p + n`、`p - n`、`p += n`、`p -= n` | 必要 |
 | unsafe func の呼び出し | 必要 |
 
-raw Place の借用・取り出し（本書 3.6、3.7）は `*p` か `p[n]` を含むので、unsafe 文脈の中にある。変換は provenance を作らないという現行の規則（SPEC §5.4、§5.5）は変えない。
+変換は provenance を作らない（SPEC §5.4、§5.5。変更なし）。効果上限の分類は、unsafe 文脈の要否と独立している。整数からポインターへの変換は、safe になっても環境への効果である（SPEC §8.4.10.2、`2026-10-02 Effect Bound Refinements.md` の 3.1）。
 
 ```kimi
 let address = pointer@usize      // 変更：unsafe 文脈は不要
 let bytes = pointer@raw/u8       // 変更：unsafe 文脈は不要
 unsafe
-    let value = bytes[13]        // 参照は unsafe 文脈が必要
+    let value = bytes[13]        // 参照には unsafe 文脈が要る
 ```
 
-### 3.4. raw アクセスの条件（SPEC §5.2 に追加）
+### 3.4. raw アクセスの条件（SPEC §5.2）
 
-raw pointer を通したアクセス（読み取り、書き込み、取り出し、raw Place の借用）は、次をすべて満たすときだけ有効である。コンパイラはこれらを検査せず、違反は未定義動作である。
+raw pointer を通したアクセス（読み取り、書き込み、取り出し、raw Place の借用）は、次をすべて満たすときだけ有効である。コンパイラは検査せず、違反は未定義動作である。
 
 1. **範囲：** アクセスする範囲が、ポインターの provenance に収まる。
-   - `P@raw` の provenance は、書かれた Place `P` の格納範囲である（one-past を含む）。`x[0]@raw` から `x[1]` には届かない。配列全体をたどるには `x@raw` を要素型に変換する。
-   - `Raw.allocate` の結果の provenance は、その確保の全体である。
-   - 整数から変換したポインターと、外部関数から得たポインターは、現行どおり SPEC §5.5 と各関数の契約に従う。
-2. **生存と値：** 格納が生存している。読み取りには初期化済みの有効な値が要り、書き込みには SPEC §5.2 の初期化と置換の規則が適用される（現行どおり）。
-3. **権限：** 権限は、アドレスを取った経路の権限を超えない。
-   - `let` の束縛、`ref` を通した Place、共有の経路から取ったポインターでは、読み取りしかできない。
-   - 書き込み可能な所有の経路から取ったポインターでは、読み書きができる。
-   - `uniq` を通した Place から取ったポインターでは、その Loan が生存している間に限り、読み書きができる。
-   - `Raw.allocate` の結果では、読み書きができる。
-4. **Loan：** アクセスが、その格納に対して生存している Loan と衝突しない。共有 Loan があれば書き込めず、排他 Loan があればアクセスできない。ただし、ポインターをある Loan の経路から取った場合（`r@follow@raw`）、その Loan の内側のアクセスとして扱う。
+   - `P@raw`：書かれた Place `P` の格納範囲（one-past を含む）。`x[0]@raw` から `x[1]` には届かない。
+   - `Raw.allocate`：その確保の全体。
+   - 整数からの変換と外部関数の結果：SPEC §5.5 と各関数の契約に従う（変更なし）。
+2. **生存と値：** 格納が生存していること。読み取りには初期化済みの有効な値が要り、書き込みは SPEC §5.2 の初期化と置換の規則に従う。内容を置換すると、格納は残るが、古い内容の中を指すポインターは無効になる（SPEC §15.7.3）。
+3. **権限：** アドレスを取った経路の権限を超えない。
+   - 読み取りだけ：`let` の束縛、`ref` を通した Place、共有の経路。
+   - 読み書き：書き込み可能な所有の経路、`Raw.allocate` の結果。
+   - その Loan が生存している間だけ読み書き：`uniq` を通した Place。
+4. **Loan：** その格納に対して生存している Loan と衝突しない。共有 Loan があれば書けず、排他 Loan があればアクセスできない。ただし、ポインターを取った経路の Loan の内側で行うアクセスは、衝突しない。
 
-格納の生存期間について、次を保証する。
+Loan の生存は、safe な値の使用だけで決まる（SPEC §15.6）。`@raw` も raw pointer の使用も、Loan を延長しない。格納が生存していることと、借用の Loan が生存していることは別である。
 
-- **局所変数：** `x@raw` で得たアドレスの格納は、`x` のスコープが終わるか、`x` の値が Move されるまでのうち、早いほうまで生存する。実装は、`@raw` を受けた局所変数をアドレスが観測されたものとして扱い、その間は SSA への昇格や格納の再利用をしない（impl §21.5.5）。
-- **オブジェクトのペイロード：** ペイロードのアドレスは、公開から破棄の開始まで変わらない。handle の Move・借用・clone・downgrade・upcast は、ペイロードを動かさない（impl §21.2.3 の現行の表現と同じ）。
+**格納の生存：**
+
+- **局所変数：** スコープが終わるか、値が Move されるまでのうち、早いほうまで生存する。実装は、`@raw` の対象になった局所変数を、アドレスが観測されたものとして扱う（impl §21.5.5）。
+- **オブジェクトのペイロード：** 公開から破棄の開始まで、アドレスは変わらない。handle を Move・借用・clone・downgrade・upcast しても動かない。ただし、アドレスが変わらなくても、条件 3 と 4 は別に満たす必要がある。たとえば、親への後方リンクを使うには、親への排他アクセスと衝突しないことが要る。
+
+**依存の保持：** raw な格納へ移した値の Origin と Loan 要求は、消えない。その値が生存している間、依存を、格納を所有する値の型（型引数か `Loan<T>` の Field）に残すのは、書き手の義務である。
 
 impl §21.5.5 の「Unsafe and FFI implementations receiving these borrows must satisfy the same promises」は、この規則の一つの場合として整理する。
 
-### 3.5. アドレスの取得：`@raw`（SPEC §13.5.5.2）
+### 3.5. アドレスの取得と変換（SPEC §13.5）
 
-Borrow の表に、次の行を加える。
+| 形 | 意味 |
+| --- | --- |
+| `P@raw` | Place `P` のアドレス。結果は `raw/V`（`V` は `P` の格納型）。 |
+| `E@raw/U` | raw pointer の取得と変換（本書 3.3）。`E` は raw pointer、`usize`、`null` のいずれか。 |
 
-| 入力 | 操作 | 結果 |
-| --- | --- | --- |
-| `V` を格納する読み取り可能な Place | `@raw`、`@raw/V` | 新しい `raw/V`。Loan を作らない |
-
-- **対象：** `@ref` と同じく、書かれた slot そのものを対象にする。参照先は `r@follow@raw`、Sealed なオブジェクトのペイロードは `h@follow@raw`、raw Place の一部は `(*p).field@raw` や `p[n]@raw` と書く（後者は `*p`、`p[n]` を含むので unsafe 文脈の中にある）。
-- **検査：** 直ちに終わる `@ref` と同じ検査（初期化、読み取りの能力、Loan との衝突）を行う。値を読まず、Copy せず、Loan も残さない。
-- **一時値：** `@ref` と同じく実体化する。ポインターは、その一時値の寿命の間だけ有効である。
-- **型付きの形：** `E@raw/V` の意味は、オペランドの型で決まる。`E` の型が raw pointer なら、本書 3.3 の取得または変換である。そうでなければ借用であり、`V` は `@ref/V` と同じく、格納されている型と一致しなければならない。raw pointer を保持する変数 `p` 自身のアドレスは、bare の `p@raw` で取る。
+- **意味の分離：** bare の `@raw` は、`@follow` と同じく型をとらない操作であり、Semantics の省略形（SPEC §13.5.1 の `E@Semantics`）ではない。bare の所有の省略形（`@owner` など）を個別に定めている現行の扱いと同じく、bare の形をここで定める。`@raw/U` は変換だけを表し、アドレスを取らない。たとえば `p: raw/T` に対して、`p@raw` は `p` の slot のアドレス（`raw/(raw/T)`）、`p@raw/u8` は `p` の値の変換である。結果の型を確かめたいときは、束縛に注釈を書く。
+- **対象：** `@raw` は、書かれた slot そのものを対象にする。参照先は `r@follow@raw`、Sealed なオブジェクトのペイロードは `h@follow@raw`、raw Place の一部は `(*p).field@raw` と書く。
+- **検査：** 直ちに終わる `@ref` と同じ検査（初期化、読み取りの能力、Loan との衝突）を行う。値を読まず、Loan を残さない。一時値は `@ref` と同じく実体化し、ポインターはその一時値の寿命の間だけ有効である。
+- **効果：** 効果の要約では、`P@raw` を、Place `P` へのアクセス（直ちに終わる借用）として扱う。可変 static の Place に対する `@raw` は、環境への効果である（SPEC §8.4.10.2）。
 
 ```kimi
 var number: i32 = 1
 let p = number@raw            // raw/i32。Loan を作らない
 let r = number@uniq
-let q = r@follow@raw          // r の参照先。r の Loan の間だけ書ける
+let q = r@follow@raw          // r の Loan の内側でだけ書ける
 unsafe
-    *q = 2                    // 有効：r の Loan の内側のアクセス
-    *p = 3                    // 未定義動作：r の排他 Loan と衝突する（本書 3.4 の 4）
+    *q = 2                    // 有効：r の Loan の内側で行うアクセス
+    *p = 3                    // 未定義動作：r の排他 Loan と衝突する
+r@follow += 1                 // r を後で使うので、上の二つの時点で r の Loan は生存している
 ```
 
-### 3.6. raw Place の借用（SPEC §5.2、§13.5.5.2）
+### 3.6. raw Place の借用（SPEC §5.2、§13.5.5.2、§15.6.2）
 
-SPEC §13.5.5.2 の Borrow の行は、raw Place（`*p`、`p[n]`、それらの Field・要素）にも適用する。
+`@ref`、`@uniq`、`@objref`、`@objuniq` は、raw Place（`*p`、`p[n]`、それらの Field・要素）も借用できる。
 
-- **Origin：** raw Place には Loan の出どころがないので、結果は Loan を持たず、Origin に Loan による上限はない。Origin は、期待される型・戻り値・格納先の要求に合わせて、通常の結果の適合（SPEC §13.5.3 の Origin Restriction）で決まる。Adaptation Target に Origin を書かない規則（SPEC §13.5.1）は変えない。SPEC §15.2.3 の一意の anchor の制限は safe な導出についての規則なので、raw Place の `uniq` の借用には適用しない。
-- **義務：** 結果と、そこから得た値のうちその Origin を保つものが使われる全期間にわたって、本書 3.4 の条件が、その借用のアクセス（`ref` は読み取り、`uniq` は読み書き）について成り立たなければならない。`uniq` では、同じ格納への他のアクセス（他の raw pointer を含む）があってはならない。
-- **その後：** 結果は通常の借用として検査される。Reborrow、Loan の衝突、寿命の規則がそのまま適用される。
+- **自動では復元しない：** raw pointer から、元の所有者や既存の Loan は復元されない。
+- **新しい anchor：** 結果の参照先を、新しい Loan の anchor とする。この Loan の mode は借用の mode である。region は、通常どおり使用と結果の適合で決まる。Origin は、期待される型・戻り値・格納先に合わせて決まり、上限がない（`static` も可）。Adaptation Target に Origin を書かない規則（SPEC §13.5.1）は変えない。safe な導出についての一意の anchor の制限（SPEC §15.2.3）は適用しない。
+- **重なり：** この anchor は、そこから派生していない Place（他の raw Place や元の格納）との重なりを判定しない。そのような未知の重なりがないことは、unsafe 側の義務である（本書 3.4）。結果を通したアクセス、結果からの Reborrow、その子は、この anchor の下で通常どおり検査する。
+- **呼び出し側の Loan：** 結果を signature の Origin に合わせて返すと、呼び出し側は SPEC §15.6.4 に従い、その Origin に束縛された Loan を、結果の region の間保持する。Origin が一致しても、Loan も排他性も作られない（SPEC §15.3.5）。`uniq` の排他性の根拠は、unsafe 側の約束だけである。
+- **義務：** 結果と、その Origin を保つ派生値が使われる全期間で、本書 3.4 の条件が、借用のアクセスについて成り立たなければならない。`uniq` では、他の経路（他の raw pointer を含む）からのアクセスがあってはならない。
 
 ```kimi
 func get(self: ref/Self, index: isize) -> ref/T
@@ -170,15 +135,27 @@ func get(self: ref/Self, index: isize) -> ref/T
 
 ### 3.7. raw Place からの取り出し（SPEC §5.2、§15.1.5）
 
-raw Place とその Field・要素は Take を提供する。ただし、その状態は追跡しない。
+raw Place とその Field・要素は Take を提供する。状態は追跡しない。
 
-- `(*p)@move` は値を取り出し、格納を未初期化にする。他の経路や元の所有者による後の読み取りや二重の破棄を防ぐのは、書き手の義務である（現行の SPEC §5.2 の義務と同じ）。
+- `(*p)@move` は値を取り出し、格納を未初期化にする。その後の読み取りや、二重の破棄を防ぐのは、書き手の義務である（現行の SPEC §5.2 の義務と同じ）。
 - `_ = (*p)@move` は、その場で破棄する。
-- Copy な pointee の bare acquisition は Copy である。Non-Copy の bare acquisition は、他の Place と同じくエラーになる（SPEC §3.5）。
+- bare acquisition は、他の Place と同じ規則に従う。Copy な値は Copy し、Non-Copy な値ではエラーになる（SPEC §3.5）。
 
-SPEC §5.2 の例 `let value = *pointer` を `let value = (*pointer)@move` に改める。
+SPEC §5.2 の例 `let value = *pointer` は、`let value = (*pointer)@move` に改める。
 
-### 3.8. raw storage の操作：`Kimi.Raw`（SPEC §5.6 を置き換える）
+### 3.8. 領域の分割と効果上限（SPEC §15.6.3、§8.4.10）
+
+- **非重複の根拠：** SPEC §15.6.3 で非重複を証明する根拠は、「§15.6.2 の構造的規則、または raw Place の `uniq` の借用についての unsafe の約束（本書 3.6）」とする。標準の境界の verified operations への言及は削除する。現行の `split` も、呼び出し側の unsafe の約束に依っており、自分では何も検査していなかった。
+- **分割の書き方：**
+  - 親の Loan を `Loan<uniq/… during source>` の Field で保持する（本書 3.10）。
+  - 子を raw Place の `uniq` の借用で作り、`during state.source` の signature で返す。
+  - 子は親の Loan に依存する。Iterator や remainder を破棄しても、子の Loan は終わらない（Loan の生存は使用で決まる）。
+  - 子を残りの領域から除き、二度と貸さないことは、unsafe 側の義務である。
+- **効果の要約（SPEC §8.4.5、§15.6.4）：**
+  - **Loan との比較：** raw アクセスと raw Place の借用は、本書 3.6 の anchor の規則で比較する。つまり、派生していない Place とは衝突しない。そのため、`preserves results` の検証（SPEC §8.4.10.3）は、現行の split と同じ結果になる。保持中の Loan と衝突しないことは、本書 3.4 の unsafe の約束である。
+  - **環境への効果：** raw アクセスそのものは、環境への効果にならない。環境への効果は、ポインターを得た時点で分類する（SPEC §8.4.10.2、`2026-10-02 Effect Bound Refinements.md` の 3.1）。
+
+### 3.9. raw storage の操作：`Kimi.Raw`（SPEC §5.6 を置き換える）
 
 ```kimi
 public group Raw
@@ -190,38 +167,24 @@ public group Raw
 
 | 関数 | 契約 |
 | --- | --- |
-| `allocate` | 要素 `count` 個分の、初期化されていない格納を確保する。<br>・`count < 0`、`count * stride(T)` の overflow、確保の失敗は Abort する（SPEC §22.5.2）。16 を超える整列は、コンパイル時に未対応として報告する。<br>・確保する量が 0 バイトのときは確保せず、`T` に整列した非 null のアドレスを返す。<br>・未定義動作は起こらないので safe である。 |
-| `release` | `storage` は、null か、まだ解放していない `allocate` の結果（raw pointer の型を変換したものでもよい）である。<br>・中の要素は、すでに破棄または取り出し済みでなければならない。要素の破棄は行わない。<br>・0 バイトの結果と null には何もしない。解放後、その確保に由来するポインターはすべて無効になる。 |
+| `allocate` | safe。要素 `count` 個分の、初期化されていない格納を確保する。<br>・`count < 0`、`count * stride(T)` の overflow、確保の失敗では Abort する（SPEC §22.5.2）。16 を超える整列は、コンパイル時に未対応として報告する。<br>・確保する量が 0 バイトのときは確保しない。代わりに、`T` に整列した非 null のアドレスを返す。その provenance は長さ 0 の領域であり、有効なアクセスはサイズ 0 の pointee へのものだけである。このアドレスは、他の 0 バイトの結果と同じになることがある。 |
+| `release` | `storage` は、null か、まだ解放していない `allocate` の結果の先頭アドレスである。raw pointer の型を変換したものでもよいが、内部のアドレスは許さない。<br>・中の要素は、すべて破棄済みか取り出し済みでなければならず、`release` は要素を破棄しない。<br>・null と 0 バイトの結果には何もしない。<br>・解放した後は、その確保に由来するポインターはすべて無効になる。 |
 | `initialize` | `storage` は、生存し、整列し、書き込み可能で、初期化済みの値を保持していない格納を指す。`value` をそこへ移し、古い内容は破棄しない。 |
-| `slice` | `storage` から `length` 個の、初期化された有効な要素を参照する共有の `Slice` を作る（`length >= 0`、一つの確保の中）。<br>・結果の Origin `s` は、結果だけに現れる全称 Origin であり（SPEC §15.3.1 の単一スロットの束縛、§15.3.4）、呼び出し側の期待される型で決まる。<br>・その Origin の全期間にわたって、要素への書き込みがあってはならない。 |
+| `slice` | `storage` から `length` 個の要素を参照する、共有の `Slice` を作る。<br>・`length >= 0` は呼び出し側の義務である。<br>・`length == 0` のときは、`storage` は何でもよく（null も可）、アクセスしない。<br>・`length > 0` のときは、`storage` は非 null で `T` に整列しており、`length * stride(T)` は `isize` に収まり、provenance の中の初期化された有効な要素を指さなければならない。<br>・結果の Origin `s` は、結果だけに現れる全称 Origin であり（SPEC §15.3.1、§15.3.4）、呼び出し側の期待される型で決まる。<br>・結果は、本書 3.6 と同じく新しい anchor を持つ。その Origin の全期間、要素に書き込んではならない。 |
 
-要素の取り出しと破棄は、本書 3.7 の `(*p)@move` と `_ = (*p)@move` で書く。Abort しない確保は、必要になったときに命名の対（SPEC §4.7.1）に従って `tryAllocate` として加える。
+要素の取り出しと破棄は、本書 3.7 の操作で書く。Abort しない確保は、必要になったときに、命名の対（SPEC §4.7.1）に従って `tryAllocate` として加える。
 
-### 3.9. 分散と格納のない依存（SPEC §15.3.5、§22.1）
+効果の要約では、`allocate` を割当てとして扱う。`release`・`initialize`・`slice` は、引数のポインターを通じた raw アクセスとして扱う。いずれも環境への効果ではない（本書 3.8）。
 
-#### 3.9.1. `raw/T` の分散
+### 3.10. 分散と `Kimi.Loan<T>`（SPEC §15.3.5、§22.1）
 
-`raw/T` は `T` について不変とする（現行の実装と同じ）。raw pointer は読み書きの区別を持たないので、共変にすると、書き込みを通じて短い寿命の値を長い寿命の場所へ入れられてしまう。
-
-#### 3.9.2. `Kimi.Loan<T>`
-
-`Kimi.Loan<T>` は、compiler-managed なサイズ 0 の struct Core である。
-
-- **形成：** 正規化した `T` は、外側の Semantics が `ref`、`uniq`、`objref`、`objuniq` のいずれかである完全な借用型でなければならない。`Kimi.Weak<S>` の形成条件（SPEC §3.2.2）と同じ種類の規則である。
-- **解析：** `Loan<T>` の Field は、解析上 `T` を格納しているものとして扱う。スロットの使用、Loan 要求、分散、Owned はそこから推論する。Copy になるのは `T` が Copy のときだけである（SPEC §3.5.1 の表に行を加える）。`Loan<T>` の Field が使うスロットは、格納を持つので Phantom Origin ではない。
-- **能力：** アドレスを持たず、何も読まず、アクセスの能力を与えない。
-- **作成：** `Loan<T>.init(value: T)` は safe である。借用の値を受け取り（`ref` は Copy、`uniq` は転送）、その Loan と Origin を保つ。破棄すると、借用を破棄したときと同じく、その Loan が終わる。依存を加えるだけで権限を作らないので、未定義動作は起こらない。
-
-```kimi
-public struct BufferView<T> {source}
-    let loan: Loan<ref/Buffer<T> during source>   // source は共変で、共有 Loan を要求する
-    let data: raw/T
-    let length: isize
-```
-
-#### 3.9.3. 共変な view の書き方
-
-`T` について共変な view は、アドレスを `raw/()` に保ち、要素の依存を `Loan<ref/T during source>` で表す。アクセスの直前に `data@raw/T` で変換する。不変な `raw/T` の Field を持たないので、分散は `Loan` の Field だけから決まる。
+- **`raw/T` の分散：** `raw/T` は `T` について不変とする（現行の実装と同じ）。raw pointer は読み書きを区別しない。共変にすると、書き込みを通じて、短い寿命の値を長い寿命の場所へ入れられてしまう。
+- **`Kimi.Loan<T>`：** compiler-managed なサイズ 0 の struct Core である。
+  - 形成：正規化した `T` は、外側の Semantics が `ref`、`uniq`、`objref`、`objuniq` のいずれかである完全な借用型でなければならない（`Kimi.Weak<S>` と同じ種類の形成条件、SPEC §3.2.2）。
+  - 解析：`Loan<T>` の Field は、`T` を格納しているものとして扱う。スロットの使用、Loan 要求、分散、Owned は、そこから推論する。Copy になるのは `T` が Copy のときだけである（SPEC §3.5.1 の表）。この Field が使うスロットは Phantom Origin ではない。
+  - 能力：アドレスを持たず、何も読まず、アクセスの能力を与えない。
+  - 作成と破棄：`Loan<T>.init(value: T)` は safe であり、借用の値を受け取って（`ref` は Copy、`uniq` は転送）、その依存を保つ。破棄で終わるのは、その値が持つ責任だけである。Loan の生存は、同じ Origin を持つ他の値（Copy や派生した参照）の使用で決まる（SPEC §15.6.1 の Liveness）。依存を加えるだけで、権限は作らない。
+- **共変な view：** `T` について共変な view は、アドレスを `raw/()` に保ち、要素の依存を `Loan<ref/T during source>` で表す。アクセスの直前に `data@raw/T` で変換する。
 
 ```kimi
 public struct Window<T> {source}                // T について共変
@@ -230,40 +193,33 @@ public struct Window<T> {source}                // T について共変
     let length: isize
 ```
 
-#### 3.9.4. 標準型の移行
-
-本書 1.6 の表のうち、Kimigayo で宣言された型は、intrinsic なメタデータの代わりに `Loan` の Field を持つ。値は、それぞれの compiler-known な作成関数（`borrowStorage`、`Text.fixed`、`Text.writer`、`reserve`）が作る。
+- **標準型の移行：** 本書 1 の 6 の 7 型は、メタデータの代わりに `Loan` の Field を持つ。その値は、それぞれの compiler-known な作成関数（`borrowStorage`、`Text.fixed`、`Text.writer`、`reserve`）が作る。
 
 | 型 | 加える Field |
 | --- | --- |
-| `RefRemainder<E>` | `Loan<ref/E during source>` |
-| `UniqRemainder<E>` | `Loan<uniq/E during source>` |
-| `DictionaryRefRemainder<K, V>` | `Loan<ref/(K, V) during source>` |
-| `DictionaryUniqRemainder<K, V>` | `Loan<uniq/(K, V) during source>` |
+| `RefRemainder<E>`／`UniqRemainder<E>` | `Loan<ref/E during source>`／`Loan<uniq/E during source>` |
+| `DictionaryRefRemainder<K, V>`／`DictionaryUniqRemainder<K, V>` | `Loan<ref/(K, V) during source>`／`Loan<uniq/(K, V) during source>` |
 | `FixedBuffer`、`WriteWindow` | `Loan<uniq/u8 during source>` |
 | `Utf8Writer` | `Loan<uniq/u8 during target>` |
 
 `Slice<T>` は格納の Field を持たない compiler-managed な表現なので、メタデータを残す（本書 6）。
 
-### 3.10. 外部関数（SPEC §22.3、impl §21.1.6）
+### 3.11. 外部関数（SPEC §22.3、impl §21.1.6）
 
-#### 3.10.1. 宣言の約束
+- **宣言の約束：** `#LibraryImport` の宣言は、signature と `- safety:` の条件を満たすすべての呼び出しで、外部の実装が同じ signature の Kimigayo 関数と同じように振る舞うことを約束する。具体的には、次のことを守る。
+  - 引数が許す範囲だけにアクセスする（`ref` は読み取り、`uniq` は呼び出しの間の排他的なアクセス）。
+  - 受け取った値の借用の Field を書き換えるときは、新しい値がその Field の型・Origin・権限を満たす。
+  - 結果の Origin を超えて借用を保持しない。
+  - 結果の型の有効な値を返す。
+  - SPEC §22.3.1 の巻き戻しの制限を守る。
 
-`#LibraryImport` の宣言は、次を約束する。signature と `- safety:` の条件を満たすすべての呼び出しで、外部の実装は、同じ signature の Kimigayo 関数と同じように振る舞う。具体的には、次の三点を守る。
-
-- 引数が許す範囲だけにアクセスする（`ref` は読み取り、`uniq` は呼び出しの間の排他的なアクセス）。
-- 結果の Origin を超えて借用を保持しない。
-- 結果の型の有効な値を返し、SPEC §22.3.1 の巻き戻しの制限を守る。
-
-約束が偽なら未定義動作であり、その責任は宣言の書き手にある。
-
-#### 3.10.2. `unsafe func` の基準
-
-外部関数にも、Kimigayo の関数と同じ基準を適用する。呼び出し側に、型で表せない義務があるときだけ `unsafe func` にし、その義務を `- safety:` に書く。`#LibraryImport` は、`unsafe` のない宣言にも付けられる。直接の呼び出しだけを許す現行の規則は変えない。
-
-#### 3.10.3. signature の型
-
-SPEC §22.3.2 の表に、次の行を加える。`T` は C-exchangeable な格納である。
+  約束が偽なら未定義動作であり、責任は宣言の書き手にある。
+- **`unsafe func` の基準：** 呼び出し側に型で表せない義務があるときだけ `unsafe func` にし、その義務を `- safety:` に書く。`#LibraryImport` は、safe な宣言にも付けられる。直接の呼び出しだけを許す規則は変えない。
+- **効果：** 外部関数の呼び出しの効果は、signature が許す引数へのアクセスと、環境効果（SPEC §8.4.10.2）からなる。
+  - `2026-10-02 Effect Bound Refinements.md` では、本体のない外部関数の呼び出しを「環境への効果が分からない呼出し」に含めていた。本書は、宣言の約束に基づいて、これを環境への効果に移す。
+  - したがって、`confined` な実装からは呼べない。`preserves results` の実装からは、引数へのアクセスが以前の結果の Loan と競合しない限り呼べる。
+  - 外部関数に効果を宣言する手段は設けない（本書 6）。
+- **signature の型（SPEC §22.3.2）：** 次の表の型を加える。`T` は C-exchangeable な格納である。
 
 | Kimigayo の引数・結果 | C の値 | LLVM の型 |
 | --- | --- | --- |
@@ -271,66 +227,47 @@ SPEC §22.3.2 の表に、次の行を加える。`T` は C-exchangeable な格�
 | `uniq/T` | `T *`（非 null） | ptr |
 | `Option<ref/T>`、`Option<uniq/T>` | null を許すポインター | ptr |
 
-- **Origin：** 借用の注釈は、通常どおり signature の Origin を導入する（SPEC §15.3.4）。借用を含む結果の Origin は、SPEC §15.4 に従う。親の Container から継承した Origin パラメーターは、現行どおり拒否する。
-- **ABI：** 引数には、参照先のアドレスを渡す。impl §21.5.5 にある、Scalar の `ref` を値で渡す最適化は適用しない。`Option` は impl §21.1.5 の一語の nonnull 表現を使う。
+  借用の注釈は、通常どおり signature の Origin を導入する（SPEC §15.3.4）。結果の Origin は SPEC §15.4 に従う。親の Container から継承した Origin パラメーターは、現行どおり拒否する。引数には参照先のアドレスを渡し、Scalar の `ref` を値で渡す最適化（impl §21.5.5）は適用しない。`Option` は、一語の nonnull 表現（impl §21.1.5）を使う。
+- **C-exchangeable（impl §21.1.6）：** C-exchangeable な referent への `ref`・`uniq` と、その Option を、Field の中を含めて C-exchangeable とする。
+- **Windows（SPEC §22.7.1）：** `queryPerformanceCounter(value: uniq/i64) -> i32` と `queryPerformanceFrequency(value: uniq/i64) -> i32` を safe な宣言にする。`Storage.addressOfI64` の段落は削除する。
 
-#### 3.10.4. C-exchangeable の定義（impl §21.1.6）
-
-C-exchangeable な型に、C-exchangeable な referent への `ref`・`uniq` と、その Option を加える。この定義は一つにまとめ、Field の中にも同じように適用する。外部のコードがそのような Field を書くときは、本書 3.10.1 により、その型の有効な値（生存し、Origin を守る非 null の借用）を書かなければならない。
-
-#### 3.10.5. Windows の関数
-
-```kimi
-public group Windows
-    /// Writes the current performance-counter value and returns nonzero on success.
-    #LibraryImport("kernel32", "QueryPerformanceCounter")
-    public func queryPerformanceCounter(value: uniq/i64) -> i32
-
-    /// Writes the counter frequency in counts per second and returns nonzero on success.
-    #LibraryImport("kernel32", "QueryPerformanceFrequency")
-    public func queryPerformanceFrequency(value: uniq/i64) -> i32
-```
-
-SPEC §22.7.1 から `Storage.addressOfI64` の段落を削除する。
-
-### 3.11. 標準ライブラリーの境界 primitive（SPEC §22.1.2.5）
+### 3.12. 標準ライブラリーの境界 primitive（SPEC §22.1.2.5）
 
 | primitive | 扱い |
 | --- | --- |
-| `lend`、`split` | raw Place の借用（本書 3.6）で置き換え、削除する |
-| `lendKey`、`lendValue`、`splitValue` | `keyAt`・`valueAt` と raw Place の借用で置き換え、削除する |
-| `addressOfI64` | FFI の `uniq/i64`（本書 3.10）で不要になるので、削除する |
-| `release` | 公開の `Raw.release` に統合する |
-| `placeValue` | 公開の `Raw.initialize` に統合する |
+| `lend`、`split`、`lendKey`、`lendValue`、`splitValue` | raw Place の借用（`keyAt`・`valueAt` と組み合わせる）で置き換え、削除する |
 | `inlineBase` | `storage@follow@raw@raw/E` で置き換え、削除する。SPEC §22 に、`InlineStorage<A>` が `A` をオフセット 0 に置くことを明記する |
+| `addressOfI64` | 削除する（本書 3.11） |
+| `release`、`placeValue` | `Raw.release`、`Raw.initialize` に統合する |
 | `borrowStorage`、`ownStorage`、`dictionaryStorage`、`keyAt`、`valueAt`、`placeEntry` | 残す。Array と Dictionary の表現は、コンパイラが管理する |
 
-`splitFirst` などの本体は、引き続き Kimigayo で書く。範囲・非重複・初期化の保証は、Kimi ライブラリーの unsafe なコードが、本書 3.4 の義務として負う。現行の `lend`・`split` も検査を行わない能力の付与だけだったので、置き換えによって失われる検査はない。
+`splitFirst` などの本体は、引き続き Kimigayo で書く。範囲・非重複・初期化の保証は、本書 3.8 の unsafe の義務として、Kimi ライブラリーが負う。
 
-### 3.12. 診断と Compiler Server
+### 3.13. 診断と Compiler Server
 
-- **不要な Unsafe Block：** unsafe 文脈を要求する各操作は、それを囲む最も内側の Unsafe Block の許可を使う（入れ子の Deferred Block の中の操作を含む）。許可がどの操作にも使われない Unsafe Block には、warning `UnnecessaryUnsafeBlock_Kd`（category `Language`）を出す。
+- **不要な Unsafe Block：** unsafe 文脈を要求する操作は、それを囲む最も内側の Unsafe Block の許可を使う。入れ子の Deferred Block の中の操作も同じである。どの操作にも許可を使われない Unsafe Block には、warning `UnnecessaryUnsafeBlock_Kd`（category `Language`）を出す。
   - 主範囲：`unsafe` キーワード
-  - Reason：Body の中に、このブロックの許可を使う操作がない
-  - Advice：`unsafe` を削除し、中の文を残す
-  - 本書 3.3 で変換が safe になると、変換だけを包んでいた既存のブロックにこの warning が出る。
+  - Reason：このブロックの許可を使う操作がない。
+  - Advice：Body は独立したスコープなので（SPEC §14.3.1）、Body に宣言や `defer` がないときだけ、「`unsafe` を削除して、中の文を残す」ことを示す。宣言や `defer` があるときは、削除によって名前の範囲や、破棄・`defer` の時点が変わることを示し、削除は勧めない。
+  - CSP の修復候補（SPEC §23.5.3）も、スコープ・破棄順・制御移動を保つことを証明できるときだけ出す。
+  - 変換が safe になるので、変換だけを包んでいた既存のブロックにも、この warning が出る。
 - **既存の診断：**
-  - `UnsafeBlockRequired_Kd` の対象は、本書 3.3 の表に合わせて狭まる。
-  - LibraryImport の形と型の診断は、Message と Reason を本書 3.10 に合わせる。
-  - `Loan<T>` の形成違反と、C-exchangeable でない referent への借用は、既存の不正な型引数と未対応の signature の診断の枠組みで報告する。
-- **Compiler Server（SPEC §23.5.3）：** CSP の要件に、次の一覧を返すことを加える。それぞれについて、満たすべき義務（SPEC §5 の該当条件と `- safety:`）も示す。
+  - `UnsafeBlockRequired_Kd` の対象を、本書 3.3 の表に合わせて狭める。
+  - LibraryImport の診断の Message と Reason を、本書 3.11 に合わせる。
+  - `Loan<T>` の形成の違反と、C-exchangeable でない referent への借用は、既存の、不正な型引数の診断と、未対応の signature の診断の枠組みで報告する。
+- **CSP（SPEC §23.5.3）：** CSP の要件に、次の一覧を加える。いずれも、満たすべき義務（SPEC §5 の条件と `- safety:`）を併せて示す。
   - Unsafe Block と、その許可を使う操作
   - unsafe func の呼び出し
   - `#LibraryImport` の宣言
 
-### 3.13. 変更しないこと
+### 3.14. 変更しないこと
 
-- null の意味、ポインター演算の形、provenance と往復の保証（SPEC §5.1、§5.3〜§5.5。ただし unsafe 文脈の要求は本書 3.3 に従う）
-- unsafe func の本体が unsafe 文脈にならないこと、unsafe func を関数値にできないこと（SPEC §7.5）
-- Unsafe Block の構文と字句的な範囲（SPEC §14.3.3）
-- 外部関数の直接呼び出しだけの規則、aggregate の値渡しの除外、callback の除外（SPEC §22.3）
+- null、ポインター演算の形、provenance と往復の保証（SPEC §5.1、§5.3〜§5.5）。ただし、unsafe 文脈の要否は本書 3.3 に従う。
+- unsafe func の本体は unsafe 文脈にならず、関数値にできないこと（SPEC §7.5）
+- Unsafe Block の構文とスコープ（SPEC §14.3）
+- 外部関数を直接にしか呼べないこと、aggregate の値渡しと callback を除外すること（SPEC §22.3）
 - raw の pair layer を follow しないこと（SPEC 付録 D）
-- `Kimi.Storage` が internal であり、利用者の格納が標準の境界に登録できないこと（SPEC §22.1.2.5）
+- `Kimi.Storage` が internal であること（SPEC §22.1.2.5）
 
 ## 4. 例：利用者のコンテナー
 
@@ -382,7 +319,9 @@ public struct BufferView<T> {source}
         unsafe => return self.data[index]@ref
 ```
 
-`BufferView` が生存している間は、`source` の共有 Loan が保持されるので、`Buffer` への `push` はエラーになる。この検査は通常の借用検査である。unsafe なのは、`data` が `Buffer` の要素を指すという、ライブラリーの不変条件だけである。
+- **view と借用検査：** `BufferView` が生存している間は、`source` の共有 Loan が保たれるので、`Buffer` への `push` はエラーになる。これは通常の借用検査である。unsafe なのは、「`data` が `Buffer` の要素を指す」というライブラリーの不変条件だけである。
+- **参照を含む `T`：** `T` が `ref/i32 during a` のように参照を含む場合も、`T` は `Buffer<T>` の型に現れる。そのため、挿入した値の Loan は、`Buffer` と、そこから取り出したり借用したりした値が生存している間保たれる（本書 3.4 の依存の保持）。
+- **分散：** `raw/T` の Field を持つので、`Buffer<T>` は `T` について不変である。
 
 ```kimi
 func readCounter() -> i64
@@ -397,43 +336,47 @@ func readCounter() -> i64
 ### 5.1. メリット
 
 - **原則 1：**
-  - 型名（`raw`）と約束の場所（`unsafe`）の語が分かれる。
+  - 語が分かれる。`raw` は能力、`unsafe` は約束の場所を表す。
   - unsafe 文脈の基準が一つになる。
-  - safe から raw への変換は `@raw`、raw から safe への変換は raw Place の借用という、それぞれ一つの形になる。どちらも既存の Borrow の表の延長である。
-  - 用途ごとの internal primitive 9 個を、公開の汎用操作 4 個（`Kimi.Raw`）と `Loan<T>` に置き換える。標準ライブラリーと利用者のライブラリーが同じ道具を使う。
-  - Kimigayo で宣言した型のスロットの性質が、例外なく格納から決まる（`Slice<T>` を除く）。
+  - 操作ごとに綴りが一つになる。アドレスの取得は `@raw`、変換は `@raw/U`、raw から safe への変換は raw Place の借用である。
+  - 用途ごとの primitive 9 個を、公開の汎用操作 4 個と `Loan<T>` に置き換える。
+  - Kimigayo で宣言した型は、`Slice<T>` を除いて、スロットの性質が格納から決まる。
 - **原則 2：**
-  - 約束の場所は三つに限られ、約束が正しい限り、safe なコードだけでは未定義動作が起こらない。
-  - FFI の引数の意味は signature から読める。
-  - スロットの依存と分散は格納から読める。`raw/T` の分散も仕様に明記される。
+  - 約束の場所が三つに限られる。
+  - FFI の引数の意味と、スロットの依存・分散が、宣言から読める。
+  - `raw/T` の分散が仕様に書かれる。
 - **原則 3：** 「借用し、保持しない」が型で表され、散文の義務が減る。
-- **原則 4：** 約束の場所と義務を一覧にでき、監査と修復の対象を絞れる。
-- **Coding Guidelines：** compiler-known な primitive と intrinsic なメタデータが減り、コアライブラリーをより多く Kimigayo で書ける。
+- **原則 4：** 約束の場所と義務を一覧にでき、修復候補には前提条件が付く。
+- **性能：**
+  - raw Place の借用と `@raw` は、置き換える primitive と同じアドレス計算になる。
+  - 既存の経路に加わる実行時の処理はない。新しい `Raw.release` だけが、0 バイトの結果を判定する。
+  - `Loan<T>` はサイズ 0 である。
 
 ### 5.2. デメリットと費用
 
-- **改名：** 機械的だが範囲が広い。テストの C# に 445 箇所（42 ファイル）、Kimi ライブラリーに 90 箇所、文書に 56 箇所ある。
-- **safe な変換：** safe なコードで、整数から任意のポインターを作れる。ただし、参照には unsafe 文脈が要り、provenance は作られない（SPEC §5.5）。ポインターの出どころは unsafe 文脈に現れなくなるが、義務を確かめる場所（参照）には必ず現れる。
-- **raw Place の借用の Origin：** unsafe なコードが、必要以上に長い Origin（`static` など）を選べる。これは raw pointer の本質的な性質である。Origin は、戻り値の型や注釈という目に見える位置で決まる。
-- **safe な外部関数：** 宣言の誤りは呼び出し側から見えない。ただし、`#LibraryImport` が信頼の位置を明示し、CSP の一覧にも現れる。
-- **所有のコンテナーの分散：** `raw/T` が不変なので、raw で書いた所有のコンテナー（本書 4 の `Buffer<T>`）は `T` について不変になる。共変な所有のコンテナーは、現時点では書けない。共変な view は、本書 3.9.3 の形で書ける。
-- **新しい標準の型と関数：** `Loan<T>`、`Kimi.Raw` の 4 関数、`raw` キーワードが増える。
+- **改名の量：** 機械的な変更だが、範囲が広い。テストの C# に 445 箇所、Kimi ライブラリーに 90 箇所、文書に 56 箇所ある。
+- **safe な変換：** safe なコードで、整数から任意のポインターを作れるようになる。ただし、参照するには unsafe 文脈が要り、変換は provenance を作らない。
+- **raw Place の借用：** unsafe なコードが、必要以上に長い Origin を選べる。また、その anchor は未知の重なりを検査しない。いずれも、unsafe の約束の範囲内のことである。Origin は、戻り値の型や注釈など、目に見える位置で決まる。
+- **safe な外部関数：** 宣言の誤りは、呼び出し側からは見えない。信頼の位置は、`#LibraryImport` と CSP の一覧に現れる。
+- **所有のコンテナーの分散：** raw で書いた所有のコンテナーは、`T` について不変になる。
+- **新しい要素：** 語 `raw`、`Kimi.Raw` の 4 関数、`Loan<T>`、raw Place の借用の anchor の規則が加わる。
 
 ### 5.3. 複雑性
 
 削る規則が、加える規則を上回る。
 
 - **削る：**
-  - 変換に unsafe 文脈を要求する 2 行
-  - internal primitive 9 個と、それぞれの契約の段落（SPEC §22.1.2.5、§22.7.1）
-  - 7 型の intrinsic なメタデータ（本書 3.9.4）
+  - 変換に unsafe 文脈を要求する規則
+  - internal primitive 9 個と、その契約の段落
+  - 7 型のメタデータ
   - 外部関数の引数から借用を除く規定と、外部関数をすべて unsafe にする規定
   - SPEC §5.6 の保留
+  - SPEC §15.6.3 の、標準の境界についての特別扱い
 - **加える：**
-  - `@raw` の行（既存の Borrow の規則を使う）
-  - raw Place の借用の段落（既存の結果の適合を使う）
+  - `@raw` の操作
+  - raw Place の借用（既存の Borrow と結果の適合を使い、anchor の規則を一つ加える）
   - アクセスの条件の一覧（現行の義務を整理したもの）
-  - `Kimi.Raw` の 4 関数、`Loan<T>`、`raw/T` の分散の 1 文
+  - `Kimi.Raw`、`Loan<T>`、`raw/T` の分散
   - FFI の型の 3 行
   - warning 一つ
 
@@ -443,135 +386,136 @@ func readCounter() -> i64
 | --- | --- |
 | `unsafe/T` の名前を残す | 一つの語が二つの概念を表したままになる。 |
 | 変換に unsafe 文脈を求め続ける | unsafe 文脈の基準が二つになる。 |
-| safe から raw への変換を関数 `Raw.address(of:)` にする | Borrow と別の形が増える。また、値を受け取るので、アドレスを取った経路とその権限が読み取れない。 |
-| raw から safe への変換で Origin を書く（`p@(ref/T during a)`） | Adaptation Target に Origin を書かない規則（SPEC §13.5.1）の例外になる。 |
-| raw から safe への変換を関数 `Raw.borrow(p)` にする | Field や要素を借用するたびに、位置の計算と関数呼び出しが要る。Borrow の行を使えば、Place の形をそのまま書ける。 |
-| `@raw/V` の重なりを、借用の優先で解く | 「Borrow targets take precedence」（SPEC §13.5.3）は Identity Acquisition についての規定であり、変換との優先順位は新しい規則になる。オペランドの型で決めれば、規則を足さずに済む。 |
-| ヘッダーで Loan 要求を宣言する（`{source: uniq}`） | 「スロットの性質は格納から決まる」という規則（Declared Origin Slots 案を含む）の例外になる。 |
-| 読み取り専用と書き込み可能の 2 種類の raw pointer | FFI での区別は `ref`・`uniq` で表せる。共変な view は `raw/()` と `Loan<ref/T>` で表せる。raw pointer はもともと能力を持たない。 |
-| `raw/T` を共変にする | 書き込みを通じた寿命の誤りを、unsafe なコードの書き手が型ごとに防がなければならなくなる。共変が要る場合は、本書 3.9.3 の形で明示する。 |
+| `@raw/V` を、オペランドの型によって借用か変換に分ける | 同じ綴りの意味が入力の型で変わり、間接参照の段数を読み違えやすい（原則 2）。 |
+| safe から raw への変換を関数 `Raw.address(of:)` にする | Borrow と別の形が増える。また、値を受け取るので、経路の権限が読み取れない。 |
+| raw から safe への変換で Origin を書く（`p@(ref/T during a)`） | SPEC §13.5.1 の、Adaptation Target に Origin を書かない規則の例外になる。 |
+| raw から safe への変換を関数 `Raw.borrow(p)` にする | Field や要素を借用するたびに、関数を呼ぶことになる。 |
+| raw 由来の参照に Loan を持たせない | Reborrow と衝突の検査に、anchor が要る。 |
+| 領域の分割を宣言する専用の構文や primitive | signature、`Loan<T>`、unsafe の約束で足りる。専用の宣言を設けても、非重複は検証できない。 |
+| ヘッダーで Loan 要求を宣言する（`{source: uniq}`） | 「スロットの性質は格納から決まる」という規則の例外になる。 |
+| 読み取り専用と書き込み可能の、2 種類の raw pointer | FFI での区別は `ref`・`uniq` で表せる。共変な view は `raw/()` と `Loan<ref/T>` で表せる。 |
+| `raw/T` を共変にする | 書き込みを通じた寿命の誤りを、型ごとに防がなければならなくなる。 |
 | 外部関数を常に unsafe にする | 型で表せる義務を呼び出し側に残し、宣言の書き手の約束が表に出ない。 |
-| raw Place への代入を初期化にする | 代入の意味が、Place の種類によって変わってしまう。 |
-| 局所変数の格納を、Move の後もスコープの終わりまで保証する | 実装の格納の再利用（impl §21.5.5）を制限する。Move 後の格納を使う正当な用途もない。 |
+| raw Place への代入を初期化とする | 代入の意味が、Place の種類によって変わる。 |
+| 局所変数の格納を、Move の後もスコープの終わりまで保証する | 実装の格納の再利用（impl §21.5.5）を制限する。また、Move の後の格納を使う正当な用途がない。 |
 
 ## 6. 範囲外
 
 - Unsafe Function Types、unsafe func と外部関数の関数値
-- raw pointer の並行実行での能力
-- unowned 参照、unsafe な weak pointer（SPEC 付録 D）。安全な循環は `rc`・`arc` と `Weak` で書く。raw pointer による後方参照は本案で書けるようになるが、safe な API に包むには、親への排他アクセスと衝突しないことを保証する、ライブラリー独自の不変条件が要る。
-- Array と Dictionary を Kimigayo の struct として書き直すこと（`borrowStorage`、`dictionaryStorage`、`keyAt`、`valueAt` を削除できる）
-- `Slice<T>` を、本書 3.9.3 の形の格納を持つ struct として書き直し、メタデータをなくすこと
+- 外部関数の効果の宣言（`confined` な外部関数）
+- raw pointer の、並行実行での能力
+- unowned 参照、unsafe な weak pointer（SPEC 付録 D）。安全な循環は `rc`・`arc` と `Weak` で書く。raw pointer による後方参照の safe な API には、ライブラリー独自の不変条件（本書 3.4）が要る。
+- Array と Dictionary を、Kimigayo の struct として書き直すこと
+- `Slice<T>` を、本書 3.10 の共変な view の形で書き直すこと
 - 共変な所有のコンテナーを表す手段
 - 排他の Slice、raw のバイト列から作る `string`
-- aggregate の値渡しと callback を含む FFI の拡張
+- aggregate の値渡しや callback を含む FFI の拡張
 - `tryAllocate`
 
 ## 7. 実装計画
 
-各単位では、再現例・実装・焦点テストを揃え、AGENTS.md の手順で Verify してからコミットする。診断を追加・変更する単位では、DIAGNOSTICS §10 の手順に従う。各単位の commit で、`docs/dev/CODEMAP.md` の該当行を更新する。セッションの最後には Session の検証を行う。
+各単位では、再現例・実装・焦点テストを揃え、AGENTS.md の手順で Verify してからコミットする。診断の単位では DIAGNOSTICS §10 の手順に従い、各 commit で `docs/dev/CODEMAP.md` の該当行を更新する。セッションの最後には、Session の検証を行う。
+
+**他の案との順序：** 効果上限の実装（`2026-10-01 Requirement Effect Bounds.md` の U3。`2026-10-02 Effect Bound Refinements.md` の分類と委譲を含む）を、本書の単位 3〜5 と単位 7 より先に完了する。これらの単位は、その検査を前提に、効果の要約を更新する。
 
 1. **改名：**
-   - `Constants.UnsafeKeyword` を、Semantics 用の `raw` と、修飾子・文用の `unsafe` に分ける。`SemanticsKind`・`SemanticsMask` の名前、`CompilerHelper.TryParse`・`ToText` の表、`Parser.Origins` の診断を更新する。
-   - 診断の文（`DiagnosticCode.tinyhand`）、Kimi ライブラリーの `.kimi`、テスト、文書を機械的に更新する。この単位では意味を変えない。
+   - `Constants.UnsafeKeyword` を、Semantics 用の `raw` と、修飾子・文用の `unsafe` に分ける。
+   - `SemanticsKind`、`SemanticsMask`、`CompilerHelper.TryParse`／`ToText`、`Parser.Origins` を更新する。
+   - 診断の文、`.kimi`、テスト、文書を機械的に更新する。この単位では意味を変えない。
 2. **unsafe 文脈の基準：**
    - `ControlFlowAnalysis` の変換の許可検査をなくし、`BindingControlFlowTypes.RequiresUnsafeContext` を本書 3.3 の表に合わせる。
-   - `UnnecessaryUnsafeBlock_Kd` を追加する。各操作が使う最も内側のブロックを記録し、使われないブロックを報告する。変換だけを包んでいたライブラリーのブロックを整理する。
-   - 現行で未実装の Typed Null Formation（`null@raw/T`）を、`Binding.Conversions.BindConversion` で実装する。現行のテスト（`StorageBoundaryTest`、`DictionaryStorageValidationTest`、`Utf8FormatBindingTest`）は失敗を期待しているので、期待値を見直す。
+   - `UnnecessaryUnsafeBlock_Kd` を、Advice の条件（本書 3.13）を含めて追加する。
+   - 未実装の Typed Null Formation を `Binding.Conversions.BindConversion` に実装する。失敗を期待している現行のテストの期待値も見直す（`StorageBoundaryTest`、`DictionaryStorageValidationTest`、`Utf8FormatBindingTest`）。
 3. **`@raw`：**
-   - `Binding.Conversions` の bare の形と型付きの形に、`raw` を加える。`E@raw/V` は、オペランドの型で変換か借用かを決める。
-   - 所有権解析では、直ちに終わる共有の借用として検査する（`ConversionBinding.Borrow` の各利用箇所）。
-   - lowering では Place のアドレスを返し、その局所変数を、アドレスが観測されたものとして扱う。
-4. **raw Place の Take と借用：**
-   - `(*p)@move` と、Loan による上限のない Origin を持つ raw Place の借用を、`Binding.Conversions`、`Binding.OriginInference`、`OwnershipAnalysis.Pointers` に実装する。
-   - `Storage.kimi` の `lend`・`split`・`lendKey`・`lendValue`・`splitValue`・`inlineBase` を置き換え、primitive の宣言、ID（`KimiDeclaration`、`KimiLibraryKinds`）、catalog、検証（`KimiLibraryValidation`、`KimiLibraryStorage`）、効果（`Binding.EffectBounds`）、lowering（`BodyLowering.Arrays`、`BodyLowering.FixedStorage`、`BodyLowering.DictionaryStorage`）を削除する。
-   - iteration の割り当てと再利用の回帰テストを含める。
-5. **`Kimi.Raw`：** `allocate`・`release`・`initialize`・`slice` を追加し、内部の `release`・`placeValue` を統合する。lowering は、既存の確保と解放の経路（`WindowsLowering.StorageRelease` など）を使う。`docs/LIBRARY.md` を更新する。
+   - bare の `raw` を、アドレスの取得として `Binding.Conversions` で扱う。`@raw/U` は、現行の変換の経路のままとする。
+   - 所有権解析では、直ちに終わる共有の借用として検査する。
+   - 効果の要約では、本書 3.5 のとおり Place へのアクセスとして扱う。
+   - lowering では Place のアドレスを返し、その局所変数をアドレスが観測されたものとして扱う。
+4. **raw Place の Take、借用、分割：**
+   - `(*p)@move` と、新しい anchor を持つ raw Place の借用を実装する。対象は `Binding.Conversions`、`Binding.OriginInference`、`OwnershipAnalysis.Pointers` と、§15.6.2 の重なりの判定である。
+   - 効果の要約（`Binding.EffectBounds`）で、raw アクセスを本書 3.8 のとおりに扱う。
+   - `Storage.kimi` の `lend`・`split`・`lendKey`・`lendValue`・`splitValue`・`inlineBase` を置き換える。そのうえで、宣言、ID（`KimiDeclaration`、`KimiLibraryKinds`）、catalog、検証（`KimiLibraryValidation`、`KimiLibraryStorage`）、lowering（`BodyLowering.Arrays`、`FixedStorage`、`DictionaryStorage`）を削除する。
+   - `preserves results` の検証、iteration の割り当てと再利用の回帰テスト、`tryGetPairUniq` を確認する。
+5. **`Kimi.Raw`：**
+   - 4 関数を追加し、内部の `release` と `placeValue` を統合する。
+   - 効果の要約に、本書 3.9 の分類を加える。
+   - 0 バイトの結果と、その解放を、impl §21.2.4 の代替アドレスで実装する。
+   - `docs/LIBRARY.md` を更新する。
 6. **分散と `Loan<T>`：**
-   - `raw/T` の不変を仕様どおりに確認するテストを加える。
-   - `Loan<T>` の形成、サイズ 0 の layout、解析上の格納としての扱い（`Binding.TypeOrigins`、`Binding.Capabilities`）、`init` を実装する。
-   - 本書 3.9.4 の 7 型に `Loan` の Field を加え、`Binding.OriginRequirements` の該当する特別扱いを削除する（`Slice<T>` の特別扱いは残す）。
+   - `raw/T` が不変であることを確かめるテストを加える。
+   - `Loan<T>` の形成、サイズ 0 の layout、格納としての扱い（`Binding.TypeOrigins`、`Binding.Capabilities`）、`init` を実装する。
+   - 7 型に Field を加え、`Binding.OriginRequirements` の特別扱いを削除する。`Slice<T>` の特別扱いは残す。
 7. **FFI：**
-   - `Binding.Attributes` の `IsImportShape` から `unsafe` の要求を外し、`PhysicalCode` に借用と Option を加える。`LlvmEmitter.CreateImportAbi` を合わせる。C-exchangeable の判定に、借用と Option を加える。
-   - `Kimi.Windows` と Time を移行し、`addressOfI64`（`KimiLibraryAddress`、`BodyLowering.Address`）を削除する。
-8. **測定：** iteration と Dictionary の hot path について、`src/Benchmark` の該当する測定を変更前後で比較する。
+   - `Binding.Attributes` の `IsImportShape` から、unsafe の要求を外す。
+   - `PhysicalCode` と `LlvmEmitter.CreateImportAbi` に、借用と Option を加える。
+   - 外部関数の効果を、環境効果として要約する。
+   - C-exchangeable の判定を更新する。
+   - `Kimi.Windows` と Time を移行し、`KimiLibraryAddress` と `BodyLowering.Address` を削除する。
+8. **測定：** iteration と Dictionary の hot path について、`src/Benchmark` の該当する測定を、変更の前後で比較する。
 
-焦点テストは、`ForeignEmissionTest`、`GenericPointerEmissionTest`、`DependentPointerEmissionTest`、`UnsafeFunctionValueBindingTest`、`LibraryImportTargetBindingTest`、`TimeLibraryTest`、storage 系（`StorageBoundaryTest`、`DictionaryRemainderTest`、`FixedStorageTest` など）と、native fixture の `ForeignPointer*`、`DependentPointer*`、`StorageBoundary*`、`TimeLibrary*` を中心にする。
+焦点テストは、次のクラスと native fixture を中心にする。
+
+- テストクラス：`ForeignEmissionTest`、`GenericPointerEmissionTest`、`DependentPointerEmissionTest`、`UnsafeFunctionValueBindingTest`、`LibraryImportTargetBindingTest`、`TimeLibraryTest`、storage 系（`StorageBoundaryTest`、`DictionaryRemainderTest`、`FixedStorageTest` など）
+- native fixture：`ForeignPointer*`、`DependentPointer*`、`StorageBoundary*`、`TimeLibrary*`
 
 ## 8. 文書更新計画
 
 | 文書 | 更新内容 | 時期 |
 | --- | --- | --- |
-| SPEC §2 | 予約語の表で、Semantics の `unsafe` を `raw` に置き換え、`unsafe` は `func` と Body の前だけとする。 | 取り込み時 |
-| SPEC §3 | 型の木、Semantics の表、分類の表、§3.3.6 の入れ子の例と表、「There is no safe `*` operator and no conversion between pointers and safe references」、§3.5.1 の Copy の表（`raw/T` と `Loan<T>`）を更新する。 | 取り込み時 |
-| SPEC §5 | 冒頭の位置づけ（本書 3.1）、unsafe 文脈の表（本書 3.3）、アクセスの条件と格納の生存（本書 3.4）、raw Place の借用と取り出し（本書 3.6、3.7）、§5.6 の置き換え（本書 3.8）を反映する。 | 取り込み時 |
-| SPEC §7.5、§14.3.3 | 例の `unsafe/i32` を `raw/i32` にする。 | 取り込み時 |
-| SPEC §8 | Semantics の表の `unsafe` の行を `raw` にする。 | 取り込み時 |
-| SPEC §13.5.3、§13.5.5.2 | 変換の表を更新し、「Conversions between raw pointers and safe references … are not specified」を削除する。`@raw` と raw Place の借用の行を加える。 | 取り込み時 |
-| SPEC §15.1.5、§15.3.5 | raw Place の Take、`raw/T` の分散、`Loan<T>` の Field の扱いを加え、intrinsic なメタデータの記述を `Slice<T>` だけにする。 | 取り込み時 |
-| SPEC §22.1.2.5、§22.3、§22.7.1 | 本書 3.9.4、3.10、3.11 に合わせる。 | 取り込み時 |
-| SPEC utf8-formatting §1.1 | intrinsic な型の記述を、`Loan` の Field による記述に改める。 | 取り込み時 |
+| SPEC §2、§3、§8、付録 F | 予約語、型の木、Semantics の表と分類、§3.3.6 の入れ子の例と「no conversion between pointers and safe references」の文、§3.5.1 の Copy の表（`raw/T`、`Loan<T>`）、Semantics 名の並びを更新する。 | 取り込み時 |
+| SPEC §5 | 本書 3.1、3.3〜3.7、3.9 を反映する。§5.6 は `Kimi.Raw` に置き換える。 | 取り込み時 |
+| SPEC §8.4.10、§15.6.2、§15.6.3 | raw アクセスと効果上限、raw の anchor の重なり、非重複の根拠（本書 3.6、3.8）を反映する。§8.4.10 については、`2026-10-02 Effect Bound Refinements.md` の取り込み後の本文に対して、次を行う。<br>・冒頭の「unsafe は免除しない」を、§5 冒頭（本書 3.1）への参照に置き換える。<br>・§8.4.10.2 の分類表の外部関数の行を、本書 3.11 に合わせる。<br>・同じ分類表に、`@raw`（本書 3.5）、`Kimi.Raw`（本書 3.9）、safe になった変換（本書 3.3）の扱いを加える。<br>・例の `unsafe/` を `raw/` にする。 | 取り込み時 |
+| SPEC §13.5 | `@raw` の操作、`@raw/U` の変換、raw Place の借用を加え、「not specified in this revision (§5.6)」を削除する。 | 取り込み時 |
+| SPEC §15.1.5、§15.3.5 | raw Place の Take、`raw/T` の分散、`Loan<T>`、メタデータを `Slice<T>` に限ることを反映する。 | 取り込み時 |
+| SPEC §22.1.2.5、§22.3、§22.7.1、utf8-formatting §1.1 | 本書 3.10〜3.12 に合わせる。 | 取り込み時 |
 | SPEC §23.5.3 | CSP の要件に、unsafe の一覧を加える。 | 取り込み時 |
-| SPEC の他の章（§4、§12、§16）と付録 D、F | `unsafe/` の表記と、raw pointer の用語を同期する。付録 F の Semantics 名の並びに `raw` を入れる。 | 取り込み時 |
-| impl §21.1.6、§21.5.3、§21.5.5、付録 A | C-exchangeable の定義、raw pointer の操作の表記、借用を受け取る FFI の段落、アドレスを観測された局所変数、テストの要件を更新する。 | 取り込み時 |
+| SPEC のその他（§4、§7.5、§12、§14.3.3、§16、付録 D） | `unsafe/` の表記と用語を同期する。 | 取り込み時 |
+| impl §21.1.6、§21.5.3、§21.5.5、付録 A | C-exchangeable、raw pointer の操作、FFI の段落、アドレスが観測された局所変数、テストの要件を更新する。 | 取り込み時 |
 | `draft/INTEGRATED.md` | 本書の各節と、取り込み先の節の対応を記録する。 | 取り込み時 |
-| `docs/LIBRARY.md` | `Kimi.Raw`、`Kimi.Loan<T>`、`Kimi.Windows` の signature を更新する。 | 実装時 |
-| `docs/STYLE.md` | 中身を見せないアドレスは `raw/()`、バイト単位の位置の計算は `raw/u8` とする。`- safety:` の説明を、外部関数の基準（本書 3.10.2）に合わせる。 | 実装時 |
+| `docs/LIBRARY.md` | `Kimi.Raw`、`Kimi.Loan<T>`、`Kimi.Windows` を更新する。 | 実装時 |
+| `docs/STYLE.md` | 中身を見せないアドレスは `raw/()`、バイト単位の位置の計算は `raw/u8` とする。`- safety:` を本書 3.11 の基準に合わせる。 | 実装時 |
 | `docs/GUIDE.md`、`src/Kimi/Library/README.md` | raw pointer の記述と、境界 primitive の一覧を更新する。 | 実装時 |
-| `docs/STATUS.md` | 各単位で変わる対応範囲を記録する。 | 実装時 |
-| `docs/dev/CODEMAP.md` | `@raw`、`Kimi.Raw`、`Loan<T>`、FFI の入口を加える。あわせて、現行の誤った参照を直す（raw pointer の行の `Binding.Pointers` は zero stride の判定だけで、unsafe の検査は `ControlFlowAnalysis`・`BindingControlFlowTypes` にある。外部関数の行の `Binding.Imports` は module の import で、LibraryImport の検証は `Binding.Attributes` にある）。 | 実装時 |
+| `docs/STATUS.md`、`docs/dev/CODEMAP.md` | 各単位で変わる対応範囲と入口を記録する。 | 実装時 |
 | `docs/dev/PLAN.md` | 実装を予定に入れるときに加える。 | 計画時 |
 
-## 9. 決定待ちの事項
+## 9. 精査の記録
 
-推奨案で本書を書いている。異なる判断をする場合は、該当する節を改める。
-
-| # | 事項 | 推奨 | 関係する節 |
-| --- | --- | --- | --- |
-| 1 | `raw/T` を `T` について不変と明記し、共変な view は `raw/()` と `Loan<ref/T>` で書く | 採用する | 本書 3.9.1、3.9.3 |
-| 2 | Formatting の 3 型も、intrinsic なメタデータを `Loan` の Field に置き換える（本案の範囲に含める） | 含める | 本書 3.9.4 |
-| 3 | 局所変数のアドレスの有効期間を、スコープの終わりか値の Move の早いほうまでとする | 採用する | 本書 3.4 |
-| 4 | 格納のない依存を表す型の名前を `Kimi.Loan<T>` とする | 採用する | 本書 3.9.2 |
-| 5 | 現行で未実装の Typed Null Formation を、本案の実装単位 2 で実装する | 実装する | 本書 7 |
-
-## 10. 精査の記録
-
-### 10.1. 実現性
-
-実装の入口を調べ、各単位が既存の構造の延長で実装できることを確認した。
-
-| 項目 | 確認したこと | 評価 |
-| --- | --- | --- |
-| 改名 | Semantics 名は `CompilerHelper.TryParse` の一つの表で解決される。`unsafe` は予約語ではなく、文脈で認識される。 | 機械的。量は多い（本書 5.2）。 |
-| unsafe 文脈 | 検査は `ControlFlowAnalysis` に集まっており、変換の検査は一箇所である。 | 容易。 |
-| `@raw` | bare の Semantics 名と型付きの借用は、`Binding.Conversions` の同じ分岐で扱われる。 | 既存の借用の経路に一行加える規模。局所変数の SSA への昇格を止める点に注意する。 |
-| raw Place の借用 | Loan を持たない Origin の推論変数を作る必要がある。`ref` は `static` からの短縮で表せるが、`uniq` は一意の anchor の制限（SPEC §15.2.3）に当たるので、推論変数で表す。 | 最も設計の負担が大きい単位。 |
-| `Loan<T>` | スロットの Loan 要求と分散は、`Binding.TypeOrigins` が格納から集め、標準型は `Binding.OriginRequirements` で上書きしている。`Loan<T>` の Field を `T` の格納として集めれば、上書きを削除できる。 | 既存の推論の経路に乗る。 |
-| FFI | 形と型の検査は `Binding.Attributes` の `IsImportShape`・`PhysicalCode` にまとまっている。借用は ABI 上ポインターである（impl §21.2.4）。 | 容易。 |
-
-### 10.2. 見つけた矛盾と修正
+### 9.1. 初回の精査
 
 | 初稿の記述 | 問題 | 修正 |
 | --- | --- | --- |
-| safe なコードだけでは未定義動作は起こらない | safe な外部関数の宣言が偽なら、safe なコードからでも未定義動作になる。 | 「約束が正しい限り」と限定し、約束の場所を三つと明記した（本書 2、3.1）。 |
-| 局所変数の格納はスコープの終わりまで生存する | impl §21.5.5 は、Move の後の格納の再利用を許している。 | スコープの終わりか Move の早いほうまでとした（本書 3.4）。 |
-| `p@raw/(raw/T)` は「Borrow targets take precedence」で借用になる | この規定は Identity Acquisition についてのものであり、変換との優先順位には使えない。 | オペランドの型で決める規則にした（本書 3.5）。 |
-| raw Place の `uniq` の借用は、期待される型に合わせて適合する | `uniq/T during static` は、一意の anchor の制限（SPEC §15.2.3）に当たる。 | この制限が safe な導出の規則であり、raw Place の借用には適用しないと明記した（本書 3.6）。 |
-| `Loan<T>` で標準型のメタデータを置き換えられる | `Slice<T>` は `T` について共変だが、`raw/T` は不変なので、`raw/T` の Field と `Loan` では共変を表せない。 | `raw/T` の不変を明記し、共変な view の書き方（本書 3.9.3）を加えた。`Slice<T>` は格納の Field を持たないので、メタデータを残した。 |
-| `let value = *pointer` などの取り出し | 既定の取得（SPEC §3.5）と Take の一覧（SPEC §15.1.5）に合わない、現行仕様の矛盾である。 | raw Place の Take と `(*p)@move` を定めた（本書 1.7、3.7）。 |
-| 「9 個の primitive がなくなる」 | `release`・`placeValue` は公開の操作として残る。 | 「9 個を、公開の汎用操作 4 個と `Loan<T>` に置き換える」とした（本書 5.1）。 |
-| `Raw.release` は 0 バイトの結果を受け付ける | 型を変換した後のポインターを渡したときの扱いが、決まっていなかった。 | 型を変換したものでもよいと明記した（本書 3.8）。 |
+| safe なコードだけでは未定義動作は起こらない | safe な外部関数の宣言が偽なら成り立たない。 | 「約束が正しい限り」と限定した（本書 2、3.1）。 |
+| 局所変数の格納は、スコープの終わりまで生存する | impl §21.5.5 は、Move の後に格納を再利用する。 | スコープの終わりと Move の、早いほうまでとした（本書 3.4）。 |
+| `Loan<T>` で、すべての標準型のメタデータを置き換えられる | `Slice<T>` の共変を、不変な `raw/T` では表せない。 | `raw/T` の不変を明記し、共変な view の形を加えた。`Slice<T>` のメタデータは残した（本書 3.10）。 |
+| `let value = *pointer` による取り出し | 現行の SPEC §3.5、§15.1.5 と矛盾する。 | raw Place の Take を定めた（本書 3.7）。 |
+| 「primitive 9 個がなくなる」 | `release` と `placeValue` は、公開の操作として残る。 | 「置き換える」と改めた（本書 5.1）。 |
 
-### 10.3. 原則に照らした追加の改善
+決定事項 1〜5（`raw/T` の不変と共変な view、Formatting 3 型の移行、局所変数の有効期間、名前 `Loan<T>`、Typed Null Formation の実装）は、推奨のとおり採用した。
 
-- **分散の明示（原則 2、3）：** 仕様の欠落だった `raw/T` の分散を定め、共変を格納で明示する形を加えた（本書 3.9）。
-- **例外の削減（原則 1）：** Formatting の型も `Loan` の Field に移し、Kimigayo で宣言した型の intrinsic なメタデータを `Slice<T>` だけにした（本書 3.9.4）。
-- **warning の判定の明確化（原則 2）：** 各操作が最も内側の Unsafe Block の許可を使うと定め、入れ子のときにどのブロックが不要かを一意にした（本書 3.12）。
+### 9.2. 外部からの指摘の検討
 
-### 10.4. 複雑性とメリットの釣り合い
+評価の軸は Kimigayo Principles、他の規定との整合、複雑性、性能である。
 
-本書 5.3 のとおり、削る規則と型ごとの例外が、加える規則を上回る。加える規則の多くは、既存の Borrow の表、結果の適合、格納からの推論を raw pointer に広げたものである。新しい概念は、`raw` という語、`Kimi.Raw` の 4 関数、`Loan<T>` の三つに限られる。最も費用がかかるのは改名の機械的な更新と、Loan を持たない Origin の推論変数である。前者は意味を変えない単独の単位にでき、後者は `lend`・`split` という compiler-known な primitive をなくす効果が大きい。以上から、複雑性の増加に見合うメリットがあると判断する。
+| 指摘 | 判断 | 反映 |
+| --- | --- | --- |
+| 1. 「raw から作った参照は Loan を持たない」は強すぎる | 採用する。Loan を持たないと、Reborrow や衝突の検査ができない。復元しないことと、新しい anchor を持つことを分ければ、規則を一つ加えるだけで済み、実行時の費用もない。 | 本書 3.6 |
+| 2. `Loan<T>` だけでは、領域の分割が完成しない | 採用する。ただし、新しい仕組みは加えない。現行の `split` も非重複を自分では検査しておらず、呼び出し側の unsafe の約束に依っていた。そこで、非重複の根拠、効果の要約での扱い、Loan の生存を一般の規則として書き直した。`Loan<T>` の破棄の記述も直した。 | 本書 3.8、3.10 |
+| 3. `@raw` が Loan を保持しないことと、例の寿命の判定が合わない | 採用する。例が誤っていた。Loan の生存は safe な値の使用だけで決まり、格納の生存とは別であることを明記した。後方リンクについての注記も加えた。 | 本書 3.4、3.5 |
+| 4. `@raw/T` に、取得と変換の二役を持たせない | 採用する。意味がオペランドの型に依存しなくなり（原則 2）、規則も減る。代わりに、bare の `@raw` を Semantics の省略形から外す例外が一つできる。ただし、bare の所有の省略形と同じく、bare の形を個別に定める既存の扱いの範囲に収まる。 | 本書 3.5、5.4 |
+| 5. 不要な Unsafe Block の Advice が、意味を変える | 採用する。Body は独立したスコープである。Advice と修復候補に、意味が保たれる条件を付けた。 | 本書 3.13 |
+| 6. `Kimi.Raw` と FFI の境界の条件を補う | 採用する。0 バイトの provenance、解放できる条件、`slice` の長さと整列、内容の置換による無効化、外部による Field の書き換え、外部関数の効果、参照を含む `T` の依存の保持を定めた。外部関数の効果は、既存の環境効果に分類するだけで済んだ。`slice` の長さの検査は、実行時の費用を避けるため、Abort ではなく呼び出し側の義務とした。 | 本書 3.4、3.9、3.11、4 |
 
-### 10.5. 実装の調査で見つけた、本案と別の問題
+採らなかった部分はない。指摘 2 で求められた分割の宣言方法は、専用の仕組みを加えず、既存の signature・`Loan<T>`・unsafe の約束を組み合わせて満たした（本書 5.4）。
 
-- **Typed Null Formation の未実装：** `null@unsafe/T` を扱う binding の経路がなく、関連するテストは失敗を期待している（本書 9 の 5）。
-- **CODEMAP の誤った参照：** raw pointer の行と外部関数の行が、実際の実装と違うファイルを指している（本書 8）。
+### 9.3. 実現性
+
+| 項目 | 確認したこと |
+| --- | --- |
+| 改名 | Semantics の名前は、一つの表（`CompilerHelper.TryParse`）で解決される。`unsafe` は予約語ではなく、文脈で認識される。 |
+| unsafe 文脈 | 検査は `ControlFlowAnalysis` に集まっている。変換を検査しているのは一箇所である。 |
+| `@raw` | bare の名前は、`@follow` と同じ構文の位置で認識される（SPEC §13.5.1）。`@raw/U` は、現行の変換の経路をそのまま使う。 |
+| raw Place の借用 | Loan は `(place, mode, region)` であり、`*place` の射影はすでにある（SPEC §15.6）。新しい anchor と、重なりを判定しない規則を加える。最も設計の負担が大きい単位である。 |
+| `Loan<T>` | Loan 要求と分散は、`Binding.TypeOrigins` が格納から集めている。標準型は `Binding.OriginRequirements` で上書きされているが、この上書きは削除できる。 |
+| FFI | 形と型の検査は `Binding.Attributes` にまとまっている。借用は、ABI 上ポインターである（impl §21.2.4）。 |
+
+本案とは別に、Typed Null Formation が未実装であることを見つけた（本書 7 の 2 で実装する）。
