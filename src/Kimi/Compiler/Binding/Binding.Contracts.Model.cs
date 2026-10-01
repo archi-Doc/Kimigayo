@@ -23,6 +23,9 @@ public sealed class BoundContract
     /// <summary>Gets the effective associated-Type declaration identities.</summary>
     public IReadOnlyList<BindingSymbol> AssociatedTypes => this.AssociatedStorage;
 
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor exposes its own.</summary>
+    public IReadOnlyList<BoundEffectBound> EffectBounds => this.EffectBoundStorage;
+
     internal List<BindingSymbol> AncestorStorage { get; } = new();
 
     internal List<BindingSymbol> RequirementStorage { get; } = new();
@@ -48,6 +51,12 @@ public sealed class BoundContract
 
     internal bool HasUnresolvedParents { get; set; }
 }
+
+/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
+/// <param name="Requirement">The requirement; its declaration is the Requirement Identity.</param>
+/// <param name="Bound">The bound.</param>
+/// <param name="Declaration">The effect item.</param>
+public readonly record struct BoundEffectBound(BindingSymbol Requirement, EffectBoundKind Bound, EffectBoundKoto Declaration);
 
 /// <summary>A definition-verified implementation of one stable requirement.</summary>
 public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation, BoundFunctionWitness? Function = null);
@@ -180,9 +189,3 @@ public sealed class BoundConformancePath
     public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind)
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 }
-
-/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
-/// <param name="Requirement">The requirement; its declaration is the Requirement Identity.</param>
-/// <param name="Bound">The bound.</param>
-/// <param name="Declaration">The effect item.</param>
-internal readonly record struct BoundEffectBound(BindingSymbol Requirement, EffectBoundKind Bound, EffectBoundKoto Declaration);

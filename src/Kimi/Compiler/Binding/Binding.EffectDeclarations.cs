@@ -7,14 +7,67 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.4.10.6: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
-    // so a warm rebind allocates nothing.
+    // SPEC 8.4.10.4: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
     private readonly List<BoundEffectBound> boundedRequirements = [];
 
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
+
+    // SPEC 8.4.10.6: the first violating effect of each conformance a bound rejects, keyed by its Self clause; recorded only
+    // when one is rejected and reused across passes.
+    private Dictionary<Koto, EffectViolationRecord>? effectViolations;
+
+    // SPEC 8.4.10.6: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
+    // so a warm rebind allocates nothing.
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
+
+    /// <summary>SPEC 8.4.10.6: the kind of the first effect of an implementation that violates a bound.</summary>
+    internal enum EffectViolation : byte
+    {
+        /// <summary>No violation.</summary>
+        None,
+
+        /// <summary>An access to a mutable static Field, which confined excludes.</summary>
+        MutableStatic,
+
+        /// <summary>A standard operation on state outside the program, such as Console output, which confined excludes.</summary>
+        ExternalOperation,
+
+        /// <summary>An access that may conflict with a Loan an earlier result keeps, which preserves results excludes.</summary>
+        ResultLoan,
+
+        /// <summary>A call whose effects cannot be classified, treated as a conflict.</summary>
+        UnclassifiedCall,
+
+        /// <summary>A requirement call that no available bound covers, treated as a conflict.</summary>
+        UnboundedRequirement,
+
+        /// <summary>An access whose Loans cannot be classified, treated as a conflict.</summary>
+        UnclassifiedAccess,
+
+        /// <summary>A destruction whose effects cannot be classified, treated as a conflict.</summary>
+        UnknownDestruction,
+    }
+
+    /// <summary>SPEC 8.4.10.5: the condition of the delegation rule that a requirement call did not meet.</summary>
+    internal enum DelegationFailure : byte
+    {
+        /// <summary>The rule applied, or was not tried.</summary>
+        None,
+
+        /// <summary>The call's result Type, normalized within the conformance, is not the implementation's.</summary>
+        ResultType,
+
+        /// <summary>The call is not made through a Field of self in the implementation's own body.</summary>
+        CallSite,
+
+        /// <summary>Another Field also names the stored Type, or another Field is stepped.</summary>
+        Field,
+
+        /// <summary>Another requirement is already delegated.</summary>
+        Requirement,
+    }
 
     // SPEC 8.4.10.6: why an effect item declares no bound.
     private enum EffectRejection : byte
@@ -132,6 +185,77 @@ public sealed partial class Binding
     /// <returns>Whether confined and preserves results are available.</returns>
     internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
         => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at));
+
+    /// <summary>
+    /// SPEC 8.4.10.6: reports a conformance that a bound rejects at the first violating effect in the implementation's own body.
+    /// The Reason names the violation, the bound and its declaring Contract; the Note tells a definite violation from an
+    /// unknown effect counted as a conflict; the related locations give the effect, the conformance and the bound.
+    /// </summary>
+    /// <param name="use">The Self clause of the conformance.</param>
+    /// <param name="requirement">The failed requirement of the record.</param>
+    /// <param name="code">The code to report.</param>
+    /// <returns><see langword="true"/> when a violation was recorded for the conformance and reported.</returns>
+    internal bool ReportEffectViolation(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        if (this.effectViolations?.TryGetValue(use, out var violation) != true)
+        {
+            return false;
+        }
+
+        var name = violation.Requirement.Name;
+        var bound = violation.Kind switch
+        {
+            EffectViolation.MutableStatic or EffectViolation.ExternalOperation => EffectBoundKind.Confined,
+            EffectViolation.ResultLoan => EffectBoundKind.PreservesResults,
+            _ => violation.Preserves ? EffectBoundKind.PreservesResults : EffectBoundKind.Confined,
+        };
+        var item = this.DeclaredEffectBound(violation.Contract, violation.Requirement, bound);
+        var contract = item is null ? violation.Contract.Symbol.Name : DeclaringContract(item)?.BoundSymbol?.Name ?? violation.Contract.Symbol.Name;
+        var spelling = EffectBoundKoto.Spelling(bound);
+        var effect = violation.Kind switch
+        {
+            EffectViolation.MutableStatic => "a mutable static access",
+            EffectViolation.ExternalOperation => "an external operation",
+            EffectViolation.ResultLoan => "an access to a Loan the result may keep",
+            EffectViolation.UnboundedRequirement => "a requirement call with unknown effects",
+            EffectViolation.UnclassifiedAccess => "an access with unknown Loans",
+            EffectViolation.UnknownDestruction => "a destruction with unknown effects",
+            _ => "a call with unknown effects",
+        };
+        var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ResultLoan;
+        var delegation = violation.Delegation switch
+        {
+            DelegationFailure.ResultType => "; the delegation rule does not apply, because the call's result Type is not the implementation's (SPEC 8.4.10.5)",
+            DelegationFailure.CallSite => "; the delegation rule does not apply, because the call is not made through a Field of self in the implementation's own body (SPEC 8.4.10.5)",
+            DelegationFailure.Field => "; the delegation rule does not apply, because another Field names the stored Type or is stepped (SPEC 8.4.10.5)",
+            DelegationFailure.Requirement => "; the delegation rule does not apply, because another requirement is already delegated (SPEC 8.4.10.5)",
+            _ => string.Empty,
+        };
+        var note = (definite
+            ? $"{name} must satisfy {spelling}, declared by {contract}, and this effect violates it"
+            : $"{name} must satisfy {spelling}, declared by {contract}; this effect cannot be classified, so verification treats it as a conflict (SPEC 8.4.5)") + delegation;
+        var editable = item is not null && !ReferenceEquals(item.CodeContext.Kotonoha, this.Library.Kotonoha);
+        var advice = (bound == EffectBoundKind.Confined
+            ? "Keep the state in a Field of self or pass it as a parameter, so the implementation uses only authority from its inputs"
+            : "Avoid accesses that may reach a Loan the result keeps, or delegate to one stored value through a single Field") +
+            (editable ? $". If no caller relies on the guarantee, {contract} may instead declare no bound, which affects the callers that do" : string.Empty);
+        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + 1 + (item is null ? 0 : 1);
+        var related = new (string Role, Koto At, string? Label)[count];
+        var next = 0;
+        if (violation.Node is { } effectNode && !ReferenceEquals(effectNode, violation.Site))
+        {
+            related[next++] = ("effect", effectNode, "the violating effect");
+        }
+
+        related[next++] = ("conformance", use, "the conformance checked against the bound");
+        if (item is not null)
+        {
+            related[next] = ("bound", item, "the bound");
+        }
+
+        use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], advice: advice, related: related);
+        return true;
+    }
 
     // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
     // Constraint region holds it.
@@ -507,5 +631,9 @@ public sealed partial class Binding
     }
 
     // The facts of a rejected effect item; its text is formed only when the record is published.
+    // The violating effect of a rejected conformance: its kind, the own-body syntax reaching it, its node, why delegation did not
+    // apply, the requirement and the bounds checked.
+    private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, DelegationFailure Delegation, FunctionKoto Requirement, BoundContract Contract, bool Confined, bool Preserves);
+
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0, BoundType? Part = null, BoundType? Result = null, BoundOrigin? Atom = null);
 }

@@ -216,6 +216,8 @@
   + Name="IncompatibleContractImplementation_Kd"
     Category="Language"
     Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="InvalidAssociatedType_Kd"
     Category="Language"

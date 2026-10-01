@@ -35,6 +35,7 @@ public sealed partial class Binding
     // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects).
     private void ValidateEffectBounds()
     {
+        this.effectViolations?.Clear();
         this.effectSummary?.BeginPass();
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
@@ -73,6 +74,8 @@ public sealed partial class Binding
             var summary = destructions ? this.destructionSummary ??= new(this) : this.effectSummary ??= new(this);
             if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
             {
+                (this.effectViolations ??= new(ReferenceEqualityComparer.Instance))[path.Use] =
+                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, requirement, shape, confined, preserves);
                 path.Invalid = true;
                 path.IsVerified = false;
                 path.Identity.Invalid = true;
@@ -92,7 +95,7 @@ public sealed partial class Binding
     {
         private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
-        private readonly List<(Koto Node, int Context)> pending = new();
+        private readonly List<(Koto Node, int Context, Koto? Site)> pending = new();
         private readonly List<BoundCall?> contexts = new();
         private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<BoundCall> calls = new();
@@ -110,8 +113,22 @@ public sealed partial class Binding
         private BindingSymbol? steppedField;
         private FunctionKoto? delegated;
         private Koto? stepUse;
+        private Koto? site;
+        private Koto? last;
         private bool valid;
         private bool destructions;
+
+        /// <summary>Gets the kind of the first effect that violated a bound in the last check.</summary>
+        internal EffectViolation Violation { get; private set; }
+
+        /// <summary>Gets the node of that effect, which may lie in a callee.</summary>
+        internal Koto? ViolationNode { get; private set; }
+
+        /// <summary>Gets the syntax of the implementation's own body through which that effect is reached.</summary>
+        internal Koto? ViolationSite { get; private set; }
+
+        /// <summary>Gets why the delegation rule did not cover a requirement call, when it was tried.</summary>
+        internal DelegationFailure Delegation { get; private set; }
 
         public override void Visit(Koto node)
         {
@@ -120,6 +137,7 @@ public sealed partial class Binding
                 return; // A declaration is not an evaluation.
             }
 
+            this.last = node;
             if (node is FieldKoto local)
             {
                 this.Queue(local.InitializerKoto); // Its destruction, if any, is one of the body's cleanups.
@@ -145,10 +163,15 @@ public sealed partial class Binding
                 // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
                 // are unknown.
                 this.Queue(property.InitializerKoto);
-                if ((property.VariableKind == VariableKind.Var && this.confined) ||
-                    (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _)))
+                if (property.VariableKind == VariableKind.Var && this.confined)
                 {
-                    this.valid = false;
+                    this.Violate(EffectViolation.MutableStatic, node);
+                    return;
+                }
+
+                if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _))
+                {
+                    this.Violate(EffectViolation.UnknownDestruction, node);
                     return;
                 }
             }
@@ -157,7 +180,7 @@ public sealed partial class Binding
             {
                 if (invocation.BoundCall is not { } call)
                 {
-                    this.valid = false; // An indirect or unbound call has no published effect bound.
+                    this.Violate(EffectViolation.UnclassifiedCall, node); // An indirect or unbound call has no published effect bound.
                     return;
                 }
 
@@ -194,6 +217,12 @@ public sealed partial class Binding
             this.contextIndex.Clear();
             this.contexts.Add(null);
             this.context = 0;
+            this.site = null;
+            this.last = null;
+            this.Violation = EffectViolation.None;
+            this.ViolationNode = null;
+            this.ViolationSite = null;
+            this.Delegation = DelegationFailure.None;
             this.implementation = implementation.Declaration as FunctionKoto;
             this.receiverType = null;
             this.steppedField = null;
@@ -229,6 +258,7 @@ public sealed partial class Binding
             for (var i = 0; this.valid && i < this.pending.Count; i++)
             {
                 this.context = this.pending[i].Context;
+                this.site = this.pending[i].Site;
                 this.Visit(this.pending[i].Node);
             }
 
@@ -576,7 +606,7 @@ public sealed partial class Binding
 
             if (this.Type(type) is not { } layer)
             {
-                this.valid = false; // An access whose Type cannot be instantiated has no classified Loan.
+                this.Violate(EffectViolation.UnclassifiedAccess, use); // An access whose Type cannot be instantiated has no classified Loan.
                 return;
             }
 
@@ -589,7 +619,7 @@ public sealed partial class Binding
                 }
                 else if (layer.Kind == BoundTypeKind.SemanticsApplication)
                 {
-                    this.valid = false; // A pair layer without an Origin may be a borrow of any Loan.
+                    this.Violate(EffectViolation.UnclassifiedAccess, use); // A pair layer without an Origin may be a borrow of any Loan.
                 }
 
                 if (layer is not { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components.Count: 1 })
@@ -605,7 +635,7 @@ public sealed partial class Binding
         {
             if (this.preserves && this.Conflicts(this.item, origin, mode, false, use))
             {
-                this.valid = false;
+                this.Violate(EffectViolation.ResultLoan, use);
             }
         }
 
@@ -615,7 +645,7 @@ public sealed partial class Binding
         {
             if (type is null || AbstractTypes.IsAbstract(type))
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnclassifiedAccess, use);
                 return;
             }
 
@@ -669,7 +699,7 @@ public sealed partial class Binding
             {
                 if (binding.InstantiateForwardedCall(call, outer, this.NextCall()) is not { } instantiated)
                 {
-                    this.valid = false;
+                    this.Violate(EffectViolation.UnclassifiedCall, use);
                     return;
                 }
 
@@ -716,7 +746,7 @@ public sealed partial class Binding
                 // Formatting dispatch runs its selected witness; built-in formatting only writes its inputs.
                 if (!binding.TryResolveFormattingCallback(call, out var implementation))
                 {
-                    this.valid = false;
+                    this.Violate(EffectViolation.UnclassifiedCall, use);
                 }
                 else if (implementation is not null)
                 {
@@ -741,7 +771,7 @@ public sealed partial class Binding
         {
             if (plan is null)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnclassifiedCall, null);
                 return;
             }
 
@@ -760,13 +790,17 @@ public sealed partial class Binding
         {
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                this.valid &= this.Allows(symbol.CompilerFunction);
+                if (!this.Allows(symbol.CompilerFunction))
+                {
+                    this.Violate(symbol.CompilerFunction is CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 ? EffectViolation.ExternalOperation : EffectViolation.UnclassifiedCall, null);
+                }
+
                 return;
             }
 
             if (symbol.Declaration is not FunctionKoto function)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnclassifiedCall, null);
                 return;
             }
 
@@ -778,7 +812,7 @@ public sealed partial class Binding
 
             if (function.Body is null && function.ExpressionBody is null && !(function.IsConstructor && function.IsGenerated))
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnclassifiedCall, null); // An external function's effects are unknown.
                 return;
             }
 
@@ -830,7 +864,7 @@ public sealed partial class Binding
         {
             if (call is null || symbol.Declaration is not FunctionKoto requirement)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnboundedRequirement, null);
                 return;
             }
 
@@ -845,14 +879,25 @@ public sealed partial class Binding
                 preserves |= held;
             }
 
-            if (this.preserves && preserves && this.ForwardsResults(call, out var stored) && this.StepsStoredValue(requirement, stored))
+            if (this.preserves && preserves)
             {
-                return;
+                if (!this.ForwardsResults(call, out var stored))
+                {
+                    this.Delegation = DelegationFailure.ResultType;
+                }
+                else if (this.StepsStoredValue(requirement, stored) is var failure && failure == DelegationFailure.None)
+                {
+                    return;
+                }
+                else
+                {
+                    this.Delegation = failure;
+                }
             }
 
             if (!confined)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnboundedRequirement, null);
                 return;
             }
 
@@ -885,24 +930,28 @@ public sealed partial class Binding
         // SPEC 8.4.10.5 rule 1: this call of the one delegated requirement d reaches `stored` as `self.f` in the implementation's
         // own body, f being the one Field that stores it or a borrow of it, with no other Field naming it; every delegated
         // call must use the same d and f.
-        private bool StepsStoredValue(FunctionKoto requirement, BoundType stored)
+        private DelegationFailure StepsStoredValue(FunctionKoto requirement, BoundType stored)
         {
             if (this.context != 0 || this.stepUse is not InvocationKoto { Method: MemberAccessKoto { Left: MemberAccessKoto { Left: IdentifierNameKoto self, BoundSymbol: { } field } } } ||
                 this.implementation?.BoundSymbol is not { ReceiverIndex: >= 0 and var index } ||
-                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation) ||
-                (this.delegated is not null && !ReferenceEquals(this.delegated, requirement)))
+                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation))
             {
-                return false;
+                return DelegationFailure.CallSite;
+            }
+
+            if (this.delegated is not null && !ReferenceEquals(this.delegated, requirement))
+            {
+                return DelegationFailure.Requirement;
             }
 
             if (this.steppedField is not null)
             {
-                return ReferenceEquals(this.steppedField, field);
+                return ReferenceEquals(this.steppedField, field) ? DelegationFailure.None : DelegationFailure.Field;
             }
 
             if (!StructStorage.IsStruct(this.receiverType))
             {
-                return false;
+                return DelegationFailure.CallSite;
             }
 
             var found = false;
@@ -910,7 +959,7 @@ public sealed partial class Binding
             {
                 if (StructStorage.FieldType(this.receiverType!, i) is not { } type)
                 {
-                    return false;
+                    return DelegationFailure.Field;
                 }
 
                 if (!Names(type, stored))
@@ -921,7 +970,7 @@ public sealed partial class Binding
                 if (found || !ReferenceEquals(StructStorage.Field(this.receiverType!, i).BoundSymbol, field) ||
                     !(ReferenceEquals(type, stored) || (type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var target] } && ReferenceEquals(target, stored))))
                 {
-                    return false;
+                    return DelegationFailure.Field;
                 }
 
                 found = true;
@@ -929,7 +978,7 @@ public sealed partial class Binding
 
             this.steppedField = found ? field : null;
             this.delegated = found ? requirement : null;
-            return found;
+            return found ? DelegationFailure.None : DelegationFailure.Field;
         }
 
         private void Specialization(FunctionKoto function, BoundCall call)
@@ -980,7 +1029,7 @@ public sealed partial class Binding
 
             if (binding.compilation.Ownership.TemplateBody(function, true) is not { } body)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnknownDestruction, null);
                 return;
             }
 
@@ -1005,7 +1054,7 @@ public sealed partial class Binding
                         var action = body.CleanupSteps[body.OperationSteps[id]].Action;
                         if (action == CleanupAction.Unsupported)
                         {
-                            this.valid = false;
+                            this.Violate(EffectViolation.UnknownDestruction, operation.Source);
                         }
                         else if (action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
                         {
@@ -1205,7 +1254,7 @@ public sealed partial class Binding
 
             if (type is null)
             {
-                this.valid = false;
+                this.Violate(EffectViolation.UnknownDestruction, use);
                 return;
             }
 
@@ -1223,7 +1272,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.valid = false;
+                    this.Violate(EffectViolation.UnknownDestruction, use);
                 }
 
                 return;
@@ -1237,7 +1286,7 @@ public sealed partial class Binding
 
             if (type.Kind == BoundTypeKind.Parameter)
             {
-                this.valid = false; // A Type parameter that is not proven Copy may have any destructor.
+                this.Violate(EffectViolation.UnknownDestruction, use); // A Type parameter that is not proven Copy may have any destructor.
             }
             else if (StructStorage.IsStruct(type))
             {
@@ -1413,12 +1462,28 @@ public sealed partial class Binding
             return this.calls[this.callCount++];
         }
 
+        // A queued node keeps the syntax of the implementation's own body through which it is reached: none for the body
+        // itself, the node being visited for what that node evaluates or calls.
         private void Queue(Koto? node)
         {
             if (node is not null && this.seen.Add((node, this.context)))
             {
-                this.pending.Add((node, this.context));
+                this.pending.Add((node, this.context, this.site ?? this.last));
             }
+        }
+
+        // Records the first effect that violates a bound, at its node and at the own-body syntax that reaches it.
+        private void Violate(EffectViolation kind, Koto? at)
+        {
+            if (!this.valid)
+            {
+                return;
+            }
+
+            this.valid = false;
+            this.Violation = kind;
+            this.ViolationNode = at ?? this.stepUse ?? this.last;
+            this.ViolationSite = this.site ?? this.ViolationNode;
         }
 
         private BoundType? Type(BoundType type)
@@ -1441,7 +1506,7 @@ public sealed partial class Binding
 
             if (this.contexts.Count >= 1024)
             {
-                this.valid = false; // An unbounded effect expansion cannot prove conformance.
+                this.Violate(EffectViolation.UnclassifiedCall, null); // An unbounded effect expansion cannot prove conformance.
                 return 0;
             }
 

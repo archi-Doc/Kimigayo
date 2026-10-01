@@ -384,6 +384,10 @@ public sealed partial class Binding
             {
                 this.ReportEffectBound(effect, requirement);
             }
+            else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 8.4.10.6: reported at the violating effect.
+            }
             else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
             {
                 this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);

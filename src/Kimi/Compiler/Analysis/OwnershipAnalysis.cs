@@ -162,6 +162,11 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            if (issue.Failure == OwnershipFailure.EffectBound && this.compilation.Binding.ReportEffectViolation(issue.Source, DiagnosticRequirement.Ownership(issue.Failure), issue.Code))
+            {
+                continue; // SPEC 8.4.10.6: a destruction the bound excludes, reported at the violating effect.
+            }
+
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
