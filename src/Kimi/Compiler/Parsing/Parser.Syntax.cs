@@ -241,6 +241,12 @@ public static partial class Parser
                 continue;
             }
 
+            if (IsEffectStart(ref reader, specification: true))
+            {
+                function.AddEffectBound(ParseEffectBound(ref reader));
+                continue;
+            }
+
             if (!IsTypeConstraintStart(ref reader, declarationContext: true))
             {
                 reader.Expect(SyntaxForm.Constraint);

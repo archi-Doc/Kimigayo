@@ -400,8 +400,9 @@ public sealed partial class Binding
                 Add(associated, shape.AssociatedStorage);
                 Complete(member, BoundType.Unit);
             }
-            else
+            else if (member is not EffectBoundKoto)
             {
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }

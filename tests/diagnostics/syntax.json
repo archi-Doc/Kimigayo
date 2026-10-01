@@ -243,5 +243,7 @@
   { "Name": "argument-without-comma", "Source": "func f(a: i32, b: i32) => ()\npublic func main()\n    f(1 2)\n", "Intended": "two arguments without a comma; the last argument read is a recovery, so overload selection rests on the Error",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Comma", "At": "1 2)", "Skip": 2, "Length": 1, "Found": "2" } ] },
   { "Name": "while-header-cut", "Source": "public func main()\n    while", "Intended": "a while header cut after its keyword at the end of the source; the body expected at the same point rests on the missing condition",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "while" } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "while" } ] },
+  { "Name": "effect-bound", "Source": "contract C\n    func f(self: ref/Self)\n        effect pure\n    func g(self: ref/Self)\n        effect preserves\npublic func main() => ()\n", "Intended": "an unknown effect bound, and 'preserves' without 'results'",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "EffectBound", "At": "pure", "Length": 4, "Found": "pure" }, { "Code": "ExpectedSyntax_Kd", "Form": "EffectBound", "At": "preserves\n", "Length": 9, "Found": "preserves" } ] }
 ]

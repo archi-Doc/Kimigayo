@@ -1156,6 +1156,14 @@ public sealed partial class Binding
                 binding.Fail(target, BindingFailure.InvalidTypeFormation);
             }
 
+            if (node is EffectBoundKoto)
+            {
+                // SPEC 8.4.10.1: the selector and Name of an effect item designate a Contract and its requirement; they are
+                // resolved with the item, never as expressions.
+                binding.nodes.Add(node);
+                return;
+            }
+
             if (node is ConversionKoto conversion)
             {
                 conversion.ConversionBinding = ConversionBinding.None;

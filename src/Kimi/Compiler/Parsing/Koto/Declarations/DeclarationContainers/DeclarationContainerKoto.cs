@@ -1206,6 +1206,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
     {
+        // SPEC 8.4.10.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject.
+        if (Parser.IsEffectStart(ref reader, specification: true))
+        {
+            this.AddLast(Parser.ParseEffectBound(ref reader));
+            return;
+        }
+
         // Count and uniqueness rules are judged after selection, so excluded syntax skips them (SPEC 19.5).
         var acceptsTypeConstraints = state.AcceptsTypeConstraints || reader.InExcludedSyntax;
         if (Parser.IsOriginRelationStart(ref reader))

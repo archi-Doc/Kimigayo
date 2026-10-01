@@ -363,6 +363,9 @@ public enum KotoKind : byte
     /// <summary>An associated-Type Origin application.</summary>
     OriginApplication,
 
+    /// <summary>A requirement effect bound: an effect clause or an effect specification.</summary>
+    EffectBound,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

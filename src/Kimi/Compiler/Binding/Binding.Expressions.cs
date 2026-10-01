@@ -490,6 +490,8 @@ public sealed partial class Binding
             case EvaluatedKoto evaluated:
                 // A desugaring's evaluated operand has its source's Type; binding it evaluates nothing.
                 return Complete(evaluated, evaluated.Source.BoundType);
+            case EffectBoundKoto effect:
+                return this.BindEffectBound(effect);
             case SyntaxFormKoto { Akind: KotoKind.EnumCase } enumeration when TryEnumPayload(enumeration, out var payload):
                 enumeration.Operands[0].BoundSymbol = enumeration.BoundSymbol;
                 Complete(enumeration.Operands[0], BoundType.Unit);
@@ -770,6 +772,11 @@ public sealed partial class Binding
         for (var i = 0; i < function.TypeConstraints.Count; i++)
         {
             this.BindNode(function.TypeConstraints[i], scope);
+        }
+
+        for (var i = 0; i < function.EffectBounds.Count; i++)
+        {
+            this.BindNode(function.EffectBounds[i], scope);
         }
 
         for (var i = 0; i < function.Parameters.Count; i++)

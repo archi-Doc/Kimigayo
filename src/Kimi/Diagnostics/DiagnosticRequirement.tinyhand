@@ -351,7 +351,7 @@
   + Name="Syntax.CaptureOperation"
     Description="a capture names its operation"
     Phrase="'move', 'ref' or 'uniq' as the capture operation"
-    Advice="A capture is 'name', 'name@move', 'name@ref' or 'name@uniq'; 'var' combines only with a bare entry or '@move' (SPEC 7.6)."
+    Advice="A capture is 'name', 'name@move', 'name@ref' or 'name@uniq', each optionally preceded by 'var' (SPEC 7.6.2)."
 
   + Name="Syntax.Constraint"
     Description="a clause block lists Constraints"
@@ -382,6 +382,11 @@
     Description="an else branch follows an if body"
     Phrase="'else' without an if"
     Advice="Write else at the indentation of the if whose body precedes it; 'require condition else => body' needs its condition on the same line."
+
+  + Name="Syntax.EffectBound"
+    Description="an effect item names its bound"
+    Phrase="'confined' or 'preserves results'"
+    Advice="An effect item is 'effect confined' or 'effect preserves results' in a requirement's Constraint region, or 'effect Contract.name' followed by a bound in a Contract (SPEC 8.4.10.1)."
 
   + Name="Binding"
     Description="the declarations and expressions are valid"

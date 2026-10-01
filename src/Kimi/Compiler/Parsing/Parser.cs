@@ -2376,6 +2376,19 @@ CloseParameters:
             return;
         }
 
+        // SPEC 8.4.10.1: an effect item belongs to a requirement's Constraint region. At a body's Constraint prefix it is
+        // kept for Binding to reject, never read as an expression.
+        if (function is not null && !state.SeenExecutableItem && IsEffectStart(ref reader, specification: false))
+        {
+            var effect = ParseEffectBound(ref reader);
+            if (!excluded)
+            {
+                function.AddEffectBound(effect);
+            }
+
+            return;
+        }
+
         // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
         // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
         if ((function is not null || state.OriginOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))

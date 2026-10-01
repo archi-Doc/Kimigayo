@@ -200,8 +200,13 @@ public sealed class FunctionKoto : DeclarationKoto
 
     private List<Koto>? typeConstraints;
 
+    private List<EffectBoundKoto>? effectBounds;
+
     /// <summary>Gets compile-time constraints declared before executable body items.</summary>
     public IReadOnlyList<Koto> TypeConstraints => (IReadOnlyList<Koto>?)this.typeConstraints ?? [];
+
+    /// <summary>Gets the effect items written in the Constraint region (SPEC 8.4.10.1); only a Contract requirement may declare them.</summary>
+    public IReadOnlyList<EffectBoundKoto> EffectBounds => (IReadOnlyList<EffectBoundKoto>?)this.effectBounds ?? [];
 
     /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
     public bool IsDestructor { get; internal set; }
@@ -246,6 +251,12 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         (this.typeConstraints ??= []).Add(constraint);
         this.Adopt(constraint);
+    }
+
+    internal void AddEffectBound(EffectBoundKoto effect)
+    {
+        (this.effectBounds ??= []).Add(effect);
+        this.Adopt(effect);
     }
 
     internal bool IsGenericParameter(string name)
@@ -579,7 +590,7 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
         }
-        else if (this.typeConstraints is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
+        else if (this.typeConstraints is { Count: > 0 } || this.effectBounds is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
         {
             builder.AppendLine();
             builder.IncrementIndent();
@@ -587,6 +598,12 @@ public sealed class FunctionKoto : DeclarationKoto
             foreach (var constraint in this.TypeConstraints)
             {
                 constraint.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            foreach (var effect in this.EffectBounds)
+            {
+                effect.WriteTo(ref builder);
                 builder.AppendLine();
             }
 
@@ -648,6 +665,8 @@ public sealed class FunctionKoto : DeclarationKoto
             }
         }
 
+        visitor.VisitMany(this.effectBounds);
+
         if (this.genericArguments is not null)
         {
             for (var argumentIndex = 0; argumentIndex < this.genericArguments.Count; argumentIndex++)
@@ -703,6 +722,14 @@ public sealed class FunctionKoto : DeclarationKoto
             foreach (var constraint in this.typeConstraints)
             {
                 yield return constraint;
+            }
+        }
+
+        if (this.effectBounds is not null)
+        {
+            foreach (var effect in this.effectBounds)
+            {
+                yield return effect;
             }
         }
 
@@ -797,7 +824,7 @@ public sealed class FunctionKoto : DeclarationKoto
             }
         }
 
-        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) ||
+        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) || ReplaceInList(this.effectBounds, oldKoto, newKoto) ||
             (oldKoto is TypeKoto && newKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto));
     }
 

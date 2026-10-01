@@ -109,6 +109,18 @@ public static class Constants
     /// <summary>The bit conversion written as <c>@bits&lt;U&gt;</c> (SPEC §13.5.4.4); an ordinary Name elsewhere.</summary>
     public const string BitsOperation = "bits";
 
+    /// <summary>The word that starts an effect item (SPEC §8.4.10.1); an ordinary Name elsewhere.</summary>
+    public const string EffectKeyword = "effect";
+
+    /// <summary>The <c>confined</c> effect bound (SPEC §8.4.10.2); an ordinary Name elsewhere.</summary>
+    public const string ConfinedKeyword = "confined";
+
+    /// <summary>The first word of the <c>preserves results</c> effect bound (SPEC §8.4.10.3); an ordinary Name elsewhere.</summary>
+    public const string PreservesKeyword = "preserves";
+
+    /// <summary>The second word of the <c>preserves results</c> effect bound (SPEC §8.4.10.3); an ordinary Name elsewhere.</summary>
+    public const string ResultsKeyword = "results";
+
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 

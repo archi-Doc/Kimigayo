@@ -239,4 +239,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>An 'else' that no if body precedes; its own body is read as part of the recovery.</summary>
     ElseWithoutIf,
+
+    /// <summary>The bound of an effect item: confined or preserves results.</summary>
+    EffectBound,
 }
