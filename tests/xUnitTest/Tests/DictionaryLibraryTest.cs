@@ -94,6 +94,16 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
 
+    // The source bodies forward the standard operation's caller location, so capacity failures name the user's call,
+    // never Dictionary.kimi or DictionaryStorage.kimi, including through a generic helper instance.
+    [Theory]
+    [InlineData("NegativeReserve", "var entries = [1: 2]\nlet n: isize = -1\nentries.reserve(n)\nConsole.writeLine(\"after\")", "Hello.kimi:3:1: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
+    [InlineData("OverflowReserve", "var entries = [1: 2]\nlet n: isize = 9223372036854775807\nentries.reserve(n)\nConsole.writeLine(\"after\")", "Hello.kimi:3:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n")]
+    [InlineData("SizeReserve", "var entries = [1: 2]\nlet n: isize = 4611686018427387904\nentries.reserve(n)\nConsole.writeLine(\"after\")", "Hello.kimi:3:1: abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit\n")]
+    [InlineData("GenericReserve", "func grow<K, V>(target: uniq/Dictionary<K, V>, amount: isize)\n    K is Equatable\n    target.reserve(amount)\nvar entries = [1: 2]\ngrow(entries@uniq, -1)\nConsole.writeLine(\"after\")", "Hello.kimi:3:5: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
+    public void CapacityFailuresReportTheCallerLocation(string name, string source, string stderr)
+        => ScalarEmissionTest.EmitFixture("DictionaryLibraryCapacity" + name, source, string.Empty, 1, stderr);
+
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
