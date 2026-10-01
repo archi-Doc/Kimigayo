@@ -449,7 +449,7 @@ LLVM `align` and `dereferenceable` use proven constant bounds; attributes are we
 
 Width, signedness, floating-point rules, Semantics, effects and partial state are kept in the typed plan. `obj`/`rc`/`arc`/`objref`/`objuniq` acquisition and count operations stay distinct until equivalent low-level operations can safely merge. Unit keeps its zero-sized state and effects, and Never has no value or normal return. Raw-pointer pointee layout and Unsafe preconditions are preserved.
 
-Metadata only runs acquisition plans already proven valid under §8.10; runtime flags never establish source legality. An element Place (§4.6.1) is a full-Semantics plan: its Type is the stored Type, a bare read Copies only a proven-Copy Type, and borrows and Reborrows follow the common adaptation. Result Types, Origins and ABI mappings are preserved; slot borrowing and referent Reborrowing are different operations.
+Metadata only runs acquisition plans already proven valid under §8.10; runtime flags never establish source legality. An element Place (§4.6.1) is a full-Semantics plan: its Type is the stored Type, a bare read Copies only a proven-Copy Type or Reborrows a stored exclusive reference (§3.5), and borrows and Reborrows at expected Types follow the common adaptation. Result Types, Origins and ABI mappings are preserved; slot borrowing and referent Reborrowing are different operations.
 
 The Copy/Move and duplication examples of §8.10 also apply to shared lowering. In contrast, a pure borrow transfer can omit referent metadata entirely:
 

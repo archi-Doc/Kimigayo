@@ -526,7 +526,7 @@ func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
 | `objuniq/T` | `@objref` | Shared object Reborrow |
 | `objuniq/T` | `@objuniq` | Exclusive object Reborrow |
 
-A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving the parent reference, and a position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
+A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving the parent reference. A position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2), and the bare acquisition of a Place storing `uniq/T` Reborrows it as `r@follow@uniq` does (§3.5). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
 
 ```kimi
 var number = 1
@@ -540,7 +540,8 @@ let exclusive = value@uniq
 inspect(exclusive)                   // Shared Reborrow at a ref parameter.
 modify(exclusive)                    // Exclusive Reborrow at a uniq parameter, after the previous child Loan ends.
 let child: uniq/Value = exclusive    // Exclusive Reborrow; exclusive resumes after child's last use.
-// let bare = exclusive              // Error: no expected Type and uniq/Value is Non-Copy.
+let bare = exclusive                 // The same Reborrow without an expected Type (§3.5).
+_ = exclusive                        // Reborrow a child and drop it at once; exclusive is not consumed.
 let transferred = exclusive@move     // Transfer the reference, not its referent.
 ```
 

@@ -55,7 +55,7 @@ In the table, `U` is the complete Type named in the Expected column; the shared-
 | Safe value-reference layers ending in `U` of a read Type | `U` | Value read (§3.5.3) |
 | Any other value or Place | Its complete Type | Bare acquisition, explicit transfer, or transfer of a temporary (§3.5) |
 
-Exactly one table operation, plus ordinary Origin fitting, is selected. Adaptations are never chained; the shared-reference and value-read rows each count as one operation however many layers they follow. A same-Type temporary is transferred as is. The shared-reference and Reborrow rows operate on the existing reference values and add no dependency on a temporary slot holding them.
+Exactly one table operation, plus ordinary Origin fitting, is selected. Adaptations are never chained; the shared-reference and value-read rows each count as one operation however many layers they follow. The table is applied to the input's original complete Type: the Reborrow that bare acquisition gives a stored exclusive reference (§3.5) is never performed first and then adapted, so a stored `uniq/U` at an expected `ref/U` takes the shared-reference row directly. A same-Type temporary is transferred as is. The shared-reference and Reborrow rows operate on the existing reference values and add no dependency on a temporary slot holding them.
 
 **One shared reference through layers.** An input of safe reference layers ending in `U` yields one `ref/U`. When a `ref` layer exists, the innermost `ref` layer is Copied with its own Origin, each `uniq` layer below it is Reborrowed as shared, and the result's Origin is the meet of those layers' Origins. The layers above the innermost `ref` layer add no dependency: a shared reference is Copy, and reading it only requires them to be valid at that moment. Without a `ref` layer, the result is a shared Reborrow through every layer, with the meet of all their Origins. Thus a single `ref/U` is Copied with permitted Origin shortening, and a single `uniq/U` is shared-Reborrowed. Every layer is checked for initialization, capability and Loans, as for the value read.
 
@@ -73,7 +73,7 @@ for node in nodes                // node: ref/(uniq/Node)
     validate(node)               // Shared Reborrow through both layers.
 ```
 
-There is no implicit borrow of a reference or handle slot, no implicit payload follow of an object, no implicit `rc`/`arc` strong duplication or exclusive borrow of a temporary, and no implicit object upcast, numeric (including integer/float) or user conversion. A bare Non-Copy or Copy-unproven Place cannot be acquired by value; overload resolution decides this Copy condition after its acquisition-conflict check (§10.2.2). An explicit `@move` executes first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
+There is no implicit borrow of a reference or handle slot, no implicit payload follow of an object, no implicit `rc`/`arc` strong duplication or exclusive borrow of a temporary, and no implicit object upcast, numeric (including integer/float) or user conversion. Apart from a Place storing an exclusive reference, which bare acquisition Reborrows (§3.5), a bare Non-Copy or Copy-unproven Place cannot be acquired by value; overload resolution decides this Copy condition after its acquisition-conflict check (§10.2.2). An explicit `@move` executes first and is not corrected by a later adaptation, so a transferred reference is passed to a same-Type expectation as that value.
 
 A new exclusive borrow of an owned Place requires `@uniq`/`@objuniq`; only a Receiver Expression acquires one implicitly ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). An annotation, assignment or result never adds lifetime or capability. A bare owned Place is therefore never applicable to a `uniq`/`objuniq` parameter, and implicit exclusive borrowing never switches candidates. Likewise, a bare Place's by-value acquisition and a new shared borrow of the same Place never choose between candidates: where both remain, the call needs an explicit operation (§10.2.2).
 
@@ -124,8 +124,6 @@ Type inference and acquisition planning are separate: inferring a Type performs 
 2. An independently known expected result Type fills still-unbound parts by ordinary Type matching; apart from the exception of step 1, it never selects an unknown Type by inverting a borrow or value read, and never changes an established Type. Origin inference and shortening follow the ordinary rules, keeping bound internal Origins.
 3. Normalize the parameter Types and plan the acquisition of each argument under §3.5 and this section. An existing reference passed to a borrow parameter is Reborrowed in a generic call as elsewhere; consuming the reference value itself needs `@move`.
 
-An unannotated local initializer is bare acquisition: for `r: uniq/Node`, `let saved = r` is an error, `let saved: uniq/Node = r` Reborrows and `let saved = r@move` transfers.
-
 ```kimi
 // n: ref/i32; r: uniq/Node; identity<T>(value: T) -> T returns value@move.
 let a = identity(n)        // T = ref/i32.
@@ -137,6 +135,19 @@ let d = identity(r@move)   // After c's last use: the reference value is transfe
 // double<T>(value: T) -> T with T is PrimitiveInteger; values.remove<P>(index: P) with P is Position.
 let e = double(n)          // T = i32; n is value-read.
 values.remove(n)           // P = i32.
+```
+
+An unannotated local initializer is bare acquisition (§3.5). Adding or removing an annotation of the same complete Type and Origin conditions therefore changes no acquisition, Loan or cleanup: for `r: uniq/Node`, `let saved = r` and `let saved: uniq/Node = r` both Reborrow, and `let saved = r@move` transfers. An annotation that requires a shared reference or a value read selects that adaptation instead, such as `let view: ref/Node = r`. Omitting the result of a named function is not such an annotation: the function returns Unit (§7.1).
+
+```kimi
+func validate(node: ref/Node) => ()
+func normalize(node: uniq/Node) => ()
+
+func work(r: uniq/Node)
+    validate(r)               // A shared Reborrow.
+    normalize(r)              // An exclusive Reborrow in the same Semantics.
+    let saved = r             // The same Reborrow as let saved: uniq/Node = r.
+    normalize(saved)
 ```
 
 Candidates are checked for applicability with their acquisition plans, and the selected plan acquires each argument once. The adaptation classes are compared in this order, best first, with no further preference within a class:
@@ -160,10 +171,10 @@ A bare Place argument can be planned in two ways that the call site does not dis
 
 | Plan | Operation |
 | --- | --- |
-| By-value acquisition | The bare acquisition of §3.5: a Copy of the complete Type stored in the Place, which needs Copy proof |
+| By-value acquisition | The Copy row of bare acquisition (§3.5): a Copy of the complete Type stored in the Place, which needs Copy proof |
 | New shared borrow | The first row of the §10.2 table: a new shared borrow of the same Place |
 
-An **acquisition conflict** exists when, for one bare Place argument, one remaining candidate plans the by-value acquisition and another plans the new shared borrow. The Place may be a local (including a parameter or a capture), a field, an element, a Place result or a Place selected by `@follow`, also when it is reached through a shared or exclusive path; parentheses are transparent, and `@follow` alone acquires nothing. The judgment uses the plans that the existing rules build, with complete Types including internal Origins and ordinary Origin fitting. It requires no `owner` proof and never makes applicable a candidate whose borrow or inference requirements fail. A temporary is not a Place, so it plans neither operation. A shared reference obtained from an existing reference value, through any number of layers, a Reborrow, a value read and an object borrow are not new shared borrows, and a reference or handle slot is still never borrowed implicitly.
+An **acquisition conflict** exists when, for one bare Place argument, one remaining candidate plans the by-value acquisition and another plans the new shared borrow. The Place may be a local (including a parameter or a capture), a field, an element, a Place result or a Place selected by `@follow`, also when it is reached through a shared or exclusive path; parentheses are transparent, and `@follow` alone acquires nothing. The judgment uses the plans that the existing rules build, with complete Types including internal Origins and ordinary Origin fitting. It requires no `owner` proof and never makes applicable a candidate whose borrow or inference requirements fail. A temporary is not a Place, so it plans neither operation. A shared reference obtained from an existing reference value, through any number of layers, a Reborrow, a value read and an object borrow are not new shared borrows, and a reference or handle slot is still never borrowed implicitly. The Reborrow that bare acquisition gives a stored exclusive reference (§3.5) is neither plan.
 
 Overload resolution proceeds in this order:
 
@@ -218,7 +229,7 @@ func objectCase(handle: obj/Node) -> i32
 
 For an owned Place without a conflict, every remaining candidate plans the by-value acquisition or every one plans the new shared borrow, so step 3 keeps or excludes them all. Under one candidate set and one judgment of declared conditions, the Copy capability that a bare acquisition needs therefore never switches between a by-value and a borrowing candidate. A difference in applicability caused by declared Constraints, such as `T is Copy`, is outside this guarantee.
 
-**Generic bodies.** `T` and `s/U` Places are judged by the plans that the existing rules build, with no Type enumeration, general solver or reselection at instantiation. A conditional plan over a Semantics pair conflicts at definition when both plans occur in the same admitted case; separate cases are never combined. An unconstrained `T` admits reference Types: when both plans are established the call conflicts, and when the plan cannot be fixed, or the borrow fails and Copy is unproven, the existing definition error applies; no implicit slot borrow is added. Conditionally Copy Types such as `Option<T>` are checked the same way.
+**Generic bodies.** `T` and `s/U` Places are judged by the plans that the existing rules build, with no Type enumeration, general solver or reselection at instantiation. A conditional plan over a Semantics pair conflicts at definition when both plans occur in the same admitted case; separate cases are never combined. A conditional acquisition plan that Copies in some admitted cases and Reborrows in others (§8.9) takes part through its Copy cases. An unconstrained `T` admits reference Types: when both plans are established the call conflicts, and when the plan cannot be fixed, or the borrow fails and Copy is unproven, the existing definition error applies; no implicit slot borrow is added. Conditionally Copy Types such as `Option<T>` are checked the same way.
 
 ```kimi
 func f<U>(value: U) -> i32 => 1

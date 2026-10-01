@@ -58,7 +58,7 @@ The returned Storage's actual Type `A` and the published `T` must agree in Seman
 
 **Contracts and identity.** Overloads that differ only in result mode cannot coexist. The published `T` is fixed from the arguments, explicit Type information and the expected Place contract. The use position is checked under the result adaptation of §10.3; an outer `@ref` never prefers a Place-returning candidate. Function references, Callable, Contract implementations, indirect calls and separate compilation preserve the result mode, capabilities, Origins and Loan contract. A Place result cannot be bound to an ordinary Type argument; a higher-order value API needs an explicit wrapper that returns an ordinary reference. Function Type and Callable compatibility require the same result mode and the corresponding reference contract, under the input contravariance, Origin quantification, Unsafe and Closure rules of §10.7. Contract implementation matching follows §8.4.5.
 
-**Using a Place.** A published Place is acquired under §3.5 and §10.2: a Copy value may be read bare, a Non-Copy value cannot, `@move` is unavailable because the Place offers no Take, and a reference comes from an explicit borrow or from the common adaptation at a fixed expected Type.
+**Using a Place.** A published Place is acquired under §3.5 and §10.2: a Copy value may be read bare, a stored exclusive reference is Reborrowed when the Place grants exclusive access, any other Non-Copy value cannot be read bare, `@move` is unavailable because the Place offers no Take, and a reference comes from an explicit borrow or from the common adaptation at a fixed expected Type.
 
 ```kimi
 let view = table.get(key)@ref  // One search; the reference is kept.
@@ -66,7 +66,7 @@ inspect(table.get(key))        // Shared borrow at a ref/Resource parameter.
 // let value = table.get(key)  // Error when Resource is Non-Copy.
 ```
 
-A Place is used without acquiring a value when it is returned as a Place, is the operand of an explicit borrow or transfer, is projected, is a Subject or is an assignment target. Discarding an unacquired Place performs the call and its effects but destroys nothing in the published Storage. `_ = expression` instead acquires a value and destroys it, so it cannot discard a Non-Copy borrowed Place. Publishing an exclusive whole `T` permits replacing it with any valid `T`, so a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
+A Place is used without acquiring a value when it is returned as a Place, is the operand of an explicit borrow or transfer, is projected, is a Subject or is an assignment target. Discarding an unacquired Place performs the call and its effects but destroys nothing in the published Storage. `_ = expression` instead acquires a value and destroys it, so it cannot discard a published Place that bare acquisition rejects (§3.5). Publishing an exclusive whole `T` permits replacing it with any valid `T`, so a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
 
 ## 7.2. Parameters and defaults
 
@@ -359,12 +359,12 @@ Creation evaluates the captures, not the body, and acquires them in the creation
 | No list | Infer the needed outer runtime bindings; Copy only when each complete Type is Copy |
 | `[]` | Prohibit runtime captures |
 | `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
-| `x` | Bare acquisition: Copy; a Non-Copy binding is an error |
-| `x@move` | Transfer, even for a Copy binding |
-| `x@ref` / `x@uniq` | The existing value Borrow, Copy or Reborrow operation for that Semantics |
-| `var x` / `var x@move` | Copy / transfer into a mutable environment binding |
+| `x` / `var x` | Initialize the environment binding `x` as `let x = x` / `var x = x` would |
+| `x@op` / `var x@op` | Initialize it as `let x = x@op` / `var x = x@op` would; `op` is `move`, `ref` or `uniq` |
 
-Captures are resolved by Binding Identity. An omitted list never infers a Move, a new external Borrow or Reborrow, or a partial capture: a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. A bare capture of a binding whose Copy capability depends on generic parameters requires declared Copy evidence at definition checking; unknown Copy is an error, never deferred checking, an inferred Move or a hidden Constraint. `x@move` transfers for every binding.
+Captures are resolved by Binding Identity. An omitted list is a boundary at which no acquisition is inferred from the body: it never infers a Move, a new external Borrow or Reborrow, including the Reborrow that bare acquisition gives a stored exclusive reference (§3.5), or a partial capture, so a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. An omitted-list capture of a binding whose Copy capability depends on generic parameters requires declared Copy evidence at definition checking; unknown Copy is an error, never deferred checking, an inferred Move or a hidden Constraint.
+
+**Explicit entries.** Each explicit entry is the initialization of one environment binding. Its right side designates the outer binding by Binding Identity, and the entry acquires it at creation exactly as the initialization in the table would, under §3.5 and §13.5 and, in a generic body, §8.9. A bare entry therefore Copies a Copy binding, Reborrows a binding that holds `uniq/T` or `objuniq/T` and rejects any other Non-Copy binding; `x@move` transfers even a Copy binding; and `x@ref` and `x@uniq` borrow the outer binding's slot as in any other expression (§13.5.5.2), so on a reference binding they add a reference layer. A Closure whose entry borrows an outer slot depends on that slot and cannot outlive it; its call permission, escape and cleanup are checked as for any other captured dependency (§7.6.3, §15.8).
 
 Type names and accessible static function declarations are not runtime captures. Contextual `self` and a setter's `value` are never captured implicitly, and explicit captures of them obey all receiver, accessor, construction and destruction restrictions. The contextual `storage` binding cannot be captured by name; ordinary bindings named `storage` follow the normal capture rules. No runtime receiver is implicitly bound into a function reference.
 
@@ -378,14 +378,22 @@ let invalid = func () => text              // Error: explicit list required.
 let holder = func [text@move] () => ()     // Transfer executes even if unused.
 ```
 
-Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` entries or additional object-borrow capture syntax; a bare entry already Copies. `var` combines only with a bare Copy or `@move`, not with `@ref` or `@uniq`. Capture entries are capture operations, not the slot borrows of §13.5.5.2: on a reference binding, `@ref` and `@uniq` Copy or Reborrow the reference value instead of borrowing the binding's slot:
+Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` entries or additional object-borrow capture syntax; a bare entry already Copies a Copy binding.
 
-| Source | `[x]` | `[x@move]` | `[x@ref]` | `[x@uniq]` |
-| --- | --- | --- | --- | --- |
-| `ref/T` | Copy the reference | Transfer the reference | Copy the reference, without adding a reference layer | Error |
-| `uniq/T` | Exclusive Reborrow | Transfer the reference | Shared Reborrow | Exclusive Reborrow |
+```kimi
+var number: i32 = 1
+let r = number@uniq
+let view: ref/i32 = r                    // Share the referent first when shared access suffices.
+let reader = func [view] () -> i32 => view@follow
+let snapshot = reader()
 
-Captures without `var` create `let`-like environment bindings, whatever the mutability of the source or of the binding that holds the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes only binding mutability, not deep copying, Copy classification or Origin dependencies.
+var bump = func [r] () => r@follow += 1  // [r] Reborrows r as uniq/i32.
+bump()                                   // An Exclusive call (§7.6.3).
+// [r@move] transfers the reference value, and [r@ref] borrows the slot of r as ref/(uniq/i32).
+// [r@uniq] is an error: the let binding r cannot be borrowed exclusively.
+```
+
+Captures without `var` create `let`-like environment bindings, whatever the mutability of the source or of the binding that holds the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes only the mutability of the environment binding, not deep copying, Copy classification, Origin dependencies or the authority of the source; with `var x@ref` or `var x@uniq`, the environment binding is a reassignable borrow of the outer slot.
 
 ```kimi
 let count: i32 = 0
@@ -398,7 +406,7 @@ let second = next() // 2; outer count is still 0.
 
 Environment bindings are not user Fields. Ownership-bearing calls apply ordinary local acquisition and Move Paths, and a consumed `let` cannot be reinitialized. Shared and Exclusive calls cannot move owned captures out. No environment may borrow its own owned capture through another capture; external borrowed dependencies remain legal under the lifetime rules.
 
-**Nested Closures** acquire through every enclosing environment. A binding free only in the inner Closure must still be captured by the outer one; an outer `[]` or an insufficient explicit list is an error. Each omitted-list boundary requires Copy on its own. The outer Closure's own parameters and body locals need capturing only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming, and an inner `@uniq` cannot exceed the access of the outer binding.
+**Nested Closures** acquire through every enclosing environment. A binding free only in the inner Closure must still be captured by the outer one; an outer `[]` or an insufficient explicit list is an error. Each omitted-list boundary requires Copy on its own. The outer Closure's own parameters and body locals need capturing only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming. An inner `[x@uniq]` borrows the outer environment binding `x`: it is an error when that binding is `let`, and for a `var` binding it is judged by the outer call's permission and Loans (§7.6.3).
 
 ```text
 lexical x -> outer capture x -> inner capture x

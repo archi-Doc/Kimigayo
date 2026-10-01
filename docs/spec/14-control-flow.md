@@ -134,7 +134,7 @@ To acquire a new local on every test, use `loop` with a declaration and `require
 
 `_ = Expression` is a dedicated executable statement, recognized by reserved `_` followed by `=`. It is not assignment, permits no compound form, and cannot be nested as an expression. Normal completion supplies Unit. Existing Body and continuation rules apply.
 
-Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by bare acquisition or transfer, and destroy the result at statement temporary cleanup: `_ = x@move` destroys a Non-Copy Place early, a bare Non-Copy Place is an error, and `_ = x@ref` discards a borrow without effect. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
+Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by bare acquisition (§3.5) or transfer, and destroy the result at statement temporary cleanup: `_ = x@move` destroys a Non-Copy Place early, a bare Non-Copy Place is an error unless it stores an exclusive reference, and `_ = x@ref` discards a borrow without effect. For a Place `r` storing `uniq/T` or `objuniq/T`, `_ = r` Reborrows a child and drops it at once without consuming `r`; `_ = r@move` consumes the reference value itself. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
 
 Explicit discard suppresses only the warnings for discarding that result (§17.4). It does not suppress warnings for internal discards or unintended Unit inference inside the operand, Type or ownership errors, or unrelated diagnostics.
 
@@ -143,6 +143,8 @@ _ = prepare()     // Ignore the entire Result, including Err.
 _ = try prepare() // Propagate failure; explicitly discard success.
 _ = resource@move // Transfer and destroy a Non-Copy value early.
 // _ = resource   // Error: a bare Non-Copy Place is not transferred.
+_ = r             // r: uniq/Node. Reborrow a child and drop it; r stays usable.
+_ = r@move        // Consume the reference value; r becomes Moved.
 _ = .None         // Error without enough Type information.
 _ = loop => exit  // Valid Unit result.
 _ = do

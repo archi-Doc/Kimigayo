@@ -76,7 +76,8 @@ A **Place** is storage, such as a local or an element. `T` (= `owner/T`) owns a 
   `r@move` transfers the reference, never the referent. `r@follow@copy` copies a proven-Copy referent.
 - A fixed reference expectation copies/reborrows existing references as needed; passing `r: uniq/T` to
   `uniq/T` or `ref/T` needs no `@uniq`. Safe reference chains can supply one shared reference or a value read.
-  With no expectation, `let x = sharedRef` copies the reference, not its target.
+  With no expectation, `let x = sharedRef` copies the reference, not its target, and `let x = uniqRef`
+  reborrows it exactly as `let x: uniq/T = uniqRef` does; `uniqRef` is usable again after `x`'s last use.
 - New exclusive borrows are explicit except for method/accessor/callable receivers: `values.append(item)`
   acquires its mutable receiver implicitly. `let`-owned storage cannot be lent exclusively; a `uniq/T` held
   in a `let` or parameter still permits referent mutation. No implicit borrowing of a reference/handle slot.
@@ -243,8 +244,9 @@ struct View<T> {source}
 ## 9. Callbacks and less common features
 
 - Closure: `func [captures] (x: T) -> U => expression`. Without a fixed expected signature, annotate inputs.
-  Omitted captures are Copy-only; `[]` forbids captures. Explicit entries: `x`, `x@move`, `x@ref`, `x@uniq`,
-  `var x`, `var x@move`. Captures execute at creation. Named nested functions cannot capture.
+  Omitted captures are Copy-only; `[]` forbids captures. An explicit entry `x`, `x@move`, `x@ref` or `x@uniq`,
+  optionally with `var`, initializes the environment binding as `let x = x` or `let x = x@op` would, so `x@ref`
+  borrows the outer slot. Captures execute at creation. Named nested functions cannot capture.
 - Prefer generic callbacks: `callback: ref/F` with `F is Callable<(T) -> U>`; use `uniq/F` and
   `Callable<uniq, (T) -> U>` for mutation, `F` and `Callable<owner, (T) -> U>` for consumption.
   Non-Copy consuming closures need `callback@move()`. Erased `(T) -> U` values are Non-Copy, Shared-callable,

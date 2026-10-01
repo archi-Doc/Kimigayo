@@ -559,7 +559,7 @@ A child conformance must satisfy its ancestor Contracts under its own conditions
 
 #### 8.4.8.4. Intrinsics and boundaries
 
-`Self is Copy when P` requests compiler-derived Copy under `D` and `P`. Every complete own Field or payload Type and the direct base are checked under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no `T is Copy` premise, but an explicitly written `T is Copy` condition is still required and cannot be weakened. An unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy is never assumed to be Non-Copy; a bare acquisition needs Copy evidence (§8.9, §8.10).
+`Self is Copy when P` requests compiler-derived Copy under `D` and `P`. Every complete own Field or payload Type and the direct base are checked under §3.5; user-defined Copy bodies remain forbidden. Deriving Copy for a `ref/T` component needs no `T is Copy` premise, but an explicitly written `T is Copy` condition is still required and cannot be weakened. An unconditional `Self is Copy` keeps its all-bindings guarantee. Unknown Copy is never assumed to be Non-Copy; a bare acquisition of a Type not proven to be an exclusive reference needs Copy evidence (§8.9, §8.10).
 
 Conditional conformance defines static conformance and generic use only. It adds no external registration, extension declarations, partial Type specialization, condition-based implementation replacement or runtime Contract View feature.
 
@@ -1021,7 +1021,7 @@ Generic analysis
 
 A by-value acquisition's effect follows its spelling:
 
-- a bare Place Copies and requires Copy evidence at definition checking; unproven Copy is an error, never deferred checking or an inferred Move, and overload resolution decides it before ranking (§10.2.2);
+- a bare Place follows the bare acquisition of §3.5 in each admitted case: it Copies where Copy is proven and Reborrows in the same Semantics where its stored Type is proven to be a `uniq` or `objuniq` reference; a case with neither proof is an error at definition checking, never deferred checking or an inferred Move, and overload resolution decides the Copy proofs before ranking (§10.2.2);
 - `@copy` Copies and requires the same evidence;
 - `@move` transfers;
 - `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
@@ -1029,6 +1029,20 @@ A by-value acquisition's effect follows its spelling:
 Unresolved Copy capability is never treated as proof of Non-Copy. Borrow effects may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This delays the determination of an effect, not the discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
 
 Following a [pair layer](13-operators-and-assignment.md#pair-layers) has such a symbolic effect, the Access Effect row of the pair-layer table (Borrow for `owner`, Reborrow for `uniq`, and Reborrow or the Copy of the shared-reference adaptation for `ref`). `@s` and `@follow` correspond in how they treat the outer layer, but they are not inverse operations: `@s` applies Semantics to a value, and `@follow` selects a Place and never restores a Take.
+
+**Conditional acquisition plans.** When the admitted cases of a bare Place differ, its plan is a finite conditional plan: a Copy or a Reborrow for each admitted case, with that case's own dependencies kept conditionally, like the dependencies of a pair layer. Definition checking requires every case, together with the later uses, Loans and cleanup of the body, to be legal. The cases are never merged into one plan, so a case that Copies receives no Loan that only a Reborrow case creates. No implicit Constraint, general solver or reselection after instantiation is added, and a plan that the finite proof rules of §8.7 cannot express is a definition error.
+
+```kimi
+func inspectLocal<s/T>(value: s/T)
+    s is owner or uniq
+    T is Copy
+    let local = value         // owner: Copy; uniq: Reborrow.
+    // _ = value              // Error at definition: in the uniq case it conflicts with local.
+    _ = local
+
+func invalid<T>(value: T)
+    let local = value         // Error at definition: neither Copy nor an exclusive reference is proven.
+```
 
 Instantiations may have different effects. The already-verified effect plan is substituted, and each concrete body's cleanup is derived from it; an analysis for a different effect is never reused without validation. Compile-time directives neither test Types nor select Access Effects. The [generic verification principle](#810-generic-body-checking-and-deferred-obligations) requires the ordinary body to be valid independently of explicit specializations.
 
@@ -1046,7 +1060,7 @@ For `s = ref`, discarding the first result ends its shared Loan; `s = uniq` also
 
 This requirement fixes meaning, not a compiler-pass schedule. Dependencies on other declarations may delay checking within the build, but an unverified definition cannot be accepted merely because selected concrete instantiations succeed. In particular, a generic call to another generic function must prove that function's declared requirements from the caller's declared premises.
 
-Unknown Copy never changes an acquisition's effect: a bare by-value Place requires Copy evidence (§8.9), a shared or exclusive Subject binds references, and an owned Subject or iteration item transfers its parts (§15.1.6). A read that must leave the source Initialized therefore needs an explicit `T is Copy`, a borrow that avoids acquisition, or a valid reinitialization before reuse. `T is Copy` is never added to a caller's applicability conditions after the body is checked.
+Unknown Copy never changes an acquisition's effect: in each admitted case, a bare by-value Place requires Copy evidence or a proven exclusive-reference Type, under a finite conditional plan where the cases differ (§8.9), a shared or exclusive Subject binds references, and an owned Subject or iteration item transfers its parts (§15.1.6). A read that must leave the source Initialized therefore needs an explicit `T is Copy`, a borrow that avoids acquisition, or a valid reinitialization before reuse. `T is Copy` is never added to a caller's applicability conditions after the body is checked.
 
 ~~~kimi
 func transfer<T>(value: T) -> T => value@move // Moves a Copy or Non-Copy T alike; bare `value` would need Copy evidence.

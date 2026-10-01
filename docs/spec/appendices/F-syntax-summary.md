@@ -352,7 +352,7 @@ FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := ExecutableBody
 CaptureList          := "[" TrailingList<Capture>? "]"
-Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
+Capture              := "var"? Name ("@" CaptureOperation)?
 CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
                            | "$" "tryWrite" "(" Expression "," StringLiteral ")"
