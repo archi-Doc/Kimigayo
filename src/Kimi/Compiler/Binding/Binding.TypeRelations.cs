@@ -73,7 +73,7 @@ public sealed partial class Binding
         }
     }
 
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false)
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -90,7 +90,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
+        if (!(renameInput && actual.Origin?.Kind == OriginKind.Input && expected.Origin?.Kind == OriginKind.Input) &&
+            !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
             !OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))
         {
             return false;
@@ -129,7 +130,24 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
+            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallSignature(actual) && PerCallSignature(expected))
+            {
+                // Fresh input binders are local quantifiers of the Function Type, not fixed external Origins.
+                // Rename only the outer input layer; referent Types and their own Origins remain rigid.
+                if (a.Components.Count != b.Components.Count)
+                {
+                    return false;
+                }
+
+                for (var input = 0; input < a.Components.Count; input++)
+                {
+                    if (!FitsTypeCore(b.Components[input], a.Components[input], binding, use, invariant, renameInput: true))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
             {
                 if (!FitsTypeCore(a, b, binding, use, true))
                 {

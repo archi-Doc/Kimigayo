@@ -6,38 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal static bool CallableSignatureFits(BoundType actual, BoundType expected)
-    {
-        if (FitsType(actual, expected))
-        {
-            return true;
-        }
-
-        if (!PerCallSignature(actual) || !PerCallSignature(expected) || !FitsType(actual.Components[1], expected.Components[1]))
-        {
-            return false;
-        }
-
-        var a = actual.Components[0];
-        var b = expected.Components[0];
-        if (a.Components.Count != b.Components.Count)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < a.Components.Count; i++)
-        {
-            var input = a.Components[i];
-            var required = b.Components[i];
-            if (!FitsType(required, input) && !(input.Origin is { Kind: OriginKind.Input } && required.Origin is { Kind: OriginKind.Input } &&
-                input.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && required.Semantics == input.Semantics && ReferenceEquals(input.Components[0], required.Components[0])))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    internal static bool CallableSignatureFits(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool PerCallSignature(BoundType signature)
     {
