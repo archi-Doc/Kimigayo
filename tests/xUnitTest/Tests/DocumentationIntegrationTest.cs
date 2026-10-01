@@ -45,7 +45,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void SelectsSwitchArmsAndNestedExclusions()
     {
-        var tree = DocumentationCommentTest.Parse("#switch\n    #case false\n        /// other\n        func a() => ()\n    #case true\n        #if false\n            /// excluded\n            let broken =\n        /// chosen\n        func b() => ()\n    #case _\n        /// fallback\n        func c() => ()\n/// after\nfunc d() => ()");
+        var tree = DocumentationCommentTest.Parse("#switch\n    #case false\n        /// other\n        func a() => ()\n    #case true\n        #if false\n            /// excluded\n            let excluded = 1\n        /// chosen\n        func b() => ()\n    #case _\n        /// fallback\n        func c() => ()\n/// after\nfunc d() => ()");
         var docs = Assert.Single(tree.DocumentationSources);
         Assert.Equal(new[] { "chosen", "after" }, docs.Comments.Where(x => x.IsSelected && x.Declaration is not null).Select(x => x.GetText().Text));
         Assert.Empty(docs.GetDiagnostics());

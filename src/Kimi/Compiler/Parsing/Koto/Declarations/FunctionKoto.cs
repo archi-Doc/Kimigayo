@@ -292,9 +292,6 @@ public sealed class FunctionKoto : DeclarationKoto
     public IReadOnlyList<FunctionParameterKoto> Parameters
         => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
 
-    /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
-    public bool IsExcluded { get; }
-
     internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
 
     internal DeclarationContainerKoto? DeclaringContainer { get; set; }
@@ -312,7 +309,6 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         this.SetAttributeChain(context.AttributeKoto);
         this.Modifier = context.ModifierKind;
-        this.IsExcluded = context.IsExcluded;
         this.Name = name;
         this.SignatureSpan = range;
         this.genericArguments = genericArguments;

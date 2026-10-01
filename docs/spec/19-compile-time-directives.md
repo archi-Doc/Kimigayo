@@ -158,7 +158,7 @@ The selected body of `example` is the same for every `T` in that Compilation. So
 | `#switch` that selects no arm (an invalid Condition or structure, or no match) | Every arm |
 | `#case` outside a `#switch` body | Its body |
 
-Directives inside excluded syntax select nothing, so their targets and arms are excluded syntax too. When an `#if` is followed by a `#case` outside a `#switch`, that whole `#case` is the target. Attributes written before a directive attach to the syntax it selects (§6.5); when nothing is selected, they belong to the excluded syntax.
+Directives inside excluded syntax select nothing, so their targets and arms are excluded syntax too. When an `#if` is followed by a `#case` outside a `#switch`, that whole `#case` is the target. An Attribute written before an `#if` whose target is a single declaration attaches to that declaration and shares its selection; before a directive Block or a `#switch`, no declaration follows at the Attribute's indentation, so it is a dangling Attribute (§6.5).
 
 **Checks.** Excluded syntax receives exactly the source checks of selected syntax and no semantic checks:
 

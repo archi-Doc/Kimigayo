@@ -150,6 +150,12 @@ public sealed class CodeContext
     internal DiagnosticKey? RecoveryCause(Koto node)
         => this.recoveries is { } map && map.TryGetValue(node, out var cause) ? cause : null;
 
+    /// <summary>Records excluded syntax, so its diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
+    /// <param name="range">The excluded syntax.</param>
+    /// <param name="directive">The innermost excluding directive.</param>
+    internal void RecordExcludedRange(SourceSpan range, SourceSpan directive)
+        => this.DiagnosticCollection.RecordExcludedRange(range, directive);
+
     /// <summary>Records that synthesized syntax stands for a syntax error.</summary>
     /// <param name="node">The synthesized node.</param>
     /// <param name="cause">The key of the syntax error.</param>

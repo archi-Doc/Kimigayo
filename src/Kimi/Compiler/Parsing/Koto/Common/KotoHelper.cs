@@ -130,7 +130,8 @@ public static partial class KotoHelper
         Token first = default;
         Token last = default;
         StringBuilder? fallback = default;
-        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.Separator)
+        // A line ends at a separator or at the layout token of a dedent or body, which the caller handles.
+        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock))
         {
             var token = reader.Read();
             if (expectsIdentifier)
@@ -207,6 +208,12 @@ public static partial class KotoHelper
         var expectsIdentifier = true;
         while (reader.CanRead)
         {
+            // A dedent or a body ends the line without being consumed; a separator is consumed.
+            if (reader.CurrentTokenKind is TokenKind.EndBlock or TokenKind.StartBlock)
+            {
+                break;
+            }
+
             var token = reader.Read();
             if (token.Kind == TokenKind.Separator)
             {

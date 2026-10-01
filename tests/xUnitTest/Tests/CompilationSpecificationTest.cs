@@ -68,9 +68,10 @@ public class CompilationSpecificationTest
     }
 
     [Fact]
-    public void ExclusionDoesNotRetractGrammarErrorsFromAlreadyParsedBodies()
+    public void ExcludedSyntaxReportsGrammarErrors()
     {
-        Assert.Empty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar incomplete =")));
+        Assert.Empty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar complete = 1")));
+        Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar incomplete =")));
         Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if pendingName\nvar incomplete =")));
         Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =")));
         Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated")));
@@ -384,7 +385,7 @@ public class CompilationSpecificationTest
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
-        Assert.Empty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\n    #if WINDOWS\n        ()")));
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\n    #if WINDOWS\n        ()"))).Code);
     }
 
     [Fact]

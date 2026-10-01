@@ -151,7 +151,7 @@ public class BlockSyntaxParseTest
     [InlineData("#if false\n    #LibraryImport(LibraryName)\n    func imported()")]
     [InlineData("#if false\n    struct Empty")]
     [InlineData("#if false\n    public struct Empty\n        // No members")]
-    [InlineData("#if false\n    var value: i32\n        get")]
+    [InlineData("struct S\n    #if false\n        var value: i32\n            get")]
     public void EmptyBodyRulePreservesBodylessDeclarations(string source)
         => ParseSuccess(source);
 

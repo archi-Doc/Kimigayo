@@ -61,10 +61,14 @@ public class FrontEndSyntaxTest
     [InlineData("abstract /* comment */\nstruct Next")]
     [InlineData("abstract\r\nfunc next() => ()")]
     [InlineData("let abstract = func() => ()\nabstract()")]
-    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
-    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
     public void UnavailableModifierSpellingsRemainOrdinaryNames(string source)
         => AssertValid(Parse(source));
+
+    [Theory]
+    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
+    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
+    public void ExcludedSyntaxReportsUnavailableModifiers(string source)
+        => Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(Parse(source))).Code);
 
     [Fact]
     public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
@@ -205,8 +209,8 @@ public class FrontEndSyntaxTest
     [Theory]
     [InlineData("#if false\nstatic func f() => ()\nlet a = 1")]
     [InlineData("#if false\nopen group G\nlet a = 1")]
-    public void ExcludedDeclarationsDoNotReportModifierPlacement(string source)
-        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
+    public void ExcludedDeclarationsReportModifierPlacement(string source)
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()

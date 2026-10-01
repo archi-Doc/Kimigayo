@@ -101,7 +101,7 @@ public class CompileTimeSwitchParseTest
     }
 
     [Fact]
-    public void InvalidNestedSwitchesPreserveBoundariesForRecovery()
+    public void InvalidSwitchesLeaveMarkersAndValidateExcludedArms()
     {
         var compilation = Parse("""
             #switch
@@ -117,25 +117,25 @@ public class CompileTimeSwitchParseTest
                 #case siblingCondition
                     ()
             """);
-        Assert.Equal(3, TestDiagnostics.Of(compilation).Length);
-        AssertDiagnostic(compilation, DiagnosticCode.UnknownCompileTimeName_Kd);
+        // The outer Case Group selects nothing, so its arms are excluded syntax: the inner Conditions are still validated.
+        var diagnostics = TestDiagnostics.Of(compilation);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Code));
         var items = compilation.Kotonoha.GeneratedFunction!.Body!.Items;
+        Assert.Equal(2, items.Count);
         var outer = Assert.IsType<CompileTimeSwitchKoto>(items[0]);
-        var inner = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(outer.Arms[0].Body.Items));
-        Assert.Equal(2, outer.Arms.Count);
-        Assert.Equal(2, inner.Arms.Count);
-        Assert.Single(Assert.IsType<CompileTimeSwitchKoto>(items[1]).Arms);
-        Assert.All(outer.ChildNodes, child => Assert.Same(outer, child.Parent));
+        Assert.IsType<CompileTimeSwitchKoto>(items[1]);
+        Assert.Empty(outer.ChildNodes);
 
         var written = outer.ToString();
         Assert.StartsWith("#switch\n", written);
+        Assert.EndsWith("#case _\n        ()", written);
         var restored = Parse(written);
         Assert.Equal(2, TestDiagnostics.Of(restored).Length);
         AssertDiagnostic(restored, DiagnosticCode.UnknownCompileTimeName_Kd);
         var restoredSwitch = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restored.Kotonoha.GeneratedFunction!.Body!.Items));
         Assert.Equal(written, restoredSwitch.ToString());
         Assert.Equal(0, outer.Span.Start);
-        Assert.True(inner.Span.End <= outer.Span.End);
     }
 
     [Theory]
@@ -181,29 +181,35 @@ public class CompileTimeSwitchParseTest
         => AssertDiagnostic(Parse("#switch\n    #case true\n    #case _\n        ()"), DiagnosticCode.MissingSyntax_Kd);
 
     [Fact]
-    public void EarlyFalseIfExcludesExactlyOneSwitch()
+    public void EarlyFalseIfExcludesExactlyOneValidatedSwitch()
     {
         var compilation = Parse("""
             #if false
             #switch
                 #case unknownCondition
-                    var incomplete =
+                    var excluded = 1
                 #case 1
-                    var incomplete =
+                    var excluded = 2
             #switch
                 #case _
                     var retained = 1
             """);
 
-        AssertValid(compilation);
+        // The excluded Case Group still validates its Conditions (SPEC 19.3) but selects nothing.
+        var diagnostics = TestDiagnostics.Of(compilation);
+        Assert.Equal(2, diagnostics.Length);
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.UnknownCompileTimeName_Kd));
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.ConditionMustBeBool_Kd));
         Assert.Equal("retained", SelectedFieldName(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items)));
     }
 
     [Fact]
-    public void UnknownIfRejectsTheEntireSwitchAsOneItem()
+    public void UnknownIfExcludesTheEntireSwitchAsOneItem()
     {
         var compilation = Parse("#if outerCondition\n#switch\n    #case innerCondition\n        ()\n    #case _\n        ()\n#switch\n    #case _\n        ()");
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
+        var diagnostics = TestDiagnostics.Of(compilation);
+        Assert.Equal(2, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Code));
         Assert.IsType<UnitLiteralKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
@@ -245,8 +251,9 @@ public class CompileTimeSwitchParseTest
 
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(compilation)).Code);
         var contract = Assert.Single(compilation.Kotonoha.RootKoto.NestedDeclarationContainers);
+        // Neither arm is selected; both are excluded syntax and leave only the marker.
         var group = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(contract.Members));
-        Assert.All(group.Arms, arm => Assert.IsType<PropertyKoto>(Assert.Single(arm.Body.Items)));
+        Assert.Empty(group.ChildNodes);
     }
 
     private static string SelectedFieldName(Koto item)

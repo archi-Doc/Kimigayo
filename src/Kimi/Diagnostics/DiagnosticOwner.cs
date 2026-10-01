@@ -23,6 +23,9 @@ public sealed class DiagnosticOwner
     private readonly List<FactList> syntax = [];
     private int unattributed = -1;
 
+    // SPEC 19.5: excluded syntax per source index, created only for documents that have excluded syntax.
+    private Dictionary<int, List<ExcludedRange>>? excludedRanges;
+
     /// <summary>Initializes a new instance of the <see cref="DiagnosticOwner"/> class.</summary>
     public DiagnosticOwner()
     {
@@ -205,7 +208,7 @@ public sealed class DiagnosticOwner
         for (var i = 0; i < order.Count; i++)
         {
             var fact = facts[order[i]];
-            related[i] = RelatedFacts(fact);
+            related[i] = this.WithExcludingDirective(fact, RelatedFacts(fact));
             if (fact.Source >= 0)
             {
                 remap[fact.Source] = 0;
@@ -275,6 +278,25 @@ public sealed class DiagnosticOwner
             return order != 0 ? order : string.CompareOrdinal(x.Label, y.Label);
         });
         return related;
+    }
+
+    /// <summary>Records excluded syntax of a document, whose diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
+    /// <param name="document">The document.</param>
+    /// <param name="range">The excluded syntax.</param>
+    /// <param name="directive">The innermost excluding directive: an <c>#if</c> Condition or a <c>#case</c> header.</param>
+    internal void RecordExcludedRange(SourceDocument document, SourceSpan range, SourceSpan directive)
+    {
+        if (this.documentSources.TryGetValue(document, out var index))
+        {
+            this.excludedRanges ??= [];
+            if (!this.excludedRanges.TryGetValue(index, out var ranges))
+            {
+                ranges = [];
+                this.excludedRanges.Add(index, ranges);
+            }
+
+            ranges.Add(new(range.Start, range.End, directive.Start, directive.Length));
+        }
     }
 
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
@@ -666,6 +688,40 @@ public sealed class DiagnosticOwner
         return new(line + 1, clipped, clippedStart, Math.Max(1, Math.Min(length, clipped.Length - clippedStart)));
     }
 
+    /// <summary>Adds the <c>excludedBy</c> location of a fact whose primary location lies in excluded syntax.</summary>
+    /// <param name="fact">The fact.</param>
+    /// <param name="related">Its related locations.</param>
+    /// <returns>The related locations, with the innermost excluding directive when one applies.</returns>
+    /// <remarks>The location is not a Reason fact, so the code, primary location and Reason stay the same in every Compilation (SPEC 19.5).</remarks>
+    private DiagnosticRelatedFact[] WithExcludingDirective(in DiagnosticFact fact, DiagnosticRelatedFact[] related)
+    {
+        if (fact.Source < 0 || fact.Length < 0 || this.excludedRanges is null || !this.excludedRanges.TryGetValue(fact.Source, out var ranges))
+        {
+            return related;
+        }
+
+        var best = -1;
+        var end = fact.Start + fact.Length;
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            var range = ranges[i];
+            if (range.Start <= fact.Start && end <= range.End && (best < 0 || range.End - range.Start < ranges[best].End - ranges[best].Start))
+            {
+                best = i;
+            }
+        }
+
+        if (best < 0)
+        {
+            return related;
+        }
+
+        var result = new DiagnosticRelatedFact[related.Length + 1];
+        related.CopyTo(result, 0);
+        result[^1] = new("excludedBy", fact.Source, ranges[best].DirectiveStart, ranges[best].DirectiveLength, "excluded in this Compilation");
+        return OrderRelated(result);
+    }
+
     // Every recorded problem of the partitions is a candidate; suppression is decided only by explained prerequisites.
     private List<DiagnosticFact> Candidates(DiagnosticPartition first, DiagnosticPartition last)
     {
@@ -703,6 +759,17 @@ public sealed class DiagnosticOwner
             if (entry.Module == module)
             {
                 entry.SyntaxErrors = 0;
+            }
+        }
+
+        if (this.excludedRanges is { } excluded)
+        {
+            foreach (var source in excluded.Keys)
+            {
+                if (this.sources[source].Module == module)
+                {
+                    excluded.Remove(source);
+                }
             }
         }
     }
@@ -840,4 +907,6 @@ public sealed class DiagnosticOwner
 
         public int SyntaxErrors { get; set; }
     }
+
+    private readonly record struct ExcludedRange(int Start, int End, int DirectiveStart, int DirectiveLength);
 }

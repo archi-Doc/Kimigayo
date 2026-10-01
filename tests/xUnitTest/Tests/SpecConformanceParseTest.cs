@@ -202,9 +202,8 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
-        var body = Assert.IsType<CodeBlockKoto>(Assert.Single(sample.Members));
-        Assert.IsType<PropertyKoto>(body.Items[0]);
-        Assert.IsType<FunctionKoto>(body.Items[1]);
+        // Selected directive items are parsed into the Container itself (SPEC 19.1).
+        Assert.Collection(sample.Members, x => Assert.IsType<PropertyKoto>(x), x => Assert.IsType<FunctionKoto>(x));
     }
 
     [Fact]

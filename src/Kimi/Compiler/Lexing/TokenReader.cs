@@ -126,6 +126,19 @@ public ref partial struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
+    /// <summary>Gets or sets the number of excluded-syntax regions enclosing the current position (SPEC 19.5).</summary>
+    /// <remarks>Excluded syntax is parsed and source-checked, but nothing inside it selects, registers or associates documentation.</remarks>
+    internal int ExclusionDepth { get; set; }
+
+    /// <summary>Gets or sets the directive that excludes the current excluded region: an <c>#if</c> Condition or a <c>#case</c> header.</summary>
+    internal SourceSpan ExcludingDirective { get; set; }
+
+    /// <summary>Gets or sets the innermost directive that excludes the pending item, meaningful while <see cref="IsExcluded"/> holds.</summary>
+    internal SourceSpan PendingExclusion { get; set; }
+
+    /// <summary>Gets a value indicating whether the current position lies inside excluded syntax.</summary>
+    internal readonly bool InExcludedSyntax => this.ExclusionDepth > 0;
+
     /// <summary>Gets the end of the last written token before the current position: where a missing form is inserted.</summary>
     internal readonly int PreviousSyntaxEnd
     {
@@ -167,7 +180,13 @@ public ref partial struct TokenReader
     }
 
     internal readonly void Document(Koto declaration, SourceSpan header, AttributeKoto? attributes = null)
-        => this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
+    {
+        // Excluded syntax receives no documentation association (SPEC 2.3.3).
+        if (!this.InExcludedSyntax)
+        {
+            this.CodeContext.Documentation?.Associate(declaration, header, attributes, this.tokens);
+        }
+    }
 
     #endregion
 
