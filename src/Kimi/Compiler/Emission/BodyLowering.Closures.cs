@@ -42,36 +42,17 @@ internal sealed partial class BodyLowering
     // parameter arrays or keep a previous syntax/Binding graph alive.
     private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
     {
-        var inputs = signature.Components[0];
-        var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
-        var returnType = FunctionAbi.ResultType(result)!;
-        var never = ReferenceEquals(result, BoundType.Never);
+        ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
+        var resultSlot = FunctionAbi.HasResultSlot(result, this.aggregateLayouts);
         foreach (var candidate in this.valueCallAbis)
         {
-            if (candidate.Result != returnType || candidate.NoReturn != never || candidate.Parameters.Length != count)
-            {
-                continue;
-            }
-
-            var matches = true;
-            for (var i = 0; i < count && matches; i++)
-            {
-                matches = candidate.Parameters[i].Type == WindowsLowering.GetValue(inputs.Components[i])!.ArgumentType;
-            }
-
-            if (matches)
+            if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts))
             {
                 return candidate;
             }
         }
 
-        var parameters = new AbiParameter[count];
-        for (var i = 0; i < count; i++)
-        {
-            parameters[i] = new(WindowsLowering.GetValue(inputs.Components[i])!.ArgumentType!, string.Empty);
-        }
-
-        var abi = new FunctionAbi(string.Empty, returnType, parameters, never);
+        var abi = FunctionAbiPool.Build(string.Empty, result, inputs, resultSlot, this.aggregateLayouts);
         this.valueCallAbis.Add(abi);
         return abi;
     }
@@ -87,7 +68,7 @@ internal sealed partial class BodyLowering
             !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
             !Binding.CallableSignatureFits(closure.Signature, body.Places[operation.Place].Type) ||
             this.aggregateLayouts.Get(source) is not { NeedsDestruction: false } layout || layout.Value.Layout.Size > 8 ||
-            this.functions?.GetValueOrDefault(definition) is not { ResultSlot: false } entry ||
+            this.functions?.GetValueOrDefault(definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
         {
             return Fail("Erasure requires an acquired, Owned, Shared inline concrete environment and supported signature.", out failure);
@@ -199,7 +180,7 @@ internal sealed partial class BodyLowering
         var returnType = SignatureType(this, plan.ReturnType);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
             !ReferenceEquals(body.Places[operation.Input].Type, receiver) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
-            plan.Arguments.Length != call.ArgumentNodes.Count || this.arguments.Count != call.ArgumentNodes.Count ||
+            plan.Arguments.Length != call.ArgumentNodes.Count ||
             !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
             return Fail("Unsupported common-function call signature or receiver.", out failure);
@@ -223,7 +204,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (!protectedReceiver || (plan.ReceiverKind != SemanticsKind.Owner && body.IsReachable(id) && (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0))
+        if (body.IsReachable(id) && (!protectedReceiver || (plan.ReceiverKind != SemanticsKind.Owner && (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0)))
         {
             return Fail("Common-function receiver lacks its call-wide shared Loan.", out failure);
         }
@@ -234,21 +215,86 @@ internal sealed partial class BodyLowering
             return Fail("Common-function arguments do not match the selected signature.", out failure);
         }
 
+        var complete = true;
+        var cursor = 0;
+        for (var i = 0; i < plan.Arguments.Length; i++)
+        {
+            var argument = plan.Arguments[i];
+            var parameterType = SignatureType(this, argument.ParameterType);
+            if (argument.ParameterIndex != i ||
+                argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
+                parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||
+                !ReferenceEquals(argument.Source, call.ArgumentNodes[i]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[i].BoundType))
+            {
+                return Fail("Common-function argument lacks checked value or borrow acquisition.", out failure);
+            }
+
+            if (!this.flow!.Nodes[call.ArgumentNodes[i]].CanCompleteNormally)
+            {
+                complete = false;
+                continue;
+            }
+
+            if (cursor == this.arguments.Count)
+            {
+                return Fail("Missing acquired common-function argument.", out failure);
+            }
+
+            var entry = this.arguments[cursor++];
+            var place = body.Operations[entry].Place;
+            if (!ReferenceEquals(body.Operations[entry].Source, call) ||
+                !call.CodeContext.Compilation.Binding.FitsTypeAt(body.Places[place].Type, parameterType, call))
+            {
+                return Fail("Common-function entry does not match its argument Type or call.", out failure);
+            }
+
+            if (!this.ValidateCallArgumentStorage(body, entry, id, out failure))
+            {
+                return false;
+            }
+        }
+
+        if (cursor != this.arguments.Count || (!complete && body.IsReachable(id)))
+        {
+            return Fail("Common-function call has extra arguments or follows a noncompleting argument.", out failure);
+        }
+
+        if (!complete)
+        {
+            this.arguments.Clear();
+            function.Add(EmissionOpcode.Unreachable, id);
+            return true;
+        }
+
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            if (!FunctionAbi.SupportsParameter(inputs.Components[i], this.aggregateLayouts))
+            {
+                return Fail("Unsupported common-function parameter representation.", out failure);
+            }
+        }
+
+        if (FunctionAbi.ResultType(returnType, this.aggregateLayouts) is null)
+        {
+            return Fail("Unsupported common-function result representation.", out failure);
+        }
+
         var start = function.Operands.Count;
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
-        if (concreteEntry is not null)
+        var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
+        if (abi.ResultSlot)
         {
-            if (concreteEntry.ResultSlot)
+            if (!this.ValidateSlotCallResult(body, id, out failure))
             {
-                if (!this.ValidateSlotCallResult(body, id, out failure))
-                {
-                    return false;
-                }
-
-                function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+                return false;
             }
 
+            function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+        }
+
+        if (concreteEntry is not null)
+        {
             var environment = this.aggregateLayouts.Get(receiverType)!;
             if (plan.ReceiverType.Kind == BoundTypeKind.Semantics)
             {
@@ -274,36 +320,42 @@ internal sealed partial class BodyLowering
             }
         }
 
-        for (var i = 0; i < plan.Arguments.Length; i++)
+        foreach (var physical in abi.Parameters)
         {
-            var argument = plan.Arguments[i];
-            var entry = this.arguments[i];
-            var place = body.Operations[entry].Place;
-            var parameterType = SignatureType(this, argument.ParameterType);
-            if (!ReferenceEquals(body.Operations[entry].Source, call) || argument.ParameterIndex != i ||
-                argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
-                parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||
-                !ReferenceEquals(argument.Source, call.ArgumentNodes[i]) || !ReferenceEquals(argument.SourceType, call.ArgumentNodes[i].BoundType) ||
-                !ReferenceEquals(body.Places[place].Type, parameterType) || !ReferenceTypes.IsValue(parameterType) ||
-                body.Values[entry].Kind != OwnershipValueKind.Alias || body.Values[entry].Count != 1 ||
-                (body.IsReachable(id) && !this.Dominates(entry, id)))
+            if (physical.Kind is AbiParameterKind.Environment or AbiParameterKind.Context or AbiParameterKind.ResultSlot)
             {
-                return Fail("Common-function argument lacks checked value or borrow acquisition.", out failure);
+                continue;
             }
 
-            function.Operands.Add(this.PhysicalOperand(body, Input(body, entry, 0)));
+            var parameter = physical.LogicalIndex;
+            if (!this.TryCallArgumentOperand(body, this.arguments[parameter], id, inputs.Components[parameter], physical.Kind, out var operand, out failure))
+            {
+                return false;
+            }
+
+            function.Operands.Add(operand);
         }
 
         this.arguments.Clear();
         if (concreteEntry is not null)
         {
             function.Operands.Add(new(EmissionOperandKind.NullAddress, 0));
-            function.Instructions.Add(new(EmissionOpcode.Call, id, Callee: concreteEntry, OperandStart: start, OperandCount: function.Operands.Count - start));
-            return true;
         }
 
-        var abi = this.ValueCallAbi(signature, returnType);
-        function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: plan.Arguments.Length));
+        if (function.Operands.Count - start != abi.Parameters.Length)
+        {
+            return Fail("Common-function physical arguments do not match its ABI.", out failure);
+        }
+
+        if (concreteEntry is not null)
+        {
+            function.Instructions.Add(new(EmissionOpcode.Call, id, Callee: concreteEntry, OperandStart: start, OperandCount: function.Operands.Count - start));
+        }
+        else
+        {
+            function.Instructions.Add(new(EmissionOpcode.CallValue, id, operation.Input, Callee: abi, OperandStart: start, OperandCount: function.Operands.Count - start));
+        }
+
         if (abi.NoReturn)
         {
             function.Add(EmissionOpcode.Unreachable, id);

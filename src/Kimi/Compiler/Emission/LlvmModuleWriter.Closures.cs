@@ -6,33 +6,64 @@ internal static partial class LlvmModuleWriter
 {
     private static void WriteErasureAdapter(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
-        var name = "__kimi_erase_" + function.Abi.Name + "_" + instruction.Operation;
         var entry = instruction.Callee!;
         output.Write('@');
         WriteClosureTableName(output, function, instruction.Operation);
-        output.Write($" = private constant {{ ptr, ptr, ptr }} {{ ptr @{name}, ptr null, ptr null }}, align 8\n");
-        output.Write($"define internal {entry.Result} @{name}(i64 %environment");
+        output.Write(" = private constant { ptr, ptr, ptr } { ptr @");
+        WriteErasureAdapterName(output, function, instruction.Operation);
+        output.Write(", ptr null, ptr null }, align 8\ndefine internal ");
+        output.Write(entry.Result);
+        output.Write(" @");
+        WriteErasureAdapterName(output, function, instruction.Operation);
+        output.Write("(i64 %environment");
         foreach (var parameter in entry.Parameters)
         {
             if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context))
             {
-                output.Write($", {parameter.Type} %{parameter.Name}");
+                output.Write(", ");
+                output.Write(parameter.Type);
+                output.Write(" %");
+                output.Write(parameter.Name);
             }
         }
 
         output.Write(", ptr %context) #0 {\nentry:\n  %storage = alloca i64, align 8\n  store i64 %environment, ptr %storage, align 8\n");
-        output.Write(entry.Result == "void" ? "  call void" : $"  %result = call {entry.Result}");
-        output.Write($" @{entry.Name}(ptr %storage");
-        foreach (var parameter in entry.Parameters)
+        output.Write(entry.Result == "void" ? "  call " : "  %result = call ");
+        output.Write(entry.Result);
+        output.Write(" @");
+        output.Write(entry.Name);
+        output.Write('(');
+        for (var i = 0; i < entry.Parameters.Length; i++)
         {
-            if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context))
+            if (i != 0)
             {
-                output.Write($", {parameter.Type} %{parameter.Name}");
+                output.Write(", ");
             }
+
+            var parameter = entry.Parameters[i];
+            output.Write(parameter.Type);
+            output.Write(" %");
+            output.Write(parameter.Kind == AbiParameterKind.Environment ? "storage" : parameter.Name);
         }
 
-        output.Write(", ptr %context)\n");
-        output.Write(entry.NoReturn ? "  unreachable\n}\n" : entry.Result == "void" ? "  ret void\n}\n" : $"  ret {entry.Result} %result\n}}\n");
+        output.Write(")\n");
+        if (entry.NoReturn)
+        {
+            output.Write("  unreachable\n}\n");
+        }
+        else
+        {
+            output.Write("  ret ");
+            output.Write(entry.Result);
+            output.Write(entry.Result == "void" ? "\n}\n" : " %result\n}\n");
+        }
+    }
+
+    private static void WriteErasureAdapterName(TextWriter output, EmissionFunction function, int operation)
+    {
+        output.Write("__kimi_erase_");
+        output.Write(function.Abi.Name);
+        Name(output, "_", operation);
     }
 
     private static void WriteErasure(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
@@ -189,7 +220,7 @@ internal static partial class LlvmModuleWriter
             output.Write(", ");
             output.Write(abi.Parameters[i].Type);
             output.Write(' ');
-            WriteOperand(output, operands[i]);
+            WriteStorageAddress(output, function, operands[i]);
         }
 
         Name(output, ", ptr %context", id);

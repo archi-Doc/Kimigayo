@@ -12,6 +12,63 @@ internal sealed partial class BodyLowering
     private ControlFlowAnalysis? flow;
     private int[] parameterArguments = [];
 
+    private bool ValidateCallArgumentStorage(OwnershipBody body, int entry, int call, out string? failure)
+    {
+        failure = null;
+        var place = body.Operations[entry].Place;
+        var type = body.Places[place].Type;
+        if (IsScalar(type) && (body.Values[entry].Kind != OwnershipValueKind.Alias || body.Values[entry].Count != 1 ||
+            ValuePlace(body.Operations[Input(body, entry, 0)]) != place ||
+            (body.IsReachable(entry) && !this.Dominates(Input(body, entry, 0), entry))))
+        {
+            return Fail("Call argument value is unavailable at acquisition.", out failure);
+        }
+
+        if (SlotTypes.IsResult(type) && (!this.IsSlotValue(body.Places[place]) ||
+            (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0)))
+        {
+            return Fail("Owned argument is not an initialized acquired value.", out failure);
+        }
+
+        if (body.IsReachable(call) && !this.Dominates(entry, call))
+        {
+            return Fail("Logical call argument does not dominate the call.", out failure);
+        }
+
+        return !(SlotTypes.IsResult(type) && place == body.Operations[call].Place) ||
+            Fail("A call cannot share its argument and result storage.", out failure);
+    }
+
+    private bool TryCallArgumentOperand(OwnershipBody body, int entry, int call, BoundType type, AbiParameterKind kind, out EmissionOperand operand, out string? failure)
+    {
+        operand = default;
+        failure = null;
+        if (kind == AbiParameterKind.Value && IsScalar(type))
+        {
+            var value = Input(body, entry, 0);
+            if (body.IsReachable(call) && !this.Dominates(value, call))
+            {
+                return Fail("Call argument does not dominate the call.", out failure);
+            }
+
+            operand = this.PhysicalOperand(body, value);
+        }
+        else if (kind is AbiParameterKind.SharedReference or AbiParameterKind.Value && ReferenceTypes.IsString(type))
+        {
+            operand = this.ReferenceOperand(body, entry);
+        }
+        else if (kind == AbiParameterKind.OwnedSlot && SlotTypes.IsResult(type))
+        {
+            operand = new(EmissionOperandKind.SlotAddress, body.Operations[entry].Place);
+        }
+        else
+        {
+            return Fail("Unsupported physical call argument.", out failure);
+        }
+
+        return true;
+    }
+
     internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi>? FormattingCalls { get; set; }
@@ -172,17 +229,9 @@ internal sealed partial class BodyLowering
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }
 
-            if (IsScalar(type) && (body.Values[entry].Kind != OwnershipValueKind.Alias || body.Values[entry].Count != 1 ||
-                ValuePlace(body.Operations[Input(body, entry, 0)]) != place ||
-                (body.IsReachable(entry) && !this.Dominates(Input(body, entry, 0), entry))))
+            if (!this.ValidateCallArgumentStorage(body, entry, id, out failure))
             {
-                return Fail("Call argument value is unavailable at acquisition.", out failure);
-            }
-
-            if (SlotTypes.IsResult(type) && (!this.IsSlotValue(body.Places[place]) ||
-                (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0)))
-            {
-                return Fail("Owned argument is not an initialized acquired value.", out failure);
+                return false;
             }
 
             if (ReferenceTypes.IsString(type) && this.referenceRoots[entry] >= 0)
@@ -206,16 +255,6 @@ internal sealed partial class BodyLowering
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
                 }
-            }
-
-            if (body.IsReachable(id) && !this.Dominates(entry, id))
-            {
-                return Fail("Logical call argument does not dominate the call.", out failure);
-            }
-
-            if (SlotTypes.IsResult(type) && place == operation.Place)
-            {
-                return Fail("A call cannot share its argument and result storage.", out failure);
             }
 
             this.parameterArguments[parameter] = entry;
@@ -326,28 +365,12 @@ internal sealed partial class BodyLowering
 
             var entry = this.parameterArguments[physical.LogicalIndex];
             var type = formatting ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
-            if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
+            if (!this.TryCallArgumentOperand(body, entry, id, type, physical.Kind, out var operand, out failure))
             {
-                var value = Input(body, entry, 0);
-                if (body.IsReachable(id) && !this.Dominates(value, id))
-                {
-                    return Fail("Call argument does not dominate the call.", out failure);
-                }
+                return false;
+            }
 
-                this.callOperands.Add(this.PhysicalOperand(body, value));
-            }
-            else if (physical.Kind is AbiParameterKind.SharedReference or AbiParameterKind.Value && ReferenceTypes.IsString(type))
-            {
-                this.callOperands.Add(this.ReferenceOperand(body, entry));
-            }
-            else if (physical.Kind == AbiParameterKind.OwnedSlot && SlotTypes.IsResult(type))
-            {
-                this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[entry].Place));
-            }
-            else
-            {
-                return Fail("Unsupported physical call argument.", out failure);
-            }
+            this.callOperands.Add(operand);
         }
 
         var expectedResult = FunctionAbi.ResultType(returnType, this.aggregateLayouts);
