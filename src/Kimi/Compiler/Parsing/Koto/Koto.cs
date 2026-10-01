@@ -595,7 +595,8 @@ public abstract class Koto
     /// <param name="evidence">The code's evidence facts, all of them or none.</param>
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Syntax related to the problem, with its role and label.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null)
+    /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -612,7 +613,7 @@ public abstract class Koto
             }
         }
 
-        collection.Report(requirement.Partition, this.KeyOf(requirement), (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
     }
 
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>

@@ -125,6 +125,7 @@ public enum DiagnosticCode
     TransferRequired_Kd,
     StaticMovePathRequired_Kd,
     ExclusiveBorrowRequired_Kd,
+    AcquisitionRequired_Kd,
     SharedBindingAssignment_Kd,
     ExclusiveBindingAssignment_Kd,
     SharedPathAccess_Kd,

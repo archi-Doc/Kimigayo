@@ -375,6 +375,10 @@ public sealed partial class Binding
                 var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
                 issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
             }
+            else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
+            {
+                this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
+            }
             else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
             {
                 this.ReportWrite(issue.Node, target, requirement, issue.Code);
@@ -709,6 +713,7 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,

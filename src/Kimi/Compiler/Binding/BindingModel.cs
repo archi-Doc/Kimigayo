@@ -144,6 +144,9 @@ internal enum BindingFailure : byte
 
     // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
+
+    // SPEC 10.2.2: candidates disagree on acquiring a bare Place argument by value or by a new shared borrow.
+    AcquisitionRequired,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

@@ -563,6 +563,9 @@
   + Name="Binding.NotIndexable"
     Description="the receiver can be indexed by the key"
 
+  + Name="Binding.AcquisitionRequired"
+    Description="the acquisition of a Place argument is written where candidates disagree"
+
   + Name="Startup"
     Description="the program has a valid startup"
 
