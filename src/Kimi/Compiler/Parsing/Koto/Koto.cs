@@ -628,6 +628,21 @@ public abstract class Koto
     internal DiagnosticKey? Unexpected(SyntaxForm form)
         => this.DiagnosticCollection?.ReportSyntax(this.Span, DiagnosticCode.MisplacedSyntax_Kd, form, null, this.CodeContext.SourceDocument);
 
+    /// <summary>Reports that a form is expected where this node stands; the node's first source line is what was found. The caller decides whether the node is a recovery.</summary>
+    /// <param name="form">The expected form.</param>
+    /// <returns>The key of the Error, or <see langword="null"/> when the node reports nowhere.</returns>
+    internal DiagnosticKey? Expected(SyntaxForm form)
+    {
+        if (this.DiagnosticCollection is not { } diagnostics)
+        {
+            return null;
+        }
+
+        var found = this.CodeContext.SourceDocument is { } document ? document.AsSpan().Slice(this.Span.Start, this.Span.Length) : default;
+        var lineEnd = found.IndexOfAny('\r', '\n');
+        return diagnostics.ReportSyntax(this.Span, DiagnosticCode.ExpectedSyntax_Kd, form, (lineEnd < 0 ? found : found[..lineEnd]).ToString(), this.CodeContext.SourceDocument);
+    }
+
     /// <summary>Attaches an attribute chain and links its parents.</summary>
     /// <param name="attributeChain">The attribute chain, or <see langword="null"/>.</param>
     internal void SetAttributeChain(AttributeKoto? attributeChain)

@@ -258,6 +258,126 @@
     Phrase="'value: Type'"
     Advice="A setter's signature ends with its value parameter: set(self: uniq/S, value: T) -> ()."
 
+  + Name="Syntax.OriginClause"
+    Description="the 'origin' clauses lead the body"
+    Phrase="'origin' clause"
+    Advice="Write 'origin' clauses at the start of the body, before the accessors or the executable items."
+
+  + Name="Syntax.ConstraintPrefix"
+    Description="the Constraint prefix leads the body and names a generic parameter"
+    Phrase="Constraint prefix"
+    Advice="A body begins with its Constraint prefix, whose subject is a generic parameter of the declaration (SPEC 7.4); parenthesize a runtime 'is' test."
+
+  + Name="Syntax.SemanticsShorthandSuffix"
+    Description="a Semantics shorthand takes no '?'"
+    Phrase="'?' after a Semantics shorthand"
+    Advice="A bare Semantics shorthand such as 'ref' names no Type; write the optional Type in full: ref/T?."
+
+  + Name="Syntax.OperationAsSemanticsPrefix"
+    Description="a Semantics prefix names a Semantics"
+    Phrase="'move' or 'copy' as a Semantics prefix"
+    Advice="'@move' and '@copy' are operations on a value, never Semantics prefixes (SPEC 13.5.1); the prefix names a Semantics such as ref or uniq."
+
+  + Name="Syntax.AdaptationOrigin"
+    Description="the adaptation infers its borrow Origin"
+    Phrase="Origin annotation on an adaptation's borrow layer"
+    Advice="The adaptation infers its borrow Origin; annotate only the complete payload Type."
+
+  + Name="Syntax.AdaptationDuring"
+    Description="an annotated adaptation target is grouped"
+    Phrase="'during' after an ungrouped adaptation target"
+    Advice="Group an annotated adaptation target: @(ref/T? during a); the adaptation's own borrow Origin is inferred."
+
+  + Name="Syntax.NestedIfExpression"
+    Description="a nested if expression is grouped"
+    Phrase="nested if expression"
+    Advice="Group an if expression nested in the body of an if: (if c => a else b)."
+
+  + Name="Syntax.ArrowBody"
+    Description="a body nested in an expression body is an expression"
+    Phrase="'=>' before the nested body"
+    Advice="A body nested in an expression body is written '=> expression'; an indented block is not permitted there."
+
+  + Name="Syntax.HeaderBodyExpression"
+    Description="a body-bearing expression in a header is grouped"
+    Phrase="body-bearing expression in a header"
+    Advice="Group an if, match, for, while, loop, do or func expression in parentheses when it appears in a header."
+
+  + Name="Syntax.TryOperand"
+    Description="a try operand of a prefix operator is grouped"
+    Phrase="'try' as the operand of a prefix operator"
+    Advice="A prefix operator cannot take a try expression directly; group it: -(try x)."
+
+  + Name="Syntax.ChainedRange"
+    Description="a range has one range operator"
+    Phrase="second range operator"
+    Advice="A range has one '..' or '..='; group a range used as an operand."
+
+  + Name="Syntax.DollarOperand"
+    Description="the '$' prefix marks abort or tryWrite"
+    Phrase="'abort(expression)' or 'tryWrite(writer, literal)' after '$'"
+    Advice="'$' marks only $abort(expression) and $tryWrite(writer, literal) with positional arguments."
+
+  + Name="Syntax.ConversionTypeArgument"
+    Description="a conversion operation takes one Type argument"
+    Phrase="one Type argument on the conversion operation"
+    Advice="A conversion operation names its target once: @wrap<Type> or @bits<Type>."
+
+  + Name="Syntax.CompoundArrayLength"
+    Description="a compound array length is parenthesized"
+    Phrase="compound length before 'of'"
+    Advice="Parenthesize a compound length: [(n + 1) of value] (SPEC 4.2)."
+
+  + Name="Syntax.FunctionParameterList"
+    Description="a Function Type has a Function Parameter List"
+    Phrase="Function Parameter List before '->'"
+    Advice="A Function Type is '(Parameter Types) -> Result'; a Semantics prefix, '?' or an Origin annotation applies to the whole Function Type when it is grouped: ref/((T) -> U), ((T) -> U)? (SPEC 3.2)."
+
+  + Name="Syntax.LengthParameter"
+    Description="a length slot is declared in a function's Type parameter list"
+    Phrase="'length' parameter"
+    Advice="A length slot is declared in a function's Type parameter list: func f<length N>() (SPEC 4.4)."
+
+  + Name="Syntax.WildcardBinding"
+    Description="the wildcard binds nothing"
+    Phrase="'var' on the wildcard '_'"
+    Advice="The wildcard '_' binds nothing; write it alone (SPEC 2.5)."
+
+  + Name="Syntax.DetachedDuring"
+    Description="a 'during' annotation stays on the Type's line"
+    Phrase="'during' annotation on its own line"
+    Advice="Keep 'during' on the Type's line, or enclose the Type and its annotation in parentheses."
+
+  + Name="Syntax.CaptureOperation"
+    Description="a capture names its operation"
+    Phrase="'move', 'ref' or 'uniq' as the capture operation"
+    Advice="A capture is 'name', 'name@move', 'name@ref' or 'name@uniq'; 'var' combines only with a bare entry or '@move' (SPEC 7.6)."
+
+  + Name="Syntax.Constraint"
+    Description="a clause block lists Constraints"
+    Phrase="Constraint"
+    Advice="A signature's clause block holds Constraints such as 'T is Contract' and 'origin' clauses."
+
+  + Name="Syntax.OfKeyword"
+    Description="a fixed-array Type names its element Type after 'of'"
+    Phrase="'of'"
+    Advice="A fixed-array Type is '[length of Type]'."
+
+  + Name="Syntax.PatternLiteral"
+    Description="a literal Pattern is an integer, char, string or bool"
+    Phrase="integer, char, string or bool literal Pattern"
+    Advice="A literal Pattern is an integer (optionally negative), a char, a string, true or false; a floating-point value is not matched."
+
+  + Name="Syntax.CasePattern"
+    Description="a case Pattern names its case"
+    Phrase="qualified case Pattern"
+    Advice="Name the case with its Type ('Shape.Circle') or infer the Type with a leading dot ('.Circle'); bind a value with 'let name' or 'var name'."
+
+  + Name="Syntax.Pattern"
+    Description="a Pattern is written"
+    Phrase="Pattern"
+    Advice="A Pattern is a literal, '_', 'let name', 'var name', a Tuple of Patterns or a case such as '.Circle(let radius)'."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

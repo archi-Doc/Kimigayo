@@ -91,6 +91,19 @@ public class ForParseTest
     }
 
     [Fact]
+    public void ReportsTheBindingBeyondTheSixtyFourthAsAResourceLimit()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var slots = string.Join(", ", Enumerable.Range(0, 65).Select(static i => "var s" + i));
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "func f(values: Values)\n    for (" + slots + ") in values\n        ()\n");
+
+        var diagnostic = Assert.Single(TestDiagnostics.Of(kotonoha));
+        Assert.Equal(nameof(DiagnosticCode.ForBindingLimit_Kd), diagnostic.Code);
+        Assert.Equal("s64", diagnostic.Text);
+    }
+
+    [Fact]
     public void PreservesForExpressionsThroughSerializationAndUnparse()
     {
         const string Source = """

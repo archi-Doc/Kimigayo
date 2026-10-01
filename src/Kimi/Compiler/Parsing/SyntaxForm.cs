@@ -164,4 +164,76 @@ public enum SyntaxForm : ushort
 
     /// <summary>The value parameter of a setter.</summary>
     SetterValueParameter,
+
+    /// <summary>An 'origin' clause after an accessor or an executable item.</summary>
+    OriginClause,
+
+    /// <summary>A Constraint prefix after an executable item, or one whose subject the declaration does not permit.</summary>
+    ConstraintPrefix,
+
+    /// <summary>A '?' after a bare Semantics shorthand such as 'ref'.</summary>
+    SemanticsShorthandSuffix,
+
+    /// <summary>'move' or 'copy' written as a Semantics prefix.</summary>
+    OperationAsSemanticsPrefix,
+
+    /// <summary>An Origin annotation on the borrow layer of an adaptation target.</summary>
+    AdaptationOrigin,
+
+    /// <summary>A 'during' annotation after an ungrouped adaptation target.</summary>
+    AdaptationDuring,
+
+    /// <summary>An if expression nested directly in the body of an if.</summary>
+    NestedIfExpression,
+
+    /// <summary>The '=>' that introduces a body nested in an expression body.</summary>
+    ArrowBody,
+
+    /// <summary>A body-bearing expression such as if, match, for or func in a header.</summary>
+    HeaderBodyExpression,
+
+    /// <summary>A try expression as the direct operand of a prefix operator.</summary>
+    TryOperand,
+
+    /// <summary>A second range operator in one range.</summary>
+    ChainedRange,
+
+    /// <summary>The operand of a '$' prefix: abort(expression) or tryWrite(writer, literal).</summary>
+    DollarOperand,
+
+    /// <summary>The one Type argument of a conversion operation.</summary>
+    ConversionTypeArgument,
+
+    /// <summary>A compound array length that is not parenthesized.</summary>
+    CompoundArrayLength,
+
+    /// <summary>The Function Parameter List before '->'.</summary>
+    FunctionParameterList,
+
+    /// <summary>A 'length' parameter outside a function's Type parameter list.</summary>
+    LengthParameter,
+
+    /// <summary>'var' on the wildcard '_'.</summary>
+    WildcardBinding,
+
+    /// <summary>A 'during' annotation on its own line.</summary>
+    DetachedDuring,
+
+    /// <summary>The operation of a capture: move, ref or uniq.</summary>
+    CaptureOperation,
+
+    /// <summary>A Constraint in a signature's clause block.</summary>
+    Constraint,
+
+    /// <summary>The 'of' between a length and an element Type.</summary>
+    OfKeyword,
+
+    /// <summary>A literal Pattern: an integer, char, string or bool literal.</summary>
+    PatternLiteral,
+
+    /// <summary>A qualified case Pattern.</summary>
+    CasePattern,
+
+    /// <summary>A Pattern.</summary>
+    Pattern,
 }

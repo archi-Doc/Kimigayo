@@ -168,6 +168,7 @@ public enum DiagnosticCode
     GenerationFailed_Kd,
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
+    ForBindingLimit_Kd,
 
     DeferredExpansionLimit_Kd,
     InternalInvariant_Kd,

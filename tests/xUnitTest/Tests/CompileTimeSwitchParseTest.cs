@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Excluded-region structure checks still report legacy syntax codes until their sites migrate (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -212,9 +210,9 @@ public class CompileTimeSwitchParseTest
     [Theory]
     [InlineData("#switch", DiagnosticCode.EmptyCompileTimeSwitch_Kd)]
     [InlineData("#switch\n    ()", DiagnosticCode.InvalidCompileTimeSwitchItem_Kd)]
-    [InlineData("#switch\n    #case true", DiagnosticCode.EmptyExecutableBlock_Kd)]
+    [InlineData("#switch\n    #case true", DiagnosticCode.MissingSyntax_Kd)]
     [InlineData("#switch\n    ;\n    #case true\n        ()", DiagnosticCode.SemicolonNotAllowed_Kd)]
-    [InlineData("#switch value\n    #case _\n        ()", DiagnosticCode.UnexpectedTrailingToken_Kd)]
+    [InlineData("#switch value\n    #case _\n        ()", DiagnosticCode.ExpectedSyntax_Kd)]
     public void ExcludedSwitchStillValidatesItsSourceStructure(string target, DiagnosticCode diagnostic)
     {
         var compilation = Parse($"#if false\n{target}\nvar following = 1");

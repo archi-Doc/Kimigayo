@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Expectations name legacy syntax codes of reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
@@ -966,7 +964,7 @@ public class ParserRegressionTest
     {
         var (_, diagnostics) = Parse(source);
         Assert.True(unexpected == diagnostics.Length, string.Join("; ", diagnostics.Select(x => x.ToString())));
-        Assert.Equal(unexpected, diagnostics.Count(x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd)));
+        Assert.Equal(unexpected, diagnostics.Count(x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd)));
     }
 
     // SPEC 8.4.3: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and

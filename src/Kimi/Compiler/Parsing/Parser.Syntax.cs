@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Arc.Collections;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -136,7 +134,7 @@ public static partial class Parser
                 };
                 if (operation is null)
                 {
-                    reader.Diagnostic.Add(op.Span, DiagnosticCode.UnexpectedToken_Kd, "capture operation");
+                    reader.Expect(SyntaxForm.CaptureOperation, op);
                 }
 
                 end = op.Span.End;
@@ -244,7 +242,7 @@ public static partial class Parser
 
             if (!IsTypeConstraintStart(ref reader, declarationContext: true))
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constraint");
+                reader.Expect(SyntaxForm.Constraint);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 continue;
             }
@@ -295,7 +293,7 @@ public static partial class Parser
         }
         else
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "of");
+            reader.Expect(SyntaxForm.OfKeyword);
         }
 
         Koto element;
@@ -441,10 +439,10 @@ public static partial class Parser
         {
             reader.Advance();
             var name = ParseName(ref reader);
-            if (name is IdentifierNameKoto { IdentifierName: "_" })
+            if (name is ErrorKoto)
             {
-                // let _ and var _ are invalid; use the wildcard Pattern instead (SPEC 14.8.2).
-                name.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "_");
+                // '_' is not a Name (SPEC 2.5): 'let _' and 'var _' are reported as a missing Name, and the arm's Pattern rests on it.
+                return name;
             }
 
             return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind == TokenKind.Let ? "let " : "var ", [name]);
@@ -484,7 +482,8 @@ public static partial class Parser
             var literal = ParsePrimaryExpression(ref reader);
             if ((negative && literal is not NumberLiteralKoto { IsInteger: true }) || literal is NumberLiteralKoto { IsInteger: false })
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Pattern literal");
+                // The value matches nothing; the arm's Pattern rests on the Error.
+                return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, literal.Span.End)) { Cause = reader.Expect(SyntaxForm.PatternLiteral, token) };
             }
 
             return negative ? KotoHelper.NewUnaryKoto(ref reader, token, literal) : literal;
@@ -496,6 +495,7 @@ public static partial class Parser
         }
 
         Koto reference;
+        DiagnosticKey? cause = null; // A malformed case Pattern is read to its end and then rests on the Error.
         if (token.Kind == TokenKind.Dot)
         {
             reference = ParseInferredCase(ref reader);
@@ -524,13 +524,15 @@ public static partial class Parser
 
             if (!qualified)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Case Pattern");
+                cause = reader.Expect(SyntaxForm.CasePattern, token); // A bare Name names no case.
             }
         }
 
         if (!reader.TryConsume(TokenKind.OpenParenthesis))
         {
-            return new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
+            return cause is { } bare
+                ? new ErrorKoto(ref reader, reference.Span) { Cause = bare }
+                : new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
         }
 
         var patterns = default(TemporaryKotoList);
@@ -545,12 +547,14 @@ public static partial class Parser
 
         if (patterns.Count == 0)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            cause ??= reader.Expect(SyntaxForm.Pattern);
         }
 
         reader.TryConsume(TokenKind.CloseParenthesis, out var end, true);
         var payload = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End)), KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
-        return new SyntaxFormKoto(ref reader, payload.Span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);
+        return cause is { } malformed
+            ? new ErrorKoto(ref reader, payload.Span) { Cause = malformed }
+            : new SyntaxFormKoto(ref reader, payload.Span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);
     }
 
     internal static Koto ParseEnumCase(ref TokenReader reader)
@@ -594,18 +598,8 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.NumericLiteral)
         {
-            var token = reader.Read();
-            var text = reader.GetSpan(token);
-            foreach (var c in text)
-            {
-                if (c is < '0' or > '9')
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Tuple index");
-                    break;
-                }
-            }
-
-            return new NumberLiteralKoto(ref reader, token);
+            // The tokenizer ends a numeric literal after '.' at its digits, so the index is a digit sequence.
+            return new NumberLiteralKoto(ref reader, reader.Read());
         }
 
         if (reader.CurrentTokenKind == TokenKind.Init)
@@ -613,7 +607,8 @@ public static partial class Parser
             var token = reader.Read();
             if (reader.CurrentTokenKind != TokenKind.OpenParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                // The reference is not a call; the member rests on the Error.
+                return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.OpenParenthesis) };
             }
 
             return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, "init", []);

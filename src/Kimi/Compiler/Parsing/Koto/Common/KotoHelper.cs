@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using System.Text;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -152,7 +150,8 @@ public static partial class KotoHelper
             }
             else
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
@@ -227,7 +226,8 @@ public static partial class KotoHelper
             }
             else if (token.Kind != TokenKind.Dot)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 

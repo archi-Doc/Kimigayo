@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -55,7 +53,7 @@ public static partial class Parser
             {
                 if (parameter is not IdentifierNameKoto { IdentifierName: not ("_" or "static") })
                 {
-                    reader.Diagnostic.Add(parameter.Span, DiagnosticCode.IdentifierExpected_Kd);
+                    parameter.Expected(SyntaxForm.Name);
                 }
             }
         }

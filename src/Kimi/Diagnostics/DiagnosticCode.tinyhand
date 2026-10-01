@@ -735,6 +735,12 @@
     Arguments="requiredBytes:Number,limitBytes:Number"
     Evidence="table:Text"
     Label="ownership storage limit reached for {2} in this function"
+
+  + Name="ForBindingLimit_Kd"
+    Category="Resource"
+    Message="A for header declares at most 64 bindings"
+    Label="binding beyond the 64th"
+    Advice="Iterate over fewer Tuple elements per for header, or bind the Tuple to one Name and read its elements in the body."
     Advice="If this body contains independent work, move that work into smaller functions. This limit does not make the source invalid under the language rules."
 
   + Name="ProjectPreparationFailed_Kd"
