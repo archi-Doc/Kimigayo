@@ -25,7 +25,29 @@ public class DivisionEmissionTest
         { "DivisionSnapshot", Snapshot + "\nConsole.writeLine(\"ok\")" },
         { "DivisionDeferLoop", "var x = 64\nloop\n    defer => x /= 2\n    if x == 2 => exit\n    continue\nif x == 1 => Console.writeLine(\"ok\")\nConsole.writeLine(\"ok\")" },
         { "DivisionOperandTransfer", "var x = 12\nlet y = label outer: do\n    defer => Console.writeLine(\"ok\")\n    x /= (if true => exit to outer 9 else => 0)\n    exit to outer 0\nif x == 12 and y == 9 => Console.writeLine(\"ok\")" },
+        { "DivisionRemainderDuringCleanup", "var x = -2147483648\ndefer\n    x %= -1\n    if x == 0 => Console.writeLine(\"ok\")\nConsole.writeLine(\"ok\")" },
     };
+
+    // SPEC 13.3: a % -1 is 0 for every dividend, including the minimum, with a literal or a dynamic divisor.
+    [Theory]
+    [InlineData("%", false)]
+    [InlineData("%=", false)]
+    [InlineData("%", true)]
+    [InlineData("%=", true)]
+    public void RemainderOfTheMinimumByMinusOneIsZero(string op, bool variable)
+    {
+        var compound = op.Length == 2;
+        var divisor = variable ? "d" : "-1";
+        var prefix = variable ? "var d = -1\n" : string.Empty;
+        var source = compound
+            ? $"{prefix}var x = -2147483648\nx %= {divisor}\nif x == 0 => Console.writeLine(\"ok\")"
+            : $"{prefix}var x = -2147483648\nif x % {divisor} == 0 and -2147483648 % {divisor} == 0 => Console.writeLine(\"ok\")";
+        var name = $"DivisionRemainderMinimum{(compound ? "Assign" : "Binary")}{(variable ? "Variable" : "Literal")}";
+        var ir = ScalarEmissionTest.EmitFixture(name, source, "ok\n");
+        // A dynamic divisor is substituted through %safe; a literal -1 is written as 1, so srem never sees -1.
+        Assert.Equal(variable, ir.Contains("%safe", StringComparison.Ordinal));
+        Assert.DoesNotMatch(@"= srem i32 [^\n]*, -1\n", ir);
+    }
 
     [Theory]
     [MemberData(nameof(Fixtures))]
@@ -38,17 +60,13 @@ public class DivisionEmissionTest
     [InlineData("/=", false, false)]
     [InlineData("%=", false, false)]
     [InlineData("/", true, false)]
-    [InlineData("%", true, false)]
     [InlineData("/=", true, false)]
-    [InlineData("%=", true, false)]
     [InlineData("/", false, true)]
     [InlineData("%", false, true)]
     [InlineData("/=", false, true)]
     [InlineData("%=", false, true)]
     [InlineData("/", true, true)]
-    [InlineData("%", true, true)]
     [InlineData("/=", true, true)]
-    [InlineData("%=", true, true)]
     public void ExceptionalInputsAbortAtTheOperator(string op, bool overflow, bool variable)
     {
         var compound = op.Length == 2;
@@ -67,7 +85,7 @@ public class DivisionEmissionTest
     [InlineData("DivisionOuterFailure", "var x = -2147483648\nvar a = 1\nvar b = -1\nx /= a / b", "", 4, 1, true)]
     [InlineData("DivisionBeforeCleanup", "let y = label work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work 1 / 0\nConsole.writeLine(\"bad\")", "", 3, 18, false)]
     [InlineData("DivisionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    1 / 0\n    Console.writeLine(\"bad\")", "begin\n", 4, 5, false)]
-    [InlineData("RemainderDuringCleanup", "var x = -2147483648\ndefer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    x %= -1\n    Console.writeLine(\"bad\")", "begin\n", 5, 5, true)]
+    [InlineData("QuotientDuringCleanup", "var x = -2147483648\ndefer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    x /= -1\n    Console.writeLine(\"bad\")", "begin\n", 5, 5, true)]
     public void FailureStopsAtTheActualEvaluation(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? OverflowReason : ZeroReason)}\n");
 
@@ -80,14 +98,17 @@ public class DivisionEmissionTest
         using var writer = new StringWriter();
         module.WriteIr(writer);
         var ir = writer.ToString();
-        var divisions = function.Instructions.Where(x => x.Check == ArithmeticCheckKind.Division).ToArray();
+        var divisions = function.Instructions.Where(x => x.Check is ArithmeticCheckKind.Division or ArithmeticCheckKind.DivisionZero).ToArray();
         Assert.Equal(3, divisions.Length);
+        Assert.Equal(2, divisions.Count(x => x.Check == ArithmeticCheckKind.Division));
         foreach (var instruction in divisions)
         {
             Assert.True(instruction.Constant >= 0);
-            Assert.Contains($"br i1 %invalid{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
+            var quotient = instruction.Check == ArithmeticCheckKind.Division;
+            Assert.Equal(quotient ? "sdiv" : "srem", instruction.ScalarOperator);
+            Assert.Contains($"br i1 {(quotient ? "%invalid" : "%zero")}{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
             Assert.Contains($"b{instruction.Place}:\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", ir);
-            Assert.Contains($"call void @__kimi_abort(i32 %v{instruction.Place},", ir);
+            Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {WindowsLowering.IntegerDivisionZeroReason},", ir);
         }
 
         var phi = Assert.Single(function.Instructions, x => x.Opcode == EmissionOpcode.Phi);
@@ -172,7 +193,7 @@ public class DivisionEmissionTest
     [InlineData("1 / 0", false)]
     [InlineData("1 % 0", false)]
     [InlineData("(-9223372036854775807 - 1) / -1", false)]
-    [InlineData("(-9223372036854775807 - 1) % -1", false)]
+    [InlineData("(-9223372036854775807 - 1) % -1", true)]
     [InlineData("7 / -3 + 3", true)]
     [InlineData("7 % -3", true)]
     [InlineData("(-9223372036854775807 - 1) % 1", true)]
@@ -183,15 +204,15 @@ public class DivisionEmissionTest
     }
 
     [Theory]
-    [InlineData("/", false)]
-    [InlineData("%", false)]
-    [InlineData("/", true)]
-    [InlineData("%", true)]
-    public void ConstantLengthChecksUseTheTargetWidth(string op, bool valid)
+    [InlineData("/", "-1", false)]
+    [InlineData("/", "1", true)]
+    [InlineData("%", "-1", true)]
+    [InlineData("%", "0", false)]
+    public void ConstantLengthChecksUseTheTargetWidth(string op, string divisor, bool valid)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("i686-unknown-linux-gnu"));
-        var expression = $"(-2147483647 - 1) {op} {(valid ? "1" : "-1")}";
+        var expression = $"(-2147483647 - 1) {op} {divisor}";
         if (op == "/" && valid)
         {
             expression = $"({expression}) + 2147483647 + 1";

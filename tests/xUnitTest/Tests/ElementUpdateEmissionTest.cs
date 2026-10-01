@@ -63,6 +63,7 @@ public class ElementUpdateEmissionTest
     [InlineData("Remainder", "%=", "85", "43", "42")]
     [InlineData("NegativeDivide", "/=", "-85", "2", "-42")]
     [InlineData("NegativeRemainder", "%=", "-85", "43", "-42")]
+    [InlineData("RemainderMinimum", "%=", "-9223372036854775808", "-1", "0")] // SPEC 13.3: the remainder by -1 is 0.
     public void DivisionAndRemainderUseCheckedIntegerRules(string name, string op, string initial, string rhs, string expected)
         => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, $"var a: [1 of i64] = [{initial}]\na[0] {op} {rhs}\nif a[0] == {expected} => Console.writeLine(\"ok\")", "ok\n");
 
@@ -95,7 +96,6 @@ public class ElementUpdateEmissionTest
     [InlineData("DivideZero", "i64", "42", "a[0] /= 0", "INT_DIV_ZERO", "Integer division or remainder by zero")]
     [InlineData("RemainderZero", "u64", "42", "a[0] %= 0", "INT_DIV_ZERO", "Integer division or remainder by zero")]
     [InlineData("DivideMinimum", "i64", "-9223372036854775808", "a[0] /= -1", "INT_OVERFLOW", "Integer overflow")]
-    [InlineData("RemainderMinimum", "i64", "-9223372036854775808", "a[0] %= -1", "INT_OVERFLOW", "Integer overflow")]
     public void ArithmeticFailurePreventsStoreResultAndCleanup(string name, string type, string initial, string expression, string code, string reason)
     {
         var source = $"var a: [1 of {type}] = [{initial}]\ndefer => Console.writeLine(\"bad\")\n{expression}\nConsole.writeLine(\"bad\")";

@@ -121,8 +121,12 @@ internal enum ArithmeticCheckKind : byte
 {
     None,
     Overflow,
+
+    /// <summary>Signed quotient: a zero divisor and the minimum / −1 pair Abort.</summary>
     Division,
-    UnsignedDivision,
+
+    /// <summary>Unsigned quotient, or any remainder: only a zero divisor Aborts; a signed remainder by −1 is 0 (SPEC 13.3).</summary>
+    DivisionZero,
     Shift,
     Conversion,
     Bounds,

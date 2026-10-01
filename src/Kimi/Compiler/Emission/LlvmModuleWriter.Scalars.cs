@@ -230,10 +230,25 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
         }
-        else if (instruction.Check == ArithmeticCheckKind.UnsignedDivision)
+        else if (instruction.Check == ArithmeticCheckKind.DivisionZero)
         {
             WriteEquality(output, "%zero", id, type!, operands[1], 0);
             WriteArithmeticFailure(output, constants, instruction, "%zero");
+            if (SubstitutesRemainderDivisor(instruction, operands))
+            {
+                // SPEC 13.3: a % -1 is 0 for every a, and srem must never see the minimum / -1 pair, so a divisor of -1
+                // becomes 1. A literal -1 is written as 1 directly below.
+                WriteEquality(output, "%minusone", id, type!, operands[1], -1);
+                Name(output, "  %safe", id);
+                Name(output, " = select i1 %minusone", id);
+                output.Write(", ");
+                output.Write(type);
+                output.Write(" 1, ");
+                output.Write(type);
+                output.Write(' ');
+                WriteOperand(output, operands[1]);
+                output.Write('\n');
+            }
         }
         else if (instruction.Check == ArithmeticCheckKind.Shift)
         {
@@ -287,6 +302,14 @@ internal static partial class LlvmModuleWriter
         {
             Name(output, "%shift", id);
         }
+        else if (SubstitutesRemainderDivisor(instruction, operands))
+        {
+            Name(output, "%safe", id);
+        }
+        else if (IsLiteralMinusOneRemainder(instruction, operands))
+        {
+            output.Write('1');
+        }
         else
         {
             WriteOperand(output, operands[1]);
@@ -294,6 +317,13 @@ internal static partial class LlvmModuleWriter
 
         output.Write('\n');
     }
+
+    // A signed remainder by a dynamic divisor substitutes 1 for -1 (SPEC 13.3); a literal -1 needs no select.
+    private static bool SubstitutesRemainderDivisor(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+        => instruction.Check == ArithmeticCheckKind.DivisionZero && instruction.ScalarOperator == "srem" && operands[1].Kind != EmissionOperandKind.Integer;
+
+    private static bool IsLiteralMinusOneRemainder(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+        => instruction.Check == ArithmeticCheckKind.DivisionZero && instruction.ScalarOperator == "srem" && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value == -1;
 
     private static void WriteAlignment(TextWriter output, int alignment)
     {
@@ -346,7 +376,7 @@ internal static partial class LlvmModuleWriter
         var reasonId = instruction.Check switch
         {
             ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
-            ArithmeticCheckKind.UnsignedDivision => WindowsLowering.IntegerDivisionZeroReason,
+            ArithmeticCheckKind.DivisionZero => WindowsLowering.IntegerDivisionZeroReason,
             ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,

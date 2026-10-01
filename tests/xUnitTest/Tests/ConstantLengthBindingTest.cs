@@ -17,6 +17,7 @@ public class ConstantLengthBindingTest
     [InlineData("let Min: i128 = -170141183460469231731687303715884105728\nlet row: [(Min - Min) of u8]", 0)]
     [InlineData("let Small: u8 = 1\nlet row: [((200 + 54) + Small) of u8]", 255)]
     [InlineData("let row: [((-9223372036854775808 + 9223372036854775807) + 1) of u8]", 0)]
+    [InlineData("let N: isize = -9223372036854775808\nlet row: [(N % -1) of u8]", 0)]
     [InlineData("group Dimensions\n    private let Width: isize = 4\n    public func f(row: [Width of u8]) => ()", 4)]
     [InlineData("group Dimensions\n    public let Width: isize = Height + 1\n    private let Height: isize = 3\nfunc f(row: [Dimensions.Width of u8]) => ()", 4)]
     public void ConstantReadableBindingsFormLengths(string source, long expected)
@@ -38,7 +39,7 @@ public class ConstantLengthBindingTest
     [InlineData("let N: u8 = 1\nlet row: [((255 + N) - N) of u8]")]
     [InlineData("let N: u128 = 340282366920938463463374607431768211455\nlet row: [((N + 1) - N) of u8]")]
     [InlineData("let N: i128 = -170141183460469231731687303715884105728\nlet row: [(-N) of u8]")]
-    [InlineData("let N: isize = -9223372036854775808\nlet row: [(N % -1) of u8]")]
+    [InlineData("let N: isize = -9223372036854775808\nlet row: [(N / -1) of u8]")]
     [InlineData("let N = 4\nlet row: [(N / 0) of u8]")]
     [InlineData("let N = 4\nlet row: [(N % 0) of u8]")]
     [InlineData("let N = -1\nlet row: [N of u8]")]
