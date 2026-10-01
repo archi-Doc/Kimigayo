@@ -1,0 +1,84 @@
+// Milestone 42: wrapping integers, integer results and conversions - Wrapping<T> arithmetic, the wrapping and bit
+// conversions, exact direct literals, generic wrapping bodies, and a hash and a generator built on them.
+
+// FNV-1a: the xor and the multiply wrap by Type, so nothing is masked and nothing is checked.
+func fnv1a(bytes: Slice<u8>) -> u32
+    var hash: Wrapping<u32> = 0x811C_9DC5
+    for b in bytes
+        let byte: u8 = b
+        hash = (hash ^ byte@wrap<Wrapping<u32>>) * 0x0100_0193
+    return hash@u32
+
+// xorshift64*: every step wraps, and the state's Type says so.
+struct Xorshift
+    var state: Wrapping<u64>
+    public init(seed: u64) => self.state = seed@Wrapping<u64>
+    public func next(self: uniq/Self) -> u64
+        self.state ^= self.state >> 12
+        self.state ^= self.state << 25
+        self.state ^= self.state >> 27
+        return (self.state * 0x2545_F491_4F6C_DD1D)@u64
+
+// A generic wrapping sum over any integer Type, returned in that Type.
+func checksum<T>(values: Slice<T>) -> T
+    T is PrimitiveInteger
+    var sum: Wrapping<T> = 0
+    for value in values
+        let read: T = value
+        sum += read@Wrapping<T>
+    return sum@T
+
+public func main()
+    // An integer Type Aborts on an unrepresentable result; the one defined reduction, MIN % -1, is 0.
+    let minimum: i32 = -2147483648
+    let divisor: i32 = -1
+    require minimum % divisor == 0 and minimum % -1 == 0 and 7 % -3 == 1 and -7 / 2 == -3 else => $abort("Integer results failed")
+
+    // Wrapping<T> wraps modulo 2^N, negation and the signed minimum / -1 included, and formats as its argument.
+    var counter: Wrapping<u8> = 250
+    counter += 10
+    var signed: Wrapping<i8> = 127
+    signed++
+    let product = 0x1_0000@Wrapping<u32> * 0x1_0000
+    Console.writeLine("Wrapped \(counter), \(signed), \(product), \(-signed), \(signed / -1).")
+
+    // @Type keeps the value over the same argument, @wrap wraps across a width or sign boundary, @bits reinterprets.
+    let mask = -1@wrap<u64>
+    let low = 0x1_0000_0005@wrap<u32>
+    let narrowed = (200 + 100)@wrap<u8>
+    let halfBits = 1.5@bits<u32>
+    let half = halfBits@bits<f32>
+    let negativeInfinity = 0xFF80_0000@bits<f32>
+    require mask == 18446744073709551615 and low == 5 and half == 1.5 and negativeInfinity < -3.0e38 else => $abort("Conversions failed")
+    Console.writeLine("Half is \(halfBits) in bits; 300 wraps to \(narrowed); \(counter@u8) leaves the wrapping Type.")
+
+    // A direct literal converts from its exact value: no intermediate Type, and a misfit is a compile-time error.
+    let truncated = 3.9@i32
+    let exact = 9007199254740993.0@i64
+    let huge = 1e38@u128
+    Console.writeLine("Literals \(truncated), \(exact), \(huge).")
+
+    // The hash over the bytes of a text and over the bytes of a float's bits.
+    let text = "Kimigayo"
+    var floatBytes: [4 of u8] = [0, 0, 0, 0]
+    for i in 0..4
+        floatBytes[i] = (halfBits >> (i * 8))@wrap<u8>
+    Console.writeLine("Hashes \(fnv1a(Text.utf8(text).bytes())) and \(fnv1a(floatBytes[..])).")
+
+    // The generator, and the checksum of bytes and of 64-bit draws.
+    var generator = Xorshift.init(42)
+    var draws: [4 of u64] = [0, 0, 0, 0]
+    for i in 0..4
+        draws[i] = generator.next()
+    let bytes: [5 of u8] = [250, 10, 1, 2, 3]
+    Console.writeLine("Draws \(draws[0] % 100) \(draws[1] % 100) \(draws[2] % 100) \(draws[3] % 100); checksums \(checksum(bytes[..])) and \(checksum(draws[..])).")
+
+    // A wrapping Type is a Dictionary key and a Pattern subject through its argument's values.
+    var seen: Dictionary<Wrapping<u8>, i32> = [255: 1, 4: 2]
+    seen[counter] = 3
+    match counter
+        4 => ()
+        _ => $abort("Pattern failed")
+    match seen.tryGet(counter)
+        .Some(let count) => Console.writeLine("Counter wrapped to \(counter), a key seen \(count) times.")
+        .None => $abort("Key lookup failed")

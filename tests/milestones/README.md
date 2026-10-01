@@ -1,7 +1,7 @@
 # Language milestones
 
-Forty-one independent programs are planned from the current [SPEC](../../docs/SPEC.md).
-Programs 1–33 have source files; programs 34–40 have design and verification scopes.
+Forty-two independent programs are planned from the current [SPEC](../../docs/SPEC.md).
+Programs 1–33, 41 and 42 have source files; programs 34–40 have design and verification scopes.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
 not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
@@ -139,6 +139,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
 | 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
+| 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
 
 [Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero
@@ -218,6 +219,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | 39 | Semantics-generic follow | A pair `s/T` Place followed to its stored target under the admitted Semantics set; generic accessors over `Collection<s/T>` returning `ref/T` or `uniq/T` |
 | 40 | Disjoint exclusive element access | Simultaneous exclusive borrows of distinct elements of one collection through a splitting operation over the internal storage boundary |
 | 41 | Positions and ranges | From-end positions, independently typed range boundaries, closed ranges, generic position/range APIs, value read, resolution and formatting |
+| 42 | Wrapping integers, integer results and conversions | `Wrapping<T>` arithmetic, `MIN % -1`, `@wrap` and `@bits`, exact direct literals, generic `Wrapping<T>` bodies, wrapping keys and Patterns, a hash and a generator |
 
 ### Number migration from the 34-program plan
 
@@ -2021,6 +2023,37 @@ Focus: [positions](../../docs/spec/04-arrays-indexing-and-slices.md#462-position
 [resolution](../../docs/spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure),
 [value read](../../docs/spec/03-types-and-values.md#353-value-read) and
 [closed Contracts](../../docs/spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts).
+
+## Milestone 42: Wrapping integers, integer results and conversions
+
+An integer Type Aborts on an unrepresentable result and `MIN % -1` is 0; `Wrapping<T>` wraps modulo 2^N through
+`+=`, `++`, `*`, negation and the signed minimum / −1, and formats as its argument. `@Type` keeps the value over the
+same argument, `@wrap` wraps across a width or sign boundary (`-1@wrap<u64>`, `(200 + 100)@wrap<u8>`) and `@bits`
+reinterprets a float's bits in both directions. Direct literals convert from their exact value (`3.9@i32`,
+`9007199254740993.0@i64`, `1e38@u128`). FNV-1a over the bytes of a text and of a float's bits, an xorshift64*
+generator whose state is `Wrapping<u64>`, and a generic `checksum<T>` over `Wrapping<T>` are built on these; a wrapping
+Type is a Dictionary key and a Pattern subject by its argument's values.
+
+Expected stdout:
+
+```text
+Wrapped 4, -128, 0, -128, -128.
+Half is 1069547520 in bits; 300 wraps to 44; 4 leaves the wrapping Type.
+Literals 3, 9007199254740993, 100000000000000000000000000000000000000.
+Hashes 1093368299 and 2595871832.
+Draws 0 98 46 35; checksums 10 and 15781573103004042447.
+Counter wrapped to 4, a key seen 3 times.
+```
+
+Separate checks are unit tests: `WrappingIntegerTest` (capability matrix, arithmetic, generic bodies, keys, Patterns and
+rejections), `WrapConversionTest`, `BitConversionTest`, `NumericConversionEmissionTest` (direct literals) and
+`DivisionEmissionTest` (integer results). A reference operand is not value-read by a conversion yet (`b@u32` with
+`b: ref/u8` is Unsupported), so the program reads iterated values into typed bindings first.
+
+Focus: [wrapping integer Types](../../docs/spec/03-types-and-values.md#3111-wrapping-integer-types),
+[integer results](../../docs/spec/13-operators-and-assignment.md#133-arithmetic-operators),
+[numeric conversions and literals](../../docs/spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals) and
+[PrimitiveInteger](../../docs/spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger).
 
 ### Programs 22–24 authoring verification (2026-09-22)
 
