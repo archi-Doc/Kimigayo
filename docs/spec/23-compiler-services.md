@@ -154,7 +154,7 @@ A **diagnostic record** holds only the fields that have a basis:
 | Omissions | The parts that limits summarized or omitted, with counts when known. |
 | Display data | Lines and columns, a bounded source excerpt and the alternative text of related locations. Never used for semantic decisions. |
 
-A record holds no compiler object, analysis state or deferred computation. An essential fact is never placed only in an omissible supplement; differences between instantiations or conditions are explained with the parameter, use or Type argument that distinguishes them. The recorded inputs, configuration and reporting unit belong to the result and are not copied into records.
+A record whose primary location lies in [excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) has one related location with the role `excludedBy`, at the innermost excluding directive (the Condition of an `#if`, or the header of a `#case` arm); it is not a Reason fact, so a record keeps its code, primary location and Reason in every Compilation. A record holds no compiler object, analysis state or deferred computation. An essential fact is never placed only in an omissible supplement; differences between instantiations or conditions are explained with the parameter, use or Type argument that distinguishes them. The recorded inputs, configuration and reporting unit belong to the result and are not copied into records.
 
 #### 23.3.6.3. Locations and the source table
 
@@ -336,6 +336,6 @@ When the CSP is introduced, it must:
 - apply edits only against an identified snapshot and return them as reviewable source changes, never as silent file writes;
 - offer repair candidates only as structured edits with stated preconditions and guarantees, never inferred from `Advice` or `Note` prose;
 - report the diagnostic records of §23.3.6 unchanged, with a public schema for their JSON form;
-- give stable handles to syntax and semantic nodes within a snapshot;
+- give stable handles to syntax and semantic nodes within a snapshot; syntax handles include excluded syntax (§19.5) and state that the node is excluded and which innermost directive excludes it, while semantic handles cover selected syntax only;
 - bind every check, test and measurement to its exact source and configuration, and report its outcome and any remaining uncertainty;
 - keep the principle of §23.2 and the outcomes of §23.3.3, and never narrow a language rule.

@@ -31,11 +31,11 @@ The internal name `MacroKoto` defines no language semantics; `$` is the Composit
 
 Verify case-sensitive prepared-environment lookup and collisions under §2.5, including differently cased settings and the rejection of invalid or non-NFC configured names. Selected `#if`/`#case` items share the surrounding scope: verify later name visibility, duplicate declarations, defer registration, cleanup timing and transfer targets without an extra directive scope.
 
-The Parser validates and evaluates each reached Condition against the prepared Compilation environment during parsing. The result is True, False or Error; there is no internal Pending state and no later Directive Binding. Unknown Names are diagnosed immediately at their original source locations.
+The Parser validates every Condition, including those in excluded syntax, against the prepared Compilation environment during parsing. The result is True, False or Error; there is no internal Pending state and no later Directive Binding. Unknown Names are diagnosed immediately at their original source locations.
 
-A validated True `#if` contributes its Target directly, and a False one contributes nothing. An invalid `#if` reports its Condition errors and skips its target for recovery. No `#if` wrapper or pending-condition storage is needed.
+A validated True `#if` contributes its Target directly; a False or invalid one contributes nothing, and its target is parsed as excluded syntax with the same grammar and recovery, so independent syntax errors there are still reported. No `#if` wrapper or pending-condition storage is needed. A directive body is parsed by the item loop of its enclosing owner (root, Container or executable body): a selected body goes into that owner itself, with no later transfer, and excluded syntax goes into a detached owner of the same kind, inside which nothing is selected. Source-order placement state flows through the same loop either way. Excluded syntax never reaches the selected owner's merged declarations, generated root items, Constraints, Origin relations, omission or recovery records, documentation associations or Attributes.
 
-A reached `#switch` validates every explicit arm Condition and parses every arm under §19.3 and §19.5, including nested Conditions in unselected arms, except inside False `#if` targets. After successful validation, it contributes the first matching Block directly. Invalid Case Groups may keep this representation for error recovery:
+A `#switch` validates every arm header and explicit Condition before parsing arm bodies, so its selection is known when each body is parsed; every arm is parsed under §19.3 and §19.5. After successful validation, the selected arm contributes its items directly. Invalid Case Groups may keep this representation for error recovery; their arms remain excluded syntax:
 
 ```text
 CompileTimeSwitchKoto
@@ -44,7 +44,7 @@ CompileTimeSwitchKoto
         Block
 ```
 
-Condition validation never invokes ordinary Binding of excluded syntax. A reported Condition diagnostic keeps its original SourceDocument and span even when the Condition node is discarded. Instantiation and implementation selection never reselect directives or mutate shared Koto. Eager, deferred and cached source parsing must agree on acceptance and on the mandatory diagnostic categories of §19.5.
+Condition validation never invokes ordinary Binding of excluded syntax. A reported Condition diagnostic keeps its original SourceDocument and span even when the Condition node is discarded. Instantiation and implementation selection never reselect directives or mutate shared Koto. Eager, deferred and cached source parsing must agree on acceptance and on every source diagnostic of §19.5. The `excludedBy` related location (§23.3.6.2) is attached when results are finalized, from a per-SourceDocument record of excluded ranges built only for documents that have excluded syntax, so tokenizer diagnostics receive it too.
 
 ## A.3. Binding, caches, and incremental validity
 
@@ -430,7 +430,7 @@ Assert syntax structure, item classification, node identity and source ranges di
 | --- | --- |
 | Lexing and text | Recognized/ordinary/trailing comments, literals/interpolation/block comments, all line endings, EOF, empty text, whitespace, non-BMP text and original UTF-16 mappings |
 | Association | Every target, same-line/multiline Attributes and their interiors, nearest/empty/misindented candidates, headers, scope/file boundaries and syntax recovery |
-| Selection | Incomplete False #if syntax, reached #switch arms with nested exclusions, no migration to surviving declarations, no extra excluded-region parsing |
+| Selection | No association in excluded syntax (False and invalid #if targets, unselected and unselectable #case arms, nested exclusions), no migration to surviving declarations, deferred association when excluded syntax has syntax errors |
 | Markdown blocks and inlines | Every retained feature and interaction; every [profile §2.4 difference](../../spec/documentation-markdown.md#24-omitted-syntax-and-boundary-examples); three/four-column starts inside and outside containers, marker widths and five-space list padding, explicit continuation, tight/loose lists, closed/unclosed fences and incomplete delimiters |
 | Character processing | Escapes and numeric/five named references, code exclusions, literal fallback and no reparsing; pinned Unicode 15.0.0 across cultures/runtimes, whitespace/symbol/unassigned and supplementary characters, including classifications that differ across Unicode versions |
 | Summary and items | First-block rule; plain/code names, decoded colons and exact whitespace, case and non-NFC names, duplicate/overlapping descriptions, root-only extraction, parameter/standard-name collisions, external/generic/Origin names, receiver roles, ambiguous/unknown and not-yet-classified candidates |

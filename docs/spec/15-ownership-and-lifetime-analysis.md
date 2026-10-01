@@ -450,7 +450,7 @@ origin a outlives b
 
 Each clause contains one relation; multiple clauses are conjunctive. Both operands are Origin expressions (§15.2). `origin` and `outlives` are contextual words here. Relations introduce no names. There are no chained comparisons, disjunctions, negations or runtime tests.
 
-A clause is indented once under its declaration. Functions and Types place it in their leading Constraint region. Fields, locals, enum Cases, associated-Type specifications and Container aliases attach clauses to the declaration, before any accessors or other bodies. Syntactic attachment determines the owner, and referenced names must be visible there. A clause never moves to the innermost referenced declaration, and there are no constraint blocks on arbitrary expressions.
+A clause is indented once under its declaration. Functions and Types place it in their leading Constraint region, judged in source order including excluded syntax (§19.5). Fields, locals, enum Cases, associated-Type specifications and Container aliases attach clauses to the declaration, before any accessors or other bodies. Syntactic attachment determines the owner, and referenced names must be visible there. A clause never moves to the innermost referenced declaration, and there are no constraint blocks on arbitrary expressions.
 
 | Owner | Obligation |
 | --- | --- |

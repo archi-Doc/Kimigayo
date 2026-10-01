@@ -272,7 +272,7 @@ A setter may return without updating the storage. Unconsumed input is destroyed 
 
 A stored Type may be inferred only from its declaration initializer; otherwise an annotation is required. It is never inferred from accessors or later assignments. Storage explicitly binds the required Origins, including nested dependencies (§15.4); `self` does not create a self-borrowing storage contract.
 
-Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations (§15.3.4); there is no Origin list after `get` or `set`. Their attached `origin` clauses precede executable items, and a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. Explicit Contract requirement signatures follow the same rules.
+Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations (§15.3.4); there is no Origin list after `get` or `set`. Their attached `origin` clauses precede executable items, judged in source order including excluded syntax (§19.5), and a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. Explicit Contract requirement signatures follow the same rules.
 
 Complete an accessor from an existing storage contract before applying function elision. A stored custom value input or result inherits omitted Origins from the corresponding complete storage Type `T`; explicit bindings are checked, not overwritten. The receiver retains its independent per-call Origin. Verify complete Type correspondence and the body afterward. No new accessor parameter may narrow the calls required by storage.
 

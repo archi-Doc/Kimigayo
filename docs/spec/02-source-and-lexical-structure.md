@@ -144,7 +144,7 @@ A public `main` is a named-function target. Documentation on `rootgroup A.B` bel
 
 ### 2.3.3. Selection and related declarations
 
-Documentation is associated only where §19.5 requires ordinary declaration grammar, using original source positions. False `#if` interiors receive no association and no documentation diagnostics, and unselected syntax requires no additional semantic checks or link resolution. Documentation must not add parsing obligations or migrate to a surviving declaration. Place it after the directive, inside the region the directive controls, including the same-indentation form:
+Documentation is associated only with selected syntax, using original source positions. [Excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) receives no association, publication or documentation diagnostics, and its documentation never migrates to a surviving declaration. Documentation adds no parsing obligation. A SourceDocument with syntax errors, including errors in its excluded syntax, defers its associations; such a document cannot be built, so accepted documents are unaffected. Place it after the directive, inside the region the directive controls, including the same-indentation form:
 
 ```kimi
 #if windows

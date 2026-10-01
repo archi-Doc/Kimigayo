@@ -27,7 +27,7 @@ Source can name only directly referenced Kotonoha libraries, by their reference 
 | `alias Path` | Opens the Container's direct members in their respective namespaces. |
 | `alias Name => Path` | Introduces the target itself as a Type-namespace Qualifier named `Name`. |
 
-Both forms appear at the SourceDocument top level, before ordinary declarations and executable items. Nested aliases and access modifiers on named aliases are invalid. Directive selection and generation follow Chapter 19. `Name` is one ordinary identifier. The right side is a Container reference, not an expression or executable Body.
+Both forms appear at the SourceDocument top level, before ordinary declarations and executable items. This order is judged in source order over selected and excluded items alike (§19.5), and aliases in a root directive target or arm are top-level items. Nested aliases and access modifiers on named aliases are invalid. Directive selection and generation follow Chapter 19. `Name` is one ordinary identifier. The right side is a Container reference, not an expression or executable Body.
 
 A named alias may target only a Kotonoha or a group. It creates no Core, value, storage or declaration identity and does not open the target's members. The opening form keeps its existing Container target range. Neither form adds Container placements or ways to instantiate Containers (§6.1). Where the Container rules permit a group under an instantiated parent, a named alias may refer to that group with all required Type and Origin arguments bound; the alias has no generic parameters of its own.
 

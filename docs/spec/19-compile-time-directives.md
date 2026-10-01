@@ -9,6 +9,7 @@ Compile-time directives select source syntax during compilation, without produci
 | Condition | A compile-time Boolean expression controlling syntax selection. |
 | Prepared environment | The fixed target values and configured compile-time settings available before source selection. |
 | Environment selection | A choice fixed by target values and configured Project settings, independently of generic arguments. |
+| Excluded syntax | The syntax a directive does not select, with everything inside it (§19.5). It is parsed and source-checked but never checked semantically. |
 
 | Form | Purpose |
 | --- | --- |
@@ -65,9 +66,9 @@ A `#switch` header has no subject expression. Its body must contain one or more 
 
 A `#switch` construct is one syntax item, and a preceding `#if` may control it as a whole. Directive indentation groups source items for selection; it introduces no runtime Block or lookup scope. This applies to indented `#if` targets and `#case` bodies alike, both in executable bodies and in Declaration Containers.
 
-**Splicing.** Selected items are spliced into the surrounding list in source order and keep their SourceDocument and CodeContext. The directive creates no lifetime boundary, cleanup point, `defer` registration scope or control-transfer target. A selected `defer` registers in the surrounding executable scope, and selected locals live and are destroyed there under the ordinary rules. Explicit constructs within selected items keep their own scopes. A False `#if` target is excluded. Unselected `#case` arms undergo no ordinary semantic checking and contribute no executable code.
+**Splicing.** Selected items are spliced into the surrounding list in source order and keep their SourceDocument and CodeContext. The directive creates no lifetime boundary, cleanup point, `defer` registration scope or control-transfer target. A selected `defer` registers in the surrounding executable scope, and selected locals live and are destroyed there under the ordinary rules. Explicit constructs within selected items keep their own scopes. [Excluded syntax](#195-diagnostics-and-excluded-syntax) contributes no items and is never checked semantically.
 
-The [nonempty Block rule](14-control-flow.md#1421-nonempty-executable-blocks) checks source structure before selection; removing all executable syntax does not by itself make a Block invalid. Validation of excluded targets follows [§19.5](#195-diagnostics-and-excluded-syntax).
+The [nonempty Block rule](14-control-flow.md#1421-nonempty-executable-blocks) checks source structure before selection; removing all executable syntax does not by itself make a Block invalid. Excluded syntax receives the same source checks as selected syntax (§19.5).
 
 After directive selection and source generation, the final declaration tree is validated against §6.1.1; a selected `rootgroup` remains legal only at the source root. Eligibility checks for tests, specializations and foreign declarations include inherited Type, Semantics and Origin parameters, even through groups and when unused.
 
@@ -86,6 +87,8 @@ A Condition uses only the following closed set of expressions over the prepared 
 All other expression forms are invalid Conditions, including every `is`/`is not` test, calls, runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point, character and null literals. They are rejected wherever §19.3 validates a Condition, including short-circuited operands and later arms. No directive Condition depends on a Type, Semantics, Contract, Origin or generic specialization, in any scope, including function bodies.
 
 **Condition lookup.** Names resolve only in the disjoint built-in and Project-setting environment established before parsing, using the case-sensitive Name rules of §2.5. Built-ins use the spellings of §20.4: `Windows` does not select `windows`, and `POINTERWIDTH` does not select `pointerWidth`. Either is unknown unless configured as a Project setting of its own. Ordinary declarations, generic parameters, aliases, Types, Contracts and runtime values neither supply nor shadow Condition values. A missing Name is an Error (§19.3). Constraints supply no additional Condition values or narrowing facts.
+
+**Name invariant.** The set of Condition Names visible to a SourceDocument, and the Type of each, is the same in every Compilation of its module; Compilations differ only in values. Every built-in value is defined for every target. A future per-target, per-build-mode or command-line setting must likewise declare its Name and Type once per module and vary only its value. A Name that is unknown in one Compilation is therefore unknown in all of them, so its error is never an artifact of the current target.
 
 ```kimi
 windows
@@ -116,11 +119,11 @@ Constraint Clauses and ordinary runtime Type tests keep their separate rules. En
 
 There is no Deferred Condition result, so no generic dependency can defer selection. Generic Binding and instantiation cannot supply missing Condition inputs and never change a valid selection within one fixed Compilation environment.
 
-Truth determination does not waive validation: both operands of `and` and `or` are validated even when one operand determines the truth value. **Error** is absorbing for `and`, `or` and `not`; otherwise they have their ordinary Boolean meaning. For example, `false and missing`, `true or missing`, `debug and missing`, `false and 1` and `true or (T is i32)` are errors when reached. Neither short-circuit truth nor the build mode hides the invalid operand.
+Truth determination does not waive validation: both operands of `and` and `or` are validated even when one operand determines the truth value. **Error** is absorbing for `and`, `or` and `not`; otherwise they have their ordinary Boolean meaning. For example, `false and missing`, `true or missing`, `debug and missing`, `false and 1` and `true or (T is i32)` are errors wherever they appear, including in excluded syntax. Neither short-circuit truth nor the build mode hides the invalid operand.
 
-The single Condition of an `#if` is evaluated. Every explicit Condition of a reached `#switch` is validated, including later arms that cannot change the selection; a catch-all does not suppress their errors. After successful validation, the first True arm in source order is selected and False arms are skipped. If none is True, `#case _` is selected when present; otherwise an error is reported. No arbitrary theorem proving or enumeration of Types is involved.
+**Validation.** Every directive Condition in a SourceDocument is validated, including Conditions inside [excluded syntax](#195-diagnostics-and-excluded-syntax) and the Condition of a `#case` outside a `#switch` body. Every explicit Condition of a `#switch` is validated, including later arms that cannot change the selection; a catch-all does not suppress their errors. Validation is independent of parser scheduling and semantic reachability.
 
-Directive validation reaches source items, the targets of True `#if` directives and **all arms** of a reached `#switch`; it stops at the interiors of False `#if` targets. Thus an unselected `#switch` arm still validates its nested Conditions unless a False `#if` encloses them. This source traversal is independent of parser scheduling and semantic reachability. The [excluded-syntax rules](#195-diagnostics-and-excluded-syntax) specify the remaining checks.
+**Selection.** Only directives outside excluded syntax select. An `#if` selects its target when its Condition is True. A `#switch` selects only when its structure and all of its Conditions are valid: the first True arm in source order is selected, or `#case _` when no arm is True. A valid `#switch` with no True arm and no `#case _` reports a selection error; omitting `#case _` thus deliberately rejects environments that match no arm. Directives inside excluded syntax select nothing and report no selection error. No arbitrary theorem proving or enumeration of Types is involved.
 
 ## 19.4. Name-resolution boundary
 
@@ -145,25 +148,86 @@ The selected body of `example` is the same for every `T` in that Compilation. So
 
 ## 19.5. Diagnostics and excluded syntax
 
-[Documentation association](02-source-and-lexical-structure.md#233-selection-and-related-declarations) follows these parsing boundaries and cannot require ordinary grammar inside False `#if` interiors.
+**Excluded syntax** is the following syntax together with everything inside it:
 
-**Excluded syntax.** Every SourceDocument is tokenized, and all encoding, token and indentation errors are diagnosed. The complete Condition of each reached `#if` is validated before deciding which grammar checks apply to its target. In a False target, only balanced Blocks, required executable bodies, and `#switch`/`#case` structural placement and nonemptiness are checked. Ordinary expression and declaration grammar is skipped there, so an incomplete initializer is allowed. Every reached `#switch` arm is parsed, except inside nested False `#if` targets, and unselected arms skip ordinary semantic checking.
+| Directive | Excluded syntax |
+| --- | --- |
+| `#if` whose Condition is False | Its target |
+| `#if` whose Condition is Error, or whose header is invalid | Its target |
+| `#switch` that selects an arm | Every other arm |
+| `#switch` that selects no arm (an invalid Condition or structure, or no match) | Every arm |
+| `#case` outside a `#switch` body | Its body |
 
-Speculative parsing cannot change acceptance. Speculative ordinary-grammar errors are suppressed in confirmed False `#if` targets, but mandatory token, layout and structure errors are kept. Reached Conditions are validated immediately against the prepared environment under §19.3. An unknown Name is an Error, never False and never an instantiation dependency, regardless of caching or evaluation schedule.
+Directives inside excluded syntax select nothing, so their targets and arms are excluded syntax too. When an `#if` is followed by a `#case` outside a `#switch`, that whole `#case` is the target. Attributes written before a directive attach to the syntax it selects (§6.5); when nothing is selected, they belong to the excluded syntax.
 
-| Check | False `#if` target | Unselected arm of a reached `#switch` |
+**Checks.** Excluded syntax receives exactly the source checks of selected syntax and no semantic checks:
+
+| Check | Selected syntax | Excluded syntax |
 | --- | --- | --- |
-| Tokenization and indentation | Required | Required |
-| Block and directive structure; source-level nonempty executable bodies | Required | Required |
-| Ordinary expression and declaration grammar | Skipped, including speculative diagnostics | Required, except inside nested False `#if` targets |
-| Nested directive Condition evaluation | Skipped | Required under the source-defined traversal, except inside False `#if` targets |
-| Ordinary Name, Type and ownership checks; lowering and code generation | Skipped | Skipped |
+| Encoding, tokens, indentation and block structure | Required | Required |
+| Grammar of items, declarations, expressions, Patterns and Types; modifier and Attribute placement; directive placement and structure (§19.1); source-level nonempty bodies (§14.2.1); unavailable features | Required | Required |
+| Source-order placement rules (below) | Required | Required |
+| Condition validation (§19.2, §19.3) | Required | Required |
+| Selection and the selection error (§19.3) | Required | Not performed |
+| Names, Types and ownership; Attribute resolution; count and uniqueness rules; final declaration-tree validation (§6.1.1); declaration merging; documentation association (§2.3.3); Mod visibility; lowering and code generation | Required | Not performed |
 
-The controlling `#if` Condition and all explicit Conditions of the current `#switch` are checked under [Condition evaluation](#193-condition-evaluation-and-selection), whatever the checks on their targets. An uppercase-initial `#Name` is Attribute syntax, and other lowercase hash forms are errors under §6.5. Attributes in excluded syntax need not be resolved.
+The boundary is the one in §19.1: checks determined by the source alone, before selection and generation, apply everywhere; checks that use the final declaration tree or Names apply only to selected syntax. Apart from Condition validation, source checks read no prepared-environment value. Speculative parsing cannot change acceptance and follows the same rules in selected and excluded syntax. Conditions are validated immediately against the prepared environment; an unknown Name is an Error, never False and never an instantiation dependency, regardless of caching or evaluation schedule.
+
+**Placement and count rules.** A placement rule requires an item to precede other items or to lie in a leading region: aliases precede ordinary declarations and executable items (§18.1.1), and Constraints and Origin relations lie in the leading region of a function, accessor or Type (§7.4, §11.3, §15.3.3). Placement is judged before selection, in source order, over selected and excluded items alike. A directive is not itself an item; the items in its target and in all of its arms count by their own kinds. Count and uniqueness rules, such as one Constraint-defining fragment, at least one selected enum Case (§6.1.1) and no duplicate declarations, are judged after selection over selected items only.
+
+```kimi
+#if windows
+    alias Kimi.Windows
+#if linux
+    alias Kimi.Linux
+alias Kimi.Console      // Valid: only aliases precede it.
+
+func process<T>(value: T) -> ()
+    #if debug
+        log("process")
+    T is Copy           // Error in every build: it follows an executable item in source order.
+
+func store<T>(value: T) -> ()
+    #switch
+        #case debug
+            log("store")
+        #case _
+            T is Copy   // Error: it follows the earlier arm's executable item in source order.
+    return
+
+#switch
+    #case windows
+        func platformName() -> string => "windows"
+    #case _
+        func platformName() -> string => "other" // Valid: uniqueness is judged after selection.
+```
+
+**Environment independence.** For a SourceDocument that is not generated, the code, primary location and Reason of every lexical, grammar, placement and Condition diagnostic, except the selection error, are the same in every Compilation of its module (§19.2). Compilations differ only in selection, in the semantic checks of selected syntax and in the related location that marks excluded syntax. Rewriting independent `#if` directives as a `#switch` with the same selection therefore never changes acceptance:
+
+```kimi
+#if linux
+    let pending =       // Error in every build.
+#if not linux
+    useDefaultPath()
+
+#switch
+    #case linux
+        let pending =   // The same error.
+    #case _
+        useDefaultPath()
+
+#if windows
+    #if useDirectWirte  // Error in every build: unknown Name, even where the outer target is excluded.
+        useDirectWriteRenderer()
+```
+
+**Diagnostics.** A diagnostic in excluded syntax keeps the code, primary location, Reason and Advice it would have in selected syntax. When its primary location lies in excluded syntax, it also carries a related location with the role `excludedBy` at the innermost excluding directive: the Condition of an `#if`, or the header of a `#case` arm (§23.3.6.2). That location is not a Reason fact. An `#if` with an invalid Condition reports the Condition error and the independent syntax errors of its target; the target is never checked semantically, so it causes no Name or Type cascade. A `#case` outside a `#switch` body reports its placement error, and its Condition and body are still validated and parsed.
+
+**Recovery.** Excluded syntax is parsed with the recovery rules of selected syntax and never affects selected syntax: it contributes no merged declaration, root runtime item, Constraint, Origin relation, omission or recovery record, documentation association or Attribute. An invalid Case Group may keep its arms for error recovery, but they remain excluded syntax. An uppercase-initial `#Name` is Attribute syntax, and other lowercase hash forms are errors under §6.5. Attributes in excluded syntax are parsed but not resolved.
 
 ```kimi
 #if false and 1
     useFeature()
 ```
 
-The numeric operand is not Boolean. Short-circuit truth does not waive validation, so this Condition is a compile-time error.
+The numeric operand is not Boolean. Short-circuit truth does not waive validation, so this Condition is a compile-time error. Its target is excluded syntax: it is parsed and source-checked, and any syntax error there is reported as well.
