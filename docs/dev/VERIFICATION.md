@@ -67,6 +67,8 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --verification > artifact
 
 This command reports input sizes, retained record counts, iteration counts and timings, and fails if an input stops binding or verifying. Allocation guarantees are checked by xUnit, separately from timing. Documentation measurements remain available through the existing Benchmark entries; normal documentation regressions retain their allocation comparisons without timing-only output or unasserted measurement passes. See the measurement-specific documents in `src/Benchmark` for their commands. Compare repeated runs on the same configuration before claiming a speedup.
 
+`src/backend/windows-x64/benchmark-p42.ps1 [-Runs 5]` times the P42 hash and generator workloads (`src/Benchmark/Kimi/HashWrapping.kimi` on wrapping Types, `HashChecked.kimi` widened and masked on checked Types) at O0 and O2 through the milestone harness (`milestone-harness.ps1 -Source -WorkRoot -Runs`: the same build and checked first run, then timing-only repetitions) and writes `summary.json`/`summary.md` under `artifacts/benchmarks/p42-hash-prng/<stamp>/`; see [WrappingArithmetic.md](../../src/Benchmark/WrappingArithmetic.md).
+
 `Benchmark --borrow-storage` measures shared inspection-only and stored-reference workloads: first analysis allocation, retained dependency-table cells, physical table bytes and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Storage bounds and conflicting later call arguments remain regressions in `BorrowDependencyStorageTest`.
 
 ## Native fixtures

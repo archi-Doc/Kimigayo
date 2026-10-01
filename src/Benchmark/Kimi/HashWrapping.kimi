@@ -1,0 +1,24 @@
+// Timing workload (benchmark-p42.ps1): FNV-1a and xorshift64* on wrapping integer Types. Every step wraps by Type,
+// so no check and no mask is written. HashChecked.kimi computes the same values on checked Types.
+
+func fnv1a(bytes: Slice<u8>, rounds: i32) -> u32
+    var hash: Wrapping<u32> = 0x811C_9DC5
+    for round in 0..rounds
+        for b in bytes
+            let byte: u8 = b
+            hash = (hash ^ byte@wrap<Wrapping<u32>>) * 0x0100_0193
+    return hash@u32
+
+func draws(seed: u64, count: i32) -> u64
+    var state: Wrapping<u64> = seed@Wrapping<u64>
+    var acc: Wrapping<u64> = 0
+    for i in 0..count
+        state ^= state >> 12
+        state ^= state << 25
+        state ^= state >> 27
+        acc ^= state * 0x2545_F491_4F6C_DD1D
+    return acc@u64
+
+public func main()
+    let text = "The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFG"
+    Console.writeLine("hash \(fnv1a(Text.utf8(text).bytes(), 1048576)) draws \(draws(42, 33554432))")

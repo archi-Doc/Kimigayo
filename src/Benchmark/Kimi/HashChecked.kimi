@@ -1,0 +1,25 @@
+// Timing workload (benchmark-p42.ps1): the FNV-1a and xorshift64* of HashWrapping.kimi on checked integer Types. The
+// width is doubled and the result masked, so every multiply carries its overflow check and every narrowing its range
+// check; the mask hides the wrap the algorithms want. This is the form STYLE 3.4 asks to avoid.
+
+func fnv1a(bytes: Slice<u8>, rounds: i32) -> u32
+    var hash: u64 = 0x811C_9DC5
+    for round in 0..rounds
+        for b in bytes
+            let byte: u8 = b
+            hash = ((hash ^ byte@u64) * 0x0100_0193) & 0xFFFF_FFFF
+    return hash@u32
+
+func draws(seed: u64, count: i32) -> u64
+    var state: u64 = seed
+    var acc: u64 = 0
+    for i in 0..count
+        state ^= state >> 12
+        state ^= state << 25
+        state ^= state >> 27
+        acc ^= ((state@u128 * 0x2545_F491_4F6C_DD1D) & 0xFFFF_FFFF_FFFF_FFFF)@u64
+    return acc
+
+public func main()
+    let text = "The quick brown fox jumps over the lazy dog. 0123456789 ABCDEFG"
+    Console.writeLine("hash \(fnv1a(Text.utf8(text).bytes(), 1048576)) draws \(draws(42, 33554432))")
