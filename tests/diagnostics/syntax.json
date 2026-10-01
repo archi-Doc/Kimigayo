@@ -28,7 +28,7 @@
   { "Name": "array-missing-comma", "Source": "public func main()\n    var a = [1 2]\n", "Intended": "two array elements without a comma",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Comma", "At": "2", "Found": "2" } ] },
   { "Name": "dictionary-missing-colon", "Source": "public func main()\n    var d = [1: \"a\", 2 \"b\"]\n", "Intended": "a dictionary entry whose key is not followed by a colon",
-    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Colon", "At": "\"b\"", "Skip": 1, "Length": 1, "Found": "b" } ] },
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Colon", "At": "\"b\"", "Found": "\"b\"" } ] },
   { "Name": "unclosed-call", "Source": "public func main()\n    var x = 1\n    Console.writeLine(\"a\"\n    x = 2\n", "Intended": "a call whose argument list is not closed before the line ends; the opening parenthesis is related",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseParenthesis", "After": "\"a\"", "Related": [ { "Role": "opening delimiter", "At": "(\"a\"", "Length": 1 } ] } ] },
   { "Name": "unclosed-array", "Source": "public func main()\n    var a = [1, 2\n    var b = 3\n", "Intended": "an array literal not closed before the line ends",

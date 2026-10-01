@@ -171,7 +171,7 @@ public ref partial struct TokenReader
         {
             if (!this.tokens[i].IsMissing && this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
             {
-                at = TokenHelper.WrittenEnd(this.tokens[i], this.sourceText);
+                at = this.tokens[i].Span.End;
                 break;
             }
         }

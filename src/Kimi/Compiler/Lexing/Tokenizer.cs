@@ -1299,18 +1299,8 @@ EndOfFile:
     {
         var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
         if (result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString)
-        {// "Text" -> Text
-            if (doubleQuoteCount == 1)
-            {
-                this.Slice(1);
-                stringLiteralLength -= 2;
-                this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
-                this.Slice(1);
-            }
-            else
-            {
-                this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
-            }
+        {// Like every other literal, the token spans the literal as written, delimiters included.
+            this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
         }
         else if (result is ScanStringLiteralResult.Interpolation or ScanStringLiteralResult.MultilineInterpolation)
         {
@@ -1542,7 +1532,7 @@ EndOfFile:
         {
             if (!this.tokens[t].IsMissing && this.tokens[t].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
             {
-                return new(TokenHelper.WrittenEnd(this.tokens[t], this.sourceText), 0);
+                return new(this.tokens[t].Span.End, 0);
             }
         }
 

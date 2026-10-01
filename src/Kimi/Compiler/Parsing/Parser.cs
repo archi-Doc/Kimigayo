@@ -3920,7 +3920,7 @@ Loop:
             }
 
             var open = offset - 1;
-            var segment = new StringLiteralKoto(ref reader, new Token(TokenKind.StringLiteral, new SourceSpan(token.Span.Start + segmentStart, open - 1 - segmentStart)));
+            var segment = new StringLiteralKoto(ref reader, new SourceSpan(token.Span.Start + segmentStart, open - 1 - segmentStart));
             _ = segment.Literal;
             segments.Add(segment);
             var close = open + StringLiteralHelper.FindInterpolationEnd(text[open..]);
@@ -3963,7 +3963,7 @@ Loop:
             offset = segmentStart = close + 1;
         }
 
-        var trailing = new StringLiteralKoto(ref reader, new Token(TokenKind.StringLiteral, new SourceSpan(token.Span.Start + segmentStart, text.Length - 1 - segmentStart)));
+        var trailing = new StringLiteralKoto(ref reader, new SourceSpan(token.Span.Start + segmentStart, text.Length - 1 - segmentStart));
         _ = trailing.Literal;
         segments.Add(trailing);
         reader.RestoreContext(context);

@@ -581,6 +581,13 @@ public abstract class Koto
         return false;
     }
 
+    /// <summary>Reports a syntax problem at a part of this node, such as the content of a literal without its delimiters.</summary>
+    /// <param name="at">The part of this node's source that the problem concerns.</param>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The optional diagnostic argument.</param>
+    internal void AddDiagnostic(SourceSpan at, DiagnosticCode code, object? obj = null)
+        => this.DiagnosticCollection?.Add(at, code, obj, null, this.CodeContext.SourceDocument);
+
     /// <summary>Gets the key of a check of this node.</summary>
     /// <param name="requirement">The requirement.</param>
     /// <param name="condition">The condition within the requirement.</param>

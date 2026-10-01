@@ -49,8 +49,8 @@ public class DictionaryLiteralTest
 
     [Theory]
     [InlineData("let key: i64 = 1\nlet other: u8 = 2\nlet entries = [key: true, other: false]", "other", "u8", "i64")]
-    [InlineData("let entries = [1: true, 2: \"wrong\"]", "wrong", "string", "bool")]
-    [InlineData("let entries: Dictionary<i32, bool> = [1: \"wrong\"]", "wrong", "string", "bool")]
+    [InlineData("let entries = [1: true, 2: \"wrong\"]", "\"wrong\"", "string", "bool")]
+    [InlineData("let entries: Dictionary<i32, bool> = [1: \"wrong\"]", "\"wrong\"", "string", "bool")]
     public void ConflictingEvidenceExplainsActualAndExpectedTypes(string source, string text, string actual, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -154,7 +154,7 @@ public class DictionaryLiteralTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains("DuplicateDictionaryKey_Kd", MinimalEmissionTest.Describe(c, null));
         var duplicate = Assert.Single(c.Binding.Issues, issue => issue.Code == DiagnosticCode.DuplicateDictionaryKey_Kd);
-        Assert.Equal(source.LastIndexOf(later, StringComparison.Ordinal) + (type == "string" ? 1 : 0), duplicate.Node.Span.Start);
+        Assert.Equal(source.LastIndexOf(later, StringComparison.Ordinal), duplicate.Node.Span.Start);
     }
 
     [Fact]
