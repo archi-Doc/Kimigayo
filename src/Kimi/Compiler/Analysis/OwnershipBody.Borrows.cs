@@ -45,6 +45,8 @@ public sealed partial class OwnershipBody
         this.storedBorrowStarts?.Clear();
         this.borrowRoots?.Clear();
         this.preparedLoanConflicts?.Clear();
+        this.reservationOverlaps?.Clear();
+        this.overlapActivations?.Clear();
         var count = this.Places.Count;
         var dependent = false;
         for (var p = 0; p < count && !dependent; p++)
@@ -294,15 +296,46 @@ public sealed partial class OwnershipBody
                             }
 
                             reported = true;
-                            if (!activating && operation.Reservation >= 0 && this.reservationPlaces[p] < 0)
+                            var reserved = this.reservationPlaces[p];
+                            if (!activating && operation.Reservation >= 0 && reserved < 0)
                             {
                                 // The reserved input itself meets a retained Loan; its activation decides the record.
-                                (this.preparedLoanConflicts ??= new()).Add((operation.Reservation, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, LoanSource: this.Places[p].Source)));
+                                (this.preparedLoanConflicts ??= new()).Add((operation.Reservation, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, LoanSource: this.Places[p].Source, Input: this.Lending(operation.Reservation))));
                                 continue;
                             }
 
-                            var reservation = activating ? r : operation.Reservation >= 0 ? operation.Reservation : this.reservationPlaces[p];
-                            this.ReportIssue(new(activating ? this.Operations[op].Source : operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, Reservation: reservation, Activation: activating, LoanSource: this.Places[p].Source));
+                            if (activating)
+                            {
+                                var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipFailure.ComparisonLoanConflict, Place: p, Reservation: r, Activation: true, LoanSource: this.Places[p].Source, Input: this.Lending(r));
+                                if (reserved >= 0)
+                                {
+                                    // Another reserved input of an enclosing or the same call; its preparation may already state the overlap.
+                                    this.HoldOverlapActivation(r, reserved, issue);
+                                }
+                                else
+                                {
+                                    this.ReportIssue(issue);
+                                }
+
+                                continue;
+                            }
+
+                            if (reserved >= 0 && ReferenceEquals(operation.Source, this.CallReservations[reserved].Call) && this.ReservationMode(reserved, op) == LoanRequirement.Uniq)
+                            {
+                                // The call's own effect after activation, such as an intrinsic update through one target while
+                                // another target is lent, is part of activating that call.
+                                this.HoldOverlapActivation(reserved, -1, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, Reservation: reserved, Activation: true, LoanSource: this.Places[p].Source));
+                                continue;
+                            }
+
+                            if (reserved >= 0)
+                            {
+                                // SPEC 15.6.7: the operation conflicts with a reservation, which is shown as its lending point.
+                                this.ReportReservationConflict(new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, Reservation: reserved), operation.Reservation, reserved);
+                                continue;
+                            }
+
+                            this.ReportIssue(new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, LoanSource: this.Places[p].Source));
                         }
                     }
                 }

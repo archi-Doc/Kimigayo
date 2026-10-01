@@ -70,13 +70,13 @@ public sealed partial class OwnershipBody
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
     }
 
-    internal bool ElementWriteLoanConflicts(int loanId)
+    internal bool ElementWriteLoanConflicts(int loanId, bool reservations = true)
     {
         var loan = this.ComparisonLoans[loanId];
         for (var head = loan.Parent; head >= 0; head = this.ComparisonLoans[head].Parent)
         {
             var existing = this.ComparisonLoans[head];
-            if (existing.Place == loan.Place &&
+            if ((reservations || existing.Reservation < 0) && existing.Place == loan.Place &&
                 (existing.Projection < 0 || this.ElementPathsOverlap(loan.Projection, existing.Projection)))
             {
                 return true;

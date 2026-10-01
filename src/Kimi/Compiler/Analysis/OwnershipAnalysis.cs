@@ -150,8 +150,9 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
+                note: AcquisitionNote(issue),
                 evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
-                related: issue.LoanSource is { } loan ? [("loan", loan, "value retaining the conflicting loan")] : null);
+                related: RelatedLocations(issue));
         }
 
         // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
@@ -221,12 +222,14 @@ public sealed partial class OwnershipAnalysis
         }
         catch (DeferredExpansionLimitException limit)
         {
+            this.body.ReportReservedElementWrites(completed: false);
             this.body.ReportIssue(new(limit.SourceNode, OwnershipFailure.ExpansionLimit));
             this.issues.AddRange(this.body.IssueStorage);
         }
         catch (OwnershipStorageLimitException limit)
         {
             this.body.IsVerified = false;
+            this.body.ReportReservedElementWrites(completed: false);
             this.body.ReportIssue(new(function, OwnershipFailure.StorageLimit, StorageTable: limit.Table, RequiredBytes: limit.RequiredBytes, LimitBytes: limit.LimitBytes));
             this.issues.AddRange(this.body.IssueStorage);
             if (this.instance is not null)
@@ -395,6 +398,7 @@ public sealed partial class OwnershipAnalysis
         this.body.PrepareCallReservations();
         this.body.VerifyBorrows();
         this.body.VerifyCallReservations();
+        this.body.ReportReservedElementWrites(completed: true);
 
         for (var i = 0; i < this.body.IssueStorage.Count; i++)
         {

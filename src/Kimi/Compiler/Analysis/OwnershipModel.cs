@@ -195,8 +195,12 @@ public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
+/// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
+public readonly record struct OwnershipLending(Koto Input, InvocationKoto Call);
+
+// Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
-    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0)
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -357,6 +361,7 @@ public sealed partial class OwnershipBody
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
+        this.reservedElementWrites?.Clear();
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
         this.CheckingSeeds.Clear();
