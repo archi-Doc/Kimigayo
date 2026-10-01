@@ -274,11 +274,6 @@
     Label="The value starts immediately after the target Name"
     Advice="Insert a space before the value; calls, member access, and indexing cannot extend a target Name"
 
-  + Name="EmptyExecutableBlock_Kd"
-    Category="Language"
-    Message="An executable Block requires at least one Syntax item"
-    Advice="Indent the intended body, or write () to explicitly do nothing"
-
   + Name="BlockStatementInExpression_Kd"
     Category="Language"
     Message="Unsafe and Deferred Blocks are statements and cannot be used as expressions"
@@ -386,14 +381,6 @@
     Arguments="form:Requirement"
     Label="not permitted here"
 
-  + Name="IdentifierExpected_Kd"
-    Category="Language"
-    Message="Identifier expected"
-
-  + Name="IncompleteSyntax_Kd"
-    Category="Language"
-    Message="The syntax is incomplete"
-
   + Name="MissingReturnType_Kd"
     Category="Language"
     Message="A return type is required after '->'. Specify a type such as '()' or 'i32', or remove '->' to omit the return type annotation."
@@ -472,11 +459,6 @@
     Category="Language"
     Message="No compile-time Case Group arm matches and no fallback arm is present"
 
-  + Name="TokenMismatch_Kd"
-    Category="Language"
-    Message="The token does not match the expected token. Expected: {0}"
-    Arguments="expected:Text"
-
   + Name="TopLevelKeywordAfterCode_Kd"
     Category="Language"
     Message="Top-level keywords such as 'alias' must appear before any other code"
@@ -550,15 +532,6 @@
   + Name="InvalidInlineLayout_Kd"
     Category="Language"
     Message="A Type that contains itself by value without indirection has no finite inline layout"
-
-  + Name="UnexpectedToken_Kd"
-    Category="Language"
-    Message="Token {0} is not expected at this position"
-    Arguments="token:Text"
-
-  + Name="UnexpectedTrailingToken_Kd"
-    Category="Language"
-    Message="Unexpected token at the end of the statement"
 
   + Name="UnsupportedEscape_Kd"
     Category="Language"

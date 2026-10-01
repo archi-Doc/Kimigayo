@@ -5,15 +5,6 @@ using Kimi.Diagnostics;
 
 namespace Kimi;
 
-/// <summary>The syntax codes that the forms of <see cref="DiagnosticCode.ExpectedSyntax_Kd"/>, <see cref="DiagnosticCode.MissingSyntax_Kd"/>
-/// and <see cref="DiagnosticCode.MisplacedSyntax_Kd"/> replace (docs/dev/DIAGNOSTICS.md §8, D5). A file that still reports them
-/// disables CS0618 at its top until its sites are migrated; a code leaves the catalog with its last site.</summary>
-public static class LegacySyntaxCode
-{
-    /// <summary>The reason the code is obsolete.</summary>
-    public const string Message = "Report the syntax form through TokenReader.Expect, ExpectLineEnd or Unexpected (docs/dev/DIAGNOSTICS.md §4.4).";
-}
-
 public enum DiagnosticCode
 {
     Template_Kd, // First sentinel
@@ -67,10 +58,6 @@ public enum DiagnosticCode
     MissingSyntax_Kd,
     MisplacedSyntax_Kd,
 
-    [Obsolete(LegacySyntaxCode.Message)]
-    IdentifierExpected_Kd,
-    [Obsolete(LegacySyntaxCode.Message)]
-    IncompleteSyntax_Kd,
     IndentationLevelMismatch_Kd,
     InvalidCharacter_Kd,
     SemicolonNotAllowed_Kd,
@@ -88,13 +75,9 @@ public enum DiagnosticCode
     MissingCharLiteralEnd_Kd,
     MultipleAccessibilityModifiers_Kd,
     NonExhaustiveCompileTimeCase_Kd,
-    [Obsolete(LegacySyntaxCode.Message)]
-    TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,
     InvalidTry_Kd,
-    [Obsolete(LegacySyntaxCode.Message)]
-    UnexpectedToken_Kd,
     BorrowOriginKeyword_Kd,
     BorrowOriginSemantics_Kd,
     BorrowOriginTarget_Kd,
@@ -115,14 +98,10 @@ public enum DiagnosticCode
     ParameterNameMarker_Kd,
     DuplicateExternalParameterName_Kd,
     EmptyNamedParameterSection_Kd,
-    [Obsolete(LegacySyntaxCode.Message)]
-    UnexpectedTrailingToken_Kd,
     UnsupportedEscape_Kd,
 
     MissingReturnType_Kd,
 
-    [Obsolete(LegacySyntaxCode.Message)]
-    EmptyExecutableBlock_Kd,
     BlockStatementInExpression_Kd,
 
     ChainedComparison_Kd,
