@@ -250,6 +250,13 @@ internal static partial class LlvmModuleWriter
                 output.Write('\n');
             }
         }
+        else if (instruction.Check == ArithmeticCheckKind.WrappingDivision)
+        {
+            WriteEquality(output, "%zero", id, type!, operands[1], 0);
+            WriteArithmeticFailure(output, constants, instruction, "%zero");
+            WriteWrappingQuotient(output, instruction, operands, type!);
+            return;
+        }
         else if (instruction.Check == ArithmeticCheckKind.Shift)
         {
             Name(output, "  %invalid", id);
@@ -318,6 +325,55 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
+    // SPEC 13.3: the minimum / -1 of a wrapping integer Type is the minimum, which sdiv cannot compute, so a divisor of -1
+    // divides as 1 and the quotient is negated; a literal -1 is the negation alone.
+    private static void WriteWrappingQuotient(TextWriter output, in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands, string type)
+    {
+        var id = instruction.Operation;
+        if (operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value == -1)
+        {
+            Name(output, "  %v", id);
+            output.Write(" = sub ");
+            output.Write(type);
+            output.Write(" 0, ");
+            WriteOperand(output, operands[0]);
+            output.Write('\n');
+            return;
+        }
+
+        WriteEquality(output, "%minusone", id, type, operands[1], -1);
+        Name(output, "  %safe", id);
+        Name(output, " = select i1 %minusone", id);
+        output.Write(", ");
+        output.Write(type);
+        output.Write(" 1, ");
+        output.Write(type);
+        output.Write(' ');
+        WriteOperand(output, operands[1]);
+        output.Write('\n');
+        Name(output, "  %q", id);
+        output.Write(" = sdiv ");
+        output.Write(type);
+        output.Write(' ');
+        WriteOperand(output, operands[0]);
+        Name(output, ", %safe", id);
+        output.Write('\n');
+        Name(output, "  %neg", id);
+        output.Write(" = sub ");
+        output.Write(type);
+        Name(output, " 0, %q", id);
+        output.Write('\n');
+        Name(output, "  %v", id);
+        Name(output, " = select i1 %minusone", id);
+        output.Write(", ");
+        output.Write(type);
+        Name(output, " %neg", id);
+        output.Write(", ");
+        output.Write(type);
+        Name(output, " %q", id);
+        output.Write('\n');
+    }
+
     // A signed remainder by a dynamic divisor substitutes 1 for -1 (SPEC 13.3); a literal -1 needs no select.
     private static bool SubstitutesRemainderDivisor(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
         => instruction.Check == ArithmeticCheckKind.DivisionZero && instruction.ScalarOperator == "srem" && operands[1].Kind != EmissionOperandKind.Integer;
@@ -376,7 +432,7 @@ internal static partial class LlvmModuleWriter
         var reasonId = instruction.Check switch
         {
             ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
-            ArithmeticCheckKind.DivisionZero => WindowsLowering.IntegerDivisionZeroReason,
+            ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision => WindowsLowering.IntegerDivisionZeroReason,
             ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,

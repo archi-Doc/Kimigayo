@@ -32,6 +32,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Result, "Result"),
         new(KimiDeclarationId.Array, "Array"),
         new(KimiDeclarationId.FromEnd, "FromEnd"),
+        new(KimiDeclarationId.Wrapping, "Wrapping"),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange"),
         new(KimiDeclarationId.Range, "Range"),
         new(KimiDeclarationId.ClosedRange, "ClosedRange"),

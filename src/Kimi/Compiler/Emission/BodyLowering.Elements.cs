@@ -378,7 +378,7 @@ internal sealed partial class BodyLowering
         var source = body.Operations[plan.Write].Source;
         var op = ElementAccess.UpdateOperator(source.Akind);
         var unary = source is UnaryKoto;
-        if (op == KotoKind.Invalid || !type.IsNumeric || !IsScalar(type) || (unary && !type.IsInteger) ||
+        if (op == KotoKind.Invalid || !type.IsNumeric || !IsScalar(type) || (unary && !type.HasIntegerArithmetic) ||
             !ReferenceEquals(SignatureType(this, source.BoundType), unary ? type : BoundType.Unit) ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(source is UnaryKoto increment ? increment.Operand : ((BinaryKoto)source).Left), target) ||
             value != update.Computation || value <= plan.Output ||

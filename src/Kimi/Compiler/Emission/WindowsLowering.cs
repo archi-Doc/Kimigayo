@@ -116,6 +116,13 @@ internal static partial class WindowsLowering
         AddScalar(values, "u128", "i128", 16);
         AddScalar(values, "f32", "float", 4);
         AddScalar(values, "f64", "double", 8);
+
+        // SPEC 3.1.1.1, 21.1.4: a wrapping integer Type has exactly the representation and ABI of its integer argument.
+        foreach (var (integer, wrapping) in BoundType.WrappingScalars)
+        {
+            values.Add(wrapping, values[integer]);
+        }
+
         return values;
 
         static void AddScalar(Dictionary<BoundType, ValueLowering> values, string name, string llvm, int size)

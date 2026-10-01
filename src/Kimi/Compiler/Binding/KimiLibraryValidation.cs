@@ -44,6 +44,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
                         KimiDeclarationId.FromEnd => this.ValidFromEnd(symbol),
+                        KimiDeclarationId.Wrapping => this.ValidWrapping(symbol),
                         KimiDeclarationId.Start or KimiDeclarationId.End => this.ValidBoundary(symbol, entry.Id),
                         KimiDeclarationId.Range or KimiDeclarationId.ClosedRange => this.ValidRange(symbol, entry.Id),
                         KimiDeclarationId.ResolvedRange => this.ValidResolvedRange(symbol),
@@ -764,6 +765,16 @@ public sealed partial class KimiLibrary
         declaration.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
         BareName(declaration.ConstraintNodes[0].Left, "T") && BareName(declaration.ConstraintNodes[0].Right, "PrimitiveInteger") &&
         ValidField(declaration, FirstStorage(declaration), "offset", "T") && this.ValidPositionSyntax("fromEnd");
+
+    // SPEC 3.1.1.1: public struct Wrapping<T> under T is PrimitiveInteger, with no storage, constructor or function. The
+    // declaration only names the Type: its instantiations over integer Types are the interned wrapping Scalars.
+    private bool ValidWrapping(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is StructKoto { Name: "Wrapping", HasIncompatibleBindingHeader: false, GenericParameterNodes.Count: 1, OriginNames.Count: 0, Bases.Count: 0, ConstraintNodes.Count: >= 1, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        declaration.GenericParameterNodes[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
+        BareName(declaration.ConstraintNodes[0].Left, "T") && BareName(declaration.ConstraintNodes[0].Right, "PrimitiveInteger") &&
+        FirstStorage(declaration) == declaration.Members.Count;
 
     // SPEC 4.6.2, 4.6.8: public zero-sized structs Start and End, which omitted range boundaries construct.
     private bool ValidBoundary(BindingSymbol symbol, KimiDeclarationId id)

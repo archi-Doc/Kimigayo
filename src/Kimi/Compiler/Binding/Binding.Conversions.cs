@@ -25,6 +25,10 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 13.5.4.1: the explanation of a numeric conversion rejected for a different integer argument.
+    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4.1)";
+    internal const string WrappingConversionAdvice = "Convert through the integer argument first, as in x@U@Wrapping<U> or w@U@V";
+
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -435,6 +439,20 @@ public sealed partial class Binding
         // SPEC 8.4.7.3: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones.
         if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)))
         {
+            conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
+            return Complete(conversion, target);
+        }
+
+        // SPEC 13.5.4.1: the only numeric conversion that involves a wrapping integer Type is between U and Wrapping<U>, which
+        // keeps the value and the bits; a different integer argument or a floating-point Type is a static error, so that a
+        // conversion whose name suggests wrapping never Aborts at runtime.
+        if (source.IsWrappingInteger || target.IsWrappingInteger)
+        {
+            if (!ReferenceEquals(source.Underlying, target.Underlying))
+            {
+                return this.FailMismatch(conversion, conversion, source, target);
+            }
+
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
             return Complete(conversion, target);
         }

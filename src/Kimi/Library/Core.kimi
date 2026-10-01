@@ -59,6 +59,16 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
+/// The wrapping integer Type over `T` (SPEC 3.1.1.1): the same representation, order, comparison and formatting as `T`,
+/// with arithmetic that wraps modulo 2ᴺ instead of Aborting.
+///
+/// Division by zero and an invalid shift count still Abort. The Type has no members: enter and leave it with
+/// `x@Wrapping<T>` and `w@T`. It is neither `PrimitiveInteger` nor a `Position`, so it is a value, never an index,
+/// a range boundary, a length or a shift count.
+public struct Wrapping<T>
+    T is PrimitiveInteger
+    Self is Copy
+
 /// A position `offset` elements before the end of a target (SPEC 4.6.2); prefix `^` constructs it.
 ///
 /// Construction checks nothing: `^(-1)` is a valid value that fails to resolve. `^0` is the end boundary and `^1`

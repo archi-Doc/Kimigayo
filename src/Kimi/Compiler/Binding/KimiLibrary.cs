@@ -120,6 +120,7 @@ public sealed partial class KimiLibrary
         this.Slice = this.GetSymbol(KimiDeclarationId.Slice)!;
         this.DynamicArray = this.GetSymbol(KimiDeclarationId.Array)!;
         this.FromEnd = this.GetSymbol(KimiDeclarationId.FromEnd)!;
+        this.Wrapping = this.GetSymbol(KimiDeclarationId.Wrapping)!;
         this.Start = this.GetSymbol(KimiDeclarationId.Start)!;
         this.End = this.GetSymbol(KimiDeclarationId.End)!;
         this.Range = this.GetSymbol(KimiDeclarationId.Range)!;
@@ -224,6 +225,9 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the designated from-end position Type that prefix <c>^</c> constructs (SPEC 4.6.2).</summary>
     public BindingSymbol FromEnd { get; }
+
+    /// <summary>Gets the declaration that names the wrapping integer Scalars <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1.1).</summary>
+    public BindingSymbol Wrapping { get; }
 
     /// <summary>Gets the designated start boundary Type of an omitted range start (SPEC 4.6.2).</summary>
     public BindingSymbol Start { get; }

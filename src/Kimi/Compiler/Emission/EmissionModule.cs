@@ -127,6 +127,9 @@ internal enum ArithmeticCheckKind : byte
 
     /// <summary>Unsigned quotient, or any remainder: only a zero divisor Aborts; a signed remainder by −1 is 0 (SPEC 13.3).</summary>
     DivisionZero,
+
+    /// <summary>Signed quotient of a wrapping integer Type: only a zero divisor Aborts, and the minimum / −1 wraps to the minimum.</summary>
+    WrappingDivision,
     Shift,
     Conversion,
     Bounds,

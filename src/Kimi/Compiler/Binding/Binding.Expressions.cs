@@ -224,7 +224,7 @@ public sealed partial class Binding
         => literal.IsInteger && literal.TryGetIntegerMagnitude(out var magnitude) && (negative ? magnitude == 0 : magnitude <= 127);
 
     private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
-        => literal.IsInteger ? type.IsInteger : type.IsFloatingPoint;
+        => literal.IsInteger ? type.HasIntegerArithmetic : type.IsFloatingPoint;
 
     private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
     {
@@ -236,15 +236,17 @@ public sealed partial class Binding
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
     }
 
+    // SPEC 3.1.1.1: a wrapping integer Type fits literals by the range of its integer argument.
     private static bool FitsIntegerMagnitude(UInt128 magnitude, BoundType type, bool negative, int pointerWidth)
     {
-        if (!type.IsInteger)
+        if (!type.HasIntegerArithmetic)
         {
             return false;
         }
 
-        var signed = type.Name[0] == 'i';
-        var bits = type.Name is "isize" or "usize" ? pointerWidth : int.Parse(type.Name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+        var name = type.Underlying.Name;
+        var signed = name[0] == 'i';
+        var bits = name is "isize" or "usize" ? pointerWidth : int.Parse(name.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
         if (bits == 0)
         {
             // A target-independent literal must fit even the smallest integer
@@ -267,7 +269,11 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
 
+    // An integer Type, concrete or generic: the Types that positions, range boundaries, lengths and shift counts accept.
     private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
+
+    // A Type with the integer operators (SPEC 13.3): an integer or wrapping integer Type, concrete or generic.
+    private bool IsArithmeticInteger(BoundType? type, BindingScope scope) => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope);
 
     // SPEC 12.3.1: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
     private BoundType? LiteralDefault(Koto node)
@@ -296,8 +302,8 @@ public sealed partial class Binding
         if (node is not (PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }) && IsLiteralOnlyOperation(node))
         {
             // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
-            // a shift count is typed independently of the candidate.
-            var integer = this.IsIntegerOperand(type, scope);
+            // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
+            var integer = this.IsArithmeticInteger(type, scope);
             return node switch
             {
                 PrefixMinusKoto negated => integer && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
@@ -1157,9 +1163,9 @@ public sealed partial class Binding
                     return this.FailWrite(unary, unary.Operand);
                 }
 
-                // Increment and decrement do not apply to floats (SPEC 13.2).
+                // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
-                return this.IsIntegerOperand(destination, scope) ? Complete(unary, destination) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -1252,7 +1258,8 @@ public sealed partial class Binding
         var result = assignment ? BoundType.Unit : left;
         if (shift)
         {
-            return this.IsIntegerOperand(left, scope) && (this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : this.Fail(binary, BindingFailure.TypeMismatch);
+            // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
+            return this.IsArithmeticInteger(left, scope) && (this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : this.Fail(binary, BindingFailure.TypeMismatch);
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
@@ -1366,7 +1373,7 @@ public sealed partial class Binding
             }
 
             // % and bitwise operators accept integers only, including their compound forms (SPEC 13.3).
-            return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.IsInteger
+            return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.HasIntegerArithmetic
                 ? this.Fail(binary, BindingFailure.TypeMismatch)
                 : Complete(binary, result);
         }

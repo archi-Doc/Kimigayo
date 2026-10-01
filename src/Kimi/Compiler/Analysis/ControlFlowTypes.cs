@@ -220,11 +220,13 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
             return false; // Pointer Type changes require an explicit conversion.
         }
 
-        if (source.Type.Name == IntegerLiteralType.Name && target.Name.Length > 1 && target.Name[0] is 'i' or 'u' &&
-            int.TryParse(target.Name.AsSpan(1), out var bits) && bits > 0)
+        // A wrapping integer Type fits literals by the range of its integer argument (SPEC 3.1.1.1).
+        var targetName = target is BoundType { IsWrappingInteger: true } wrapping ? wrapping.Underlying.Name : target.Name;
+        if (source.Type.Name == IntegerLiteralType.Name && targetName.Length > 1 && targetName[0] is 'i' or 'u' &&
+            int.TryParse(targetName.AsSpan(1), out var bits) && bits > 0)
         {
             return TryGetIntegerValue(source.Node, out var magnitude, out var negative)
-                ? FitsInteger(magnitude, negative, target.Name[0] == 'i', bits)
+                ? FitsInteger(magnitude, negative, targetName[0] == 'i', bits)
                 : null;
         }
 

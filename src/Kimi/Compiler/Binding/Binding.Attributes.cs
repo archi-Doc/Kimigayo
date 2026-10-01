@@ -267,7 +267,7 @@ public sealed partial class Binding
         static char PhysicalCode(BoundType type)
             => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } ? 'p' :
                 type.Kind != BoundTypeKind.Primitive ? '\0' :
-                type.Name switch
+                type.Underlying.Name switch
                 {
                     "i8" or "u8" => '1',
                     "i16" or "u16" => '2',

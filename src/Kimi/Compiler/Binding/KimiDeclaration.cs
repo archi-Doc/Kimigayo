@@ -14,6 +14,7 @@ public enum KimiDeclarationId : byte
     Result,
     Array,
     FromEnd,
+    Wrapping,
     ClosedRange,
     ResolvedRange,
     Slice,

@@ -688,6 +688,13 @@ public sealed partial class Binding
         generic.Identifier.BindingState = BindingState.Resolved;
         generic.BoundSymbol = definition;
         var own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
+        if (own is { IsWrappingInteger: true })
+        {
+            // SPEC 3.1.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
+            // declaration's only Constraint, so no container reference or obligation is formed.
+            return Complete(generic, own);
+        }
+
         var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
         if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
         {
@@ -720,6 +727,14 @@ public sealed partial class Binding
 
     private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
     {
+        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
+        // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
+            semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
+        {
+            return BoundType.WrappingOf(components[0]);
+        }
+
         // SPEC 4.5: Array<T> is the compiler-managed owning dynamic sequence behind the library declaration.
         if (kind == BoundTypeKind.Array || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.DynamicArray.Declaration)))
         {

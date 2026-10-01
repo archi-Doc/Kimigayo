@@ -221,6 +221,9 @@ public sealed record BoundType : ControlFlowType
 {
     private readonly NumericCategory numeric;
 
+    // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1.1); the Type itself otherwise.
+    private readonly BoundType underlying;
+
     // Whole-subtree summaries, computed once at construction (see the constructor).
     private readonly bool carriesOrigin;
     private readonly bool carriesOriginOrSlot;
@@ -238,6 +241,7 @@ public sealed record BoundType : ControlFlowType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+        this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
         var found = origin is not null || originArguments is { Length: > 0 };
@@ -253,6 +257,19 @@ public sealed record BoundType : ControlFlowType
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
         this.containsParameter = parameter;
+    }
+
+    // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
+    // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
+    private BoundType(string name, BoundType integer)
+        : base(name)
+    {
+        this.Kind = BoundTypeKind.Primitive;
+        this.Semantics = SemanticsKind.Owner;
+        this.Components = [];
+        this.OriginArguments = [];
+        this.numeric = integer.numeric;
+        this.underlying = integer;
     }
 
     private enum NumericCategory : byte
@@ -279,8 +296,18 @@ public sealed record BoundType : ControlFlowType
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
-    public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
+    /// <summary>Gets a value indicating whether this is one of the twelve integer Types (SPEC 3.1), which excludes the
+    /// wrapping integer Types; positions, lengths, shift counts and PrimitiveInteger need exactly these.</summary>
+    public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned && !this.IsWrappingInteger;
 
+    /// <summary>Gets a value indicating whether this is a wrapping integer Type <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1.1).</summary>
+    public bool IsWrappingInteger => !ReferenceEquals(this.underlying, this);
+
+    /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type: the Types with the integer
+    /// operators, integer literals and integer comparison (SPEC 13.3).</summary>
+    public bool HasIntegerArithmetic => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
+
+    /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
 
     public static new BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
@@ -306,6 +333,14 @@ public sealed record BoundType : ControlFlowType
 
     internal static readonly BoundType String = Primitives["string"];
 
+    /// <summary>The interned wrapping integer Scalar of each integer Type (SPEC 3.1.1.1), keyed by that integer Type.</summary>
+    internal static readonly Dictionary<BoundType, BoundType> WrappingScalars = CreateWrappingScalars();
+
+    /// <summary>Gets the wrapping integer Scalar over an integer Type.</summary>
+    /// <param name="integer">One of the twelve integer Types.</param>
+    /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
+    internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
+
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
 
@@ -327,7 +362,12 @@ public sealed record BoundType : ControlFlowType
     /// may substitute (SPEC 8.3).</summary>
     internal bool ContainsParameter => this.containsParameter;
 
-    internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
+    // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3).
+    internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
+
+    /// <summary>Gets the integer Type whose representation, signedness and width a wrapping integer Type shares, or this
+    /// Type itself. Every Scalar query about width, signedness, layout or formatting goes through it.</summary>
+    internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
 
@@ -356,6 +396,20 @@ public sealed record BoundType : ControlFlowType
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
         {
             result.Add(name, new(name, BoundTypeKind.Primitive));
+        }
+
+        return result;
+    }
+
+    private static Dictionary<BoundType, BoundType> CreateWrappingScalars()
+    {
+        var result = new Dictionary<BoundType, BoundType>(12);
+        foreach (var primitive in Primitives.Values)
+        {
+            if (primitive.IsInteger)
+            {
+                result.Add(primitive, new("Wrapping<" + primitive.Name + ">", primitive));
+            }
         }
 
         return result;

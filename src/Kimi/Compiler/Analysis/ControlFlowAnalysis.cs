@@ -276,7 +276,8 @@ public sealed class ControlFlowAnalysis
         }
 
         var type = this.types.GetExpressionType(node) ?? this.nodes.GetValueOrDefault(node)?.ExpressionType;
-        var primitive = type?.Name is "bool" or "char" or "integer literal" or "float literal" or
+        var name = type is BoundType bound ? bound.Underlying.Name : type?.Name;
+        var primitive = name is "bool" or "char" or "integer literal" or "float literal" or
             "i8" or "i16" or "i32" or "i64" or "i128" or "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64";
         if (!primitive)
         {
