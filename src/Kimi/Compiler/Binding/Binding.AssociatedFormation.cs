@@ -6,7 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private static BoundType? AssociatedFormationType(Koto declaration)
+    /// <summary>Gets the formation Type of an associated-Type declaration, such as <c>ref/Self during source</c> (SPEC 8.4.3).</summary>
+    /// <param name="declaration">The associated-Type declaration or specification.</param>
+    /// <returns>The formation Type, or <see langword="null"/>.</returns>
+    internal static BoundType? AssociatedFormationType(Koto declaration)
         => AssociatedFormationSyntax(declaration)?.BoundType ?? (declaration is IsKoto clause ? AssociatedIdentityType(clause.BoundConstraint) : null);
 
     private static Koto? AssociatedFormationSyntax(Koto declaration)

@@ -613,6 +613,9 @@
   + Name="Ownership.EffectBound"
     Description="the implementation's destructions stay within its effect bound"
 
+  + Name="Ownership.CallEffectConflict"
+    Description="the requirement call's derived effects conflict with no Loan an earlier result keeps"
+
   + Name="Ownership.StaticMovePathRequired"
     Description="a moved element has a static Move Path"
 

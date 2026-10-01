@@ -207,7 +207,7 @@ public sealed partial class Binding
                 }
 
                 var item = binding.ContractType(declared, scope);
-                if (!item.CarriesOrigin && !HasAbstractPart(item))
+                if (!item.CarriesOrigin && !AbstractTypes.HasAbstractPart(item))
                 {
                     // A result that keeps no Loan conflicts with no effect.
                     this.preserves = false;
@@ -233,28 +233,6 @@ public sealed partial class Binding
             }
 
             return this.valid;
-        }
-
-        // SPEC 8.4.3: a parameter, projection or Semantics application stands for any complete Type of an instance.
-        private static bool IsAbstract(BoundType type)
-            => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication;
-
-        private static bool HasAbstractPart(BoundType type)
-        {
-            if (IsAbstract(type))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (HasAbstractPart(type.Components[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         // The Origins of the conforming Type as its receiver names them; an abstract item part may keep a Loan of any.
@@ -332,7 +310,7 @@ public sealed partial class Binding
 
         private static bool MayMatch(BoundType pattern, BoundType closed)
         {
-            if (ReferenceEquals(pattern, closed) || IsAbstract(pattern))
+            if (ReferenceEquals(pattern, closed) || AbstractTypes.IsAbstract(pattern))
             {
                 return true;
             }
@@ -635,7 +613,7 @@ public sealed partial class Binding
         // reach any Loan, which conflicts with any item Loan.
         private void Reachable(BoundType? type, LoanRequirement mode, Koto use)
         {
-            if (type is null || IsAbstract(type))
+            if (type is null || AbstractTypes.IsAbstract(type))
             {
                 this.valid = false;
                 return;
@@ -1354,7 +1332,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (IsAbstract(type) && (exclusive || !shared))
+            if (AbstractTypes.IsAbstract(type) && (exclusive || !shared))
             {
                 if (type.Origin is { } outer && this.SharesDependency(accessed, outer, use))
                 {

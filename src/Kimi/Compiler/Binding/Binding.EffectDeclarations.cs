@@ -125,6 +125,14 @@ public sealed partial class Binding
         }
     }
 
+    /// <summary>Gets the bounds available to a requirement call under the premises in scope at a node (SPEC 8.4.10.4).</summary>
+    /// <param name="requirement">The Requirement Identity.</param>
+    /// <param name="conforming">The conforming Type of the call.</param>
+    /// <param name="at">The call.</param>
+    /// <returns>Whether confined and preserves results are available.</returns>
+    internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
+        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at));
+
     // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
     // Constraint region holds it.
     private static ContractKoto? DeclaringContract(EffectBoundKoto effect)

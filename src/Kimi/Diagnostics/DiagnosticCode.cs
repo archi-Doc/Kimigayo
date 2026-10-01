@@ -156,6 +156,7 @@ public enum DiagnosticCode
     ComparisonLoanConflict_Kd,
     CallReservationConflict_Kd,
     CallActivationConflict_Kd,
+    CallEffectConflict_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,
