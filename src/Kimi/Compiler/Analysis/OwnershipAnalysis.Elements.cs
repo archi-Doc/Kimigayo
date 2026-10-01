@@ -190,9 +190,14 @@ public sealed partial class OwnershipAnalysis
         this.body.ComparisonLoans.Add(new(plan.Operation, plan.Root, access.Parent, access.Depth, LoanRequirement.Uniq, Access: true, Projection: projection));
         this.body.Projections[projection] = plan with { Exclusive = loan };
         this.body.LoanStates[plan.Operation] = loan;
-        if (this.body.ElementWriteLoanConflicts(loan))
+        if (this.body.ElementWriteLoanConflicts(loan, reservations: false))
         {
             this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
+        }
+        else if (this.body.ElementWriteLoanConflicts(loan))
+        {
+            // Only call reservations enclose the write; the completed plan decides whether it reports it against one.
+            this.body.HoldReservedElementWrite(projection, new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
         }
     }
 
