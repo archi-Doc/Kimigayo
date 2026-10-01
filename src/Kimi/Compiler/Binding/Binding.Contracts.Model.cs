@@ -37,6 +37,9 @@ public sealed class BoundContract
     /// <summary>Gets or sets the progress of building <see cref="EffectBoundStorage"/> in this pass: 0 unbuilt, 1 building, 2 built.</summary>
     internal byte EffectState { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether this Contract or an ancestor declares a bound, once its table is built.</summary>
+    internal bool HasEffectBounds { get; set; }
+
     internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal Dictionary<string, List<BindingSymbol>> MembersByName { get; } = new(StringComparer.Ordinal);

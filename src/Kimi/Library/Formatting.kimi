@@ -5,6 +5,7 @@ public struct BufferFull
 
 public contract BufferWriter
     func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        effect confined
 
 public contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>

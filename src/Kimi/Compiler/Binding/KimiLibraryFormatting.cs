@@ -143,10 +143,12 @@ public sealed partial class KimiLibrary
                 return false;
             }
 
+            // SPEC 8.4.10.2, utf8-formatting 1.2: reserve declares confined; format declares no bound.
             return rule.Id == KimiDeclarationId.BufferWriter
-                ? requirement.Name == "reserve" && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Uniq, "Self") &&
+                ? requirement.Name == "reserve" && requirement.EffectBounds is [{ Bound: EffectBoundKind.Confined, IsSpecification: false }] &&
+                    FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Uniq, "Self") &&
                     BareName(requirement.Parameters[1].Type, "isize") && FormattingResult(requirement.ReturnType, "WriteWindow", "BufferFull")
-                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Ref, "Self") &&
+                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && requirement.EffectBounds.Count == 0 && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Ref, "Self") &&
                     FormattingBorrow(requirement.Parameters[1].Type, SemanticsKind.Uniq, "Utf8Writer") && FormattingResult(requirement.ReturnType, "()", "BufferFull");
         }
 

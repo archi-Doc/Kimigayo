@@ -9,6 +9,10 @@ public sealed partial class Binding
 {
     // SPEC 8.4.10.6: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
     // so a warm rebind allocates nothing.
+    private readonly List<BoundEffectBound> boundedRequirements = [];
+
+    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
+    private readonly List<BoundContract> contractShapes = [];
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
@@ -54,6 +58,71 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// SPEC 8.4.10.4: the bounds available to a requirement call: those that the Contracts its premises prove for the conforming
+    /// Type declare for the Requirement Identity, through constraint facts in scope or a concrete Type's conformance. Bounds
+    /// are never searched for in implementations.
+    /// </summary>
+    /// <param name="requirement">The Requirement Identity.</param>
+    /// <param name="conforming">The conforming Type of the call.</param>
+    /// <param name="scope">The scope whose premises hold at the call.</param>
+    /// <returns>Whether confined and preserves results are available.</returns>
+    internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope)
+    {
+        var bounded = false;
+        for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
+        {
+            bounded = ReferenceEquals(this.boundedRequirements[i].Requirement.Declaration, requirement);
+        }
+
+        if (!bounded || conforming is null)
+        {
+            return default;
+        }
+
+        var confined = false;
+        var preserves = false;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, conforming) && fact.Contract?.Declaration.BoundSymbol?.Contract is { HasEffectBounds: true } shape &&
+                    this.AvailableConstraintFact(environment, fact))
+                {
+                    Add(shape);
+                }
+            }
+        }
+
+        if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type)
+        {
+            // A concrete Type proves each Contract it conforms to.
+            for (var i = 0; i < this.boundedRequirements.Count; i++)
+            {
+                var entry = this.boundedRequirements[i];
+                if (ReferenceEquals(entry.Requirement.Declaration, requirement) && DeclaringContract(entry.Declaration)?.BoundSymbol is { } contract &&
+                    this.ConformanceByDeclaration(type, contract, out _) is not null)
+                {
+                    confined |= entry.Bound == EffectBoundKind.Confined;
+                    preserves |= entry.Bound == EffectBoundKind.PreservesResults;
+                }
+            }
+        }
+
+        return (confined, preserves);
+
+        void Add(BoundContract shape)
+        {
+            confined |= this.DeclaredEffectBound(shape, requirement, EffectBoundKind.Confined) is not null;
+            preserves |= this.DeclaredEffectBound(shape, requirement, EffectBoundKind.PreservesResults) is not null;
+        }
     }
 
     // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
@@ -144,12 +213,10 @@ public sealed partial class Binding
     private void PrepareEffectBounds()
     {
         this.effectBoundRejections?.Clear();
-        for (var n = 0; n < this.nodes.Count; n++)
+        this.boundedRequirements.Clear();
+        for (var i = 0; i < this.contractShapes.Count; i++)
         {
-            if (this.nodes[n] is ContractKoto { BoundSymbol.Contract: { } shape })
-            {
-                this.EnsureEffectBounds(shape);
-            }
+            this.EnsureEffectBounds(this.contractShapes[i]);
         }
     }
 
@@ -162,11 +229,13 @@ public sealed partial class Binding
         }
 
         shape.EffectState = 1;
+        shape.HasEffectBounds = false;
         for (var i = 0; i < shape.Ancestors.Count; i++)
         {
             if (shape.Ancestors[i].Declaration.BoundSymbol?.Contract is { } ancestor)
             {
                 this.EnsureEffectBounds(ancestor);
+                shape.HasEffectBounds |= ancestor.HasEffectBounds;
             }
         }
 
@@ -230,6 +299,8 @@ public sealed partial class Binding
         }
 
         shape.EffectBoundStorage.Add(new(requirement, effect.Bound, effect));
+        shape.HasEffectBounds = true;
+        this.boundedRequirements.Add(new(requirement, effect.Bound, effect));
     }
 
     // SPEC 8.4.10.1: the selector names an ancestor of the Contract, and Name exactly one function requirement of that ancestor.

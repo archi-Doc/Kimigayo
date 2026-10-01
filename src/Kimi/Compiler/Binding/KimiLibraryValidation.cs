@@ -440,7 +440,7 @@ public sealed partial class KimiLibrary
         declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 2, AttributeChain: null } associated && OriginClauses.Get(associated).Count == 0 &&
         BareType(associated.Operands[0]) is OriginApplicationKoto { ArgumentNodes.Count: 1 } family && BareName(family.Type, "LentItem") && BareName(family.ArgumentNodes[0], "step") &&
         associated.Operands[1] is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: "step", OriginArguments: null, Type: { } formation } && BareName(formation, "Self") &&
-        declaration.Members[1] is FunctionKoto { Name: "next", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function && OriginClauses.Get(function).Count == 0 &&
+        declaration.Members[1] is FunctionKoto { Name: "next", IsRequirement: true, IsGenerated: false, IsSpecialization: false, Parameters.Count: 1, GenericArguments.Count: 0, TypeConstraints.Count: 0, EffectBounds.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null } function && OriginClauses.Get(function).Count == 0 &&
         (function.Origins.Count == 0 || (function.Origins.Count == 1 && function.Origins[0] == "step")) &&
         function.Parameters[0] is { InternalName: "self", ExternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: "step", OriginArguments: null, Type: { } target } } && BareName(target, "Self") &&
         BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") &&
@@ -449,10 +449,11 @@ public sealed partial class KimiLibrary
 
     private bool ValidIterator(BindingSymbol symbol)
         => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
-        symbol.Declaration is ContractKoto { Name: "Iterator", HasIncompatibleBindingHeader: false, Members.Count: 1, ConstraintNodes.Count: 1, Bases.Count: 1, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        symbol.Declaration is ContractKoto { Name: "Iterator", HasIncompatibleBindingHeader: false, Members.Count: 2, ConstraintNodes.Count: 1, Bases.Count: 1, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
         ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) && BareName(declaration.Bases[0], "LendingIterator") &&
         declaration.Members[0] is SyntaxFormKoto { Akind: KotoKind.AssociatedType, Operands.Length: 1, AttributeChain: null } associated &&
         associated.Operands[0] is IdentifierNameKoto { IdentifierName: "Item" } &&
+        declaration.Members[1] is EffectBoundKoto { Bound: EffectBoundKind.PreservesResults, Selector: IdentifierNameKoto { IdentifierName: "LendingIterator" }, Name: IdentifierNameKoto { IdentifierName: "next" }, AttributeChain: null } &&
         declaration.ConstraintNodes[0] is IsKoto { IsAssociatedConstraint: true, IsNegated: false, FormationType: null, AttributeChain: null } refinement && OriginClauses.Get(refinement).Count == 0 &&
         BareType(refinement.Left) is OriginApplicationKoto { ArgumentNodes.Count: 1 } family && BareName(family.ArgumentNodes[0], "step") &&
         BareType(family.Type) is MemberAccessKoto parent && BareName(parent.Left, "LendingIterator") && BareName(parent.Right, "LentItem") && BareName(refinement.Right, "Item");

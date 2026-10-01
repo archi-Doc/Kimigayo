@@ -251,11 +251,13 @@ public sealed partial class Binding
             }
         }
 
+        this.contractShapes.Clear();
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is ContractKoto contract)
             {
                 this.BuildContract(contract.BoundSymbol!.Contract!);
+                this.contractShapes.Add(contract.BoundSymbol!.Contract!);
             }
         }
     }

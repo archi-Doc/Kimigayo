@@ -3,3 +3,4 @@ public contract Iterator: LendingIterator
     /// The complete Type delivered by every successful next call.
     associate Item
     associate LendingIterator.LentItem(step) is Item
+    effect LendingIterator.next preserves results

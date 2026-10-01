@@ -11,15 +11,6 @@ public sealed partial class Binding
     // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
     private EffectSummary? destructionSummary;
 
-    private enum EffectBound : byte
-    {
-        // SPEC utf8-formatting 12: reserve uses only the authority supplied through self.
-        Reserve,
-
-        // SPEC 22.1.2.4: next conflicts with no Loan that an earlier item keeps.
-        Iterator,
-    }
-
     /// <summary>
     /// SPEC 8.4.5, 22.1.2.4: checks every effect bound again after ownership analysis, now counting the destructions each
     /// reached body performs, as its planned cleanups show. An implementation whose body ownership analysis did not reach,
@@ -38,8 +29,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.4.5: BufferWriter.reserve and Iterator.next publish effect upper bounds. Conformance checks the complete
-    // transitive effect summary of every implementation against its bound; an effect it cannot classify is a conflict.
+    // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
+    // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.4.5).
     // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
     // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects).
     private void ValidateEffectBounds()
@@ -54,16 +45,11 @@ public sealed partial class Binding
         }
     }
 
-    // The path, marked invalid, when one of its bounded implementations exceeds the bound; null otherwise.
+    // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a
+    // witness's summary serves both bounds.
     private BoundConformancePath? EffectBoundViolation(BoundConformancePath path, bool destructions)
     {
-        if (!path.IsVerified)
-        {
-            return null;
-        }
-
-        var reserve = path.Contract.LibraryDeclaration == KimiDeclarationId.BufferWriter;
-        if (!reserve && !IsRefinement(path.Contract, this.Library.Iterator))
+        if (!path.IsVerified || path.Contract.Declaration.BoundSymbol?.Contract is not { HasEffectBounds: true } shape)
         {
             return null;
         }
@@ -71,18 +57,21 @@ public sealed partial class Binding
         for (var w = 0; w < path.WitnessStorage.Count; w++)
         {
             var witness = path.WitnessStorage[w];
-            if (!reserve && !ReferenceEquals(witness.Requirement.Scope.Owner, this.Library.LendingIterator.Declaration))
+            if (witness.Requirement.Declaration is not FunctionKoto requirement)
             {
                 continue;
             }
 
-            if (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null)
+            var confined = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.Confined) is not null;
+            var preserves = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.PreservesResults) is not null;
+            if ((!confined && !preserves) ||
+                (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null))
             {
                 continue;
             }
 
             var summary = destructions ? this.destructionSummary ??= new(this) : this.effectSummary ??= new(this);
-            if (!summary.Check(reserve ? EffectBound.Reserve : EffectBound.Iterator, witness.Implementation, path.Scope, destructions))
+            if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
             {
                 path.Invalid = true;
                 path.IsVerified = false;
@@ -107,17 +96,19 @@ public sealed partial class Binding
         private readonly List<BoundCall?> contexts = new();
         private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<BoundCall> calls = new();
-        private readonly List<(BoundType Iterator, BoundOrigin Storage)> storedIterators = new();
+        private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
         private IReadOnlyList<BoundOrigin> selfOrigins = [];
         private BindingScope? scope;
         private BoundType item = BoundType.Unit;
-        private EffectBound bound;
+        private bool confined;
+        private bool preserves;
         private int context;
         private int callCount;
         private FunctionKoto? implementation;
         private BoundType? receiverType;
         private BindingSymbol? steppedField;
+        private FunctionKoto? delegated;
         private Koto? stepUse;
         private bool valid;
         private bool destructions;
@@ -150,11 +141,11 @@ public sealed partial class Binding
 
             if (node is IdentifierNameKoto or MemberAccessKoto && node.BoundSymbol is { Declaration: PropertyKoto property, Scope.Owner: GroupKoto })
             {
-                // Lazy initialization runs at the first read. SPEC utf8-formatting 12: reserve may not reach ambient mutable state.
+                // Lazy initialization runs at the first read. SPEC 8.4.10.2: confined reaches no mutable static.
                 // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
                 // are unknown.
                 this.Queue(property.InitializerKoto);
-                if ((property.VariableKind == VariableKind.Var && this.bound == EffectBound.Reserve) ||
+                if ((property.VariableKind == VariableKind.Var && this.confined) ||
                     (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _)))
                 {
                     this.valid = false;
@@ -186,12 +177,13 @@ public sealed partial class Binding
         // unrelated signatures repeatedly resize the same call's argument and substitution arrays on every rebind.
         internal void BeginPass() => this.callCount = 0;
 
-        // SPEC 8.4.8.2: the bound is judged in the conformance scope (D and the conditions P); the implementation's item
+        // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(EffectBound bound, BindingSymbol implementation, BindingScope scope, bool destructions)
+        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions)
         {
-            this.bound = bound;
+            this.confined = confined;
+            this.preserves = preserves;
             this.scope = scope;
             this.valid = true;
             this.destructions = destructions;
@@ -205,8 +197,9 @@ public sealed partial class Binding
             this.implementation = implementation.Declaration as FunctionKoto;
             this.receiverType = null;
             this.steppedField = null;
+            this.delegated = null;
             this.stepUse = null;
-            if (bound == EffectBound.Iterator)
+            if (preserves)
             {
                 if (implementation.Type is not { } declared)
                 {
@@ -216,13 +209,20 @@ public sealed partial class Binding
                 var item = binding.ContractType(declared, scope);
                 if (!item.CarriesOrigin && !HasAbstractPart(item))
                 {
-                    return true; // An item that keeps no Loan conflicts with no effect.
+                    // A result that keeps no Loan conflicts with no effect.
+                    this.preserves = false;
+                    if (!confined)
+                    {
+                        return true;
+                    }
                 }
-
-                this.item = item;
-                this.selfOrigins = SelfOrigins(implementation, out var receiver);
-                this.receiverType = receiver;
-                this.StoredIterators(receiver);
+                else
+                {
+                    this.item = item;
+                    this.selfOrigins = SelfOrigins(implementation, out var receiver);
+                    this.receiverType = receiver;
+                    this.StoredValues(receiver);
+                }
             }
 
             this.Function(implementation, null);
@@ -354,6 +354,24 @@ public sealed partial class Binding
 
             return true;
         }
+
+        // The receiver parameter of a call, whether bound as its receiver or as its first argument.
+        private static BoundType? Receiver(BoundCall call)
+        {
+            var receiver = call.ReceiverOperation.ParameterType;
+            for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
+            {
+                if (call.ArgumentOperations[i].ParameterIndex == 0)
+                {
+                    receiver = call.ArgumentOperations[i].ParameterType;
+                }
+            }
+
+            return receiver;
+        }
+
+        // An associated projection, whose root Type is not a part of its values.
+        private static bool IsProjection(BoundType type) => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 };
 
         // A formatting root evaluates its synthesized calls. $tryWrite's acquisition only borrows its Writer operand, and
         // its written operand is replaced by the writes; an interpolation also evaluates its own segments.
@@ -570,10 +588,10 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 22.1.2.4: only Iterator.next's bound classifies Loans; reserve's bound concerns the calls it reaches.
+        // SPEC 8.4.10.3: only preserves results classifies Loans; confined concerns the environment the summary reaches.
         private void Access(BoundType? type, LoanRequirement mode, Koto use)
         {
-            if (type is null || this.bound != EffectBound.Iterator)
+            if (type is null || !this.preserves)
             {
                 return;
             }
@@ -607,7 +625,7 @@ public sealed partial class Binding
 
         private void AccessOrigin(BoundOrigin origin, LoanRequirement mode, Koto use)
         {
-            if (this.bound == EffectBound.Iterator && this.Conflicts(this.item, origin, mode, false, use))
+            if (this.preserves && this.Conflicts(this.item, origin, mode, false, use))
             {
                 this.valid = false;
             }
@@ -811,10 +829,10 @@ public sealed partial class Binding
         }
 
         // These operations act only on their acquired inputs and the allocator; comparison, formatting and destruction
-        // callbacks are summarized separately. Console output is ambient state outside reserve's authority.
+        // callbacks are summarized separately. Console output is an environment effect, outside confined (SPEC 8.4.10.2).
         private bool Allows(CompilerFunctionKind kind) => kind switch
         {
-            CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => this.bound == EffectBound.Iterator,
+            CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => !this.confined,
             CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or
                 >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
@@ -826,81 +844,75 @@ public sealed partial class Binding
             _ => false,
         };
 
-        // A requirement call contributes its published effect bound; a requirement without one has unknown effects.
+        // SPEC 8.4.10.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
+        // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.4.10.5). Without
+        // confined, its environment effects are unknown, which a bound check counts as a conflict. Its inputs are affected
+        // in their parameters' modes, which only preserves results classifies.
         private void Requirement(BindingSymbol symbol, BoundCall? call)
         {
-            if (call is not null && this.bound == EffectBound.Iterator && ReferenceEquals(symbol.Scope.Owner, binding.Library.LendingIterator.Declaration))
-            {
-                // SPEC 22.1.2.4: the items of an Iterator J stored in one Field f are J's items obtained through f when Self
-                // stores no other value naming J, so J's published bound covers every step of f; any other step leaves the
-                // effects unbounded.
-                this.valid &= this.ForwardsItems(call, out var iterator) && this.StepsStoredIterator(iterator);
-                return;
-            }
-
-            if (symbol.Scope.Owner.BoundSymbol?.LibraryDeclaration != KimiDeclarationId.BufferWriter || call is null)
+            if (call is null || symbol.Declaration is not FunctionKoto requirement)
             {
                 this.valid = false;
                 return;
             }
 
-            if (this.bound == EffectBound.Iterator)
+            // The premises are those of the call's own scope and, in the implementation's own body, the conditions of the
+            // conformance (SPEC 8.4.8.2), such as I is Iterator for Self is Iterator when I is Iterator.
+            var conforming = call.ConformingType is { } type ? this.Type(type) : null;
+            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!);
+            if (this.stepUse is { } use && (!confined || !preserves))
             {
-                // reserve may write every Loan reachable through the authority supplied as self.
-                var receiver = call.ReceiverOperation.ParameterType;
-                for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
+                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use));
+                confined |= local;
+                preserves |= held;
+            }
+
+            if (this.preserves && preserves && this.ForwardsResults(call, out var stored) && this.StepsStoredValue(requirement, stored))
+            {
+                return;
+            }
+
+            if (!confined)
+            {
+                this.valid = false;
+                return;
+            }
+
+            if (this.preserves)
+            {
+                this.Reachable(Receiver(call) is { } receiver ? this.Type(receiver) : null, LoanRequirement.Uniq, symbol.Declaration);
+                for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
                 {
-                    if (call.ArgumentOperations[i].ParameterIndex == 0)
+                    if (call.ArgumentOperations[i] is { ParameterIndex: > 0, ParameterType: { } parameter } && (ReferenceTypes.IsBorrow(parameter) || ObjectTypes.IsBorrow(parameter)))
                     {
-                        receiver = call.ArgumentOperations[i].ParameterType;
+                        this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
                     }
                 }
-
-                this.Reachable(receiver is null ? null : this.Type(receiver), LoanRequirement.Uniq, symbol.Declaration);
             }
         }
 
-        // Whether a step call's Some payload is this Iterator's own Item: the same projection family (LentItem or Item)
-        // of the receiver's Type, or the Item itself.
-        private bool ForwardsItems(BoundCall call, out BoundType iterator)
+        // SPEC 8.4.10.5 rule 2: the delegated call's result Type, normalized within the conformance, is the implementation's own.
+        private bool ForwardsResults(BoundCall call, out BoundType stored)
         {
-            iterator = BoundType.Unit;
-            var receiver = call.ReceiverOperation.ParameterType;
-            for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
-            {
-                if (call.ArgumentOperations[i].ParameterIndex == 0)
-                {
-                    receiver = call.ArgumentOperations[i].ParameterType;
-                }
-            }
-
-            if (receiver is not { Kind: BoundTypeKind.Semantics, Components: [var stepped] } || this.Type(call.ReturnType) is not { Components: [var payload] } option ||
-                !ReferenceEquals(option.Symbol, binding.Library.Option))
+            stored = BoundType.Unit;
+            if (Receiver(call) is not { Kind: BoundTypeKind.Semantics, Components: [var target] } || this.Type(call.ReturnType) is not { } result)
             {
                 return false;
             }
 
-            iterator = stepped;
-
-            // The checked implementation's own result is the Option of its Item; both sides are compared in the conformance scope.
-            var item = this.item is { Components: [var declared] } && ReferenceEquals(this.item.Symbol, binding.Library.Option) ? declared : this.item;
-            payload = binding.ContractType(payload, this.scope!);
-            if (ReferenceEquals(payload, item))
-            {
-                return true;
-            }
-
-            return payload is { Kind: BoundTypeKind.AssociatedProjection, Components: [var root, _] } && item is { Kind: BoundTypeKind.AssociatedProjection, Components: [var own, _] } &&
-                ReferenceEquals(root, own) && ReferenceEquals(root, iterator) && this.IsItemFamily(payload.Symbol) && this.IsItemFamily(item.Symbol);
+            stored = target;
+            return ReferenceEquals(binding.ContractType(result, this.scope!), this.item);
         }
 
-        // Whether this step call reaches `iterator` as `self.f` in the implementation's own body, f being the one Field
-        // that stores `iterator` or a borrow of it, with no other Field naming it; every step must use the same f.
-        private bool StepsStoredIterator(BoundType iterator)
+        // SPEC 8.4.10.5 rule 1: this call of the one delegated requirement d reaches `stored` as `self.f` in the implementation's
+        // own body, f being the one Field that stores it or a borrow of it, with no other Field naming it; every delegated
+        // call must use the same d and f.
+        private bool StepsStoredValue(FunctionKoto requirement, BoundType stored)
         {
             if (this.context != 0 || this.stepUse is not InvocationKoto { Method: MemberAccessKoto { Left: MemberAccessKoto { Left: IdentifierNameKoto self, BoundSymbol: { } field } } } ||
                 this.implementation?.BoundSymbol is not { ReceiverIndex: >= 0 and var index } ||
-                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation))
+                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation) ||
+                (this.delegated is not null && !ReferenceEquals(this.delegated, requirement)))
             {
                 return false;
             }
@@ -923,13 +935,13 @@ public sealed partial class Binding
                     return false;
                 }
 
-                if (!Names(type, iterator))
+                if (!Names(type, stored))
                 {
                     continue;
                 }
 
                 if (found || !ReferenceEquals(StructStorage.Field(this.receiverType!, i).BoundSymbol, field) ||
-                    !(ReferenceEquals(type, iterator) || (type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var target] } && ReferenceEquals(target, iterator))))
+                    !(ReferenceEquals(type, stored) || (type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var target] } && ReferenceEquals(target, stored))))
                 {
                     return false;
                 }
@@ -938,11 +950,9 @@ public sealed partial class Binding
             }
 
             this.steppedField = found ? field : null;
+            this.delegated = found ? requirement : null;
             return found;
         }
-
-        private bool IsItemFamily(BindingSymbol? family)
-            => family is { Declaration: { } declaration } && (ReferenceEquals(declaration.Parent, binding.Library.LendingIterator.Declaration) || ReferenceEquals(declaration.Parent, binding.Library.Iterator.Declaration));
 
         private void Specialization(FunctionKoto function, BoundCall call)
         {
@@ -1285,11 +1295,11 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 22.1.2.4: an Iterator's Item keeps no Loan of that Iterator's own Storage. A Field `s/J during o` borrows the
-        // Storage of J, so the Item of J keeps no Loan of o even though o is an Origin of the conforming Type.
-        private void StoredIterators(BoundType? receiver)
+        // SPEC 8.4.10.5: a Field `s/J during o` borrows the Storage of J, and an associated Type of J without Origin parameters
+        // cannot name that Storage, so it keeps no Loan of o even though o is an Origin of the conforming Type.
+        private void StoredValues(BoundType? receiver)
         {
-            this.storedIterators.Clear();
+            this.storedValues.Clear();
             if (!StructStorage.IsStruct(receiver))
             {
                 return;
@@ -1297,28 +1307,25 @@ public sealed partial class Binding
 
             for (var i = 0; i < StructStorage.Count(receiver!); i++)
             {
-                if (StructStorage.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var iterator], Origin: { } storage })
+                if (StructStorage.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
                 {
-                    this.storedIterators.Add((iterator, storage));
+                    this.storedValues.Add((value, storage));
                 }
             }
         }
 
-        private bool IsIteratorItem(BoundType type)
-            => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 } && ReferenceEquals(type.Symbol?.Declaration?.Parent, binding.Library.Iterator.Declaration);
-
-        // Whether `origin` is the Loan of the Storage of the Iterator whose Item `type` is.
-        private bool IsIteratorStorage(BoundType type, BoundOrigin origin)
+        // Whether `origin` is the Loan of the Storage of the stored value whose associated Type `type` is.
+        private bool IsStoredValueStorage(BoundType type, BoundOrigin origin)
         {
-            if (!this.IsIteratorItem(type))
+            if (!IsProjection(type) || type.OriginArguments.Count != 0)
             {
                 return false;
             }
 
-            var iterator = type.Components[0];
-            for (var i = 0; i < this.storedIterators.Count; i++)
+            var root = type.Components[0];
+            for (var i = 0; i < this.storedValues.Count; i++)
             {
-                if (ReferenceEquals(this.storedIterators[i].Iterator, iterator) && ReferenceEquals(this.storedIterators[i].Storage, origin))
+                if (ReferenceEquals(this.storedValues[i].Value, root) && ReferenceEquals(this.storedValues[i].Storage, origin))
                 {
                     return true;
                 }
@@ -1356,7 +1363,7 @@ public sealed partial class Binding
 
                 for (var i = 0; i < this.selfOrigins.Count; i++)
                 {
-                    if (!this.IsIteratorStorage(type, this.selfOrigins[i]) && this.SharesDependency(accessed, this.selfOrigins[i], use))
+                    if (!this.IsStoredValueStorage(type, this.selfOrigins[i]) && this.SharesDependency(accessed, this.selfOrigins[i], use))
                     {
                         return true;
                     }
@@ -1368,9 +1375,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.IsIteratorItem(type))
+            if (IsProjection(type))
             {
-                return false; // The receiver of an Item projection is not a part of the item; the checks above cover it.
+                return false; // The root of a projection is not a part of its values; the checks above cover it.
             }
 
             shared |= type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
