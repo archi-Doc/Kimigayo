@@ -39,3 +39,6 @@ internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isi
     K is Equatable
 internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
     K is Equatable
+
+// Publishes the original initialized i64 slot for a synchronous native output parameter.
+internal unsafe func addressOfI64(value: uniq/i64) -> unsafe/i64

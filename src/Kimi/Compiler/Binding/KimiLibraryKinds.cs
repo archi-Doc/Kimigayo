@@ -90,4 +90,5 @@ public enum CompilerFunctionKind : byte
     StoragePlaceDictionaryValue,
     StorageReserveDictionary,
     StorageShrinkDictionary,
+    StorageAddressOfI64,
 }

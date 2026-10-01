@@ -140,6 +140,7 @@ public enum KimiDeclarationId : byte
     StoragePlaceDictionaryValue,
     StorageReserveDictionary,
     StorageShrinkDictionary,
+    StorageAddressOfI64,
 }
 
 public enum KimiDeclarationState : byte

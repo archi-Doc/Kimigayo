@@ -129,6 +129,8 @@ across fragments for style: logical order controls initializer effects and rever
 
 ### 3.3. Properties and comparisons
 
+- `[Kimi]` Time durations expose `seconds`, `milliseconds` and `microseconds` as f64 observations;
+  `rawMicroseconds: u64` is the exact integer representation. Read a running clock through `elapsed()`.
 - `[Kimi]` Use a Property for a stable observation with no explicit arguments, allocation or observable
   effects, and O(1) cost: `length`, `capacity`, `isEmpty`. Use functions for work such as `sorted()`.
 - `[Advice]` Prefer shared getters. An operation that needs exclusive access or consumes its receiver

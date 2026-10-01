@@ -282,6 +282,8 @@ internal sealed class EmissionModule
     /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
     internal List<ExternalFunction> Externals { get; } = new();
 
+    internal List<StaticScalarEntry> Statics { get; } = new();
+
     internal bool IsComplete { get; private set; }
 
     internal string? TestRuntime { get; set; }
@@ -321,6 +323,7 @@ internal sealed class EmissionModule
         this.Objects.Clear();
         this.NeedsObjectRuntime = false;
         this.Externals.Clear();
+        this.Statics.Clear();
     }
 
     internal EmissionFunction AddFunction(FunctionAbi abi, bool exported)

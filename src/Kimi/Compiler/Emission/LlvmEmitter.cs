@@ -18,6 +18,10 @@ public sealed class LlvmEmitter
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
+    private readonly List<StaticScalarEntry> staticEntries = new();
+    private readonly SourceLocationTable staticLocations = new();
+    private readonly List<(string Symbol, FunctionAbi Abi)> importAbis = new();
     private bool resourceLimit;
 
     internal LlvmEmitter(Compilation compilation)
@@ -102,10 +106,45 @@ public sealed class LlvmEmitter
                 this.functions.Add(source, abi);
             }
 
-            if (!RegisterImports(c.Binding.LibraryImports, module, this.functions, out failure))
+            if (!this.RegisterImports(c.Binding.LibraryImports, module, this.functions, out failure))
             {
                 return false;
             }
+
+            for (var i = 0; i < c.Ownership.Bodies.Count; i++)
+            {
+                var body = c.Ownership.Bodies[i];
+                if (body.Function.StaticInitializer is not { } property)
+                {
+                    continue;
+                }
+
+                var abi = this.functions[body.Function];
+                var slotOrdinal = module.Statics.Count;
+                if (slotOrdinal == this.staticEntries.Count)
+                {
+                    this.staticEntries.Add(new(abi));
+                }
+                else if (!ReferenceEquals(this.staticEntries[slotOrdinal].Initializer, abi))
+                {
+                    this.staticEntries[slotOrdinal] = new(abi);
+                }
+
+                var slot = this.staticEntries[slotOrdinal];
+
+                if (!StaticScalar.IsDynamic(property) || !this.staticLocations.TryGet(property.Declaration, c.Project.Directory, out var location))
+                {
+                    failure = "Static initializer requires a verified closed scalar declaration and source location.";
+                    return false;
+                }
+
+                slot.Location = module.Constants.Intern(location, LlvmConstantKind.Location);
+                slot.Message = module.Constants.Intern("Static initialization cycle", LlvmConstantKind.Text);
+                module.Statics.Add(slot);
+                this.staticGetters.Add(property, slot.Getter);
+            }
+
+            this.lowering.StaticGetters = this.staticGetters;
 
             module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
             module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
@@ -211,6 +250,7 @@ public sealed class LlvmEmitter
             }
 
             this.functions.Clear();
+            this.staticGetters.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances();
             this.objects.Clear();
@@ -226,13 +266,21 @@ public sealed class LlvmEmitter
     // SPEC 22.3.2: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
     // arguments need no extension attributes. Binding already made same-named imports agree on one
     // physical signature and supply kind (SPEC 21.5.2), so they share one declaration.
-    private static bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
+    private bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
     {
         failure = null;
+        var ordinal = 0;
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            var name = LlvmModuleWriter.ExternalName(import.Symbol);
+            if (ReferenceEquals(import.Function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
+                !this.compilation.Ownership.UsesImport(import.Function))
+            {
+                continue;
+            }
+
+            var cached = ordinal < this.importAbis.Count && this.importAbis[ordinal].Symbol == import.Symbol ? this.importAbis[ordinal].Abi : null;
+            var name = cached?.Name ?? LlvmModuleWriter.ExternalName(import.Symbol);
             FunctionAbi? abi = null;
             for (var e = 0; e < module.Externals.Count && abi is null; e++)
             {
@@ -244,7 +292,7 @@ public sealed class LlvmEmitter
 
             if (abi is null)
             {
-                abi = CreateImportAbi(import, name);
+                abi = Matches(cached, import.Function) ? cached : CreateImportAbi(import, name);
                 if (abi is null)
                 {
                     failure = "A foreign import needs an unsupported parameter or result representation.";
@@ -254,10 +302,38 @@ public sealed class LlvmEmitter
                 module.Externals.Add(new(abi, import.Kind == "import"));
             }
 
+            if (ordinal == this.importAbis.Count)
+            {
+                this.importAbis.Add((import.Symbol, abi));
+            }
+            else
+            {
+                this.importAbis[ordinal] = (import.Symbol, abi);
+            }
+
+            ordinal++;
             functions.Add(import.Function, abi);
         }
 
         return true;
+
+        static bool Matches(FunctionAbi? abi, FunctionKoto function)
+        {
+            if (abi is null || abi.Result != (ReferenceEquals(function.BoundSymbol!.Type, BoundType.Unit) ? "void" : ImportType(function.BoundSymbol.Type!)) || abi.Parameters.Length != function.Parameters.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < abi.Parameters.Length; i++)
+            {
+                if (abi.Parameters[i].Type != ImportType(function.Parameters[i].Type.BoundType!))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         static FunctionAbi? CreateImportAbi(LibraryImport import, string name)
         {
@@ -485,6 +561,6 @@ public sealed class LlvmEmitter
         }
 
         return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto ||
-            (x is PropertyKoto property && StaticScalar.TryGet(property.BoundSymbol?.Property, out _)));
+            (x is PropertyKoto property && (StaticScalar.TryGet(property.BoundSymbol?.Property, out _) || StaticScalar.IsDynamic(property.BoundSymbol?.Property))));
     }
 }

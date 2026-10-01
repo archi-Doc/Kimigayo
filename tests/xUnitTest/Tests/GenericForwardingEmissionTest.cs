@@ -93,7 +93,6 @@ public class GenericForwardingEmissionTest
 
     [Theory]
     [InlineData("group W\n    public var value: i32 = 1\nrequire W.value == 1 else => $abort(\"value\")")]
-    [InlineData("group W\n    public let value: i32 = effect()\n    public func effect() -> i32\n        Console.writeLine(\"effect\")\n        return 1\nConsole.writeLine(\"unused\")")]
     [InlineData("group W\n    public let value: i32 = 1\nW.value = 2")]
     [InlineData("group W\n    public let value: i32 = true\n()")]
     public void RejectsInvalidOrUnsupportedStaticState(string source)
@@ -103,6 +102,10 @@ public class GenericForwardingEmissionTest
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
     }
+
+    [Fact]
+    public void UnusedDynamicStaticInitializersAreAcceptedWithoutExecution()
+        => ScalarEmissionTest.EmitFixture("StaticInitializationUnusedEffect", "group W\n    public let value: i32 = effect()\n    public func effect() -> i32\n        Console.writeLine(\"effect\")\n        return 1\nConsole.writeLine(\"unused\")", "unused\n");
 
     // BodyLowering validates every lowered body, including each monomorphized instance (SPEC 21.3.1);
     // the corrupt element borrow is rejected on the ordinary body that owns it.

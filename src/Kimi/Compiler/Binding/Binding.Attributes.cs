@@ -57,7 +57,9 @@ public sealed partial class Binding
     private void ValidateLibraryImports()
     {
         string? target = null;
-        Dictionary<string, (string Signature, string? Kind)>? symbols = null;
+        var symbols = this.importSymbols;
+        symbols.Clear();
+        var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } attribute ||
@@ -111,7 +113,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.TryGetImportAbi(function, out var signature))
+            if (!this.TryGetImportAbi(function, ordinal++, out var signature))
             {
                 this.Fail(attribute, BindingFailure.UnsupportedImportSignature);
             }
@@ -127,7 +129,6 @@ public sealed partial class Binding
 
                 // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical
                 // Type and dllimport setting. An unresolved kind already has its own diagnostic.
-                symbols ??= new(StringComparer.Ordinal);
                 if (!symbols.TryAdd(symbol, (signature, kind)))
                 {
                     var previous = symbols[symbol];
@@ -161,9 +162,9 @@ public sealed partial class Binding
                 return false;
             }
 
-            foreach (var parameter in function.Parameters)
+            for (var p = 0; p < function.Parameters.Count; p++)
             {
-                if (parameter.DefaultValue is not null)
+                if (function.Parameters[p].DefaultValue is not null)
                 {
                     return false;
                 }
@@ -229,9 +230,14 @@ public sealed partial class Binding
     // pointers, with Unit only as a result. The signature is one physical code per result and
     // parameter (i8/u8 share i8, every unsafe/T is ptr); it is null when a Type failed to bind,
     // since that Type already has its own diagnostic.
-    private bool TryGetImportAbi(FunctionKoto function, out string? signature)
+    private bool TryGetImportAbi(FunctionKoto function, int ordinal, out string? signature)
     {
         signature = null;
+        if (ordinal == this.importSignatures.Count)
+        {
+            this.importSignatures.Add(null);
+        }
+
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
@@ -261,7 +267,13 @@ public sealed partial class Binding
             }
         }
 
-        signature = complete ? new string(codes) : null;
+        if (complete)
+        {
+            var cached = this.importSignatures[ordinal];
+            signature = codes.SequenceEqual(cached.AsSpan()) ? cached : new string(codes);
+        }
+
+        this.importSignatures[ordinal] = signature;
         return true;
 
         static char PhysicalCode(BoundType type)

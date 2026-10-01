@@ -610,3 +610,63 @@ Per-case and whole-run budgets limit diagnostic counts and bytes, covering failu
 Intentional detail omission is not an extra execution error. Missing or corrupt required control data, or a failed write of retained data, is an execution error. A storage budget does not bound allocations performed by the user's own message expression.
 
 Verification lowering is shared; only the failure continuation changes (§17.5). Static expression, location and Type tables and compact ID/value events are used, with formatting in the parent. Parent worker slots and buffers are reused, and per-case state is reset. The immutable artifact snapshot is validated once at run startup instead of being copied or revalidated per case, while each child's ID handshake is retained. Reflective registration, per-verification UUIDs and heap objects are not required. Measurements must cover empty or short, I/O-heavy and failure-heavy cases, including startup and recovery, time, parent and child memory, communication and generated code size; no unmeasured speedup is promised.
+
+## 22.7. Windows APIs and elapsed time
+
+### 22.7.1. Windows native counter functions
+
+The public group `Kimi.Windows` exposes Windows-specific APIs through ordinary §22.3 imports:
+
+```kimi
+public group Windows
+    #LibraryImport("kernel32", "QueryPerformanceCounter")
+    public unsafe func queryPerformanceCounter(value: unsafe/i64) -> i32
+
+    #LibraryImport("kernel32", "QueryPerformanceFrequency")
+    public unsafe func queryPerformanceFrequency(value: unsafe/i64) -> i32
+```
+
+They preserve the native success flag: nonzero is success and zero is failure. Counter output is a count; frequency output is counts per second. The caller supplies live, writable, eight-byte-aligned i64 storage and prevents conflicting access during the call. Neither function retains the pointer. These functions do not allocate or convert errors into Abort themselves. They belong to the Windows x64 profile, not a cross-platform native ABI.
+
+The confined internal primitive `Storage.addressOfI64(value: uniq/i64) -> unsafe/i64` is unsafe and returns the address of the original initialized referent, without copying or allocation. It neither extends its lifetime nor transfers ownership. Its library caller must restrict pointer use to that live exclusive borrow, prevent conflicting access and prevent the pointer from escaping. The Time adapter obtains the pointer inside an unsafe block and uses it only for the synchronous native output call. This primitive is not a public safe-reference-to-pointer API (§5.6).
+
+### 22.7.2. Duration
+
+`Kimi.Time` is the public group for elapsed-time facilities. `Time.Duration` is Copy and stores a nonnegative whole number of microseconds. Its required declarations are:
+
+| Declaration | Meaning |
+| --- | --- |
+| `init(! microseconds: u64)` | Creates the exact duration. |
+| `rawMicroseconds: u64` | Immutable exact storage. |
+| `seconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000000.0`. |
+| `milliseconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000.0`. |
+| `microseconds: f64` | Shared computed getter: `rawMicroseconds@f64`. |
+
+All u64 inputs, including its maximum value, are representable in rawMicroseconds. Floating-point conversions may round under §13.5; they never replace the integer storage. Duration denotes an interval, not a date, time zone or civil timestamp. Construction and getters allocate nothing.
+
+### 22.7.3. Stopwatch
+
+`Time.Stopwatch` is Non-Copy. It stores accumulated whole microseconds as u64 and an optional platform start counter. Its read-only `isRunning: bool` getter reports whether that counter is present. Required functions are:
+
+| Declaration | Behavior |
+| --- | --- |
+| `init()` | Zero accumulated time, stopped; no clock access. |
+| `start(self: uniq/Self) -> ()` | No effect if running; otherwise reads the clock and starts a new interval, retaining accumulated time. |
+| `stop(self: uniq/Self) -> ()` | No effect if stopped; otherwise adds the current interval's whole microseconds and stops. |
+| `reset(self: uniq/Self) -> ()` | Zero accumulated time, stopped; no clock access. |
+| `restart(self: uniq/Self) -> ()` | Reads the clock, replaces accumulated time with zero and starts a new interval. |
+| `elapsed(self: ref/Self) -> Duration` | Returns accumulated time plus the running interval's whole microseconds, without mutation. A stopped snapshot reads no clock. |
+
+For nonnegative counter difference d and positive frequency f, one interval contributes exactly floor(d × 1,000,000 / f) microseconds. Accumulation is integer arithmetic. Each stop discards that interval's sub-microsecond fraction; snapshots discard the running fraction only in their returned value. No discarded fraction is carried between intervals. Conversion must not overflow an intermediate when the mathematical result fits u64; no 128-bit representation is required. Adding an interval beyond u64 Aborts under ordinary checked arithmetic.
+
+The Windows adapter uses §22.7.1. It caches a positive i64 counter frequency in an immutable static Field initialized once on first use (§22.2.3), before the first start/restart counter read. Clock failure, nonpositive frequency, a negative counter or a counter preceding the interval start Aborts. Time is monotonic elapsed time; no civil-clock adjustment is applied. A microsecond storage unit does not promise microsecond hardware resolution. Operations allocate no heap storage. Synchronization follows the single-thread execution boundary of §22.2.3.
+
+```kimi
+var watch = Kimi.Time.Stopwatch.init()
+watch.start()
+// Measured work.
+watch.stop()
+let elapsed = watch.elapsed()
+let seconds: f64 = elapsed.seconds
+let exact: u64 = elapsed.rawMicroseconds
+```

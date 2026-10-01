@@ -71,6 +71,7 @@ internal static partial class LlvmModuleWriter
         output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
         output.Write(module.TestRuntime);
         WriteExternals(module, output);
+        WriteStatics(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
         if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)

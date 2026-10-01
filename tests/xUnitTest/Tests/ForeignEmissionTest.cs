@@ -115,10 +115,10 @@ public class ForeignEmissionTest
         }
 
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Native").Members.OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single();
-        Assert.Single(c.Binding.LibraryImports);
+        Assert.Single(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
         Assert.True(function.RemoveAttribute(function.AttributeChain!));
         c.Bind();
-        Assert.Empty(c.Binding.LibraryImports);
+        Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
         using (var writer = new StringWriter())
         {
             Assert.False(c.Emission.WriteIr(writer, out _));

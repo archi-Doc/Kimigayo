@@ -14,6 +14,8 @@ public sealed partial class KimiLibrary
         internal static readonly Source[] All =
         [
             Read("Core.kimi"),
+            Read("Windows.kimi"),
+            Read("Time.kimi"),
             Read("Comparison.kimi"),
             Read("Iterator.kimi"),
             Read("LendingIterator.kimi"),

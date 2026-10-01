@@ -209,21 +209,17 @@ public class FunctionEmissionTest
     public void WarmFunctionAnalysisAndWritingAllocateNothing(bool parameters)
     {
         var c = MinimalEmissionTest.Analyze(parameters ? "func f(a: i32, b: (), c: bool) -> i32 => if c => a else => 0\nvar x = 0\nwhile x < 100\n    x += f(c: true, b: (), a: 1)" : Snapshot);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                valid &= c.Ownership.Analyze().IsVerified;
+                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, allocated);
         Assert.True(valid);
     }
 

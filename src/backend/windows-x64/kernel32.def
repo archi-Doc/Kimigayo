@@ -12,3 +12,5 @@ EXPORTS
     VirtualFree
     GetEnvironmentVariableA
     SetHandleInformation
+    QueryPerformanceCounter
+    QueryPerformanceFrequency

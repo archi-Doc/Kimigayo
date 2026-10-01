@@ -85,7 +85,7 @@ public class LibraryImportTargetBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var import = Assert.Single(c.Binding.LibraryImports);
+        var import = Assert.Single(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
         Assert.Equal(("library", "symbol", "import"), (import.Library, import.Symbol, import.Kind));
     }
 

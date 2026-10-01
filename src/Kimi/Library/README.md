@@ -37,11 +37,19 @@ embedded, validated and implemented.
   ordinary value-call path.
 - Dictionary algorithms belong in Kimigayo sources; see the implementation
   boundary below. Private storage functions are not public library APIs.
+- `Windows.kimi` contains ordinary `#LibraryImport` declarations; `Time.kimi` contains Duration,
+  Stopwatch and the counter conversion algorithms. Both join `KimiLibrarySources.Sources.All`
+  and follow normal Binding, ownership analysis and lowering. Only reachable library imports
+  are emitted. The private `counterFrequency` is initialized by the ordinary first-access static
+  protocol; it has no compiler-recognized name or special startup hook.
+  `Storage.addressOfI64` is the sole new compiler operation: it exposes the existing exclusive
+  argument's address for the synchronous native output call, without a copy or allocation.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
 - `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi` and `StorageOperations.kimi` contain signatures without source bodies.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, or the
   internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures).
-  Only catalog-registered compiler implementations may omit bodies. Ordinary
+  Within these signature resources, only catalog-registered compiler implementations may omit bodies
+  without an ordinary `#LibraryImport` declaration. Ordinary
   helpers in these containers use the normal compilation pipeline; this is not
   public syntax for declaring a user intrinsic or omitting a function body.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal

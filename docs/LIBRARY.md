@@ -446,7 +446,37 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 | `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/utf8-formatting.md#61-console-output) |
 | `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/testing-profile.md#environment-and-temporary-directory) |
 
-## 7. Current Source Differences
+## 7. Windows and Time
+
+[Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time).
+
+`Windows` groups Windows x64 native APIs. Both unsafe functions take a valid, exclusively writable, eight-byte-aligned i64 pointer and retain no pointer; they return the native i32 success flag (nonzero on success).
+
+| Function | Guarantee |
+| --- | --- |
+| `Windows.queryPerformanceCounter(value: unsafe/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
+| `Windows.queryPerformanceFrequency(value: unsafe/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
+
+`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
+
+| Declaration | Guarantee |
+| --- | --- |
+| `Duration.init(! microseconds: u64)` | Stores the exact input. |
+| `Duration.rawMicroseconds: u64` | Exact, immutable whole-microsecond value. |
+| `Duration.seconds: f64` | Converts the value to seconds. |
+| `Duration.milliseconds: f64` | Converts the value to milliseconds. |
+| `Duration.microseconds: f64` | Converts the value to floating-point microseconds. |
+| `Stopwatch.init()` | Stopped, zero accumulated time; no clock access. |
+| `Stopwatch.isRunning: bool` | Whether an interval is active. |
+| `Stopwatch.start(self: uniq/Self) -> ()` | Starts or resumes; no effect if already running. |
+| `Stopwatch.stop(self: uniq/Self) -> ()` | Adds the current interval's whole microseconds and stops; no effect if stopped. |
+| `Stopwatch.reset(self: uniq/Self) -> ()` | Clears time and stops; no clock access. |
+| `Stopwatch.restart(self: uniq/Self) -> ()` | Clears time and starts a new interval. |
+| `Stopwatch.elapsed(self: ref/Self) -> Duration` | Snapshot without state mutation; includes the running interval's whole microseconds. |
+
+Each stopped interval discards its sub-microsecond fraction. Floating-point Properties may round; rawMicroseconds does not. Clock failure, nonpositive frequency, a negative/reversed counter and microsecond overflow Abort. Frequency initializes once on first clock use through the normal static initialization protocol.
+
+## 8. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 

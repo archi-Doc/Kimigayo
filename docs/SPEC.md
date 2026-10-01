@@ -65,6 +65,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 - [19. Compile-time directives](spec/19-compile-time-directives.md)
 - [22. Kimi, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
   - [UTF-8 formatting profile](spec/utf8-formatting.md): buffers, views, formatting, interpolation and required costs.
+  - [Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time): native counter imports, Duration and Stopwatch.
 
 Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and code generation) and the test execution profile belong to the [implementation specification](IMPL.md).
 
@@ -111,6 +112,7 @@ This table indexes the required declarations of [§22.1](spec/22-core-execution-
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger`; closed Contracts: `Position`, `PositionRange` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts) |
 | `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange`, `RangeIterator<T>`, `ClosedRangeIterator<T>`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `LendingIterator`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage) |
 | `Kimi.Iteration` | `OwningIterator<I>`, `BorrowingIterator<I>`; `owning`, `borrowing` | [§22.1.2.3 standard adapters](spec/22-core-execution-and-foreign-functions.md#22123-standard-adapters) |
+| `Kimi.Windows`, `Kimi.Time` | Windows counter imports; `Duration`, `Stopwatch` | [§22.7 Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time) |
 | `Kimi.Storage` (internal) | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`; `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` | [§22.1.2.5 storage boundary](spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |

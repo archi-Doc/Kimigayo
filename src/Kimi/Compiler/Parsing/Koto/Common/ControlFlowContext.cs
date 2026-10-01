@@ -92,7 +92,7 @@ public static partial class KotoHelper
     public static bool DiscardsFunctionBody(Koto boundary) => boundary switch
     {
         FunctionKoto f => f.IsGenerated || f.IsConstructor || f.IsDestructor ||
-            (f.ReturnType is null && !f.IsAnonymous) || IsUnitType(f.ReturnType) ||
+            (f.ReturnType is null && !f.IsAnonymous && f.StaticInitializer is null) || IsUnitType(f.ReturnType) ||
             ReferenceEquals(f.BoundSymbol?.Type, BoundType.Unit),
         PropertyAccessorKoto a => a.AccessorKind == PropertyAccessorKind.Set || IsUnitType(a.ReturnType) ||
             (a.ReturnType is null && a.Parent is PropertyKoto property && IsUnitType(property.TypeKoto)),

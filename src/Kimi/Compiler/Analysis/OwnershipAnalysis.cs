@@ -14,6 +14,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipBody> bodyPool = new();
     private readonly List<OwnershipIssue> issues = new();
     private readonly List<FunctionKoto> libraryBodies = new();
+    private readonly HashSet<FunctionKoto> usedImports = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingSymbol> witnessTypes = new(ReferenceEqualityComparer.Instance);
     private readonly List<FunctionKoto> witnessScratch = new();
     private readonly Collector collector;
@@ -183,6 +184,8 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    internal bool UsesImport(FunctionKoto function) => this.usedImports.Contains(function);
+
     internal void Invalidate()
     {
         this.Result = default;
@@ -194,6 +197,7 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.libraryBodies.Clear();
+        this.usedImports.Clear();
         this.templateBodies.Clear();
         this.witnessTypes.Clear();
         this.fixedArrayWitnesses = false;
@@ -707,6 +711,26 @@ public sealed partial class OwnershipAnalysis
         {
             var result = this.Temporary(node);
             this.SetValue(this.Value(result), OwnershipValueKind.Constant, [], constant: staticValue);
+            return result;
+        }
+
+        if (node is IdentifierNameKoto or MemberAccessKoto && StaticScalar.IsDynamic(node.BoundSymbol?.Property))
+        {
+            if (use == PlaceUseKind.Borrow)
+            {
+                this.Unsupported(node);
+                return -1;
+            }
+
+            var initializer = StaticScalar.Initializer(node.BoundSymbol!.Property!);
+            if (ReferenceEquals(node.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) ||
+                ReferenceEquals(initializer.CodeContext.Kotonoha, this.compilation.Library.Kotonoha))
+            {
+                this.CollectLibraryBody(initializer);
+            }
+
+            var result = this.Temporary(node);
+            this.SetValue(this.Value(result), OwnershipValueKind.StaticRead, []);
             return result;
         }
 
@@ -1243,6 +1267,10 @@ public sealed partial class OwnershipAnalysis
         if (plan.Target.Declaration is FunctionKoto libraryBody && plan.Target.CompilerFunction == CompilerFunctionKind.None)
         {
             this.CollectLibraryBody(libraryBody);
+            if (Parser.HasLibraryImport(libraryBody.AttributeChain))
+            {
+                this.usedImports.Add(libraryBody);
+            }
         }
 
         for (var i = 0; i < plan.TypeArguments.Length; i++)
@@ -1918,6 +1946,12 @@ public sealed partial class OwnershipAnalysis
                 {
                     this.owner.Build(function);
                 }
+            }
+            else if (node is PropertyKoto propertySyntax && StaticScalar.IsDynamic(propertySyntax.BoundSymbol?.Property))
+            {
+                var initializer = StaticScalar.Initializer(propertySyntax.BoundSymbol!.Property!);
+                this.owner.flow!.Append(initializer);
+                this.owner.Build(initializer);
             }
             else if (node is PropertyAccessorKoto { Body: not null } syntax)
             {

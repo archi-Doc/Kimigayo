@@ -157,6 +157,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StoragePlaceDictionaryValue, "placeValue", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryValue),
         new(KimiDeclarationId.StorageReserveDictionary, "reserveEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageReserveDictionary),
         new(KimiDeclarationId.StorageShrinkDictionary, "shrinkEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageShrinkDictionary),
+        new(KimiDeclarationId.StorageAddressOfI64, "addressOfI64", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageAddressOfI64),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -165,7 +166,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageShrinkDictionary;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageAddressOfI64;
 
     internal static bool RequiresCallerLocation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].CallerLocation;

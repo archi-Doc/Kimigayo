@@ -14,8 +14,8 @@ internal static partial class Kernel32Imports
     internal const string Dll = "KERNEL32.dll";
     internal const string Generator = "llvm-dlltool";
 
-    /// <summary>Gets the exports: the seven runtime APIs plus the VirtualAlloc family used only by native tests.</summary>
-    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree"];
+    /// <summary>Gets the runtime APIs, the VirtualAlloc test family and the Windows counter APIs.</summary>
+    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency"];
 
     internal static readonly string Definition;
     internal static readonly string DefinitionSha256;

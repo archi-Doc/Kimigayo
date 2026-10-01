@@ -421,6 +421,7 @@ internal readonly record struct OwnershipCheckingReplay(int Entry, int End, int 
 internal enum OwnershipValueKind : byte
 {
     None,
+    StaticRead,
     Constant,
     Parameter,
     Call,

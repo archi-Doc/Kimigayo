@@ -15,6 +15,8 @@ public sealed partial class Binding
     private readonly List<AliasKoto> aliases = new();
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
+    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    private readonly List<string?> importSignatures = new();
     private readonly IndexVisitor indexer;
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);

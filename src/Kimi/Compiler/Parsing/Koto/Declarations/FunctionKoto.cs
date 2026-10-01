@@ -375,6 +375,19 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal BoundAccessor? Accessor { get; }
 
+    // An execution view of a static initializer, retaining its original syntax and source location.
+    internal FunctionKoto(BoundProperty property)
+        : base(property.Declaration.CodeContext, property.Declaration.Span)
+    {
+        this.StaticInitializer = property;
+        this.Name = property.Symbol.Name + ".initialize";
+        this.Parent = property.Declaration.Parent;
+        this.BoundSymbol = new(this.Name, BindingSymbolKind.Function, this, property.Symbol.Scope);
+        this.RefreshStaticInitializer();
+    }
+
+    internal BoundProperty? StaticInitializer { get; }
+
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
@@ -589,6 +602,14 @@ public sealed class FunctionKoto : DeclarationKoto
         {
             this.Body?.WriteIndentedTo(ref builder);
         }
+    }
+
+    internal void RefreshStaticInitializer()
+    {
+        this.ExpressionBody = this.StaticInitializer!.Declaration.InitializerKoto;
+        this.ReturnType = this.StaticInitializer.Declaration.TypeKoto;
+        this.BoundSymbol!.Type = this.StaticInitializer.Type;
+        this.BindingState = BindingState.Resolved;
     }
 
     internal void RefreshAccessor()

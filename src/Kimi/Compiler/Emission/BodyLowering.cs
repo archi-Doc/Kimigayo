@@ -16,6 +16,8 @@ namespace Kimi.Compiler;
 /// </remarks>
 internal sealed partial class BodyLowering
 {
+    internal Dictionary<BoundProperty, FunctionAbi>? StaticGetters { get; set; }
+
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
     private const byte CleanupMark = 4;
@@ -237,6 +239,20 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (body.Values[index].Kind == OwnershipValueKind.StaticRead)
+        {
+            failure = null;
+            var property = operation.Source.BoundSymbol?.Property;
+            if (!StaticScalar.IsDynamic(property) || !ReferenceEquals(ValueType(body, index), property!.Type) ||
+                this.StaticGetters?.GetValueOrDefault(property) is not { } getter || operation.Kind != OwnershipOperationKind.Produce)
+            {
+                return Fail("Static read requires a verified initializer and matching scalar storage.", out failure);
+            }
+
+            function.AddCall(index, getter, []);
+            return true;
+        }
+
         if (body.Values[index].Kind == OwnershipValueKind.Formatting)
         {
             var valid = this.LowerFormatting(body, function, constants, projectDirectory, index, out failure);
