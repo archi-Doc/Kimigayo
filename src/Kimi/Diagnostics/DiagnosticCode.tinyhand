@@ -672,6 +672,16 @@
     Message="@wrap<U> converts an integer or wrapping integer value to an integer or wrapping integer Type U only"
     Advice="Write @U for a range-checked numeric conversion, or @bits<U> to reinterpret the bits of a floating-point value"
 
+  + Name="InvalidBitConversion_Kd"
+    Category="Language"
+    Message="@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of the same width: f32 with a 32-bit Type, f64 with a 64-bit Type, never isize or usize"
+    Advice="Write @wrap<U> between integer Types, @U for a numeric conversion, and a fixed-width integer Type in place of isize or usize"
+
+  + Name="GenericBitConversion_Kd"
+    Category="Language"
+    Message="@bits<U> needs its operand and target Types fixed; the width of a Type parameter is unknown in the definition"
+    Advice="Convert where the Types are concrete, or pass the bits through a fixed-width integer parameter"
+
   + Name="MissingSpecializationTarget_Kd"
     Category="Language"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"

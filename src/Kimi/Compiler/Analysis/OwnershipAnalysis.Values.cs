@@ -271,7 +271,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(conversion);
-        this.SetValue(this.Value(output), OwnershipValueKind.Convert, [this.Value(input)], constant: conversion.ConversionBinding == ConversionBinding.Wrap ? OwnershipValue.WrapConversion : 0);
+        var marker = conversion.ConversionBinding switch
+        {
+            ConversionBinding.Wrap => OwnershipValue.WrapConversion,
+            ConversionBinding.Bits => OwnershipValue.BitConversion,
+            _ => 0,
+        };
+        this.SetValue(this.Value(output), OwnershipValueKind.Convert, [this.Value(input)], constant: marker);
         return output;
     }
 }

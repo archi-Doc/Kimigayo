@@ -688,6 +688,8 @@ public sealed partial class Binding
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
                     BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
+                    BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
+                    BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

@@ -140,6 +140,8 @@ public enum DiagnosticCode
     BareOwningShorthand_Kd,
     NonCopyOperand_Kd,
     InvalidWrapConversion_Kd,
+    InvalidBitConversion_Kd,
+    GenericBitConversion_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,
 

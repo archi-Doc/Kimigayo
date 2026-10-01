@@ -34,15 +34,13 @@ public sealed partial class Binding
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
         var target = this.BindType(argument, scope);
-        if (operation != Constants.WrapOperation)
-        {
-            // @bits is bound by a later unit.
-            this.BindNode(conversion.Left, scope);
-            return this.Fail(conversion, BindingFailure.Unsupported, true);
-        }
-
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var number = operand as NumberLiteralKoto ?? (operand is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null);
+        if (operation != Constants.WrapOperation)
+        {
+            return this.BindBitConversion(conversion, scope, target, operand, number);
+        }
+
         if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
         {
             var width = ScalarTypes.Width(target, this.compilation.PointerWidth);
@@ -98,6 +96,86 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
+    // SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of
+    // the same fixed width, in either direction, without a check; a direct literal is converted at compile time.
+    private BoundType? BindBitConversion(ConversionKoto conversion, BindingScope scope, BoundType? target, Koto operand, NumberLiteralKoto? number)
+    {
+        if (target is not null && number is not null)
+        {
+            var negative = operand is PrefixMinusKoto;
+            Int128 folded;
+            if (number.IsInteger && FloatingTypes.Supports(target))
+            {
+                // The integer literal is wrapped to the unsigned Type of the target's width, and those bits are read as the float.
+                if (!number.TryGetIntegerMagnitude(out var magnitude))
+                {
+                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
+                }
+
+                var width = ReferenceEquals(target, BoundType.F32) ? 32 : 64;
+                var bits = ScalarTypes.Normalize(unchecked((Int128)(negative ? (UInt128)0 - magnitude : magnitude)), width);
+                folded = width == 32 ? (Int128)unchecked((uint)(long)bits) : (Int128)unchecked((long)bits);
+            }
+            else if (!number.IsInteger && BitWidth(target, this.compilation.PointerWidth) is var width && width != 0)
+            {
+                // The floating literal is rounded once to the floating-point Type of the target's width, and its bits are read as U.
+                if (!FloatingTypes.TryLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
+                {
+                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
+                }
+
+                folded = ScalarTypes.Normalize(bits, width);
+            }
+            else
+            {
+                this.BindNode(conversion.Left, scope);
+                return this.Fail(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion);
+            }
+
+            conversion.FoldedConstant = folded;
+            for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
+            {
+                Complete(node, target);
+                if (ReferenceEquals(node, number))
+                {
+                    break;
+                }
+            }
+
+            conversion.ConversionBinding = ConversionBinding.Bits;
+            Complete(conversion.Right, target);
+            return Complete(conversion, target);
+        }
+
+        var source = this.BindNode(conversion.Left, scope);
+        if (source is null || target is null)
+        {
+            return Complete(conversion, null);
+        }
+
+        if (ReferenceEquals(source, BoundType.Never))
+        {
+            conversion.ConversionBinding = ConversionBinding.Abrupt;
+            return Complete(conversion, BoundType.Never);
+        }
+
+        if (source.ContainsParameter || target.ContainsParameter)
+        {
+            return this.Fail(conversion, BindingFailure.GenericBitConversion);
+        }
+
+        var sourceFloating = FloatingTypes.Supports(source);
+        var targetFloating = FloatingTypes.Supports(target);
+        if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source, this.compilation.PointerWidth) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
+        {
+            return this.Fail(conversion, BindingFailure.InvalidBitConversion);
+        }
+
+        conversion.ConversionBinding = ConversionBinding.Bits;
+        Complete(conversion.Right, target);
+        return Complete(conversion, target);
+    }
+
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -108,6 +186,19 @@ public sealed partial class Binding
     // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
     internal static bool IsCopyOperation(ConversionKoto conversion)
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
+
+    // The fixed width of an integer or wrapping integer Type that @bits accepts: 32 or 64, never a platform-dependent or
+    // 128-bit one (SPEC 13.5.4.4).
+    private static int BitWidth(BoundType type, int pointerWidth)
+    {
+        if (!type.HasIntegerArithmetic || type.Underlying.Name is "isize" or "usize")
+        {
+            return 0;
+        }
+
+        var width = ScalarTypes.Width(type, pointerWidth);
+        return width is 32 or 64 ? width : 0;
+    }
 
     // A Kimi position or range Type other than an integer (SPEC 4.6.2, 4.6.3).
     private static bool IsPositionOrRangeType(BoundType type)

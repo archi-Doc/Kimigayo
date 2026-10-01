@@ -166,6 +166,12 @@
   + Name="Binding.InvalidWrapConversion"
     Description="the @wrap operand and target are integer or wrapping integer Types"
 
+  + Name="Binding.InvalidBitConversion"
+    Description="the @bits operand and target are a floating-point Type and a same-width integer Type"
+
+  + Name="Binding.GenericBitConversion"
+    Description="the @bits operand and target Types are fixed"
+
   + Name="Binding.MissingSpecializationTarget"
     Description="a generic function matches the specialization"
 

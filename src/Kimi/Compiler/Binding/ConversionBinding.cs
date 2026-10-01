@@ -13,6 +13,9 @@ internal enum ConversionBinding : byte
 
     // SPEC 13.5.4.3: E@wrap<U> wraps an integer value to U; it never fails, and a direct literal is folded.
     Wrap,
+
+    // SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and a same-width integer Type.
+    Bits,
     Identity,
 
     // SPEC 13.5.3: @move transfers a Movable Place, even a Copy one.
