@@ -179,6 +179,85 @@
     Phrase="Property declaration"
     Advice="A Contract declares Property requirements with 'has'; a struct declares stored or computed Properties; an enum declares none."
 
+  + Name="Syntax.ElseKeyword"
+    Description="the else keyword is written"
+    Phrase="'else'"
+    Advice="'require condition else => body' and an else branch write the keyword before the body."
+
+  + Name="Syntax.InKeyword"
+    Description="the for header names its source after in"
+    Phrase="'in'"
+    Advice="A for header is 'for binding in source'."
+
+  + Name="Syntax.BaseKeyword"
+    Description="the constructor initializer names base"
+    Phrase="'base'"
+    Advice="A constructor initializer is ': base(arguments)'."
+
+  + Name="Syntax.ParameterType"
+    Description="the parameter states its Type"
+    Phrase="': Type' after the parameter Name"
+    Advice="A parameter is 'name: Type'; a function expression may omit the Type."
+
+  + Name="Syntax.FunctionExpressionParameter"
+    Description="a function expression parameter is a plain Name and Type"
+    Phrase="external Name, default value or attribute on a function expression parameter"
+    Advice="A function expression's parameters are plain 'name: Type' or 'name'."
+
+  + Name="Syntax.PositionalAfterNamed"
+    Description="positional arguments precede named ones"
+    Phrase="positional argument after a named argument"
+    Advice="Name this argument too, or move it before the named arguments."
+
+  + Name="Syntax.TestVerificationArguments"
+    Description="the verification takes a condition and an optional message"
+    Phrase="argument list of $require or $expect"
+    Advice="$require and $expect take a condition and optionally 'message: text'."
+
+  + Name="Syntax.TypeAnnotation"
+    Description="the declaration states its Type"
+    Phrase="': Type'"
+    Advice="A computed Property and a Property requirement state their Type after ':'."
+
+  + Name="Syntax.ComputedInitializer"
+    Description="a computed Property has no initializer"
+    Phrase="initializer on a computed Property or requirement"
+    Advice="A computed Property computes its value in get; a requirement states no value."
+
+  + Name="Syntax.InlineAccessors"
+    Description="has declares the accessors of a Contract requirement"
+    Phrase="'has' accessor list"
+    Advice="'has get' and 'has set' declare a Property requirement in a Contract; a struct Property declares its accessors in an indented block."
+
+  + Name="Syntax.Accessor"
+    Description="the accessor is get or set"
+    Phrase="get or set"
+
+  + Name="Syntax.AccessorAccessibility"
+    Description="a requirement accessor takes no access modifier"
+    Phrase="access modifier on a requirement accessor"
+    Advice="A Contract requirement's accessors take no access modifier."
+
+  + Name="Syntax.AccessorParameters"
+    Description="the accessor declares its parameter list"
+    Phrase="accessor parameter list"
+    Advice="A custom accessor and an accessor requirement declare their signature: get(self: ref/S) -> T or set(self: uniq/S, value: T) -> ()."
+
+  + Name="Syntax.AccessorResult"
+    Description="the accessor declares its result Type after its parameter list"
+    Phrase="'-> Type' after the accessor's parameter list"
+    Advice="An accessor with a parameter list also declares its result: get(self: ref/S) -> T."
+
+  + Name="Syntax.SetterResult"
+    Description="a setter returns Unit"
+    Phrase="result Type other than () on set"
+    Advice="A setter returns Unit: set(self: uniq/S, value: T) -> ()."
+
+  + Name="Syntax.SetterValueParameter"
+    Description="the setter declares its value parameter"
+    Phrase="'value: Type'"
+    Advice="A setter's signature ends with its value parameter: set(self: uniq/S, value: T) -> ()."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

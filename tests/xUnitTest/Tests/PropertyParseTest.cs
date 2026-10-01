@@ -195,7 +195,7 @@ public class PropertyParseTest
         Assert.Equal(4, diagnostics.Length);
         Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.LetPropertyCannotHaveSetter_Kd));
         Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicatePropertyAccessor_Kd));
-        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
         Assert.Equal(
             ["Frozen", "Duplicate", "Mixed", "Continued"],
             structure.Members.Cast<PropertyKoto>().Select(x => x.NameKoto.IdentifierName));

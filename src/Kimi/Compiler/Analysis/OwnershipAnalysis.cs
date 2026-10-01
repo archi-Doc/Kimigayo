@@ -1912,9 +1912,10 @@ public sealed partial class OwnershipAnalysis
             if (node is FunctionKoto function)
             {
                 this.owner.CheckDefaultDeclarations(function);
-                // Requirement declarations and foreign imports have no body to verify, and a body missing because of a syntax Error
-                // is explained by that Error (SPEC 23.3.6.4).
-                if (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || function.MissingBody || Parser.HasLibraryImport(function.AttributeChain)))
+                // Requirement declarations and foreign imports have no body to verify; a body missing because of a syntax Error,
+                // and the body of a declaration that is itself a recovery of one, are explained by that Error (SPEC 23.3.6.4).
+                if (function.CodeContext.RecoveryCause(function) is null &&
+                    (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || function.MissingBody || Parser.HasLibraryImport(function.AttributeChain))))
                 {
                     this.owner.Build(function);
                 }

@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain in the skip and consume helpers until their callers migrate (D5).
-
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -248,21 +246,15 @@ public ref partial struct TokenReader
     /// Reads the current token and advances to the next token.
     /// </summary>
     /// <param name="token">The token that was read.</param>
-    /// <param name="addDiagnostic">Whether to report a diagnostic when the syntax is incomplete.</param>
-    /// <returns><see langword="true"/> if a token was read; otherwise, <see langword="false"/>.</returns>
+    /// <returns><see langword="true"/> if a token was read; otherwise, <see langword="false"/>, and the caller reports what it expected.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryRead(out Token token, bool addDiagnostic = true)
+    public bool TryRead(out Token token)
     {
         if (this.CanRead)
         {
             token = this.currentToken;
             this.AdvanceOne();
             return true;
-        }
-
-        if (addDiagnostic)
-        {
-            this.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
 
         token = default;
@@ -392,20 +384,18 @@ public ref partial struct TokenReader
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode? code)
-        => this.SkipUntil(kind1, kind1, kind1, code);
+    public TokenKind SkipUntil(TokenKind kind1)
+        => this.SkipUntil(kind1, kind1, kind1);
 
     /// <summary>
     /// Advances until either of the specified token kinds is reached.
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode? code = null)
-        => this.SkipUntil(kind1, kind2, kind2, code);
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2)
+        => this.SkipUntil(kind1, kind2, kind2);
 
     /// <summary>
     /// Advances until any of the specified token kinds is reached.
@@ -413,13 +403,8 @@ public ref partial struct TokenReader
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
     /// <param name="kind3">The third token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(
-        TokenKind kind1,
-        TokenKind kind2,
-        TokenKind kind3,
-        DiagnosticCode? code = null)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
     {
         while (this.CanRead)
         {
@@ -429,45 +414,21 @@ public ref partial struct TokenReader
                 return tokenKind;
             }
 
-            if (code is { } reported)
-            {
-                this.AddDiagnostic(reported);
-                code = null;
-            }
-
             this.AdvanceOne();
         }
 
         return default;
     }
 
-    /// <summary>Advances until any of the specified token kinds is reached, reporting the first skipped token as <see cref="DiagnosticCode.UnexpectedToken_Kd"/>.</summary>
-    /// <param name="kind1">The first token kind at which to stop.</param>
-    /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="kind3">The third token kind at which to stop.</param>
-    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUnexpectedUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
-    {
-        // Recovery from an error this reader just reported at the same token reports nothing again.
-        if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3 &&
-            this.Diagnostic.LastError?.Start != this.currentToken.Span.Start && !(this.currentToken.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(this.currentToken.Span)))
-        {
-            this.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, this.GetSpan(this.currentToken).ToString());
-        }
-
-        return this.SkipUntil(kind1, kind2, kind3);
-    }
-
     /// <summary>
-    /// Advances to the start of the immediately following block and reports at most one diagnostic
-    /// for trailing tokens on the declaration line. Stops before a subsequent statement.
+    /// Advances to the start of the immediately following block without reporting; the caller has reported what it
+    /// expected. Stops before a subsequent statement.
     /// </summary>
-    /// <param name="code">The diagnostic reported for the first trailing token.</param>
     /// <returns>
     /// <see cref="TokenKind.StartBlock"/> when a block was found;
     /// otherwise, the default value.
     /// </returns>
-    public TokenKind SkipUntilStartBlock(DiagnosticCode? code = DiagnosticCode.UnexpectedTrailingToken_Kd)
+    public TokenKind SkipUntilStartBlock()
     {
         var reachedNextStatement = false;
         while (this.CanRead)
@@ -495,12 +456,6 @@ public ref partial struct TokenReader
                 return default;
             }
 
-            if (code is { } reported)
-            {
-                this.AddDiagnostic(reported);
-                code = null;
-            }
-
             this.AdvanceOne();
         }
 
@@ -518,7 +473,7 @@ public ref partial struct TokenReader
     {
         if (isRootGroup)
         {
-            this.SkipUntil(TokenKind.RootGroup, null);
+            this.SkipUntil(TokenKind.RootGroup);
             return;
         }
 
@@ -684,7 +639,7 @@ public ref partial struct TokenReader
         if (remainingKind == TokenKind.Invalid)
         {
             range = this.currentToken.Span;
-            return this.Expect(TokenKind.GreaterThan, SyntaxForm.CloseAngleBracket);
+            return this.Expect(TokenKind.GreaterThan);
         }
 
         range = new SourceSpan(this.currentToken.Span.Start, 1);
@@ -714,8 +669,8 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
+                this.Expect(FormOf(targetKind));
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
         }
 

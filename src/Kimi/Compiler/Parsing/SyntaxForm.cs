@@ -116,4 +116,52 @@ public enum SyntaxForm : ushort
 
     /// <summary>A Property declaration in a container that does not take it.</summary>
     PropertyDeclaration,
+
+    /// <summary>The keyword else.</summary>
+    ElseKeyword,
+
+    /// <summary>The keyword in of a for header.</summary>
+    InKeyword,
+
+    /// <summary>The keyword base of a constructor initializer.</summary>
+    BaseKeyword,
+
+    /// <summary>The Type annotation of a parameter.</summary>
+    ParameterType,
+
+    /// <summary>An external Name, default value or attribute on a function expression's parameter.</summary>
+    FunctionExpressionParameter,
+
+    /// <summary>A positional argument after a named one.</summary>
+    PositionalAfterNamed,
+
+    /// <summary>The argument list of a $require or $expect verification.</summary>
+    TestVerificationArguments,
+
+    /// <summary>The Type annotation of a computed Property or Property requirement.</summary>
+    TypeAnnotation,
+
+    /// <summary>An initializer on a computed Property or Property requirement.</summary>
+    ComputedInitializer,
+
+    /// <summary>A has accessor list on a Property that is not a Contract requirement.</summary>
+    InlineAccessors,
+
+    /// <summary>A get or set accessor.</summary>
+    Accessor,
+
+    /// <summary>An access modifier on a Contract requirement's accessor.</summary>
+    AccessorAccessibility,
+
+    /// <summary>The parameter list of a custom accessor or accessor requirement.</summary>
+    AccessorParameters,
+
+    /// <summary>The result Type after an accessor's parameter list.</summary>
+    AccessorResult,
+
+    /// <summary>A result Type other than () on a setter.</summary>
+    SetterResult,
+
+    /// <summary>The value parameter of a setter.</summary>
+    SetterValueParameter,
 }

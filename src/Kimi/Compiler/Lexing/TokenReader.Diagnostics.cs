@@ -12,6 +12,31 @@ namespace Kimi.Compiler.Lexing;
 /// </summary>
 public ref partial struct TokenReader
 {
+    /// <summary>Gets the form of a token the grammar requires at a position; the parser never expects another kind by itself.</summary>
+    /// <param name="kind">The token kind.</param>
+    /// <returns>The form.</returns>
+    public static SyntaxForm FormOf(TokenKind kind)
+        => kind switch
+        {
+            TokenKind.OpenParenthesis => SyntaxForm.OpenParenthesis,
+            TokenKind.CloseParenthesis => SyntaxForm.CloseParenthesis,
+            TokenKind.CloseBracket => SyntaxForm.CloseBracket,
+            TokenKind.CloseBrace => SyntaxForm.CloseBrace,
+            TokenKind.GreaterThan => SyntaxForm.CloseAngleBracket,
+            TokenKind.Colon => SyntaxForm.Colon,
+            TokenKind.Comma => SyntaxForm.Comma,
+            TokenKind.Else => SyntaxForm.ElseKeyword,
+            TokenKind.In => SyntaxForm.InKeyword,
+            TokenKind.Base => SyntaxForm.BaseKeyword,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "The grammar expects this token only through a form of its own."),
+        };
+
+    /// <summary>Consumes the current token when it has the expected kind; otherwise reports the token's own form as expected and leaves the reader unchanged.</summary>
+    /// <param name="kind">The expected token kind, one that <see cref="FormOf"/> names.</param>
+    /// <returns><see langword="true"/> when the token was consumed.</returns>
+    public bool Expect(TokenKind kind)
+        => this.Expect(kind, FormOf(kind));
+
     /// <summary>Consumes the current token when it has the expected kind; otherwise reports the form as expected and leaves the reader unchanged.</summary>
     /// <param name="kind">The expected token kind.</param>
     /// <param name="form">The form the token stands for.</param>
@@ -54,7 +79,7 @@ public ref partial struct TokenReader
             this.Expect(SyntaxForm.LineEnd);
         }
 
-        this.SkipUntil(bodyMayFollow ? TokenKind.StartBlock : TokenKind.Separator, TokenKind.Separator, TokenKind.EndBlock, null);
+        this.SkipUntil(bodyMayFollow ? TokenKind.StartBlock : TokenKind.Separator, TokenKind.Separator, TokenKind.EndBlock);
     }
 
     /// <summary>
@@ -86,6 +111,13 @@ public ref partial struct TokenReader
         return this.Diagnostic.RecallError(found.Span) ? this.Diagnostic.LastError!.Value
             : this.Diagnostic.ReportSyntax(found.Span, DiagnosticCode.ExpectedSyntax_Kd, form, this.GetSpan(found).ToString(), this.CodeContext.SourceDocument);
     }
+
+    /// <summary>Reports that a form is missing at an insertion point the caller determined, such as right after a keyword. The reader is unchanged.</summary>
+    /// <param name="form">The missing form.</param>
+    /// <param name="at">The insertion point.</param>
+    /// <returns>The key of the Error that explains the recovery.</returns>
+    internal DiagnosticKey Missing(SyntaxForm form, int at)
+        => this.Diagnostic.ReportSyntax(new SourceSpan(at, 0), DiagnosticCode.MissingSyntax_Kd, form, null, this.CodeContext.SourceDocument);
 
     /// <summary>Reports that a form of syntax is not permitted where it stands. The reader is unchanged.</summary>
     /// <param name="form">The misplaced form.</param>

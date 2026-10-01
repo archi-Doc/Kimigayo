@@ -245,7 +245,7 @@ public static partial class Parser
             if (!IsTypeConstraintStart(ref reader, declarationContext: true))
             {
                 reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constraint");
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 continue;
             }
 
@@ -584,7 +584,7 @@ public static partial class Parser
         var start = reader.Read().Span.Start;
         var condition = ParseHeaderExpression(ref reader);
         reader.TrySkipSeparatorsTo(TokenKind.Else);
-        reader.TryConsume(TokenKind.Else, out _, true);
+        reader.Expect(TokenKind.Else);
         var parsedBody = ParseRequiredBody(ref reader);
         Koto body = parsedBody.IsExpressionBody ? parsedBody.Items[0] : parsedBody;
         return new RequireKoto(ref reader, SourceSpan.FromBounds(start, body.Span.End), condition, body);
