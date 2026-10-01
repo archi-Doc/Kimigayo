@@ -57,6 +57,9 @@ public sealed partial class Binding
     // The candidates a failed overload selection considered, recorded only when it fails.
     private Dictionary<Koto, RejectedCandidate[]>? rejectedCandidates;
 
+    // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
+    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
+
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected);
 
     // A conflicting argument with its stored Type, whether that Type is proven Copy, whether the Place offers Take, and the
@@ -195,7 +198,27 @@ public sealed partial class Binding
         return this.Fail(node, AccessFailure(target));
     }
 
-    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice.
+    // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
+    // located at the entry and names the initialization it stands for.
+    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var name = capture.Name;
+        switch (code)
+        {
+            case DiagnosticCode.InvalidAssignment_Kd:
+                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
+                break;
+            case DiagnosticCode.TransferRequired_Kd:
+                node.Report(requirement, code, note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference", evidence: [name], advice: $"Write {name}@move to transfer it, or {name}@ref to borrow it", span: capture.Span);
+                break;
+            default:
+                node.Report(requirement, code, span: capture.Span);
+                break;
+        }
+    }
+
+    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice. An
+    // Exclusive call of a closure (SPEC 7.6.3) borrows the callee exclusively, so the callee is the written target.
     private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (code != DiagnosticCode.InvalidAssignment_Kd)
@@ -211,7 +234,14 @@ public sealed partial class Binding
         }
 
         var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
-        node.Report(requirement, code, at: target, evidence: [target.ToString()], advice: immutable ? "Declare the binding with var to assign it again" : null);
+        var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
+        node.Report(
+            requirement,
+            code,
+            note: call ? "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent" : null,
+            at: target,
+            evidence: [target.ToString()],
+            advice: immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null);
     }
 
     // SPEC 10.6: one record per conflicting argument, in source order, located at the argument and relating each candidate's
@@ -242,6 +272,7 @@ public sealed partial class Binding
         this.mismatches?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
+        this.captureFailures?.Clear();
         this.rejectedCandidates?.Clear();
         this.acquisitionConflicts.Clear();
         this.acquisitionConflictStore.Clear();

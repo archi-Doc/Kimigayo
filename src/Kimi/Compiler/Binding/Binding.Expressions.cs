@@ -142,6 +142,26 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, unlike the
+    // function-item positions above. Arguments, assignment sources and results take their expected Type from the
+    // declaration and adapt there instead.
+    private static bool IsBareAcquisitionPosition(Koto node)
+    {
+        var target = node;
+        while (target.Parent is ParenthesizedKoto parenthesized)
+        {
+            target = parenthesized;
+        }
+
+        return target.Parent switch
+        {
+            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
+            DiscardKoto discard => ReferenceEquals(discard.Operand, target),
+            TupleLiteralKoto or ArrayLiteralKoto => true,
+            _ => false,
+        };
+    }
+
     // SPEC 7.7: an unsafe function supports direct calls only, so every appearance of its name
     // that is not the callee of a direct call acquires it as a value. This is the complement of
     // the callee position, not a list of acquisition positions, so no position stays unchecked.
@@ -399,6 +419,16 @@ public sealed partial class Binding
         {
             this.adaptations[node] = adaptation;
             return adaptation.Type;
+        }
+
+        // SPEC 3.5: without a fixed expected Type, the bare acquisition of a Place storing an exclusive reference Reborrows
+        // it in its own Semantics, exactly as an annotation of the same complete Type would.
+        if (expected is null && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } &&
+            node.ErasedFunctionType is null && IsBareAcquisitionPosition(node) && IsBarePlace(node) &&
+            this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
+        {
+            this.adaptations[node] = reborrow;
+            return reborrow.Type;
         }
 
         return node.ErasedFunctionType ?? actual;

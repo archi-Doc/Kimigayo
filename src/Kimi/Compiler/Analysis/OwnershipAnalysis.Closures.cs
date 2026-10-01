@@ -20,13 +20,24 @@ public sealed partial class OwnershipAnalysis
             }
 
             var read = -1;
-            if (closure.EnvironmentType is not null)
+            if (closure.EnvironmentType is not null && capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow)
+            {
+                // SPEC 7.6.2: the entry initializes its environment binding as `let x = x` (a Reborrow) or `let x = x@ref`
+                // and `x@uniq` (a borrow of the outer slot) would; the closure keeps the borrow's Loan (SPEC 15.8.2).
+                var borrowed = this.BorrowCapture(source, place, capture.Environment.Type!);
+                var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
+                var borrowedValue = this.Value(borrowed);
+                read = this.Emit(OwnershipOperationKind.Consume, source, borrowed, acquired, AcquisitionKind.Move);
+                this.SetValue(read, OwnershipValueKind.Alias, [borrowedValue]); // The consumed temporary's one prepared value.
+                this.Emit(OwnershipOperationKind.CallEntry, source, acquired);
+            }
+            else if (closure.EnvironmentType is not null)
             {
                 // SPEC 7.6.2: a bare capture Copies and needs definition-side Copy proof; x@move transfers.
                 var transfer = capture.Environment.TransferCapture;
                 if (!transfer && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
                 {
-                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
                 }
 
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
@@ -45,6 +56,23 @@ public sealed partial class OwnershipAnalysis
         this.SetValue(this.Value(result), OwnershipValueKind.Closure, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(this.arguments).Slice(mark));
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         return result;
+    }
+
+    // SPEC 7.6.2: the borrow that initializes a capture's environment binding. A stored exclusive reference is Reborrowed
+    // through its referent when the environment keeps its Type; a slot borrow adds a reference layer over the binding.
+    private int BorrowCapture(FunctionKoto source, int place, BoundType type)
+    {
+        var stored = this.body.Places[place].Type;
+        var borrowValue = ReferenceTypes.IsBorrow(stored) || ObjectTypes.IsBorrow(stored);
+        if (borrowValue)
+        {
+            this.Emit(OwnershipOperationKind.Read, source, place);
+        }
+
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+        this.SetValue(operation, OwnershipValueKind.Address, borrowValue ? [this.Value(place)] : [], constant: place);
+        return this.RegisterTemporary(result);
     }
 
     private int CallValue(InvocationKoto call, BoundValueCall plan)

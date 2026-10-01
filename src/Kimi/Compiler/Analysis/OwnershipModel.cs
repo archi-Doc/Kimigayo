@@ -196,7 +196,7 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
-    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0)
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -303,6 +303,9 @@ public sealed partial class OwnershipBody
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
+    /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
+    internal List<(int Place, int Root)>? ConditionalReborrows { get; set; }
+
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
     internal BoundCall? Instance { get; set; }
 
@@ -329,6 +332,7 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
+        this.ConditionalReborrows?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
         this.SlotResults.Clear();

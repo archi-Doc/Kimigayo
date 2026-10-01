@@ -152,9 +152,13 @@ internal sealed partial class BodyLowering
             var capture = closure.Captures[i];
             var representation = environmentLayout?.Fields[i] ?? WindowsLowering.GetValue(capture.Environment.Type!);
             var offset = environmentLayout?.Offset(i) ?? CaptureOffset(closure, i);
+            // SPEC 7.6.2: a borrowing entry consumes the temporary its borrow of the outer binding produced.
+            var borrowed = capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow;
+            var place = -1;
             if (representation is null || offset < 0 || (environmentLayout is null && offset + representation.Layout.Size > 8) ||
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
-                !body.SymbolPlaces.TryGetValue(capture.Source, out var place) || place != body.Operations[input].Place ||
+                (borrowed ? environmentLayout is null || body.Places[place = body.Operations[input].Place].Kind != OwnershipPlaceKind.Temporary
+                    : !body.SymbolPlaces.TryGetValue(capture.Source, out place) || place != body.Operations[input].Place) ||
                 !ReferenceEquals(body.Places[place].Type, capture.Environment.Type) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
             {

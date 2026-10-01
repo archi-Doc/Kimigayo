@@ -147,6 +147,12 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            if (issue.Capture >= 0 && issue.Source is FunctionKoto { BoundClosure: { } closure } capturing)
+            {
+                ReportCapture(issue, capturing, closure.Captures[issue.Capture].Source);
+                continue;
+            }
+
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
@@ -160,6 +166,20 @@ public sealed partial class OwnershipAnalysis
             !diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership) && FirstPending(flow) is { } pending)
         {
             pending.ReportDerived(DiagnosticRequirement.ControlFlow, [DiagnosticKey.Unresolved]);
+        }
+
+        // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry.
+        static void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
+        {
+            var name = source.Name;
+            var reference = source.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
+            var omitted = function.Captures is null;
+            issue.Source.Report(
+                DiagnosticRequirement.Ownership(issue.Failure),
+                issue.Code,
+                note: omitted ? $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" : null,
+                evidence: [name],
+                advice: !omitted ? null : reference ? $"List the capture as [{name}] to Reborrow the exclusive reference, or [{name}@move] to transfer it" : $"List the capture as [{name}@move] to transfer it, or [{name}@ref] to borrow it");
         }
 
         static Koto? FirstPending(ControlFlowAnalysis flow)
@@ -524,6 +544,18 @@ public sealed partial class OwnershipAnalysis
             if (stored.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
                 return this.BorrowStruct(source, stored.Type);
+            }
+
+            // SPEC 8.9: a finite conditional plan Copies in the Copy cases and Reborrows in the exclusive ones. The definition
+            // checks every case through the Reborrow's Loan, which only restricts the Copy cases; each instance takes its own.
+            if (this.instance is null && stored.Acquisition == AcquisitionKind.CopyOrMove && this.compilation.Binding.HasConditionalReborrowPlan(stored.Type, source))
+            {
+                this.Emit(OwnershipOperationKind.Read, source, place);
+                var reborrowed = this.Place(source, stored.Type, OwnershipPlaceKind.Temporary, false);
+                var borrow = this.Emit(OwnershipOperationKind.Borrow, source, place, reborrowed, loanMode: LoanRequirement.Uniq);
+                this.SetValue(borrow, OwnershipValueKind.Address, [this.Value(place)], constant: place);
+                (this.body.ConditionalReborrows ??= new()).Add((reborrowed, place));
+                return this.RegisterTemporary(reborrowed);
             }
 
             // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.

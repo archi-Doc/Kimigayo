@@ -65,6 +65,25 @@ public enum BoundTypeKind : byte
     Dictionary,
 }
 
+/// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.6.2).</summary>
+internal enum CaptureAcquisition : byte
+{
+    /// <summary>A bare entry of a proven-Copy binding.</summary>
+    Copy,
+
+    /// <summary><c>x@move</c>: the binding is transferred, even when Copy.</summary>
+    Move,
+
+    /// <summary>A bare entry of a binding storing <c>uniq/T</c> or <c>objuniq/T</c>: a Reborrow in the same Semantics.</summary>
+    Reborrow,
+
+    /// <summary><c>x@ref</c>: a shared borrow of the outer binding's slot.</summary>
+    SharedSlotBorrow,
+
+    /// <summary><c>x@uniq</c>: an exclusive borrow of the outer binding's slot.</summary>
+    ExclusiveSlotBorrow,
+}
+
 internal enum BindingFailure : byte
 {
     None,
@@ -217,8 +236,11 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets a value indicating whether a Pattern or iteration binding is a reference because its path is shared or exclusive (SPEC 15.1.6).</summary>
     internal bool BindsReference { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
-    internal bool TransferCapture { get; set; }
+    /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.6.2).</summary>
+    internal CaptureAcquisition CaptureAcquisition { get; set; }
+
+    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
+    internal bool TransferCapture => this.CaptureAcquisition == CaptureAcquisition.Move;
 
     /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.4.7.2), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }

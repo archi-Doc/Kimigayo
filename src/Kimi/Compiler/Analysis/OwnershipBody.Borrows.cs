@@ -45,7 +45,7 @@ public sealed partial class OwnershipBody
         this.storedBorrowStarts?.Clear();
         this.borrowRoots?.Clear();
         var count = this.Places.Count;
-        var dependent = false;
+        var dependent = this.ConditionalReborrows is { Count: > 0 };
         for (var p = 0; p < count && !dependent; p++)
         {
             dependent = HasProjection(this.Places[p].Type) || this.IsExclusiveBorrowInput(p);
@@ -90,6 +90,11 @@ public sealed partial class OwnershipBody
             {
                 AddType(p, this.Places[p].Type);
             }
+        }
+
+        if (this.ConditionalReborrows is { Count: > 0 } conditional)
+        {
+            AddConditionalReborrows(conditional);
         }
 
         if (!any)
@@ -230,7 +235,7 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type));
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root));
                         var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
                             this.ElementAccessConflicts(operation, root, authority);
@@ -422,6 +427,89 @@ public sealed partial class OwnershipBody
                         AddType(place, source, mode);
                     }
                 }
+            }
+        }
+
+        // SPEC 8.9: a conditional plan's Reborrow case is checked like a concrete exclusive reference: each pair parameter is an
+        // external capability root, and the reborrowed value inherits the dependencies of the Place it Reborrows. A pair-layer
+        // Type has no Origin to carry them, so they follow the value into the pair-layer Places that store it. A Place with
+        // no known root keeps itself as the root. The Copy cases add no Loan, so this checks the Reborrow case alone.
+        void AddConditionalReborrows(List<(int Place, int Root)> conditional)
+        {
+            for (var p = 0; p < count; p++)
+            {
+                if (this.IsPairInput(p))
+                {
+                    RecordDependency(p, p, LoanRequirement.Uniq);
+                }
+            }
+
+            Propagate(conditional);
+            var unrooted = false;
+            for (var i = 0; i < conditional.Count; i++)
+            {
+                if (!HasDependency(conditional[i].Place))
+                {
+                    unrooted |= RecordDependency(conditional[i].Place, conditional[i].Root, LoanRequirement.Uniq);
+                }
+            }
+
+            if (unrooted)
+            {
+                Propagate(conditional);
+            }
+
+            void Propagate(List<(int Place, int Root)> conditional)
+            {
+                bool changed;
+                do
+                {
+                    changed = false;
+                    for (var i = 0; i < conditional.Count; i++)
+                    {
+                        changed |= Inherit(conditional[i].Place, conditional[i].Root);
+                    }
+
+                    for (var id = 0; id < this.Operations.Count; id++)
+                    {
+                        var (destination, source) = this.Operations[id] switch
+                        {
+                            { Kind: OwnershipOperationKind.Write, Place: >= 0, Input: >= 0 } write => (write.Place, write.Input),
+                            { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0, Input: >= 0 } moved => (moved.Input, moved.Place),
+                            _ => (-1, -1),
+                        };
+                        if (destination >= 0 && this.Places[destination].Kind != OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[destination].Type, out _, out _))
+                        {
+                            changed |= Inherit(destination, source);
+                        }
+                    }
+                }
+                while (changed);
+            }
+
+            bool Inherit(int destination, int source)
+            {
+                var changed = false;
+                for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+                {
+                    var root = this.borrowRoots[rootIndex];
+                    changed |= RecordDependency(destination, root, this.borrowDependencies[(source * count) + root]);
+                }
+
+                return changed;
+            }
+
+            bool HasDependency(int place)
+            {
+                for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+                {
+                    if (this.borrowDependencies[(place * count) + this.borrowRoots[rootIndex]] != LoanRequirement.None)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
 
@@ -749,6 +837,10 @@ public sealed partial class OwnershipBody
             level = parent;
         }
     }
+
+    // SPEC 8.9: a pair parameter whose Reborrow case a definition's conditional plan checks; its referent is external.
+    private bool IsPairInput(int place)
+        => this.ConditionalReborrows is { Count: > 0 } && this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[place].Type, out _, out _);
 
     // Declared lifetime parameters need a capability root independent of their shared Origin name.
     private bool IsExclusiveBorrowInput(int place)
@@ -1135,7 +1227,8 @@ public sealed partial class OwnershipBody
                 var stored = operation.Kind switch
                 {
                     OwnershipOperationKind.Read when operation.Place >= 0 &&
-                        this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type) => operation.Place,
+                        this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local &&
+                        (ReferenceTypes.IsBorrow(local.Type) || (this.ConditionalReborrows is { Count: > 0 } && Binding.TryPairLayer(local.Type, out _, out _))) => operation.Place,
                     OwnershipOperationKind.AcquirePattern => this.PayloadSubject(operation.Place),
                     OwnershipOperationKind.InitializeSubject => operation.Input,
                     OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Copy && operation.Place >= 0 &&

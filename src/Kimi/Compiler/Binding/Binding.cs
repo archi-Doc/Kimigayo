@@ -379,6 +379,10 @@ public sealed partial class Binding
             {
                 this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
             }
+            else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
+            {
+                this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
+            }
             else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
             {
                 this.ReportWrite(issue.Node, target, requirement, issue.Code);
