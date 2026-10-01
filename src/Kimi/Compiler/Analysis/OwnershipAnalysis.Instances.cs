@@ -153,10 +153,14 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(Koto left, SemanticsKind mode)
     {
-        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
+        // SPEC 13.5.5.1, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
+        // reached by borrowing that slot in place; let restricts replacing the slot, not the stored reference's capability.
+        var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
         {
             var stored = this.Concrete(left.BoundType)!;
-            var slotType = this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            var slotType = ownedSlot ? this.compilation.Binding.Reference(mode, left.BoundType!)
+                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
             var slot = this.BorrowStruct(left, slotType);
             if (slot < 0)
             {
