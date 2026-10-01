@@ -36,7 +36,7 @@ public class TokenReaderBenchmark
             var reader = new TokenReader(this.codeContext, ref tokenizer);
             var checksum = 0;
 
-            while (reader.TryRead(out var token, addDiagnostic: false))
+            while (reader.TryRead(out var token))
             {
                 checksum = unchecked((checksum * 31) + (int)token.Kind);
             }
