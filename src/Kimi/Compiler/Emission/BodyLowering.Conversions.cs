@@ -124,7 +124,7 @@ internal sealed partial class BodyLowering
                 this.conversions.Add(plan);
             }
 
-            this.checks[id] = ClassifyCheck(body.Values[id], ValueType(body, id), plan);
+            this.checks[id] = this.LiteralOperandCheck(body, id, ClassifyCheck(body.Values[id], ValueType(body, id), plan));
             var input = kind is OwnershipValueKind.Alias or OwnershipValueKind.Convert ? Input(body, id, 0) : -1;
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && (uint)input < (uint)id &&
                 (this.folded[input] ? new EmissionOperand(EmissionOperandKind.Integer, this.foldedValues[input]) : Operand(body, this.physicalValues[input])) is { Kind: EmissionOperandKind.Integer } position)
@@ -140,6 +140,31 @@ internal sealed partial class BodyLowering
             this.physicalValues[id] = (uint)input < (uint)id && ((kind == OwnershipValueKind.Alias && IsScalar(ValueType(body, input))) || (kind == OwnershipValueKind.Convert && plan.Operator is null))
                 ? this.physicalValues[input] : id;
         }
+    }
+
+    // IMPL 21.5.3: a check whose success follows from a literal right operand is not generated even at O0: the zero check of a
+    // literal nonzero divisor, the minimum / -1 check of a quotient by a literal other than -1, and the count check of a literal
+    // in-range shift count. An integer quotient by a literal -1 keeps its minimum check; the writer negates instead of dividing.
+    private ArithmeticCheckKind LiteralOperandCheck(OwnershipBody body, int id, ArithmeticCheckKind check)
+    {
+        if (check is not (ArithmeticCheckKind.Division or ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision or ArithmeticCheckKind.Shift))
+        {
+            return check;
+        }
+
+        var input = Input(body, id, 1);
+        if ((uint)input >= (uint)body.Values.Count || body.Values[Definition(body, input)].Kind != OwnershipValueKind.Constant)
+        {
+            return check;
+        }
+
+        var constant = body.Values[Definition(body, input)].Constant;
+        if (check == ArithmeticCheckKind.Shift)
+        {
+            return constant >= 0 && constant < ScalarTypes.Width(ValueType(body, Input(body, id, 0)), this.pointerWidth) ? ArithmeticCheckKind.None : check;
+        }
+
+        return constant == 0 || (constant == -1 && check == ArithmeticCheckKind.Division) ? check : ArithmeticCheckKind.None;
     }
 
     private bool LowerConversion(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)

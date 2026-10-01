@@ -82,6 +82,7 @@ public class DivisionEmissionTest
 
     [Theory]
     [InlineData("DivisionInnerFailure", "var x = -2147483648\nvar a = 1\nvar b = 0\nx /= a / b", "", 4, 6, false)]
+    [InlineData("QuotientLiteralMinusOneMinimum", "var x = -2147483648\nlet y = x / -1", "", 2, 9, true)] // IMPL 21.5.3: the minimum check stays.
     [InlineData("DivisionOuterFailure", "var x = -2147483648\nvar a = 1\nvar b = -1\nx /= a / b", "", 4, 1, true)]
     [InlineData("DivisionBeforeCleanup", "let y = label work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work 1 / 0\nConsole.writeLine(\"bad\")", "", 3, 18, false)]
     [InlineData("DivisionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    1 / 0\n    Console.writeLine(\"bad\")", "begin\n", 4, 5, false)]
@@ -89,10 +90,30 @@ public class DivisionEmissionTest
     public void FailureStopsAtTheActualEvaluation(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? OverflowReason : ZeroReason)}\n");
 
+    // IMPL 21.5.3: a literal nonzero divisor needs no zero check even at O0, a literal other than -1 needs no minimum check,
+    // and a literal -1 keeps only the minimum check of an integer quotient; every signed quotient by -1 is a negation.
+    [Fact]
+    public void LiteralDivisorsOmitTheirChecks()
+    {
+        var ir = ScalarEmissionTest.EmitFixture("DivisionLiteralDivisors", "var x: i32 = 7\nvar u: u32 = 7\nvar w: Wrapping<i32> = -2147483648\nlet a = x / 2\nlet b = x % 3\nlet c = u / 4\nlet d = u % 5\nlet e = x / -1\nlet f = x % -1\nlet g = w / -1\nlet h = w % -1\nx /= -2\nif a == 3 and b == 1 and c == 1 and d == 2 and e == -7 and f == 0 and g == -2147483648 and h == 0 and x == -3 => Console.writeLine(\"ok\")", "ok\n");
+        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
+        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
+        Assert.DoesNotContain("%zero", body);
+        Assert.DoesNotContain("%minusone", body);
+        Assert.DoesNotContain("select", body);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, @"%minimum\d+ = icmp eq i32 "));
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sub i32 0, ").Count);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = srem i32 [^,]+, 1\n").Count);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(body, @" = sdiv i32 ").Count);
+        Assert.DoesNotMatch(@"sdiv i32 [^,]+, -1\n", body);
+        Assert.Contains(" = udiv i32 ", body);
+        Assert.Contains(" = urem i32 ", body);
+    }
+
     [Fact]
     public void ChecksHaveOneSuccessLabelAndDivisionIsOnlyInThatBlock()
     {
-        var c = MinimalEmissionTest.Analyze("var x = 21\nlet y = if true => x / 2 else => x % 2\nx /= y");
+        var c = MinimalEmissionTest.Analyze("var x = 21\nvar d = 2\nlet y = if true => x / d else => x % d\nx /= y");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
         using var writer = new StringWriter();
@@ -107,7 +128,11 @@ public class DivisionEmissionTest
             var quotient = instruction.Check == ArithmeticCheckKind.Division;
             Assert.Equal(quotient ? "sdiv" : "srem", instruction.ScalarOperator);
             Assert.Contains($"br i1 {(quotient ? "%invalid" : "%zero")}{instruction.Operation}, label %abort{instruction.Operation}, label %b{instruction.Place}\n", ir);
-            Assert.Contains($"b{instruction.Place}:\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", ir);
+            // The instruction lies in the success block, after the -1 substitution of a dynamic remainder divisor (SPEC 13.3).
+            var block = ir.IndexOf($"b{instruction.Place}:\n", StringComparison.Ordinal);
+            var division = ir.IndexOf($"\n  %v{instruction.Operation} = {instruction.ScalarOperator} i32 ", block, StringComparison.Ordinal);
+            var next = ir.IndexOf("\nb", block + 1, StringComparison.Ordinal);
+            Assert.True(block >= 0 && division > block && (next < 0 || next > division));
             Assert.Contains(quotient ? $"call void @__kimi_abort(i32 %v{instruction.Place}," : $"call void @__kimi_abort(i32 {WindowsLowering.IntegerDivisionZeroReason},", ir);
         }
 

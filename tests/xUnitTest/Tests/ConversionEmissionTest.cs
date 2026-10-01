@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
 using System.Numerics;
@@ -124,6 +124,17 @@ public class ConversionEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    // IMPL 21.5.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
+    // exceeds the destination on one side keeps that side's check only.
+    [Fact]
+    public void ContainedRangesOmitTheCheck()
+    {
+        var c = MinimalEmissionTest.Analyze("var a: u8 = 1\nvar b: i8 = -1\nvar w: Wrapping<i16> = 1\nlet c = a@u32\nlet d = b@i64\nlet e = a@i16\nlet f = b@u32\nlet g = w@i16\nlet h = a@i8\nlet i = f@i8");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        var conversions = module.GetFunction(0).Instructions.Where(x => x.Opcode == EmissionOpcode.Convert).Select(x => $"{x.ScalarOperator ?? "-"}:{x.Check}:{x.LowerPredicate ?? "-"}:{x.UpperPredicate ?? "-"}");
+        Assert.Equal("zext:None:-:- sext:None:-:- zext:None:-:- sext:Conversion:slt:- -:Conversion:-:ugt trunc:Conversion:-:ugt", string.Join(" ", conversions));
     }
 
     [Fact]

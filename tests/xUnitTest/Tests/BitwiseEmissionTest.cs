@@ -72,10 +72,27 @@ public class BitwiseEmissionTest
     public void FailureStopsEvaluationAndCleanup(string name, string source, string stdout, int line, int column, bool overflow)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort {(overflow ? "KIMI_E_INT_OVERFLOW: Integer overflow" : Reason)}\n");
 
+    // IMPL 21.5.3: a literal count inside 0 <= count < width needs no check even at O0; every other literal count keeps it.
+    [Fact]
+    public void LiteralInRangeCountsOmitTheCheck()
+    {
+        var ir = ScalarEmissionTest.EmitFixture("BitwiseLiteralCounts", "var x = 3\nvar y: u8 = 129\nvar z: u64 = 1\nlet a = x << 2\nlet b = x >> 31\nlet c = y >> 7\nlet d = y << 0\nlet e = z << 63\nx <<= 1\nif a == 12 and b == 0 and c == 1 and d == 129 and e == 9223372036854775808 and x == 6 => Console.writeLine(\"ok\")", "ok\n");
+        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
+        var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
+        Assert.DoesNotContain("icmp uge", body);
+        Assert.DoesNotContain("%shift", body);
+        Assert.Contains(" = shl i32 ", body);
+        Assert.Contains(" = ashr i32 ", body);
+        Assert.Contains(" = lshr i8 ", body);
+        Assert.Contains(" = shl i64 ", body);
+        var kept = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var x = 3\nvar y: u8 = 1\nlet a = x << 32\nlet b = y >> 8\nlet c = x << -1"));
+        Assert.Equal(3, System.Text.RegularExpressions.Regex.Matches(kept, @"%invalid\d+ = icmp uge i32 ").Count);
+    }
+
     [Fact]
     public void ShiftChecksKeepPhysicalPhiPredecessorsAndNeedNoExtraSlots()
     {
-        var c = MinimalEmissionTest.Analyze("var x = 3\nlet y = if true => x << 2 else => x >> 1\nx ^= y");
+        var c = MinimalEmissionTest.Analyze("var x = 3\nvar n = 2\nvar m = 1\nlet y = if true => x << n else => x >> m\nx ^= y");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var f = module.GetFunction(0);
         using var writer = new StringWriter();
