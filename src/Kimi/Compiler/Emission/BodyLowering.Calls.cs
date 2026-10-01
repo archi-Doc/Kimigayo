@@ -133,11 +133,6 @@ internal sealed partial class BodyLowering
         var original = (operation.Source as InvocationKoto)?.BoundCall;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
-        if (operation.Source is InvocationKoto dictionaryCall && resolved is { } dictionaryPlan && KimiLibraryCatalog.IsDictionaryOperation(dictionaryPlan.Target.CompilerFunction))
-        {
-            return this.LowerDictionaryOperation(body, function, constants, directory, id, dictionaryCall, dictionaryPlan, out failure);
-        }
-
         if (operation.Source is InvocationKoto storageCall && resolved is { } storagePlan && KimiLibraryCatalog.IsStorageOperation(storagePlan.Target.CompilerFunction))
         {
             return this.LowerStorageOperation(body, function, constants, directory, id, storageCall, storagePlan, out failure);

@@ -1,4 +1,0 @@
-// Public compiler bridges; ordered algorithms live in DictionaryStorage.kimi and the operation bodies in Dictionary.kimi.
-// The capacity bridges are still being migrated.
-public func reserve(self: uniq/Self, additional: isize)
-public func shrinkToFit(self: uniq/Self)

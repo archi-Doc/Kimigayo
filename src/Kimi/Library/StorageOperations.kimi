@@ -33,3 +33,9 @@ internal func missingDictionaryKey() -> Never
 internal unsafe func placeEntry<K, V>(handle: unsafe/u8, key: K, value: V)
 // Transfers `value` into a live slot whose previous value was already moved out through valueAt; nothing is destroyed.
 internal unsafe func placeValue<K, V>(slot: unsafe/u8, value: V)
+// Capacity bridges carrying the standard operation's caller location: the Kimigayo decisions of DictionaryStorage.kimi
+// run over compiler-supplied allocation, release and byte-transfer callbacks.
+internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
+    K is Equatable
+internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
+    K is Equatable

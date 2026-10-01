@@ -65,6 +65,11 @@ public sealed partial class KimiLibrary
             return ValidBoundDictionaryPlacement(symbol, id);
         }
 
+        if (id is KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary)
+        {
+            return this.ValidBoundDictionaryCapacity(symbol, id);
+        }
+
         if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)
         {
             return ValidBoundRemainder(symbol, id);

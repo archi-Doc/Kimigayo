@@ -345,6 +345,11 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
         }
 
+        if (kind is CompilerFunctionKind.StorageReserveDictionary or CompilerFunctionKind.StorageShrinkDictionary)
+        {
+            return this.LowerDictionaryCapacity(body, function, constants, directory, id, call, plan, out failure);
+        }
+
         if (kind == CompilerFunctionKind.StorageMissingDictionaryKey)
         {
             if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))

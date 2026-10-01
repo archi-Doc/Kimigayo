@@ -109,18 +109,22 @@ internal sealed partial class BodyLowering
             : element.IsScalar ? this.PhysicalOperand(body, Input(body, id, operand)) : new(EmissionOperandKind.SlotAddress, place);
     }
 
-    private bool LowerDictionaryOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    // SPEC 4.7.4: reserveEntries and shrinkEntries run the Kimigayo capacity decisions of DictionaryStorage.kimi over
+    // compiler-constructed platform callbacks; failure reports the standard operation's forwarded caller location.
+    private bool LowerDictionaryCapacity(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
-        var operation = plan.Target.CompilerFunction;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is null || call.AttributeChain is not null ||
-            plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
-            call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
-            SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.Ref, Components: [{ Kind: BoundTypeKind.Dictionary, Components.Count: 2 } dictionary] } receiverType ||
-            !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value))
+        var reserve = plan.Target.CompilerFunction == CompilerFunctionKind.StorageReserveDictionary;
+        var inputs = reserve ? 2 : 1;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
+            plan.ArgumentToParameter[0] != 0 || (reserve && plan.ArgumentToParameter[1] != 1) ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
+            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
+            (reserve && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize)) ||
+            !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
         {
-            return Fail("Dictionary operation requires a supported receiver, acquired arguments and entry layout.", out failure);
+            return Fail("Dictionary capacity operation requires its exclusive Dictionary and entry layout.", out failure);
         }
 
         if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
@@ -133,17 +137,15 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.ScalarArrayArgument(body, id, 0, receiverType, out var handle) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), SignatureType(this, plan.ReturnType)) ||
-            !this.TryGetLocation(call, directory, constants, out var location))
+        if (!this.ScalarArrayArgument(body, id, 0, input, out var handle))
         {
-            return Fail("Dictionary operation requires its acquired receiver and matching result.", out failure);
+            return Fail("Dictionary capacity operation has no acquired handle.", out failure);
         }
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
         this.callOperands.Add(new(EmissionOperandKind.Integer, GetDictionaryEntryLayout(key, value).Stride));
-        if (operation == CompilerFunctionKind.DictionaryReserve)
+        if (reserve)
         {
             if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
             {
@@ -152,16 +154,26 @@ internal sealed partial class BodyLowering
 
             this.callOperands.Add(additional);
         }
-        else if (operation != CompilerFunctionKind.DictionaryShrinkToFit)
+
+        if (function.Abi.CallerLocation)
         {
-            return Fail("Dictionary operation has no compiler bridge.", out failure);
+            this.callOperands.Add(new(EmissionOperandKind.CallerLocation, 0));
+            this.callOperands.Add(new(EmissionOperandKind.CallerLocationLength, 0));
+        }
+        else
+        {
+            if (!this.TryGetLocation(call, directory, constants, out var location))
+            {
+                return Fail("Dictionary capacity operation has no diagnostic source location.", out failure);
+            }
+
+            this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
+            this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
         }
 
-        this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
-        this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
         this.dictionaryRuntimeUsed = true;
         this.arrayRuntimeUsed = true;
-        function.AddCall(id, operation == CompilerFunctionKind.DictionaryReserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink, CollectionsMarshal.AsSpan(this.callOperands));
+        function.AddCall(id, reserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink, CollectionsMarshal.AsSpan(this.callOperands));
         return true;
     }
 

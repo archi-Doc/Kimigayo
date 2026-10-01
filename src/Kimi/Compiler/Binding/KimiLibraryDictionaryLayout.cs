@@ -62,6 +62,33 @@ public sealed partial class KimiLibrary
             (!entry || (PlacementInput(function.Parameters[1], "key") && BareName(function.Parameters[1].Type, "K")));
     }
 
+    // These private capacity bridges keep the Kimigayo growth and shrink decisions; the compiler constructs the platform
+    // callbacks and forwards the standard operation's caller location.
+    private bool ValidDictionaryCapacity(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var reserve = id == KimiDeclarationId.StorageReserveDictionary;
+        return symbol.CompilerFunction == KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function &&
+            symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, ReturnType: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0 } function &&
+            function.Name == (reserve ? "reserveEntries" : "shrinkEntries") && ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] &&
+            function.TypeConstraints is [IsKoto { IsNegated: false } constraint] && BareName(constraint.Left, "K") && BareName(constraint.Right, "Equatable") &&
+            function.Parameters.Count == (reserve ? 2 : 1) && PlacementInput(function.Parameters[0], "value") &&
+            function.Parameters[0].Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: GenericsKoto { TypeArguments: [var key, var value] } input } &&
+            BareName(input.Identifier, "Dictionary") && BareName(key, "K") && BareName(value, "V") &&
+            (!reserve || (PlacementInput(function.Parameters[1], "additional") && BareName(function.Parameters[1].Type, "isize")));
+    }
+
+    private bool ValidBoundDictionaryCapacity(BindingSymbol symbol, KimiDeclarationId id)
+        => symbol.Declaration is FunctionKoto { GenericArguments: [var key, var value] } function &&
+        key.BoundType is { Kind: BoundTypeKind.Parameter } keyType && value.BoundType is { Kind: BoundTypeKind.Parameter } valueType &&
+        function.Parameters.Count == (id == KimiDeclarationId.StorageReserveDictionary ? 2 : 1) &&
+        function.Parameters[0].Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Symbol: null, OriginArguments.Count: 0, Components: [var dictionary] } input &&
+        StorageInputOrigin(input.Origin, function) &&
+        dictionary is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var storedKey, var storedValue] } &&
+        ReferenceEquals(dictionary.Symbol, this.GetSymbol(KimiDeclarationId.Dictionary)) && ReferenceEquals(storedKey, keyType) && ReferenceEquals(storedValue, valueType) &&
+        (function.Parameters.Count == 1 || ReferenceEquals(function.Parameters[1].Type.BoundType, BoundType.ISize)) &&
+        (symbol.Type is null || ReferenceEquals(symbol.Type, BoundType.Unit));
+
     private bool ValidBoundDictionaryLayout(BindingSymbol symbol)
         => symbol.Declaration is FunctionKoto { GenericArguments: [var key, var value], Parameters: [var parameter] } function &&
         key.BoundType is { Kind: BoundTypeKind.Parameter } keyType && value.BoundType is { Kind: BoundTypeKind.Parameter } valueType &&

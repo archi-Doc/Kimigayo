@@ -820,10 +820,9 @@ public sealed partial class Binding
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
-                CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit or
                 CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StoragePlaceDictionaryValue => true,
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary => true,
             _ => false,
         };
 

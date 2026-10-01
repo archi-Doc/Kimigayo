@@ -93,8 +93,9 @@ physical ABI so the missing-key primitive reports the access rather than the emb
 `Storage.placeEntry` appends one slot and transfers the acquired pair, carrying the standard operation's caller location
 for growth failure; `Storage.placeValue` refills a live slot after `valueAt` moved its value out, so replacement secures
 the old value before placing the new one and destroys the unused input key through ordinary cleanup.
-The migration is incomplete. [DictionaryOperations.kimi](DictionaryOperations.kimi)
-still contains the compiler-recognized `reserve` and `shrinkToFit` capacity bridges.
+`reserve` and `shrinkToFit` are source bodies over the private `Storage.reserveEntries`/`shrinkEntries` bridges, which
+run the Kimigayo capacity decisions with compiler-constructed platform callbacks and the standard operation's caller
+location; callback construction stays in the compiler until general closures (P26) can express it in source.
 Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified

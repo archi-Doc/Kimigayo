@@ -34,7 +34,6 @@ public sealed partial class KimiLibrary
             Read("WriteWindow.kimi", KimiLibraryContainer.WriteWindow, signatures: true),
             Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
-            Read("DictionaryOperations.kimi", KimiLibraryContainer.Dictionary, signatures: true),
             Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),

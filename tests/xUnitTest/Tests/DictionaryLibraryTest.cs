@@ -78,6 +78,22 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
 
+    [Theory]
+    [InlineData(KimiDeclarationId.DictionaryReserve, "Reserve", "entries.reserve(8)\nrequire entries.capacity >= 9 and entries.length == 1 and entries[1] == 2 else => $abort(\"reserve\")")]
+    [InlineData(KimiDeclarationId.DictionaryShrinkToFit, "Shrink", "entries.reserve(8)\nentries.shrinkToFit()\nrequire entries.capacity == 1 and entries.length == 1 and entries[1] == 2 else => $abort(\"shrink\")")]
+    public void CapacityOperationsCompileFromOrdinarySource(KimiDeclarationId id, string name, string source)
+    {
+        var c = MinimalEmissionTest.Analyze("var entries = [1: 2]\n" + source);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var function = c.Library.GetSymbol(id);
+        Assert.NotNull(function);
+        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Contains(name == "Reserve" ? "@__kimi_dictionary_reserve(" : "@__kimi_dictionary_shrink(", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
+    }
+
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
@@ -175,6 +191,8 @@ public class DictionaryLibraryTest
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
     [InlineData("unsafe => Kimi.Storage.placeEntry<i32, i32>(null, 1, 2)")]
     [InlineData("unsafe => Kimi.Storage.placeValue<i32, i32>(null, 2)")]
+    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.reserveEntries(entries@uniq, 4)")]
+    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.shrinkEntries(entries@uniq)")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
