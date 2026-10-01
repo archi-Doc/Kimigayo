@@ -57,14 +57,34 @@ public class OwnedStoredReferenceTest
 
     [Theory]
     [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", true)]
-    [InlineData("both(item.0, item.0)", true)]
+    [InlineData("both(item.0, item.0)", null)] // Rejected at preparation or activation; see PLAN G43.
     [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", false)]
-    public void StoredReferenceArgumentsRespectLiveChildren(string body, bool activation)
+    public void StoredReferenceArgumentsRespectLiveChildren(string body, bool? activation)
     {
         var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && (activation is null || x.Activation == activation));
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 15.6.2: a borrow of a part reaches only that part's referent; a Scalar part does not depend on the reference
+    // stored beside it, so it coexists with a child of that reference's referent.
+    [Theory]
+    [InlineData("Local", "var value = 42\nlet item = (value@uniq, 5)\nlet child = item.0@follow@uniq\nlet other = item.1@ref\nchild@follow = 7\nrequire other == 5 and value == 7 else => $abort(\"other\")")]
+    [InlineData("Arguments", Calls + "var value = 42\nlet item = (value@uniq, 5)\nboth(item.0, item.1@ref)\nrequire value == 6 else => $abort(\"changed\")")]
+    [InlineData("ExplicitArguments", Calls + "var value = 42\nlet item = (value@uniq, 5)\nboth(item.0@follow@uniq, item.1@ref)\nrequire value == 6 else => $abort(\"changed\")")]
+    [InlineData("TwoReferences", Calls + "var value = 42\nvar other = 1\nlet item = (value@uniq, other@uniq)\nboth(item.0, item.1)\nrequire value == 2 else => $abort(\"changed\")")]
+    public void DisjointPartsKeepTheirOwnDependencies(string name, string source)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceDisjoint" + name, source, string.Empty);
+
+    [Fact]
+    public void ABorrowThatReachesTheReferenceStillConflicts()
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@uniq, 5)\nlet child = item.0@follow@uniq\nlet whole = item@ref\nlet read: i32 = whole.0@follow\nchild@follow = 1");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == "whole.0");
         Assert.False(c.Emission.Validate(out _));
     }
 

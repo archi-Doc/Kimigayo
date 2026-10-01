@@ -306,7 +306,10 @@ public sealed partial class OwnershipBody
             // SPEC 13.5.5.1: a pair parameter's Origin is the caller-side dependency of a reference it may hold, never a local root.
             if (type.Origin is { } origin && !(this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(type, out _, out _)))
             {
-                AddOrigin(place, origin, type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? bound : LoanRequirement.Ref);
+                // SPEC 15.6.2: a value borrow reaches only its referent, whose own Origins are added below; a part of an
+                // owned root, such as item.1@ref, does not acquire what the root's other parts depend on.
+                var referent = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+                AddOrigin(place, origin, type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? bound : LoanRequirement.Ref, referent);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
@@ -320,13 +323,13 @@ public sealed partial class OwnershipBody
             }
         }
 
-        void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode)
+        void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode, bool referent = false)
         {
             if (origin.Kind == OriginKind.Intersection)
             {
                 for (var i = 0; i < origin.Operands.Count; i++)
                 {
-                    AddOrigin(place, origin.Operands[i], mode);
+                    AddOrigin(place, origin.Operands[i], mode, referent);
                 }
             }
             else if (origin.Kind == OriginKind.Projection || (origin.Kind == OriginKind.Input && (ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration))))
@@ -412,7 +415,7 @@ public sealed partial class OwnershipBody
                             AddType(place, source.Components[i], mode);
                         }
                     }
-                    else
+                    else if (!referent)
                     {
                         // Shared access to a dependent owner does not acquire its stored exclusive references.
                         // RetainBorrowAuthority preserves that owner's stronger authority separately.
