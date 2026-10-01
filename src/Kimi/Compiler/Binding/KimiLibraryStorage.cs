@@ -60,6 +60,11 @@ public sealed partial class KimiLibrary
             return this.ValidBoundDictionaryLayout(symbol);
         }
 
+        if (id is KimiDeclarationId.StoragePlaceDictionaryEntry or KimiDeclarationId.StoragePlaceDictionaryValue)
+        {
+            return ValidBoundDictionaryPlacement(symbol, id);
+        }
+
         if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)
         {
             return ValidBoundRemainder(symbol, id);

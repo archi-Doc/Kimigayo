@@ -66,8 +66,6 @@ public enum CompilerFunctionKind : byte
     BuiltinEquals,
     BuiltinCompare,
     DictionaryReserve,
-    DictionaryTryInsert,
-    DictionaryInsertOrReplace,
     DictionaryShrinkToFit,
     StorageBorrowShared,
     StorageBorrowExclusive,
@@ -90,4 +88,6 @@ public enum CompilerFunctionKind : byte
     StorageInlineBase,
     StorageDictionaryLayout,
     StorageMissingDictionaryKey,
+    StoragePlaceDictionaryEntry,
+    StoragePlaceDictionaryValue,
 }

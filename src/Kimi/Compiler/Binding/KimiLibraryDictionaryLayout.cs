@@ -6,6 +6,24 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
+    private static bool ValidBoundDictionaryPlacement(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        if (symbol.Declaration is not FunctionKoto { GenericArguments: [var key, var value] } function ||
+            key.BoundType is not { Kind: BoundTypeKind.Parameter } keyType || value.BoundType is not { Kind: BoundTypeKind.Parameter } valueType ||
+            function.Parameters.Count != (id == KimiDeclarationId.StoragePlaceDictionaryEntry ? 3 : 2) ||
+            !BoundStoragePointer(function.Parameters[0].Type.BoundType, BoundType.Primitives["u8"]) ||
+            (symbol.Type is not null && !ReferenceEquals(symbol.Type, BoundType.Unit)))
+        {
+            return false;
+        }
+
+        return ReferenceEquals(function.Parameters[function.Parameters.Count - 1].Type.BoundType, valueType) &&
+            (function.Parameters.Count == 2 || ReferenceEquals(function.Parameters[1].Type.BoundType, keyType));
+    }
+
+    private static bool PlacementInput(FunctionParameterKoto parameter, string name)
+        => parameter is { DefaultValue: null, AttributeChain: null } && parameter.InternalName == name && parameter.ExternalName == name;
+
     private bool ValidMissingDictionaryKey(BindingSymbol symbol)
         => symbol.CompilerFunction == CompilerFunctionKind.StorageMissingDictionaryKey &&
         symbol.Declaration is FunctionKoto { Name: "missingDictionaryKey", Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function &&
@@ -23,6 +41,26 @@ public sealed partial class KimiLibrary
         BareName(constraint.Left, "K") && BareName(constraint.Right, "Equatable") && BareName(input.Identifier, "Dictionary") &&
         BareName(key, "K") && BareName(value, "V") && BareName(address.Type, "u8") &&
         BareName(stride, "isize");
+
+    // These private unsafe primitives transfer acquired values into physical slots: placeEntry appends one slot for a key
+    // and value after the source proves absence; placeValue refills a live slot whose value was moved out.
+    private bool ValidDictionaryPlacement(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var entry = id == KimiDeclarationId.StoragePlaceDictionaryEntry;
+        if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function ||
+            symbol.Declaration is not FunctionKoto { Modifier: ModifierKind.Internal | ModifierKind.Unsafe, AttributeChain: null, Body: null, ExpressionBody: null, ReturnType: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, TypeConstraints.Count: 0 } function ||
+            function.Name != (entry ? "placeEntry" : "placeValue") || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
+            function.GenericArguments is not [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] ||
+            function.Parameters.Count != (entry ? 3 : 2) || !PlacementInput(function.Parameters[0], entry ? "handle" : "slot") ||
+            function.Parameters[0].Type is not TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } address || !BareName(address.Type, "u8"))
+        {
+            return false;
+        }
+
+        var value = function.Parameters[function.Parameters.Count - 1];
+        return PlacementInput(value, "value") && BareName(value.Type, "V") &&
+            (!entry || (PlacementInput(function.Parameters[1], "key") && BareName(function.Parameters[1].Type, "K")));
+    }
 
     private bool ValidBoundDictionaryLayout(BindingSymbol symbol)
         => symbol.Declaration is FunctionKoto { GenericArguments: [var key, var value], Parameters: [var parameter] } function &&

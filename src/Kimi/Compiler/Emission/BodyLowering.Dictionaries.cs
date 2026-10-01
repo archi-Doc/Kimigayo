@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.Find => new(name, "i64", [handle, new("ptr", "key")]),
                 DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
-                DictionaryHelperKind.TryInsert or DictionaryHelperKind.InsertOrReplace => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), output, location, length], resultSlot: true),
+                DictionaryHelperKind.PlaceValue => new(name, "void", [new("ptr", "slot"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value")]),
                 _ => new(name, "void", [handle, location, length]),
             };
             var layout = GetDictionaryEntryLayout(key, value);
@@ -142,48 +142,100 @@ internal sealed partial class BodyLowering
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
-        FunctionAbi abi;
-        if (operation is CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit)
+        this.callOperands.Add(new(EmissionOperandKind.Integer, GetDictionaryEntryLayout(key, value).Stride));
+        if (operation == CompilerFunctionKind.DictionaryReserve)
         {
-            abi = operation == CompilerFunctionKind.DictionaryReserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink;
-            this.callOperands.Add(new(EmissionOperandKind.Integer, GetDictionaryEntryLayout(key, value).Stride));
-            if (operation == CompilerFunctionKind.DictionaryReserve)
+            if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
             {
-                if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
-                {
-                    return Fail("Dictionary reserve amount is unavailable.", out failure);
-                }
-
-                this.callOperands.Add(additional);
+                return Fail("Dictionary reserve amount is unavailable.", out failure);
             }
+
+            this.callOperands.Add(additional);
         }
-        else
+        else if (operation != CompilerFunctionKind.DictionaryShrinkToFit)
         {
-            if (this.ComparisonCalls?.GetValueOrDefault(plan) is not { } equality ||
-                this.aggregateLayouts.Get(SignatureType(this, plan.ReturnType)!) is not { Cases.Length: 2 } result ||
-                !this.ValidateSlotCallResult(body, id, out failure))
-            {
-                return Fail(failure ?? "Dictionary search requires a finalized equality witness and stored result.", out failure);
-            }
-
-            if (operation is not (CompilerFunctionKind.DictionaryTryInsert or CompilerFunctionKind.DictionaryInsertOrReplace) ||
-                !this.ArrayValueArgument(body, id, 1, key, out var keyArgument) || !this.ArrayValueArgument(body, id, 2, value, out var valueArgument))
-            {
-                return Fail("Dictionary insertion inputs are not acquired values.", out failure);
-            }
-
-            this.callOperands.Add(keyArgument);
-            this.callOperands.Add(valueArgument);
-            var kind = operation == CompilerFunctionKind.DictionaryTryInsert ? DictionaryHelperKind.TryInsert : DictionaryHelperKind.InsertOrReplace;
-            this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[id].Place));
-            abi = this.GetDictionaryHelper(kind, key, value, result, equality).Abi;
+            return Fail("Dictionary operation has no compiler bridge.", out failure);
         }
 
         this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
         this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
         this.dictionaryRuntimeUsed = true;
         this.arrayRuntimeUsed = true;
-        function.AddCall(id, abi, CollectionsMarshal.AsSpan(this.callOperands));
+        function.AddCall(id, operation == CompilerFunctionKind.DictionaryReserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink, CollectionsMarshal.AsSpan(this.callOperands));
+        return true;
+    }
+
+    // SPEC 4.7.5: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
+    // it through the literal's typed placement helper. The ordinary source bodies prove that no equal key is stored, and
+    // growth failure reports the standard operation's forwarded caller location.
+    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        var entry = plan.Target.CompilerFunction == CompilerFunctionKind.StoragePlaceDictionaryEntry;
+        var inputs = entry ? 3 : 2;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
+            plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || (entry && plan.ArgumentToParameter[2] != 2) || plan.TypeArguments.Length != 2 ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } handleType ||
+            !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            SignatureType(this, plan.TypeArguments[0]) is not { } keyType || SignatureType(this, plan.TypeArguments[1]) is not { } valueType ||
+            (entry && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType)) ||
+            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[inputs - 1].ParameterType), valueType) ||
+            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
+            !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
+        {
+            return Fail("Dictionary placement requires the physical slot and acquired key/value Types.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        EmissionOperand keyArgument = default;
+        if (!this.ScalarArrayArgument(body, id, 0, handleType, out var handle) ||
+            (entry && !this.ArrayValueArgument(body, id, 1, key, out keyArgument)) || !this.ArrayValueArgument(body, id, inputs - 1, value, out var valueArgument))
+        {
+            return Fail("Dictionary placement inputs are not acquired values.", out failure);
+        }
+
+        this.callOperands.Clear();
+        this.callOperands.Add(handle);
+        if (!entry)
+        {
+            this.callOperands.Add(valueArgument);
+            function.AddCall(id, this.GetDictionaryHelper(DictionaryHelperKind.PlaceValue, key, value).Abi, CollectionsMarshal.AsSpan(this.callOperands));
+            this.dictionaryRuntimeUsed = true;
+            this.arrayRuntimeUsed = true;
+            return true;
+        }
+
+        this.callOperands.Add(keyArgument);
+        this.callOperands.Add(valueArgument);
+        if (function.Abi.CallerLocation)
+        {
+            this.callOperands.Add(new(EmissionOperandKind.CallerLocation, 0));
+            this.callOperands.Add(new(EmissionOperandKind.CallerLocationLength, 0));
+        }
+        else
+        {
+            if (!this.TryGetLocation(call, directory, constants, out var location))
+            {
+                return Fail("Dictionary placement has no diagnostic source location.", out failure);
+            }
+
+            this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
+            this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
+        }
+
+        function.AddCall(id, this.GetDictionaryHelper(DictionaryHelperKind.Place, key, value).Abi, CollectionsMarshal.AsSpan(this.callOperands));
+        this.dictionaryRuntimeUsed = true;
+        this.arrayRuntimeUsed = true;
         return true;
     }
 }

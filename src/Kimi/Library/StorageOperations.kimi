@@ -28,3 +28,8 @@ internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (u
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
 internal func missingDictionaryKey() -> Never
+// Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
+// no equal key is stored; growth failure Aborts at the standard operation's caller location.
+internal unsafe func placeEntry<K, V>(handle: unsafe/u8, key: K, value: V)
+// Transfers `value` into a live slot whose previous value was already moved out through valueAt; nothing is destroyed.
+internal unsafe func placeValue<K, V>(slot: unsafe/u8, value: V)

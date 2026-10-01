@@ -59,6 +59,25 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceLookup", ir, string.Empty);
     }
 
+    [Theory]
+    [InlineData(KimiDeclarationId.DictionaryTryInsert, "TryInsert", "i32", "match entries.tryInsert(1, 2)\n    .Ok(_) => require entries[1] == 2 else => $abort(\"stored\")\n    .Err(_) => $abort(\"rejected\")\nmatch entries.tryInsert(1, 3)\n    .Ok(_) => $abort(\"duplicate\")\n    .Err((let key, let value)) => require key == 1 and value == 3 and entries[1] == 2 and entries.length == 1 else => $abort(\"returned\")")]
+    [InlineData(KimiDeclarationId.DictionaryInsertOrReplace, "InsertOrReplace", "i32", "match entries.insertOrReplace(1, 2)\n    .Some(_) => $abort(\"replaced\")\n    .None => require entries[1] == 2 else => $abort(\"stored\")\nmatch entries.insertOrReplace(1, 3)\n    .Some(let old) => require old == 2 and entries[1] == 3 and entries.length == 1 else => $abort(\"old\")\n    .None => $abort(\"appended\")")]
+    [InlineData(KimiDeclarationId.DictionaryInsertOrReplace, "InsertOrReplaceString", "string", "match entries.insertOrReplace(1, \"a\")\n    .Some(_) => $abort(\"replaced\")\n    .None => require entries.length == 1 else => $abort(\"stored\")\nmatch entries.insertOrReplace(1, \"b\")\n    .Some(let old) => require old == \"a\" and entries[1] == \"b\" and entries.length == 1 else => $abort(\"old\")\n    .None => $abort(\"appended\")")]
+    public void InsertionCompilesFromOrdinarySource(KimiDeclarationId id, string name, string valueType, string source)
+    {
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var function = c.Library.GetSymbol(id);
+        Assert.NotNull(function);
+        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.DoesNotContain("__kimi_dictionary_tryinsert", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_dictionary_insertorreplace", ir, StringComparison.Ordinal);
+        Assert.Contains("__kimi_dictionary_place", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
+    }
+
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
@@ -154,6 +173,8 @@ public class DictionaryLibraryTest
     [InlineData("unsafe => Kimi.DictionaryStorage.unlink(null, 24, 1)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
+    [InlineData("unsafe => Kimi.Storage.placeEntry<i32, i32>(null, 1, 2)")]
+    [InlineData("unsafe => Kimi.Storage.placeValue<i32, i32>(null, 2)")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

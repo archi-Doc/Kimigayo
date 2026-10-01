@@ -26,6 +26,32 @@ public struct Dictionary<K, V>
                     if storedKey.equals(key) => return value@follow
                 .None => Storage.missingDictionaryKey()
 
+    /// Appends the pair when no equal key is stored; otherwise returns both inputs unchanged as `Err`.
+    public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
+        unsafe
+            let layout = Storage.dictionaryStorage(self)
+            var state = Storage.borrowStorage(self@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            require link == 0 else => return .Err((key@move, value@move))
+            Storage.placeEntry<K, V>(layout.0, key@move, value@move)
+            return .Ok(())
+
+    /// Appends the pair when no equal key is stored; otherwise stores `value` at the stored key's position, destroys the
+    /// unused input key and returns the old value.
+    public func insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>
+        unsafe
+            let layout = Storage.dictionaryStorage(self)
+            var state = Storage.borrowStorage(self@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            if link == 0
+                Storage.placeEntry<K, V>(layout.0, key@move, value@move)
+                return .None
+            // The old value is secured before the new one is placed; the unused input key is destroyed before delivery.
+            let slot = state.storage + (link - 1) * state.stride
+            let previous = *Storage.valueAt<K, V>(slot)
+            Storage.placeValue<K, V>(slot, value@move)
+            return .Some(previous@move)
+
     /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.
     public func clear(self: uniq/Self)
         DictionaryStorage.clearEntries(self)

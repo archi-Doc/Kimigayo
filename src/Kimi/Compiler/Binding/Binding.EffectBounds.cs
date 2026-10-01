@@ -730,14 +730,9 @@ public sealed partial class Binding
                 return;
             }
 
-            if (HasDictionarySearch(call) || (kind is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare && ComparisonTypes.IsComposite(call.ConformingType)))
+            if (kind is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare && ComparisonTypes.IsComposite(call.ConformingType))
             {
                 this.Comparison(binding.ComparisonPlan(call));
-                if (kind == CompilerFunctionKind.DictionaryInsertOrReplace && call.DeclaringType is { Components.Count: 2 } dictionary)
-                {
-                    this.Destruction(dictionary.Components[0], use);
-                }
-
                 return;
             }
 
@@ -828,7 +823,7 @@ public sealed partial class Binding
                 CompilerFunctionKind.DictionaryReserve or CompilerFunctionKind.DictionaryShrinkToFit or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit or
                 CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageMissingDictionaryKey => true,
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StoragePlaceDictionaryValue => true,
             _ => false,
         };
 

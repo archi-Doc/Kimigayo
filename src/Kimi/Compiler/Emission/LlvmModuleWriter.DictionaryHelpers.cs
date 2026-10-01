@@ -28,6 +28,12 @@ internal static partial class LlvmModuleWriter
                     WriteDictionaryInsertion(output, helper);
                     output.Write("  ret void\n");
                     break;
+                case DictionaryHelperKind.PlaceValue:
+                    // Typed placement into a live slot whose value was moved out; no destruction, growth or user code.
+                    DictionaryAddress(output, "%stored_value", "%slot", helper.ValueOffset);
+                    WriteStoredArgument(output, helper.Value, helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0, "%value", "%stored_value", "%value_placed");
+                    output.Write("  ret void\n");
+                    break;
                 case DictionaryHelperKind.Find:
                     WriteDictionaryFind(output, helper, module.DictionaryFind!);
                     break;
@@ -40,8 +46,7 @@ internal static partial class LlvmModuleWriter
                     output.Write("(ptr %handle, ptr %location, i64 %location_length)\n  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n  ret void\n");
                     break;
                 default:
-                    WriteDictionarySearchOperation(output, helper);
-                    break;
+                    throw new InvalidOperationException("Unknown Dictionary helper kind.");
             }
 
             output.Write("}\n\n");
@@ -57,15 +62,6 @@ internal static partial class LlvmModuleWriter
         output.Write(", i64 ");
         WriteNumber(output, offset);
         output.Write('\n');
-    }
-
-    private static void WriteDictionarySlot(TextWriter output, DictionaryHelper helper)
-    {
-        output.Write("  %index = sub i64 %link, 1\n  %offset = mul i64 %index, ");
-        WriteNumber(output, helper.Stride);
-        output.Write("\n  %slot = getelementptr i8, ptr %buffer, i64 %offset\n");
-        DictionaryAddress(output, "%stored_key", "%slot", helper.KeyOffset);
-        DictionaryAddress(output, "%stored_value", "%slot", helper.ValueOffset);
     }
 
     private static void WriteDictionaryEqualityAdapter(TextWriter output, DictionaryHelper helper)
@@ -160,48 +156,6 @@ internal static partial class LlvmModuleWriter
         output.Write("  call void @");
         output.Write(clearLinks.Name);
         output.Write("(ptr %handle)\n  ret void\n");
-    }
-
-    private static void WriteDictionarySearchOperation(TextWriter output, DictionaryHelper helper)
-    {
-        var scalarKey = helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0;
-        var scalarValue = helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0;
-        if (scalarKey)
-        {
-            WriteDictionaryKeyStorage(output, helper);
-        }
-
-        output.Write("  %link = call i64 @");
-        output.Write(helper.Related!.Name);
-        output.Write("(ptr %handle, ptr ");
-        output.Write(scalarKey ? "%key_slot" : "%key");
-        output.Write(")\n  %missing = icmp eq i64 %link, 0\n  br i1 %missing, label %absent, label %found\nfound:\n  %buffer = load ptr, ptr %handle, align 8\n");
-        WriteDictionarySlot(output, helper);
-        var result = helper.Result!;
-        if (helper.Kind == DictionaryHelperKind.TryInsert)
-        {
-            var pair = result.Cases![1].Children[0]!;
-            DictionaryAddress(output, "%result_key", "%result", result.PayloadOffset + pair.Offset(0));
-            DictionaryAddress(output, "%result_value", "%result", result.PayloadOffset + pair.Offset(1));
-            WriteStoredArgument(output, helper.Key, scalarKey, "%key", "%result_key", "%key_rejected");
-            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%result_value", "%value_rejected");
-            output.Write("  store i32 1, ptr %result, align 4\n");
-        }
-        else
-        {
-            DictionaryAddress(output, "%result_value", "%result", result.PayloadOffset);
-            WriteStoredCopy(output, "%result_value", "%stored_value", helper.Value.Layout.Size);
-            WriteStoredArgument(output, helper.Value, scalarValue, "%value", "%stored_value", "%value_replaced");
-            WriteStoredDestruction(output, helper.KeyLayout, helper.KeyIsString, "%key");
-
-            output.Write("  store i32 0, ptr %result, align 4\n");
-        }
-
-        output.Write("  ret void\nabsent:\n");
-        WriteDictionaryInsertion(output, helper);
-
-        output.Write(helper.Kind == DictionaryHelperKind.TryInsert ? "  store i32 0, ptr %result, align 4\n" : "  store i32 1, ptr %result, align 4\n");
-        output.Write("  ret void\n");
     }
 
     private static void WriteDictionaryKeyStorage(TextWriter output, DictionaryHelper helper)

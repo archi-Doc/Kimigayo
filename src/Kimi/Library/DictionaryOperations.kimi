@@ -1,6 +1,4 @@
-// Public compiler bridges; ordered algorithms live in DictionaryStorage.kimi.
-// Generic operation bodies are still being migrated. Keys retain verified Equatable mappings.
+// Public compiler bridges; ordered algorithms live in DictionaryStorage.kimi and the operation bodies in Dictionary.kimi.
+// The capacity bridges are still being migrated.
 public func reserve(self: uniq/Self, additional: isize)
-public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
-public func insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>
 public func shrinkToFit(self: uniq/Self)
