@@ -1,5 +1,11 @@
 # Kimigayo Principles — A Programming Language for AI
 
+> In a programming language, types are everything.\
+> In design, words are everything.
+>
+> **Shape ideas with words.**\
+> **Let types carry the weight.**
+
 1. **One Concept, One Canonical Form**
    Give each concept and operation one clear, consistent form. Allow alternatives only when they provide a distinct practical benefit.
 
