@@ -94,6 +94,13 @@ across fragments for style: logical order controls initializer effects and rever
 ([SPEC §6.2.1](spec/06-declarations-and-containers.md#621-split-structures-and-storage-order),
 [§16.3.2](spec/16-scope-exit-and-destruction.md#1632-field-cleanup)).
 
+`[Kimi]` In a function requirement's Constraint region, write Constraint Clauses, then `origin` relations, then
+`effect` clauses. In a Contract body, place `effect Ancestor.name ...` specifications after the `associate`
+specifications they rely on ([SPEC §8.4.10](spec/08-generics-constraints-and-contracts.md#8410-requirement-effect-bounds)).
+
+`[Kimi]` Declare an effect bound only where callers need it. Adding a bound obliges every implementer; removing one
+breaks callers that rely on it, so treat both as API changes.
+
 - `[Kimi]` Separate declaration groups with one blank line. Use one blank line between constructors,
   `drop`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
   signatures or simple stored declarations may stay consecutive.

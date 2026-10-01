@@ -153,7 +153,7 @@ contract Indexable<Key>
 
 A function requirement declares a Name, optional function generic parameters, implicitly introduced signature Origins (§15.3.4), explicitly typed parameters (the receiver may use the shorthand of §7.3) and an optional result Type or Place result (§7.1.1); an omitted result means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
 
-Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses and no executable statements, `return`, local declarations or single-item body. Its subjects are the function's generic parameters or associated-Type projections rooted in them. Contract-wide Constraints belong at the Contract body level.
+Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, Origin relations or effect clauses and no executable statements, `return`, local declarations or single-item body. It may also hold Origin relations (§15.3.3) and effect clauses (§8.4.10). Its subjects are the function's generic parameters or associated-Type projections rooted in them. Contract-wide Constraints belong at the Contract body level.
 
 ```kimi
 contract Factory
@@ -350,13 +350,13 @@ Zero candidates means a missing implementation; several candidates are ambiguous
 | Result Type | The same Type or a subtype permitted by the Type rules. |
 | Result Origins | At least the required lifetime guarantees; a Place result may publish a stronger guarantee, such as `during self.source` for a required `during self`. |
 | Access | Usable throughout the [conformance's effective domain](09-names-signatures-and-access.md#934-conformance-accessibility). |
-| Calling context and Effects | No stronger calling context or effects than the requirement permits. |
+| Calling context and Effects | No stronger calling context than the requirement permits, and no effect outside the effect bounds that apply to the conformance (§8.4.10). |
 
-A required Kimi declaration may publish an **effect upper bound** for a requirement. Conformance then checks the complete transitive effect summary of every implementation, including callees, specializations, accessors, lazy initialization and destruction, against that bound; an effect that the summary cannot classify is a conflict, never an empty effect. Generic and erased callers use the published bound. The bounds are those of `BufferWriter.reserve` (the [formatting profile's effect bound](utf8-formatting.md#12-effects-and-erasure)) and `Iterator.next` (§22.1.2.4); same-spelled user Contracts receive no effect guarantee.
+A Contract may publish **effect bounds** for its requirements (§8.4.10). Conformance then checks the complete transitive effect summary of every implementation, including callees, specializations, accessors, defaults, lazy initialization and destruction, against each bound that applies; an effect that the summary cannot classify is a conflict, never an empty effect. Generic and erased callers use the bounds available under §8.4.10.4.
 
 Origin contracts use the [common compatibility procedure](15-ownership-and-lifetime-analysis.md#1537-canonical-contracts-and-verification), preserving ordinary variance and Loan rules, including invariance where required. A requirement that admits a call-local borrow cannot be implemented by a function that requires that input to be `static`. Origin-free identification neither erases dependencies nor relaxes exclusive access.
 
-The existing Safety, ownership, Origin and Access Effect checks apply; no new effect system is defined here. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric or user conversion, Copy, Borrow/Reborrow or erasure. Core inheritance alone does not prove compatibility of complete Types. A compatibility failure is reported as a conformance error without searching for another implementation. Properties use the corresponding [accessor rules](11-properties.md#114-contract-property-requirements).
+The existing Safety, ownership, Origin and Access Effect checks apply; no effect system is defined beyond the closed vocabulary of §8.4.10. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric or user conversion, Copy, Borrow/Reborrow or erasure. Core inheritance alone does not prove compatibility of complete Types. A compatibility failure is reported as a conformance error without searching for another implementation. Properties use the corresponding [accessor rules](11-properties.md#114-contract-property-requirements).
 
 Receiver adaptations in custom accessors and generated Contract witnesses distinguish proven complete Sealed payload calls from protected object and base calls (§12.4.4). Property permissions, right-hand-side-first assignment, witness identity and public premises are preserved; Sealed never changes ObjectViewCompatible.
 
@@ -389,7 +389,7 @@ Only the defined proof rules are used, not enumeration of instantiations or arbi
 
 `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` are **compiler-intrinsic** Contracts. Each has only the special acquisition, destruction, layout, concurrency or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract identity; a user Contract with the same name or requirements does not gain them, so `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance exists only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
-The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration Contracts and the Indexable Contracts. Their source conformance follows the ordinary static Contract rules, with the effect upper bounds of §8.4.5; their special behavior is otherwise limited to the specified formatting, comparison, iteration and indexing mappings.
+The [required Kimi declaration table](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) also fixes the identities and signatures of `Utf8Format`, `BufferWriter`, `Equatable`, `Comparable`, the iteration Contracts and the Indexable Contracts. Their source conformance follows the ordinary static Contract rules, with the effect bounds they declare (§8.4.10); their special behavior is otherwise limited to the specified formatting, comparison, iteration and indexing mappings.
 
 **Closed Contracts.** `Kimi.Position` and `Kimi.PositionRange` are **closed** Contracts: ordinary Contracts declared in the Kimi Kotonoha whose conforming Types are fixed by §22.1. `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`, and `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.2, §4.6.4). A conformance declaration to a closed Contract in any other Type is an error, and a same-spelled user declaration grants nothing. Their capabilities follow the ordinary refinement and Contract Constraint rules; the one special proof rule is that `T is PrimitiveInteger` implies `T is Position` (§8.4.7.3). The integer conformance to `Position` is built in: its implementation is a Kimi internal function, and integers gain no members. Every implementation of a closed Contract reads only its boundaries and the length and has no other effect, so a generic API over them needs no published effect bound of its own.
 
@@ -597,6 +597,173 @@ struct Bad<A, B>
 For other combinations of direct conformance, refinement and effective base conformance, each path's availability conditions are added to the collision conditions. When paths may meet, consistent associated bindings and requirements must be proven, and for conformance definitions also consistent implementation mappings. If meeting cannot be excluded and consistency cannot be proven, the definition is rejected. Equal references may share structure but never lose assumptions or obligations. For example, `Family<A>.C` and `Family<B>.C` cannot specify one associated Type as `i32` and `string` while `A = B` remains possible.
 
 A refinement path that revisits a Contract declaration, even with different arguments, is rejected, including `Outer<T>.C` to `Outer<List<T>>.C`. Distinct instantiations on separate paths are not cyclic for that reason alone; processed references are tracked separately from the declarations on the current path. Defaults, external conformance and implementation priority are not introduced.
+
+### 8.4.10. Requirement effect bounds
+
+A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. A bound only obliges implementations, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity.
+
+#### 8.4.10.1. Declarations
+
+```text
+RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
+EffectClause           := "effect" EffectBound
+EffectSpecification    := "effect" ContractSelector "." Name EffectBound
+EffectBound            := "confined" | "preserves" "results"
+```
+
+`effect`, `confined`, `preserves` and `results` are contextual words in these positions only.
+
+- An `EffectClause` in the Constraint region of a requirement declares a bound of the enclosing Contract for that requirement.
+- An `EffectSpecification` is a Contract item (Appendix F). It declares a bound of the enclosing Contract for the function requirement `Name` inherited from the ancestor `ContractSelector`. `Name` must identify exactly one function requirement of that ancestor. A requirement of the Contract itself takes an `EffectClause` instead.
+- Declaring a bound that the Contract or one of its ancestors already declares for the same requirement is an error.
+- Effect items appear only in Contracts. Implementations, ordinary functions, Property requirements, Function Types and Callable Constraints accept none, and an implementation can neither add nor remove a bound.
+- A bound is a guarantee of conformance to the Contract that declares it; it does not strengthen the requirement declaration. `T is C` guarantees the bounds that `C` and its ancestors declare, and no others.
+- Adding a bound kind requires a specification change. Bounds belong to the Contract's public contract and to its verified semantic record (§18.7.1).
+
+```kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+
+contract StableSource: Source
+    effect Source.take preserves results
+
+func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = source.take() // Valid: the bound excludes the Loans of first.
+    return (first@move, second@move)
+```
+
+With only `S is Source`, the second call is rejected while `first` is live, because the call may write through its `uniq` receiver to the referent of a Loan of `first`. A Type that declares only `Self is Source` is not checked against the bound and gives no guarantee; `Self is StableSource` is checked and guarantees it. `LendingIterator` and `Iterator` are related in the same way (§22.1.2.1).
+
+#### 8.4.10.2. `confined`
+
+The transitive effect summary of an implementation (§8.4.5: callees, specializations, accessors, defaults, lazy initialization and destruction) contains no **environment effect**:
+
+- an access to a mutable static Field: a read, borrow, write, replacement, destruction or first-access initialization;
+- a standard operation that accesses state outside the program, such as Console output;
+- an effect that cannot be classified, such as a call whose environment effects are unknown.
+
+Allocation and Abort are permitted, as are reads of immutable statics, whose initializers enter the summary, and accesses through a borrowed Field of an input, which follow ordinary Loan checking even when the referent has static storage. Unsafe operations keep their own rules.
+
+```kimi
+contract Sink
+    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        effect confined
+
+group Metrics
+    var puts: isize = 0
+    public func record() => Metrics.puts += 1
+
+struct CountingSink
+    Self is Sink
+    var count: isize = 0
+    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        self.count += 1              // Valid: authority from self.
+        return .Ok(())
+
+struct LoggingSink
+    Self is Sink
+    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        Metrics.record()             // Error: reaches the mutable static Metrics.puts.
+        return .Ok(())
+
+struct Forward<W>
+    W is Sink
+    Self is Sink
+    var inner: W
+    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        return self.inner.put(value) // Valid: W.put is confined; its effects go through self.inner.
+```
+
+#### 8.4.10.3. `preserves results`
+
+**Eligibility.** The receiver is a borrow (`ref/Self` or `uniq/Self`), and the canonical result contract of the requirement (§15.3.7) satisfies the [independence of published results](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) under every admitted binding: a result depends neither on the receiver Loan of its call nor on the receiver's Storage. Eligibility is judged on semantic dependencies after normalizing the declaring Contract's premises (associated-Type specifications and Constraints), result Origin defaults (§15.4.3) and aliases, never on spelling. Result compatibility (§8.4.5) carries the independence to every implementation.
+
+**Guarantee.** When `T is C` and `C` declares `preserves results` for a requirement `r`, the effects of a call of `r` on a value `v` of `T` conflict with no Loan kept by a result that an earlier call of `r` on `v` returned, including Loans kept through ordinary transfer or Reborrow of that result. These effects include reads, writes, borrows, the Loans of the new result, access to statics and captures, and cleanup inside the call. The identity of `v`, across Moves, follows the existing Loan and dependency tracking. Destroying or replacing `v` as a whole, calls of other requirements, Loans unrelated to results and dependencies that the user adds after a result was returned are outside the guarantee, which promises no purity.
+
+**Verification.** Conformance verification compares the implementation's transitive effect summary with the Loans that its results may keep, using the common root, Loan and effect summaries and region splitting (§15.6.3): split children and transferred values do not conflict with accesses to the remainder.
+
+```kimi
+contract Cursor
+    associate Lent(step) for uniq/Self during step
+    func advance(self: uniq/Self during step) -> Option<Self.Lent(step)>
+        effect preserves results // Error: the result may depend on the receiver borrow step.
+
+contract Peek
+    associate Item
+    func peek(self: ref/Self) -> Option<ref/Self.Item>
+        effect preserves results // Error: the elided result Origin is self.
+```
+
+#### 8.4.10.4. Checking and use
+
+**Implementations.** A conformance `T is C` checks each witness against the bounds that `C` declares. Ancestor bounds are checked through the ancestor conformances that `T is C` entails (§8.4.2), and a conditional conformance is checked under its conditions (§8.4.8.2). A witness is checked against each bound once, and one traversal of its summary serves both bounds.
+
+**Available bounds.** A requirement call whose effects are not known from a concrete implementation, such as a generic requirement call or an erased `Utf8Writer` reservation, may use the bounds that the Contracts proven by its premises (§8.7) declare for its Requirement Identity. Bounds are never searched for in implementations. Requirement Identities merged into one call candidate under §8.4.6 may use the bounds of all of them, because they select the same implementation.
+
+**Requirement call effects.** The effects of such a call are derived from its available bounds, by the same rules inside implementation checks and at callers:
+
+1. *Effects through inputs.* The call may affect every Place reachable through references from the receiver and from each argument, in the access mode of its parameter: reads and shared borrows for shared access, and also writes, replacement and destruction for exclusive access. This holds with or without bounds. An input of an abstract Type may reach every Loan that its Type's Origins may denote.
+2. *Environment effects.* None with `confined`; otherwise unknown. Bound verification treats unknown effects as conflicts (§8.4.5); elsewhere §15.6.4 applies.
+3. *Earlier results.* With `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded from the comparison.
+
+The derived effects are compared with the active Loans by the conflict rules of §15.6.2. A result without Loans takes no part in the comparison. `preserves results` is one way to prove non-conflict, not a condition of acceptance.
+
+```kimi
+contract View
+    func read(self: ref/Self) -> ref/i32
+        effect confined
+
+func sumTwo<V>(view: ref/V) -> i32
+    V is View
+    let first = view.read()
+    let second = view.read() // Valid: a shared-receiver call only reads and conflicts with no shared Loan of first.
+    return first + second
+```
+
+`read` cannot declare `preserves results`, because its result depends on the receiver borrow. `confined` removes unknown environment effects, so a caller of `sumTwo` whose `view` borrows static storage sees no conflict either (§15.6.4).
+
+#### 8.4.10.5. Delegation
+
+Let an implementation of a requirement `r` that has `preserves results` call a requirement `d` on a value of an abstract Type `J`, where the premises give `J`'s `d` the `preserves results` bound, and suppose that:
+
+1. `Self` stores `J` in exactly one Field `f`, as `J` or as a borrow of `J`, and stores no other value whose Type names `J`; and
+2. the result Type of `r`, normalized within the conformance, equals the result Type of `d`.
+
+The implementation then returns only results of `d` obtained through `f`, so earlier results of `r` are earlier results of `d`, and every call of `d` through `self.f` in the implementation's own body, however often it is made, is covered by rule 3 of §8.4.10.4. Only one `d` is covered. Because the results of `d` do not depend on `J`'s Storage, reaching `J` through a borrowed Field `s/J during o` conflicts with no result kept through `o`. Calls inside callee bodies, calls on `J` reached otherwise, calls of other requirements of `J` and calls on other values are ordinary effects under §8.4.10.4. Composite adapters that step several values, such as `zip` and `chain`, are not covered, and no general wrapper proof is added. `confined` needs no delegation rule, because rules 1 and 2 of §8.4.10.4 compose it.
+
+```kimi
+struct Drain<J>
+    J is Iterator
+    Self is StableSource
+    associate Source.Item is J.Item
+    var inner: J
+    public var taken: isize = 0
+    public func take(self: uniq/Self) -> Option<J.Item>
+        self.taken += 1
+        return self.inner.next()     // Valid: J's bound covers earlier results obtained through self.inner.
+
+struct Merge<J>
+    J is Iterator
+    Self is StableSource
+    associate Source.Item is J.Item
+    var left: J
+    var right: J
+    public func take(self: uniq/Self) -> Option<J.Item>
+        match self.left.next()       // Error: two Fields name J, so the delegation rule does not apply.
+            .Some(let item) => return .Some(item@move)
+            .None => return self.right.next()
+```
+
+#### 8.4.10.6. Diagnostics and recovery
+
+- **Declarations.** An unidentified, ambiguous or non-ancestor target, a duplicate bound, an effect item outside a Contract, `preserves results` without a borrowed receiver, or a dependent result is the Language Error `InvalidEffectBound_Kd`. The primary location is the effect item and the related location the target requirement. For a dependent result, the Reason names the dependent part and its path, such as an associated-Type specification or an elided Origin; no automatic repair is offered, because the dependency is the meaning of the API.
+- **Conformance.** A bound violation is `IncompatibleContractImplementation_Kd` (§23.3.6.1). Its Reason names the bound, the declaring Contract and the requirement, and distinguishes a definite violation (a static Field, an external operation or a conflicting Loan) from an unknown effect treated as a conflict. The primary location is the first violating effect in the implementation's own body; related locations give the effect path, the `Self is C` declaration and the bound. Advice offers repairs that keep the guarantee: moving the state into a Field of `self` or a parameter, avoiding the conflicting access, or adopting the single-Field delegation form. Only where the declarations are editable may it also mention, conditionally, weakening the public contract by conforming to a Contract without the bound or removing the bound, stating that callers relying on the guarantee are affected. An implementation alone cannot remove an inherited bound.
+- **Callers.** A derived requirement-call effect that may conflict with an active Loan is the Language Error `CallEffectConflict_Kd` at the later call. Related locations give the conflicting Loan and the call that created it. The Reason names the access, the input it goes through and the Loan, and states that no available bound excludes the access under the premises; it does not assert that a conflict occurs. Advice suggests strengthening the Constraint to a Contract that declares the bound, when every use Type conforms to it, or ending the use of the held result before the call. A conflict with the receiver borrow itself keeps the existing diagnostics, such as `CallActivationConflict_Kd`.
+- **Recovery.** A conformance that violates a bound is invalid, as before. An invalid effect item gives no guarantee, and the caller conflicts it would have resolved are derived from the declaration error (§23.3.6.4).
+- **Inspection.** Semantic inspection and language-server hover expose the bounds a Contract declares and, at a requirement call, the available bounds together with the Contracts that proved them.
 
 ## 8.5. Runtime contracts
 
