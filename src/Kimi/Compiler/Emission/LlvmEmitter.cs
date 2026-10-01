@@ -204,6 +204,12 @@ public sealed class LlvmEmitter
                 failure = limit;
             }
 
+            if (!module.IsComplete && c.Ownership.InstanceStorageLimit is { } storageLimit)
+            {
+                this.resourceLimit = true;
+                failure = storageLimit;
+            }
+
             this.functions.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances();

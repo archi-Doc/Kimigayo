@@ -152,6 +152,8 @@ public enum OwnershipFailure : byte
     // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
     // owned fixed array.
     StaticMovePathRequired,
+
+    StorageLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -193,7 +195,8 @@ public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
-public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null)
+public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -209,6 +212,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
+        OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
 }

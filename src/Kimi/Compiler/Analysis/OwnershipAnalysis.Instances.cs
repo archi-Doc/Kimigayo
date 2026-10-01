@@ -13,8 +13,14 @@ public sealed partial class OwnershipAnalysis
     private BoundCall? instance;
     private bool instanceFailed;
 
+    internal string? InstanceStorageLimit { get; private set; }
+
     /// <summary>Releases the instance plans of the previous generation request.</summary>
-    internal void ClearInstances() => this.instanceCount = 0;
+    internal void ClearInstances()
+    {
+        this.instanceCount = 0;
+        this.InstanceStorageLimit = null;
+    }
 
     /// <summary>
     /// Rebuilds the ownership plan of a verified generic body under one closed call substitution. The

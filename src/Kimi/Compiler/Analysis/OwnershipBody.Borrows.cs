@@ -7,19 +7,24 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipBody
 {
     private readonly List<(int To, int Next)> checkingBorrowEdges = new();
-    private bool[] borrowLive = [];
+    private PackedAnalysisTable borrowLive = new(1);
     private int[] checkingBorrowHeads = [];
-    private LoanRequirement[] borrowDependencies = [];
-    private LoanRequirement[] retainedBorrowAuthority = [];
+    private PackedAnalysisTable borrowDependencies = new(2);
+    private PackedAnalysisTable retainedBorrowAuthority = new(2);
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
     private int[] slicePaths = [];
     private bool[] inspectionBorrows = [];
     private bool[] borrowedPlaces = [];
+    private bool[] dependencyRoots = [];
+    private List<int>? borrowRoots;
+    private List<int>? liveBorrowPlaces;
     private Dictionary<(int Place, int Root), int>? storedBorrowStarts;
 
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
-    internal int BorrowDependencyCapacity => this.borrowDependencies.Length;
+    internal int BorrowDependencyCapacity => this.borrowDependencies.Capacity;
+
+    internal long BorrowStorageBytes => (long)this.borrowDependencies.ByteCapacity + this.retainedBorrowAuthority.ByteCapacity + this.borrowLive.ByteCapacity;
 
     internal PlaceState GetBorrowInputState(int operation)
     {
@@ -38,6 +43,7 @@ public sealed partial class OwnershipBody
     internal void VerifyBorrows()
     {
         this.storedBorrowStarts?.Clear();
+        this.borrowRoots?.Clear();
         var count = this.Places.Count;
         var dependent = false;
         for (var p = 0; p < count && !dependent; p++)
@@ -92,12 +98,27 @@ public sealed partial class OwnershipBody
         }
 
         this.RetainBorrowAuthority(count);
+        (this.liveBorrowPlaces ??= new()).Clear();
+        for (var p = 0; p < count; p++)
+        {
+            for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+            {
+                if (this.borrowDependencies[(p * count) + this.borrowRoots[rootIndex]] != LoanRequirement.None)
+                {
+                    this.liveBorrowPlaces.Add(p);
+                    break;
+                }
+            }
+        }
+
+        var liveWidth = this.liveBorrowPlaces.Count;
         for (var id = 0; id < this.Operations.Count; id++)
         {
             if (this.Operations[id] is { Kind: OwnershipOperationKind.StoreDictionaryEntry } entry)
             {
-                for (var root = 0; root < count; root++)
+                for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
                 {
+                    var root = this.borrowRoots[rootIndex];
                     if (this.borrowDependencies[(entry.Input * count) + root] != LoanRequirement.None ||
                         this.borrowDependencies[(this.OperationSteps[id] * count) + root] != LoanRequirement.None)
                     {
@@ -132,34 +153,34 @@ public sealed partial class OwnershipBody
             }
         }
 
-        Grow(ref this.borrowLive, checked(count * this.Operations.Count));
-        this.borrowLive.AsSpan(0, count * this.Operations.Count).Clear();
+        this.borrowLive.Reset(OwnershipStorage.Cells(liveWidth, this.Operations.Count, 1, "borrow liveness"));
         bool changed;
         do
         {
             changed = false;
             for (var op = this.Operations.Count - 1; op >= 0; op--)
             {
-                for (var p = 0; p < count; p++)
+                for (var slot = 0; slot < liveWidth; slot++)
                 {
+                    var p = this.liveBorrowPlaces[slot];
                     var live = Uses(op, p);
                     if (!Kills(this.Operations[op], p))
                     {
                         for (var e = this.EdgeHeads[op]; e >= 0 && !live; e = this.Edges[e].Next)
                         {
                             var edge = this.Edges[e];
-                            live |= edge.Kind != OwnershipEdgeKind.Abort && this.borrowLive[(edge.To * count) + p];
+                            live |= edge.Kind != OwnershipEdgeKind.Abort && this.borrowLive.IsSet((edge.To * liveWidth) + slot);
                         }
 
                         for (var e = this.checkingBorrowHeads[op]; e >= 0 && !live; e = this.checkingBorrowEdges[e].Next)
                         {
-                            live |= this.borrowLive[(this.checkingBorrowEdges[e].To * count) + p];
+                            live |= this.borrowLive.IsSet((this.checkingBorrowEdges[e].To * liveWidth) + slot);
                         }
                     }
 
-                    var at = (op * count) + p;
-                    changed |= live != this.borrowLive[at];
-                    this.borrowLive[at] = live;
+                    var at = (op * liveWidth) + slot;
+                    changed |= live != this.borrowLive.IsSet(at);
+                    this.borrowLive.Set(at, live);
                 }
             }
         }
@@ -179,9 +200,10 @@ public sealed partial class OwnershipBody
                 var accessId = activating ? this.CallReservations[r].Borrow : op;
                 var operation = this.Operations[accessId];
                 var accessMode = !activating && operation.Reservation >= 0 ? LoanRequirement.Ref : operation.LoanMode;
-                for (var p = 0; p < count; p++)
+                for (var slot = 0; slot < liveWidth; slot++)
                 {
-                    if (!this.borrowLive[(op * count) + p] || (activating && p == this.CallReservations[r].Place))
+                    var p = this.liveBorrowPlaces[slot];
+                    if (!this.borrowLive.IsSet((op * liveWidth) + slot) || (activating && p == this.CallReservations[r].Place))
                     {
                         continue;
                     }
@@ -199,8 +221,9 @@ public sealed partial class OwnershipBody
                         continue;
                     }
 
-                    for (var root = 0; root < count; root++)
+                    for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
                     {
+                        var root = this.borrowRoots[rootIndex];
                         var mode = this.BorrowModeAt(p, root, op, this.borrowDependencies[(p * count) + root]);
                         if (mode == LoanRequirement.None)
                         {
@@ -404,20 +427,27 @@ public sealed partial class OwnershipBody
             if (!any)
             {
                 // Allocate only for an actual local dependency or a retained input capability.
-                Grow(ref this.borrowDependencies, checked(count * count));
-                this.borrowDependencies.AsSpan(0, count * count).Clear();
+                this.borrowDependencies.Reset(OwnershipStorage.Cells(count, count, 2, "borrow dependencies"));
+                Grow(ref this.dependencyRoots, count);
+                this.dependencyRoots.AsSpan(0, count).Clear();
                 Grow(ref this.borrowRootLoss, count);
                 this.borrowRootLoss.AsSpan(0, count).Clear();
                 any = true;
             }
 
-            ref var dependency = ref this.borrowDependencies[(place * count) + root];
+            var dependency = this.borrowDependencies[(place * count) + root];
             if (dependency >= mode)
             {
                 return false;
             }
 
-            dependency = mode;
+            this.borrowDependencies[(place * count) + root] = mode;
+            if (!this.dependencyRoots[root])
+            {
+                this.dependencyRoots[root] = true;
+                (this.borrowRoots ??= new()).Add(root);
+            }
+
             return true;
         }
 
@@ -725,8 +755,7 @@ public sealed partial class OwnershipBody
     // Retain stronger input authority separately from the shared access a child actually acquires.
     private void RetainBorrowAuthority(int count)
     {
-        Grow(ref this.retainedBorrowAuthority, checked(count * count));
-        this.borrowDependencies.AsSpan(0, count * count).CopyTo(this.retainedBorrowAuthority);
+        this.retainedBorrowAuthority.CopyFrom(this.borrowDependencies, OwnershipStorage.Cells(count, count, 2, "retained borrow authority"));
         bool changed;
         do
         {
@@ -812,8 +841,9 @@ public sealed partial class OwnershipBody
 
         bool RetainsInput(BoundType storage)
         {
-            for (var root = 0; root < count; root++)
+            for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
             {
+                var root = this.borrowRoots[rootIndex];
                 if (this.IsExclusiveBorrowInput(root) && NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
                 {
                     return true;
@@ -830,15 +860,17 @@ public sealed partial class OwnershipBody
                 return;
             }
 
-            for (var root = 0; root < count; root++)
+            for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
             {
+                var root = this.borrowRoots[rootIndex];
                 if (storage is not null && (!this.IsExclusiveBorrowInput(root) ||
                     NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None))
                 {
                     continue;
                 }
 
-                ref var target = ref this.retainedBorrowAuthority[(destination * count) + root];
+                var original = this.retainedBorrowAuthority[(destination * count) + root];
+                var target = original;
                 var input = this.retainedBorrowAuthority[(source * count) + root];
                 var start = this.storedBorrowStarts?.GetValueOrDefault((source, root)) ?? 0;
                 start = Math.Max(start, storedAt);
@@ -864,6 +896,11 @@ public sealed partial class OwnershipBody
                 {
                     target = input;
                     changed = true;
+                }
+
+                if (target != original)
+                {
+                    this.retainedBorrowAuthority[(destination * count) + root] = target;
                 }
             }
         }

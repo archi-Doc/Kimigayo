@@ -723,6 +723,14 @@
     Category="Resource"
     Message="Generic generation exceeds a mandatory resource limit"
 
+  + Name="OwnershipStorageLimit_Kd"
+    Category="Resource"
+    Message="Ownership analysis requires {0} bytes for a storage table; the limit is {1} bytes"
+    Arguments="requiredBytes:Number,limitBytes:Number"
+    Evidence="table:Text"
+    Label="ownership storage limit reached for {2} in this function"
+    Advice="If this body contains independent work, move that work into smaller functions. This limit does not make the source invalid under the language rules."
+
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
     Message="Project preparation failed"

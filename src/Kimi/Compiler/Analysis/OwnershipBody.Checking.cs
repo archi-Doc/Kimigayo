@@ -221,7 +221,7 @@ public sealed partial class OwnershipBody
     {
         this.PartitionCheckingBlocks();
         var width = this.words * Lanes;
-        Grow(ref this.checkingStates, checked(this.checkingBlockCount * width));
+        Grow(ref this.checkingStates, OwnershipStorage.Cells(this.checkingBlockCount, width, 64, "checking flow states"));
         Grow(ref this.checkingReached, this.checkingBlockCount);
         Grow(ref this.BlockQueue, this.checkingBlockCount);
         Grow(ref this.BlockQueued, this.checkingBlockCount);
@@ -337,7 +337,7 @@ public sealed partial class OwnershipBody
     private void ReplayCheckingGraph(OwnershipCheckingReplay path)
     {
         var width = this.words * Lanes;
-        Grow(ref this.checkingReplayStates, checked(this.checkingBlockCount * width));
+        Grow(ref this.checkingReplayStates, OwnershipStorage.Cells(this.checkingBlockCount, width, 64, "checking replay states"));
         Grow(ref this.checkingReplayReached, this.checkingBlockCount);
         this.checkingReplayReached.AsSpan(0, this.checkingBlockCount).Clear();
         var entry = this.checkingBlockOf[path.Entry];

@@ -220,5 +220,8 @@
   + Name="Ownership.StaticMovePathRequired"
     Description="a moved element has a static Move Path"
 
+  + Name="Ownership.StorageLimit"
+    Description="ownership analysis storage stays within its resource limit"
+
   + Name="Emission"
     Description="generation succeeds"

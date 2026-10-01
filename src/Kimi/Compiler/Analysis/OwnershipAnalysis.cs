@@ -138,6 +138,14 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            if (issue.Failure == OwnershipFailure.StorageLimit)
+            {
+                var requirement = DiagnosticRequirement.Ownership(issue.Failure);
+                var span = issue.Source is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : issue.Source.Span;
+                issue.Source.DiagnosticCollection?.Report(DiagnosticPartition.Ownership, issue.Source.KeyOf(requirement), span, issue.Code, issue.RequiredBytes, issue.LimitBytes, null, null, null, issue.Source.CodeContext.SourceDocument, evidence: [issue.StorageTable]);
+                continue;
+            }
+
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
@@ -211,6 +219,16 @@ public sealed partial class OwnershipAnalysis
         {
             this.body.ReportIssue(new(limit.SourceNode, OwnershipFailure.ExpansionLimit));
             this.issues.AddRange(this.body.IssueStorage);
+        }
+        catch (OwnershipStorageLimitException limit)
+        {
+            this.body.IsVerified = false;
+            this.body.ReportIssue(new(function, OwnershipFailure.StorageLimit, StorageTable: limit.Table, RequiredBytes: limit.RequiredBytes, LimitBytes: limit.LimitBytes));
+            this.issues.AddRange(this.body.IssueStorage);
+            if (this.instance is not null)
+            {
+                this.InstanceStorageLimit = limit.Message;
+            }
         }
     }
 

@@ -40,7 +40,7 @@ public sealed partial class OwnershipBody
         this.Reachable.AsSpan(0, count).Clear();
         this.PartitionBlocks(count);
         var blocks = this.blockCount;
-        Grow(ref this.BlockStates, checked(blocks * width));
+        Grow(ref this.BlockStates, OwnershipStorage.Cells(blocks, width, 64, "flow states"));
         Grow(ref this.Scratch, width);
         Grow(ref this.BlockReachable, blocks);
         Grow(ref this.BlockQueued, blocks);
@@ -65,9 +65,12 @@ public sealed partial class OwnershipBody
 
     private static void Grow<T>(ref T[] array, int length)
     {
+        var checkedLength = OwnershipStorage.Cells(length, 1, System.Runtime.CompilerServices.Unsafe.SizeOf<T>() * 8, "ownership storage");
         if (array.Length < length)
         {
-            Array.Resize(ref array, Math.Max(length, Math.Max(16, array.Length * 2)));
+            var capacity = Math.Max(checkedLength, Math.Max(16L, (long)array.Length * 2));
+            var maximum = Math.Min(Array.MaxLength, OwnershipStorage.ByteLimit / System.Runtime.CompilerServices.Unsafe.SizeOf<T>());
+            Array.Resize(ref array, (int)Math.Min(capacity, maximum));
         }
     }
 

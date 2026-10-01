@@ -9,6 +9,22 @@ namespace XunitTest;
 public class BorrowDependencyStorageTest
 {
     [Theory]
+    [InlineData(32)]
+    [InlineData(128)]
+    [Trait("Purpose", "Allocation")]
+    public void DependentBodiesUseCompactTables(int count)
+    {
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InspectionLoans(count, true));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var body = Assert.Single(c.Ownership.Bodies, static x => x.Function.Name == "check");
+        var bytePerCell = (2L * body.Places.Count * body.Places.Count) + ((long)body.Places.Count * body.Operations.Count);
+        Assert.True(body.BorrowStorageBytes <= bytePerCell / 4, $"Retained {body.BorrowStorageBytes} bytes for {bytePerCell} Boolean/loan cells.");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.True(valid);
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(32)]
     [InlineData(128)]
