@@ -8,6 +8,9 @@ public sealed partial class OwnershipBody
 {
     private int[] reservationPlaces = [];
 
+    // A reserved input whose own preparation meets a retained Loan, held until activation is decided (SPEC 15.6.7).
+    private List<(int Reservation, OwnershipIssue Issue)>? preparedLoanConflicts;
+
     internal void PrepareCallReservations()
     {
         Grow(ref this.reservationPlaces, this.Places.Count);
@@ -51,6 +54,36 @@ public sealed partial class OwnershipBody
                 }
             }
         }
+    }
+
+    // SPEC 15.6.7: a reserved input that meets a retained Loan conflicts with that Loan, not with a call reservation. When the
+    // Loan still conflicts at the call's activation, the activation record states the problem; otherwise the Loan ended during
+    // preparation and this record stands alone. Matching by source decides every deferred expansion of one call alike.
+    private void ReportPreparedLoanConflicts()
+    {
+        if (this.preparedLoanConflicts is not { Count: > 0 } conflicts)
+        {
+            return;
+        }
+
+        for (var i = 0; i < conflicts.Count; i++)
+        {
+            var (reservation, issue) = conflicts[i];
+            var call = this.CallReservations[reservation].Call;
+            var activated = false;
+            for (var j = 0; j < this.IssueStorage.Count && !activated; j++)
+            {
+                var other = this.IssueStorage[j];
+                activated = other.Activation && ReferenceEquals(other.Source, call) && ReferenceEquals(other.LoanSource, issue.LoanSource);
+            }
+
+            if (!activated)
+            {
+                this.ReportIssue(issue);
+            }
+        }
+
+        conflicts.Clear();
     }
 
     private bool ValidateCallReservations()

@@ -1,14 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
 
-public class CallReservationTest
+public class CallReservationTest(ITestOutputHelper output)
 {
     private const string Cell = "struct Cell\n    public var value: i32 = 1\n    public func set(self: uniq/Self, n: i32) => self.value = n\nfunc set(c: uniq/Cell, n: i32) => c.value = n\nfunc read(c: ref/Cell) -> i32 => c.value\n";
+    private const string ObjCell = "struct ObjCell\n    public var value: i32 = 1\n    public func put(self: objuniq/Self, n: i32)\n        let p = self@follow@uniq\n        p.value = n\n";
 
     [Theory]
     [InlineData("Explicit", "var c = Cell.init()\nset(c@uniq, c.value + 1)")]
@@ -160,6 +164,47 @@ public class CallReservationTest
         Assert.Contains(c.Ownership.Issues, x => x.Reservation >= 0 && x.Activation == activation);
     }
 
+    // SPEC 15.6.7: an exclusive input whose target is still lent to a live exclusive Reborrow is one conflict. The reservation
+    // does not conflict with another reservation; the call's exclusive acquisition cannot activate while the Reborrow lives.
+    [Theory]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(3)\nsecond.set(2)", "target.set(3)")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second = target\ntarget.set(3)\nsecond.set(2)", "target.set(3)")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second = target@follow@uniq\ntarget.set(3)\nsecond.set(2)", "target.set(3)")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nset(target, 3)\nsecond.set(2)", "set(target, 3)")]
+    [InlineData("var c = Cell.init()\nlet second = c@uniq\nc.set(3)\nsecond.set(2)", "c.set(3)")]
+    [InlineData(ObjCell + "var o = Kimi.Intrinsics.makeObj(ObjCell.init())\nlet target = o@objuniq\nlet second = target\ntarget.put(3)\nsecond.put(2)", "target.put(3)")]
+    [InlineData(ObjCell + "var o = Kimi.Intrinsics.makeObj(ObjCell.init())\nlet target = o@objuniq\nlet second = target@objuniq\ntarget.put(3)\nsecond.put(2)", "target.put(3)")]
+    [InlineData("var x: i32 = 1\nlet target = x@uniq\nlet second: uniq/i32 = target\nKimi.Intrinsics.replace(target, with: 3)\nKimi.Intrinsics.replace(second, with: 2)", "Kimi.Intrinsics.replace(target, with: 3)")]
+    [InlineData("func run(flag: bool)\n    var c = Cell.init()\n    let target = c@uniq\n    let second: uniq/Cell = target\n    defer => second.set(2)\n    defer => target.set(3)\n    if flag => return\nrun(true)", "target.set(3)")]
+    public void ALiveReborrowConflictsOnceAtActivation(string body, string call)
+        => this.AssertOneConflict(Cell + body, "CallActivationConflict_Kd", call, "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live");
+
+    // SPEC 15.6.7: when the Reborrow's last use is a later argument, the reserved input meets the active Loan during preparation
+    // and the Loan has ended at activation. The input conflicts with that Loan, not with a call reservation.
+    [Theory]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\ntarget.set(read(second))", "target")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nset(target, read(second))", "target")]
+    [InlineData(ObjCell + "var o = Kimi.Intrinsics.makeObj(ObjCell.init())\nlet target = o@objuniq\nlet second = target\ntarget.put((second@follow@ref).value)", "target")]
+    public void AReborrowEndingDuringPreparationConflictsAtTheInput(string body, string input)
+        => this.AssertOneConflict(Cell + body, "ComparisonLoanConflict_Kd", input, "This operation conflicts with an active loan");
+
+    // The valid counterparts: the Reborrow's last use precedes the call, or the retained Loan is the call's own input.
+    [Theory]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nsecond.set(2)\ntarget.set(3)")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second = target@follow@uniq\nsecond.set(2)\ntarget.set(read(target))")]
+    [InlineData("var c = Cell.init()\nlet second = c@uniq\nsecond.set(2)\nc.set(read(c))")]
+    [InlineData("var c = Cell.init()\nlet target = c@uniq\nlet second: uniq/Cell = target\nsecond.set(read(second))\ntarget.set(3)")]
+    [InlineData(ObjCell + "var o = Kimi.Intrinsics.makeObj(ObjCell.init())\nlet target = o@objuniq\nlet second = target\nsecond.put(2)\ntarget.put(3)")]
+    public void AReborrowEndingBeforeTheCallIsAccepted(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(Cell + body);
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.True(c.Ownership.Result.IsVerified, string.Join('\n', c.Ownership.Issues));
+        c.Ownership.ReportDiagnostics();
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.True(c.Emission.Validate(out var error), error);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmReservationAnalysisAndEmissionAllocateNothing()
@@ -191,6 +236,51 @@ public class CallReservationTest
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // One published Error at the expected range, relating the declaration of `second` that retains the Loan, in the
+    // console and in both language-server placements.
+    private void AssertOneConflict(string source, string code, string text, string message)
+    {
+        var path = Path.GetFullPath("reservation-reborrow.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.False(c.Ownership.Result.IsVerified);
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(code, error.Code);
+        Assert.Equal(DiagnosticSeverity.Error, error.Severity);
+        Assert.Equal(text, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal(message, error.Message);
+        var retained = Assert.Single(error.Related!);
+        Assert.Equal("loan", retained.Role);
+        Assert.StartsWith("let second", source.Substring(retained.Span!.Value.Start, retained.Span.Value.Length), StringComparison.Ordinal);
+        Assert.Equal("value retaining the conflicting loan", retained.Label);
+
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(code, console.Text, StringComparison.Ordinal);
+        Assert.Contains("value retaining the conflicting loan", console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
+            Assert.Equal(error.Display!.Range, sent.Range);
+            Assert.Contains(message, sent.Message, StringComparison.Ordinal);
+            if (related)
+            {
+                Assert.Equal(retained.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
+            }
+            else
+            {
+                Assert.Contains("value retaining the conflicting loan", sent.Message, StringComparison.Ordinal);
+            }
+        }
+
         Assert.False(c.Emission.Validate(out _));
     }
 }
