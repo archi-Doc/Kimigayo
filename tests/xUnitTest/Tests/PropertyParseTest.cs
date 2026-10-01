@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Expectations name legacy syntax codes of reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;

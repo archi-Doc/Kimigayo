@@ -5,6 +5,15 @@ using Kimi.Diagnostics;
 
 namespace Kimi;
 
+/// <summary>The syntax codes that the forms of <see cref="DiagnosticCode.ExpectedSyntax_Kd"/>, <see cref="DiagnosticCode.MissingSyntax_Kd"/>
+/// and <see cref="DiagnosticCode.MisplacedSyntax_Kd"/> replace (docs/dev/DIAGNOSTICS.md §8, D5). A file that still reports them
+/// disables CS0618 at its top until its sites are migrated; a code leaves the catalog with its last site.</summary>
+public static class LegacySyntaxCode
+{
+    /// <summary>The reason the code is obsolete.</summary>
+    public const string Message = "Report the syntax form through TokenReader.Expect, ExpectLineEnd or Unexpected (docs/dev/DIAGNOSTICS.md §4.4).";
+}
+
 public enum DiagnosticCode
 {
     Template_Kd, // First sentinel
@@ -51,7 +60,16 @@ public enum DiagnosticCode
     DuplicateModifier_Kd,
     DuplicatePropertyAccessor_Kd,
     DuplicateTypeConstraintDefinition_Kd,
+
+    // Syntax forms (docs/dev/DIAGNOSTICS.md §4.4): what the parser expected and found, what is missing at an insertion point,
+    // and what is not permitted where it stands. The form is a Syntax requirement; the parser reports through TokenReader.
+    ExpectedSyntax_Kd,
+    MissingSyntax_Kd,
+    MisplacedSyntax_Kd,
+
+    [Obsolete(LegacySyntaxCode.Message)]
     IdentifierExpected_Kd,
+    [Obsolete(LegacySyntaxCode.Message)]
     IncompleteSyntax_Kd,
     IndentationLevelMismatch_Kd,
     InvalidCharacter_Kd,
@@ -66,16 +84,16 @@ public enum DiagnosticCode
     LetPropertyCannotHaveSetter_Kd,
     MissingBlockCommentEnd_Kd,
     CodeAfterMultilineComment_Kd,
-    MissingComma_Kd,
-    MissingExpectedToken_Kd,
     MissingStringLiteralEnd_Kd,
     MissingCharLiteralEnd_Kd,
     MultipleAccessibilityModifiers_Kd,
     NonExhaustiveCompileTimeCase_Kd,
+    [Obsolete(LegacySyntaxCode.Message)]
     TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,
     InvalidTry_Kd,
+    [Obsolete(LegacySyntaxCode.Message)]
     UnexpectedToken_Kd,
     BorrowOriginKeyword_Kd,
     BorrowOriginSemantics_Kd,
@@ -97,16 +115,13 @@ public enum DiagnosticCode
     ParameterNameMarker_Kd,
     DuplicateExternalParameterName_Kd,
     EmptyNamedParameterSection_Kd,
+    [Obsolete(LegacySyntaxCode.Message)]
     UnexpectedTrailingToken_Kd,
-    UnmatchedAngleBracket_Kd,
-    UnmatchedBrace_Kd,
-    UnmatchedBracket_Kd,
-    UnmatchedParenthesis_Kd,
-    UnmatchedToken_Kd,
     UnsupportedEscape_Kd,
 
     MissingReturnType_Kd,
 
+    [Obsolete(LegacySyntaxCode.Message)]
     EmptyExecutableBlock_Kd,
     BlockStatementInExpression_Kd,
 

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -15,7 +17,7 @@ public static partial class Parser
         var end = reader.CurrentTokenRange.End;
         if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
         {
-            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Separator or TokenKind.EndBlock))
@@ -28,7 +30,7 @@ public static partial class Parser
 
             if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
             }
         }
 

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Excluded-region structure checks still report legacy syntax codes until their sites migrate (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -174,11 +176,11 @@ public class CompileTimeSwitchParseTest
     [InlineData("#switch:\n    #case _\n        ()")]
     [InlineData("#switch\n    #case _ extra\n        ()")]
     public void UnexpectedHeaderTokensAreRejected(string source)
-        => AssertDiagnostic(Parse(source), DiagnosticCode.UnexpectedTrailingToken_Kd);
+        => AssertDiagnostic(Parse(source), DiagnosticCode.ExpectedSyntax_Kd);
 
     [Fact]
     public void EachArmRequiresItsOwnIndentedBody()
-        => AssertDiagnostic(Parse("#switch\n    #case true\n    #case _\n        ()"), DiagnosticCode.EmptyExecutableBlock_Kd);
+        => AssertDiagnostic(Parse("#switch\n    #case true\n    #case _\n        ()"), DiagnosticCode.MissingSyntax_Kd);
 
     [Fact]
     public void EarlyFalseIfExcludesExactlyOneSwitch()

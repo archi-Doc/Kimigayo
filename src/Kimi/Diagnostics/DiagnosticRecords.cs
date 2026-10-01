@@ -22,6 +22,9 @@ public enum DiagnosticValueKind : byte
 
     /// <summary>A bounded display value, such as a Type; it may be elided.</summary>
     Text,
+
+    /// <summary>A requirement by its stable name, such as <c>Syntax.Expression</c>; a message displays its phrase.</summary>
+    Requirement,
 }
 
 /// <summary>One typed fact of a record's Reason (SPEC 23.3.6.2).</summary>

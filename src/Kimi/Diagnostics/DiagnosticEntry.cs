@@ -34,7 +34,7 @@ public partial record class DiagnosticEntry
     public string? Note { get; init; }
 
     /// <summary>Gets the message arguments as <c>name:Kind</c> pairs separated by commas, one for each argument. A kind is
-    /// <c>Number</c>, <c>Enumeration</c>, <c>Boolean</c>, <c>Text</c> or <c>Type</c>.</summary>
+    /// <c>Number</c>, <c>Enumeration</c>, <c>Boolean</c>, <c>Text</c>, <c>Type</c> or <c>Requirement</c>.</summary>
     public string? Arguments { get; init; }
 
     /// <summary>Gets the facts that a report may add to the Reason beyond the message arguments, in the form of <see cref="Arguments"/>.
@@ -156,6 +156,7 @@ public partial record class DiagnosticEntry
             DiagnosticValueKind.Boolean => value is bool,
             DiagnosticValueKind.Enumeration => value is Enum e && Enum.IsDefined(e.GetType(), e),
             DiagnosticValueKind.Text => value is not null,
+            DiagnosticValueKind.Requirement => value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out _),
             _ => false,
         };
         if (!valid)

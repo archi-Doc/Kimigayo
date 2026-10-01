@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using Arc.Collections;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -115,7 +117,7 @@ public static partial class Parser
             var token = reader.CurrentToken;
             if (!token.Kind.IsIdentifierOrContextualKeyword() || !reader.TryGetIdentifier(token, out var name))
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
                 break;
             }
 
@@ -262,16 +264,16 @@ public static partial class Parser
             return name;
         }
 
-        // A name missing at a boundary is an insertion point after the preceding token, not the next line's token.
+        // A Name missing at a boundary stands at an insertion point after the preceding token; any other token is consumed for recovery.
+        var cause = reader.Expect(SyntaxForm.Name);
         var boundary = !reader.CanRead || IsExpressionBoundary(ref reader);
         var missing = boundary ? new SourceSpan(reader.PreviousSyntaxEnd, 0) : token.Span;
-        reader.Diagnostic.Add(missing, DiagnosticCode.IdentifierExpected_Kd);
         if (!boundary)
         {
             reader.Advance();
         }
 
-        return new ErrorKoto(ref reader, missing) { Cause = reader.Diagnostic.LastError };
+        return new ErrorKoto(ref reader, missing) { Cause = cause };
     }
 
     private static Koto ParseRootName(ref TokenReader reader, bool type)

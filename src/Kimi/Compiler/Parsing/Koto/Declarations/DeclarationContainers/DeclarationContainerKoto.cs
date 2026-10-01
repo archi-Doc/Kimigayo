@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Compiler;
@@ -670,7 +672,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     }
 
                     this.AddLast(new SyntaxFormKoto(ref reader, span, KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                    reader.ExpectLineEnd();
                     continue;
                 }
 
@@ -682,7 +684,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 }
 
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                reader.ExpectLineEnd();
                 if (constraint is not null)
                 {
                     this.AddTypeConstraint(constraint);
@@ -900,7 +902,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             !(token.Kind is TokenKind.Computed or TokenKind.Property && reader.PeekKind(1).IsIdentifierOrContextualKeyword()))
         {
             this.AddLast(Parser.ParseEnumCase(ref reader));
-            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.ExpectLineEnd();
             return true;
         }
 

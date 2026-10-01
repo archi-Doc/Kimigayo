@@ -245,7 +245,7 @@ public sealed class DiagnosticOwner
     }
 
     internal static object? Capture(object? value)
-        => value is null or string or bool or Enum or byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal or float or double
+        => value is null or string or bool or Enum or DiagnosticRequirement or byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal or float or double
             ? value : value.ToString();
 
     internal static object?[]? Capture(object?[]? values)
@@ -369,7 +369,7 @@ public sealed class DiagnosticOwner
         for (var i = 0; i < facts.Count; i++)
         {
             var key = facts[i].Key;
-            if (key.Subject is null && key.Source == source && key.Start == range.Start && key.Length == range.Length && key.Requirement == DiagnosticRequirement.Syntax &&
+            if (key.Subject is null && key.Source == source && key.Start == range.Start && key.Length == range.Length && key.Requirement.Partition == DiagnosticPartition.Syntax &&
                 DiagnosticEntries.TryGet(facts[i].Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
             {
                 return key;
@@ -440,7 +440,13 @@ public sealed class DiagnosticOwner
 
             var (bounded, elided) = parameter.Kind == DiagnosticValueKind.Text ? DiagnosticText.Bound(full[i]) : (full[i], false);
             values[i] = new(parameter.Name, parameter.Kind, bounded, elided);
-            shown[i] = parameter.Kind == DiagnosticValueKind.Number ? value : bounded;
+            // A requirement is an exact fact by its stable name; the message and label display its phrase.
+            shown[i] = parameter.Kind switch
+            {
+                DiagnosticValueKind.Number => value,
+                DiagnosticValueKind.Requirement when value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out var phrase) => phrase,
+                _ => bounded,
+            };
         }
 
         if (secondType >= 0)
@@ -765,7 +771,7 @@ public sealed class DiagnosticOwner
             var requirement = fact.Key.Requirement;
             reason =
             [
-                new("requirement", DiagnosticValueKind.Enumeration, requirement.Name),
+                new("requirement", DiagnosticValueKind.Requirement, requirement.Name),
                 new("condition", DiagnosticValueKind.Text, DiagnosticRequirements.TryGetDescription(requirement, out var description) ? description : requirement.Name),
             ];
             message = entry.Message;

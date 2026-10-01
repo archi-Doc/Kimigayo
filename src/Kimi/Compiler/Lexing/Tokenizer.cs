@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Kimi.Compiler.Helper;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Lexing;
@@ -209,6 +210,16 @@ internal ref struct Tokenizer
             IndentSource.AngleBracket => TokenKind.GreaterThan,
             IndentSource.Brace => TokenKind.CloseBrace,
             _ => throw new UnreachableException(),
+        };
+
+    /// <summary>Gets the syntax form of the closing delimiter an open grouping needs.</summary>
+    private static SyntaxForm CloserForm(TokenKind closingKind)
+        => closingKind switch
+        {
+            TokenKind.CloseParenthesis => SyntaxForm.CloseParenthesis,
+            TokenKind.CloseBrace => SyntaxForm.CloseBrace,
+            TokenKind.GreaterThan => SyntaxForm.CloseAngleBracket,
+            _ => SyntaxForm.CloseBracket,
         };
 
     /// <summary>Measures the ASCII identifier prefix: letters, digits, and underscores.</summary>
@@ -869,15 +880,7 @@ LineContent:
                         // indentation ends unclosed is reported like one left open at the end of the source.
                         // The closer is missing right after the grouping's last written token: an insertion point.
                         var closingKind = GetClosingTokenKind(indentSource);
-                        var missing = new SourceSpan(indentationStart, indentationLength);
-                        for (var t = this.tokenCount - 1; t >= 0; t--)
-                        {
-                            if (!this.tokens[t].IsMissing && this.tokens[t].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-                            {
-                                missing = new(this.tokens[t].Span.End, 0);
-                                break;
-                            }
-                        }
+                        var missing = this.InsertionPoint(new SourceSpan(indentationStart, indentationLength));
 
                         this.AddToken(new(closingKind, this.CurrentRange, true));
                         this.ReportMissingDelimiter(entry, missing, closingKind);
@@ -1529,20 +1532,26 @@ EndOfFile:
         // Error recovery policy: the mismatched closer is treated as spurious and the
         // stack is left intact, so the still-open grouping can be matched (or reported)
         // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
-        var diagnostic = expected switch
-        {
-            TokenKind.CloseParenthesis => DiagnosticCode.UnmatchedParenthesis_Kd,
-            TokenKind.CloseBrace => DiagnosticCode.UnmatchedBrace_Kd,
-            TokenKind.GreaterThan => DiagnosticCode.UnmatchedAngleBracket_Kd,
-            _ => DiagnosticCode.UnmatchedBracket_Kd,
-        };
+        this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.MisplacedSyntax_Kd, SyntaxForm.UnmatchedCloser, null, this.sourceDocument);
+    }
 
-        this.Report(this.NewRange(1), diagnostic);
+    /// <summary>Gets where a missing closer is inserted: right after the last written token, or a fallback when none was written.</summary>
+    private SourceSpan InsertionPoint(SourceSpan fallback)
+    {
+        for (var t = this.tokenCount - 1; t >= 0; t--)
+        {
+            if (!this.tokens[t].IsMissing && this.tokens[t].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+            {
+                return new(TokenHelper.WrittenEnd(this.tokens[t], this.sourceText), 0);
+            }
+        }
+
+        return fallback;
     }
 
     private void ClearIndentStack()
     {
-        var missingRange = this.CurrentRange;
+        var missingRange = this.InsertionPoint(this.CurrentRange);
         while (this.indentCount > 0)
         {
             var entry = this.indentStack[--this.indentCount];
@@ -1577,7 +1586,9 @@ EndOfFile:
         }
         else
         {
-            this.Report(range, DiagnosticCode.MissingExpectedToken_Kd, closingKind.ToText());
+            // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2).
+            var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
+            this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened]);
         }
     }
 

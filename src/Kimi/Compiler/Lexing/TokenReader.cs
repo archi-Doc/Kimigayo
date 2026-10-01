@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Legacy syntax codes remain in the skip and consume helpers until their callers migrate (D5).
+
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -23,7 +25,7 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 /// The reader is a cursor over a contiguous token span. Lookahead is exposed through
 /// <see cref="PeekKind"/> and <see cref="TrySkipSeparatorsTo"/> instead of copying the reader.
 /// </remarks>
-public ref struct TokenReader
+public ref partial struct TokenReader
 {
     #region FieldsAndProperties
 
@@ -123,15 +125,16 @@ public ref struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
+    /// <summary>Gets the end of the last written token before the current position: where a missing form is inserted.</summary>
     internal readonly int PreviousSyntaxEnd
     {
         get
         {
             for (var i = this.Position - 1; i >= 0; i--)
             {
-                if (this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+                if (!this.tokens[i].IsMissing && this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
                 {
-                    return this.tokens[i].Span.End;
+                    return TokenHelper.WrittenEnd(this.tokens[i], this.sourceText);
                 }
             }
 
@@ -574,21 +577,6 @@ public ref struct TokenReader
         => this.MoveTo(Math.Min(this.Position + count, this.tokens.Length));
 
     /// <summary>
-    /// Reports an unexpected-token diagnostic.
-    /// </summary>
-    /// <param name="token">The unexpected token.</param>
-    public void ReportUnexpectedToken(Token token)
-    {
-        // A token the lexer rejected is explained by its lexical Error; recovery rests on that Error (SPEC 23.3.6.4).
-        if (token.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(token.Span))
-        {
-            return;
-        }
-
-        this.Diagnostic.Add(token.Span, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
-    }
-
-    /// <summary>
     /// Adds a diagnostic for the current token.
     /// </summary>
     /// <param name="code">The diagnostic.</param>
@@ -695,7 +683,8 @@ public ref struct TokenReader
         };
         if (remainingKind == TokenKind.Invalid)
         {
-            return this.TryConsume(TokenKind.GreaterThan, out range, true);
+            range = this.currentToken.Span;
+            return this.Expect(TokenKind.GreaterThan, SyntaxForm.CloseAngleBracket);
         }
 
         range = new SourceSpan(this.currentToken.Span.Start, 1);

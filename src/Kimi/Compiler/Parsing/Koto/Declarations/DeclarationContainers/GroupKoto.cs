@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
+
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -159,10 +161,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
             var oldPosition = reader.Position;
             var item = Parser.ParseBlockItem(ref reader);
-            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
-            {
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-            }
+            reader.ExpectLineEnd();
 
             if (item is not null)
             {

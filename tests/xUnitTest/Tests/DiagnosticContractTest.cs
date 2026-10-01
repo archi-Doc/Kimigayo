@@ -172,8 +172,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
     [Fact]
     public void UndefinedSeverityIsACatalogAnomaly()
     {
-        var (_, anomalies) = DiagnosticEntries.Load(Encoding.UTF8.GetBytes("  + Name=\"IdentifierExpected_Kd\"\n    Category=\"Language\"\n    Severity=\"0\"\n    Message=\"bad\"\n"));
-        Assert.Contains("IdentifierExpected_Kd: the entry has no valid severity.", anomalies);
+        var (_, anomalies) = DiagnosticEntries.Load(Encoding.UTF8.GetBytes("  + Name=\"IndentationLevelMismatch_Kd\"\n    Category=\"Language\"\n    Severity=\"0\"\n    Message=\"bad\"\n"));
+        Assert.Contains("IndentationLevelMismatch_Kd: the entry has no valid severity.", anomalies);
     }
 
     [Theory]
@@ -222,7 +222,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         target.Add(new(0, 1), DiagnosticCode.DeclarationOrderWarning_Kd);
         target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [cause], null);
         Assert.Equal(2, owner.Finalize(rejected: true).Diagnostics.Length);
-        target.Add(new(0, 1), DiagnosticCode.IdentifierExpected_Kd);
+        target.Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
         Assert.DoesNotContain(owner.Finalize(rejected: true).Diagnostics, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
         owner.Invalidate(DiagnosticPartition.Syntax);
         Assert.Equal(nameof(DiagnosticCode.PrerequisiteUnavailable_Kd), Assert.Single(owner.Finalize(rejected: true).Diagnostics).Code);
@@ -237,8 +237,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var revised = new SourceDocument("main.kimi", "new");
         var target = owner.GetOrAddCollection("main").For(original);
         var other = target.For(revised);
-        target.Add(new(0, 3), DiagnosticCode.IdentifierExpected_Kd);
-        other.Add(new(0, 3), DiagnosticCode.IdentifierExpected_Kd);
+        target.Add(new(0, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
+        other.Add(new(0, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
         var result = owner.Finalize();
         Assert.Equal(2, result.Sources.Length);
         Assert.Equal([0, 1], result.Diagnostics.Select(static x => x.Source));
@@ -249,9 +249,9 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
     public void AnExceptionRecordKeepsResultOrderAndUsesTheSharedNoteLimit()
     {
         var owner = new DiagnosticOwner();
-        owner.GetOrAddCollection("main").For(new("main.kimi", "x")).Add(new(0, 1), DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("main").For(new("main.kimi", "x")).Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
         var result = DiagnosticFaults.Create(DiagnosticFault.Exception, new string('x', 1000), "main.kimi", owner.Finalize());
-        Assert.Equal(["CheckFaulted_Kd", "IdentifierExpected_Kd"], result.Diagnostics.Select(static x => x.Code));
+        Assert.Equal(["CheckFaulted_Kd", "IndentationLevelMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.True(result.Diagnostics[0].Note!.Length <= DiagnosticLimits.NoteLength);
     }
 

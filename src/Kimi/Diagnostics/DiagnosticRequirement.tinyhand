@@ -7,6 +7,69 @@
   + Name="Syntax"
     Description="the source follows the grammar"
 
+// Syntax forms (SyntaxForm): Phrase is what ExpectedSyntax_Kd, MissingSyntax_Kd and MisplacedSyntax_Kd display, without an
+// article; Advice is conditional prose for that form. A form is added here and in the enumeration together.
+
+  + Name="Syntax.Expression"
+    Description="the expression is written"
+    Phrase="expression"
+
+  + Name="Syntax.Type"
+    Description="the Type is written"
+    Phrase="Type"
+
+  + Name="Syntax.Name"
+    Description="the Name is written"
+    Phrase="Name"
+
+  + Name="Syntax.Body"
+    Description="the body is written"
+    Phrase="body"
+    Advice="Indent the body on the lines that follow, or write => followed by one expression."
+
+  + Name="Syntax.LineEnd"
+    Description="the line ends after the statement"
+    Phrase="the end of the line"
+    Advice="A line holds one statement; move what follows to its own line or remove it."
+
+  + Name="Syntax.Comma"
+    Description="the elements are separated by a comma"
+    Phrase="','"
+
+  + Name="Syntax.Colon"
+    Description="the colon is written"
+    Phrase="':'"
+
+  + Name="Syntax.CloseParenthesis"
+    Description="the grouping is closed"
+    Phrase="')'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseBracket"
+    Description="the grouping is closed"
+    Phrase="']'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseBrace"
+    Description="the grouping is closed"
+    Phrase="'}'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseAngleBracket"
+    Description="the Type argument list is closed"
+    Phrase="'>'"
+    Advice="Close the Type argument list that is still open."
+
+  + Name="Syntax.UnmatchedCloser"
+    Description="every closing delimiter closes an open grouping"
+    Phrase="closing delimiter without an open grouping"
+    Advice="Remove the extra closing delimiter, or insert the opening delimiter it should close."
+
+  + Name="Syntax.IndentedBody"
+    Description="an indented body follows a header"
+    Phrase="indented body"
+    Advice="An indented body follows a header such as if, while or func; add the header or dedent these lines."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 
