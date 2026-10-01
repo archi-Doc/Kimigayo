@@ -379,7 +379,7 @@ public sealed partial class Binding
         var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
             PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
             PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
-        var fit = plain && ((literal && (target is { IsInteger: true } || this.IsGenericInteger(target, scope))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
+        var fit = plain && ((literal && (target is { HasIntegerArithmetic: true } || this.TakesGenericLiterals(target, scope))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
         var previousLiteral = this.floatingIntegerLiteral;
         BoundType? source;
         try
@@ -436,8 +436,11 @@ public sealed partial class Binding
             return this.CompleteIdentity(conversion, target);
         }
 
-        // SPEC 8.4.7.3: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones.
-        if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)))
+        // SPEC 8.4.7.3: a checked conversion between Types that satisfy PrimitiveInteger, including unbound ones, and the
+        // conversions between a proven T and Wrapping<T>, including a generic literal fitted to Wrapping<T>.
+        if ((this.IsGenericInteger(source, scope) && this.IsIntegerOperand(target, scope)) || (source.IsInteger && this.IsGenericInteger(target, scope)) ||
+            (this.IsGenericWrapping(source, scope) && (ReferenceEquals(target, source) || ReferenceEquals(target, source.Components[0]))) ||
+            (this.IsGenericWrapping(target, scope) && ReferenceEquals(source, target.Components[0])))
         {
             conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Integer;
             return Complete(conversion, target);

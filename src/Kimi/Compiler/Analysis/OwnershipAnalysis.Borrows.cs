@@ -276,9 +276,11 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 8.4.7.3: a generic integer field is an owner scalar in every instance. Universal verification accepts it,
     // and each instance plan sees the concrete scalar.
+    // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance.
     private bool GenericInteger(Koto source)
-        => this.instance is null && source.BoundType is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } type &&
-        this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven;
+        => this.instance is null && source.BoundType is { } type &&
+        ((type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven) ||
+            this.compilation.Binding.IsGenericWrappingInteger(type, source));
 
     private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
     {

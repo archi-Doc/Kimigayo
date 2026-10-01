@@ -35,6 +35,15 @@ public sealed partial class Binding
     public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
 
+    /// <summary>Determines whether a Type is <c>Wrapping&lt;T&gt;</c> over a symbolic Type proven PrimitiveInteger (SPEC 3.1.1.1,
+    /// 8.4.7.3), whose every instance is a wrapping integer Scalar.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="context">The use site providing assumptions.</param>
+    /// <returns>True for a generic wrapping integer Type.</returns>
+    public bool IsGenericWrappingInteger(BoundType type, Koto context)
+        => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
+            type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.ProvePrimitiveInteger(type.Components[0], context) == ConstraintProof.Proven;
+
     /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>

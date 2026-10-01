@@ -55,17 +55,18 @@ public sealed partial class Binding
             return false;
         }
 
-        return this.IsGenericInteger(type, scope) || this.ProvesClosedContract(type, this.Library.Position, scope) ||
+        return this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope) || this.ProvesClosedContract(type, this.Library.Position, scope) ||
             this.ProvesClosedContract(type, this.Library.PositionRange, scope);
     }
 
     private bool ProvesClosedContract(BoundType type, BindingSymbol contract, BindingScope scope)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven;
 
-    // SPEC 10.2.1: a Type parameter whose Constraints imply Position, PositionRange or PrimitiveInteger binds the terminal
-    // referent of safe reference layers; only value Types satisfy these Contracts, so no other binding exists.
+    // SPEC 10.2.1: a parameter whose Type is a read Type under the declaration's Constraints (a Type parameter implying
+    // Position, PositionRange or PrimitiveInteger, or Wrapping<T> over such a parameter) binds the terminal referent of safe
+    // reference layers; only value Types are read Types, so no other binding exists.
     private bool InfersReadReferent(BoundType parameter, Koto function)
         => this.scopes.TryGetValue(function, out var scope) &&
-            (this.IsGenericInteger(parameter, scope) || this.ProvesClosedContract(parameter, this.Library.Position, scope) ||
+            (this.IsGenericInteger(parameter, scope) || this.IsGenericWrapping(parameter, scope) || this.ProvesClosedContract(parameter, this.Library.Position, scope) ||
             this.ProvesClosedContract(parameter, this.Library.PositionRange, scope));
 }

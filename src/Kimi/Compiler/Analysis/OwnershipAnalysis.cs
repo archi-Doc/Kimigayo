@@ -967,6 +967,7 @@ public sealed partial class OwnershipAnalysis
                 // is numeric in each instance; its universal verification has no values.
                 var updatedType = this.Concrete(binary.Left.BoundType);
                 if (!(updatedType?.IsNumeric == true || updatedType?.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection ||
+                    (updatedType is not null && this.compilation.Binding.IsGenericWrappingInteger(updatedType, binary)) ||
                     (ReferenceTypes.IsPointer(updatedType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
                 {
                     this.Unsupported(binary);

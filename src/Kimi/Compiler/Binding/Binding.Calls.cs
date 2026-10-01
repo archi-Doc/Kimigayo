@@ -1391,6 +1391,13 @@ public sealed partial class Binding
                 this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins);
         }
 
+        // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
+        // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
+        if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
+        {
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins);
+        }
+
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
         {
             if ((uint)slot >= (uint)arguments.Length)

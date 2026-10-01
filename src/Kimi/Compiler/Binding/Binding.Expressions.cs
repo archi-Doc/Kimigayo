@@ -269,11 +269,21 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;
 
+    // SPEC 8.4.7.3, 3.1.1.1: Wrapping<T> over a Type proven PrimitiveInteger has the wrapping integer operators, unary minus for
+    // every instantiation, the generic literals 0 through 127 and the conversions to and from T; each instance uses its Scalar.
+    private bool IsGenericWrapping(BoundType? type, BindingScope scope)
+        => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
+            this.IsGenericInteger(type.Components[0], scope);
+
     // An integer Type, concrete or generic: the Types that positions, range boundaries, lengths and shift counts accept.
     private bool IsIntegerOperand(BoundType? type, BindingScope scope) => type is { IsInteger: true } || this.IsGenericInteger(type, scope);
 
     // A Type with the integer operators (SPEC 13.3): an integer or wrapping integer Type, concrete or generic.
-    private bool IsArithmeticInteger(BoundType? type, BindingScope scope) => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope);
+    private bool IsArithmeticInteger(BoundType? type, BindingScope scope)
+        => type is { HasIntegerArithmetic: true } || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
+
+    // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.4.7.3).
+    private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
     // SPEC 12.3.1: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
     private BoundType? LiteralDefault(Koto node)
@@ -294,7 +304,7 @@ public sealed partial class Binding
             return this.FitsLiteralPosition(node, type, scope);
         }
 
-        if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.IsGenericInteger(type, scope))
+        if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.TakesGenericLiterals(type, scope))
         {
             return FitsGenericInteger(node as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)node).Operand, node is PrefixMinusKoto);
         }
@@ -532,7 +542,7 @@ public sealed partial class Binding
             case InterpolatedStringKoto interpolation:
                 return this.BindInterpolation(interpolation, scope);
             case NumberLiteralKoto number:
-                if (this.IsGenericInteger(expected, scope))
+                if (this.TakesGenericLiterals(expected, scope))
                 {
                     return !number.IsInteger ? this.Fail(node, BindingFailure.TypeMismatch) : FitsGenericInteger(number, false) ? Complete(node, expected) : this.Fail(node, BindingFailure.InvalidLiteral);
                 }
@@ -1094,7 +1104,7 @@ public sealed partial class Binding
 
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
-            if (this.IsGenericInteger(expected, scope))
+            if (this.TakesGenericLiterals(expected, scope))
             {
                 if (!number.IsInteger)
                 {
@@ -1142,10 +1152,10 @@ public sealed partial class Binding
             case KotoKind.Not:
                 return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
-                return operand.IsNumeric || this.IsGenericInteger(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return operand.IsNumeric || this.IsGenericInteger(operand, scope) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
-                // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
-                return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                // Negation is defined for signed integers, floating-point values and every wrapping integer Type (SPEC 13.2, 13.3).
+                return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 if (!this.ValidPropertyWritePath(unary.Operand, scope))
                 {
@@ -1340,7 +1350,7 @@ public sealed partial class Binding
 
         // Built-in comparisons retain priority over the user Contract mapping (SPEC 13.4.1); a generic integer uses them too.
         var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
-        var genericInteger = !primitive && this.IsGenericInteger(left, scope);
+        var genericInteger = !primitive && (this.IsGenericInteger(left, scope) || this.IsGenericWrapping(left, scope));
         if (comparison && ReferenceTypes.IsPointer(left))
         {
             // SPEC 5.1: same-Type pointers, or a pointer and null, compare addresses; ordering is not defined.

@@ -175,4 +175,75 @@ public class WrappingIntegerTest
         var ir = ScalarEmissionTest.EmitFixture("WrappingStorage", source, "255 -1\n");
         Assert.Contains("i16 @", ir); // twice passes and returns the i16 representation of u16.
     }
+
+    // SPEC 13.5.4.2: a direct literal fits Wrapping<U> by the range of U; a failure is a compile-time error.
+    [Fact]
+    public void DirectLiteralsFitTheArgumentRange()
+    {
+        var c = MinimalEmissionTest.Analyze("let w = 5@Wrapping<u32>\nlet s = -5@Wrapping<i8>\nlet g = (-128)@Wrapping<i8>");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u32"]), variables["w"].NameKoto.BoundType);
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["s"].NameKoto.BoundType);
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["g"].NameKoto.BoundType);
+
+        // -(1) is an ordinary negation typed as i32 before the conversion, which is then the same-argument error.
+        var negated = MinimalEmissionTest.Analyze("let m = -(1)@Wrapping<u32>");
+        Assert.False(negated.Binding.Result.IsComplete);
+        Assert.Contains(negated.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
+        foreach (var invalid in new[] { "let w = 300@Wrapping<u8>", "let w = -1@Wrapping<u32>", "let w = 128@Wrapping<i8>" })
+        {
+            var rejected = MinimalEmissionTest.Analyze(invalid);
+            Assert.False(rejected.Binding.Result.IsComplete);
+            Assert.Contains(rejected.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.InvalidNumericLiteral_Kd);
+        }
+    }
+
+    // SPEC 14.8.1, 12.3.4: literal Patterns and Dictionary literal keys fit a wrapping Type by its argument's range.
+    [Fact]
+    public void LiteralPatternsAndDictionaryKeysUseTheArgumentRange()
+    {
+        const string source = "let w: Wrapping<u32> = 0xFFFF_FFFF\nlet r = match w\n    0xFFFF_FFFF => 1\n    0 => 2\n    _ => 0\n" +
+            "let d: Dictionary<Wrapping<u8>, i32> = [1: 10, 255: 20]\nlet s: Wrapping<i8> = -1\nlet t = match s\n    -1 => 3\n    _ => 0\n" +
+            "if r == 1 and d[255] == 20 and t == 3 => Console.writeLine(\"ok\")";
+        ScalarEmissionTest.EmitFixture("WrappingPatternsAndKeys", source, "ok\n");
+
+        var duplicate = MinimalEmissionTest.Analyze("let d: Dictionary<Wrapping<u8>, i32> = [1: 10, 1: 20]");
+        Assert.False(duplicate.Binding.Result.IsComplete);
+        Assert.Contains(duplicate.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.DuplicateDictionaryKey_Kd);
+        foreach (var invalid in new[] { "let w: Wrapping<u32> = 1\nlet r = match w\n    -1 => 1\n    _ => 0", "let w: Wrapping<u8> = 1\nlet r = match w\n    256 => 1\n    _ => 0" })
+        {
+            Assert.False(MinimalEmissionTest.Analyze(invalid).Binding.Result.IsComplete);
+        }
+    }
+
+    // SPEC 8.4.7.3, 10.2.1: a generic body uses the wrapping operators, unary minus, generic literals, the conversions to
+    // and from T and the value read; each instance uses its wrapping Scalar.
+    [Fact]
+    public void GenericBodiesUseTheWrappingScalarOfEachInstance()
+    {
+        const string source = "func scramble<T>(value: Wrapping<T>, key: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return -(value ^ key) * 31\n" +
+            "func halve<T>(value: ref/Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return value >> 1\n" +
+            "func same<T>(a: Wrapping<T>, b: Wrapping<T>) -> bool\n    T is PrimitiveInteger\n    return a == b and not (a < b) and a <= b\n" +
+            "func enter<T>(value: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    var w = value@Wrapping<T>\n    w += 1\n    w++\n    return w - 1\n" +
+            "func leave<T>(value: Wrapping<T>) -> T\n    T is PrimitiveInteger\n    let literal: Wrapping<T> = 127\n    let negated: Wrapping<T> = -(1)\n    if value == literal and negated == -(1) => return value@T\n    return (value / 1)@T\n" +
+            "let a: Wrapping<u8> = 200\nlet b: Wrapping<i32> = -2147483648\n" +
+            "if scramble(a, 3) == 107 and halve(a@ref) == 100 and same(a, a) and enter(255@u8) == 0 and leave(a) == 200 and scramble(b, 0) == -2147483648 and halve(b@ref) == -1073741824 and enter(2147483647) == -2147483648 => Console.writeLine(\"\\(scramble(a, 3)) \\(halve(b@ref))\")";
+        ScalarEmissionTest.EmitFixture("WrappingGeneric", source, "107 -1073741824\n");
+    }
+
+    [Theory]
+    [InlineData("func f<T>(x: Wrapping<T>) -> T\n    T is PrimitiveInteger\n    return x")] // No implicit conversion.
+    [InlineData("func f<T>(x: T) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x")]
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T> => x")] // Formation needs the proof.
+    [InlineData("func f<T>(x: Wrapping<T>, n: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x << n")] // Never a shift count.
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let v: [3 of i32] = [1, 2, 3]\n    return x + v[x]")] // Never a position.
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x + 128")] // Generic literals stop at 127.
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x + -1")] // A signed literal cannot fit every instance.
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<u8>\n    T is PrimitiveInteger\n    return x@Wrapping<u8>")]
+    public void InvalidGenericFormsAreRejected(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
 }
