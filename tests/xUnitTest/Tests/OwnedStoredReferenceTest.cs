@@ -29,6 +29,32 @@ public class OwnedStoredReferenceTest
     public void StoredReferencesInOwnedPathsLendTheirCapability(string name, string source)
         => ScalarEmissionTest.EmitFixture("OwnedStoredReference" + name, source, string.Empty);
 
+    // An owning-iteration item was transferred out of the iterator, which keeps the input's authority for the remaining
+    // elements; the item's slot borrow descends from the iterator like a direct use of the item (SPEC 14.6.2, 15.6.2).
+    [Theory]
+    [InlineData("ArrayWrite", "var items = [(value@move, 7)]\n    for item in items@move\n        item.0@follow = 99")]
+    [InlineData("ArrayRead", "var items = [(value@move, 7)]\n    for item in items@move\n        let read: i32 = item.0@follow\n        require read == 42 else => $abort(\"read\")\n        item.0@follow = 99")]
+    [InlineData("ArrayMoved", "var items = [(value@move, 7)]\n    for item in items@move\n        let pair = item@move\n        pair.0@follow = 99")]
+    [InlineData("DictionaryWrite", "var entries = [1: (value@move, 7)]\n    for (key, item) in entries@move\n        item.0@follow = 99")]
+    [InlineData("DictionaryMoved", "var entries = [1: (value@move, 7)]\n    for (key, item) in entries@move\n        let pair = item@move\n        pair.0@follow += 57\n        pair.0@follow -= 57\n        pair.0@follow = 99")]
+    public void OwningIterationItemsLendTheirStoredReferences(string name, string body)
+    {
+        var source = "func run(value: uniq/i32 during a)\n    " + body + "\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")";
+        ScalarEmissionTest.EmitFixture("OwnedStoredReferenceIteration" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0")]
+    [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value")]
+    public void ChildrenOfTheItemStillSuspendItsParent(string body, string conflict)
+    {
+        var c = MinimalEmissionTest.Analyze("func run(value: uniq/i32 during a)\n    " + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
     [Theory]
     [InlineData("let child = item.0@follow@uniq\nitem.0@follow = 5\nchild@follow = 1", "item.0")]
     [InlineData("let child = item.0@follow@ref\nitem.0@follow = 5\nrequire child == 42 else => $abort(\"child\")", "item.0")]

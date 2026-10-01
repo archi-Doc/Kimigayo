@@ -1139,6 +1139,12 @@ public sealed partial class OwnershipBody
                         this.Places[operation.Place].Type.Semantics == SemanticsKind.Ref => operation.Place,
                     OwnershipOperationKind.CallEntry => operation.Place,
                     OwnershipOperationKind.Produce when operation.Place >= 0 => operation.Place,
+                    // SPEC 15.6.2: an in-place slot borrow of an owned root, such as the slot of a stored reference
+                    // followed through item.0, descends from wherever that root's value came from; so does a Move of it.
+                    OwnershipOperationKind.Borrow when node.Kind == OwnershipValueKind.Address && node.Count == 0 && operation.Place >= 0 &&
+                        !ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) => operation.Place,
+                    OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Move && operation.Place >= 0 &&
+                        !ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) => operation.Place,
                     _ => -1,
                 };
                 if (stored >= 0 && this.borrowDefinitions[stored] is >= 0 and var definition && definition < value)
