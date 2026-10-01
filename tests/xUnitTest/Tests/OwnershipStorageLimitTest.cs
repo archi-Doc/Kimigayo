@@ -13,6 +13,36 @@ namespace XunitTest;
 public class OwnershipStorageLimitTest(ITestOutputHelper output)
 {
     [Fact]
+    public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
+    {
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var initial), initial);
+        var previous = OwnershipStorage.ByteLimit;
+        try
+        {
+            // Reuse the fully prepared instance; retained arrays must not bypass a later request's limit.
+            OwnershipStorage.ByteLimit = 8;
+            using var writer = new StringWriter();
+            Assert.False(c.Emission.WriteIr(writer, out var failure));
+            Assert.Empty(writer.ToString());
+            Assert.True(c.Emission.FailureIsResourceLimit, failure);
+            Assert.Contains("ownership", failure!, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("8", failure, StringComparison.Ordinal);
+            Assert.True(c.Ownership.Result.IsVerified);
+            Assert.Empty(c.Ownership.Issues);
+        }
+        finally
+        {
+            OwnershipStorage.ByteLimit = previous;
+        }
+
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var recovered), recovered);
+        Assert.False(c.Emission.FailureIsResourceLimit);
+        Assert.Empty(c.Ownership.Issues);
+    }
+
+    [Fact]
     public void OversizedProductsReportResourcesBeforeAllocationOrOverflow()
     {
         var failure = Assert.Throws<OwnershipStorageLimitException>(() => OwnershipStorage.Cells(65536, 65536, 2, "borrow dependencies"));

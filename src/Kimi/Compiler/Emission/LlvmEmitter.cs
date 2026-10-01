@@ -32,7 +32,7 @@ public sealed class LlvmEmitter
     public bool Validate(out string? failure)
         => this.TryPrepare(out _, out failure);
 
-    /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5: generic contexts or inline layout depth, size or count), not a semantic or representation obligation.</summary>
+    /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.5: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
