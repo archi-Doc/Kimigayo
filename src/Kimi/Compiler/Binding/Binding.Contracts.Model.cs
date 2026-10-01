@@ -31,6 +31,12 @@ public sealed class BoundContract
 
     internal List<IsKoto> ClauseStorage { get; } = new();
 
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor keeps its own.</summary>
+    internal List<BoundEffectBound> EffectBoundStorage { get; } = new();
+
+    /// <summary>Gets or sets the progress of building <see cref="EffectBoundStorage"/> in this pass: 0 unbuilt, 1 building, 2 built.</summary>
+    internal byte EffectState { get; set; }
+
     internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal Dictionary<string, List<BindingSymbol>> MembersByName { get; } = new(StringComparer.Ordinal);
@@ -171,3 +177,9 @@ public sealed class BoundConformancePath
     public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind)
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 }
+
+/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
+/// <param name="Requirement">The requirement; its declaration is the Requirement Identity.</param>
+/// <param name="Bound">The bound.</param>
+/// <param name="Declaration">The effect item.</param>
+internal readonly record struct BoundEffectBound(BindingSymbol Requirement, EffectBoundKind Bound, EffectBoundKoto Declaration);

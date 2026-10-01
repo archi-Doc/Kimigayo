@@ -166,6 +166,9 @@ internal enum BindingFailure : byte
 
     // SPEC 10.2.2: candidates disagree on acquiring a bare Place argument by value or by a new shared borrow.
     AcquisitionRequired,
+
+    // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
+    InvalidEffectBound,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

@@ -207,6 +207,12 @@
     Category="Language"
     Message="No implementation matches the Contract requirement after Type substitution"
 
+  + Name="InvalidEffectBound_Kd"
+    Category="Language"
+    Message="The effect item declares no bound: a bound names one function requirement of its Contract or an ancestor, once, and appears only in a Contract"
+    Evidence="cause:Text"
+    Label="{0}"
+
   + Name="IncompatibleContractImplementation_Kd"
     Category="Language"
     Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"

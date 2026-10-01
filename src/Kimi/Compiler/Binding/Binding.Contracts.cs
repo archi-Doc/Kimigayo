@@ -225,6 +225,8 @@ public sealed partial class Binding
             shape.RequirementStorage.Clear();
             shape.AssociatedStorage.Clear();
             shape.ClauseStorage.Clear();
+            shape.EffectBoundStorage.Clear();
+            shape.EffectState = 0;
             shape.Seen.Clear();
             foreach (var members in shape.MembersByName.Values)
             {

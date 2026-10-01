@@ -571,6 +571,9 @@
   + Name="Binding.AcquisitionRequired"
     Description="the acquisition of a Place argument is written where candidates disagree"
 
+  + Name="Binding.InvalidEffectBound"
+    Description="the effect item declares a bound of its Contract"
+
   + Name="Startup"
     Description="the program has a valid startup"
 

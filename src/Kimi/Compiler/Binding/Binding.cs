@@ -227,6 +227,7 @@ public sealed partial class Binding
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
             this.ValidateContractDeclarations();
+            this.PrepareEffectBounds();
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
@@ -378,6 +379,10 @@ public sealed partial class Binding
             else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
             {
                 this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
+            }
+            else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
+            {
+                this.ReportEffectBound(effect, requirement);
             }
             else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
             {
@@ -718,6 +723,7 @@ public sealed partial class Binding
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
+                    BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
