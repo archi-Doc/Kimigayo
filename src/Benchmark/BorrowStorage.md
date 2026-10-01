@@ -32,8 +32,41 @@ Release build, 300 tests, the diagnostic snapshot and 306 native O0/O2 execution
 Session `20260930-170613-497-session-review-fixes-final` also passes its warning-free build and all
 14,033 tests.
 
-Bodies with actual local dependencies still use quadratic tables. Large-body overflow/resource
-diagnostics and a more compact representation remain separate unfinished work.
+## Dependent-body follow-up
+
+The harness now measures both inspection-only bodies and the same inputs with references saved
+in locals. It reports operations and retained bytes of the dependency, retained-authority and
+liveness buffers in addition to logical dependency cells. `tableBytes` excludes root lists,
+flags and other ownership state; `firstAnalysisBytes` includes the complete analysis allocation.
+
+The packed implementation uses two bits per dependency/authority cell, one bit per liveness
+cell, recorded dependency roots and only genuinely dependent Places in the liveness matrix.
+Wide dimension checks enforce the Windows profile's 64 MiB per-table limit before allocation;
+cached capacity cannot bypass it. Dense dependencies still have quadratic worst-case growth.
+
+Windows x64, Release, .NET 10.0.12; the inputs and eight warm-ups followed by five samples of
+eight analyses are unchanged. The baseline is `e5bf9364` with byte-count instrumentation;
+the optimized analysis is committed in `0df54433`. Evidence, including intermediate attempts,
+is in `artifacts/benchmarks/20261001-review-fixes/borrow-{before,packed,roots,live,final}.json`.
+
+| Stored references | Three table buffers, before / after (bytes) | First analysis, before / after (bytes) |
+| --- | --- | --- |
+| 1 | 450 / 54 | 39,920 / 40,056 |
+| 32 | 355,431 / 43,454 | 860,088 / 550,304 |
+| 128 | 5,648,775 / 691,442 | 7,846,912 / 2,896,472 |
+
+At 128 references the table buffers shrink by 87.8% and complete first-analysis allocation by
+63.1%. Inspection-only bodies retain zero bytes in these tables; their first-analysis allocation
+increases by 352 bytes because the ownership bodies now contain additional reusable fields.
+The 128-reference mean changes from 49.58 to 23.65 ms, while the 32-reference mean changes from
+4.17 to 4.87 ms with substantial sample variation. These are fixed-run observations, not a claim
+of a general throughput improvement. The regression checks packed storage bounds and zero warm
+allocation at both dependent sizes. Unit `20261001-000757-476-unit-bounded-borrow-storage` passes
+447 tests, the diagnostic snapshot and 158 native O0/O2 executions.
+
+After the callable repairs, `borrow-current.json` at `30d37b21` reproduces every allocation and
+table-byte count above with the same fixed workload. Its 128-reference mean is 25.24 ms and
+32-reference mean 4.68 ms; these additional observations retain the same limited timing claim.
 
 ```powershell
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --borrow-storage > artifacts/benchmarks/borrow-storage.json

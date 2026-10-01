@@ -25,6 +25,24 @@ After the build, Unit verification discovers methods from that exact assembly, c
 
 `-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
 
+## Specification acceptance and support boundaries
+
+Derive expected acceptance and rejection from the owning SPEC rules before selecting an implementation path. A specification-valid form that currently reports Unsupported is an implementation boundary, not a language rejection. Name and record that boundary with its PLAN owner. When implementing it, replace the temporary rejection with native acceptance and retain the independently invalid counterpart; a passing Milestone Program alone does not close neighboring implementation work.
+
+For acquisition, borrowing and calls, choose the applicable rows below when defining a unit's tests. Exercise each distinct compiler path and each relevant semantic interaction; do not generate an indiscriminate cross-product or duplicate whole fixtures.
+
+| Dimension | Representative counterparts |
+| --- | --- |
+| Entry path | Direct entry, ordinary syntax such as a subscript, generic Contract dispatch; concrete and common Function calls where applicable |
+| Stored value | Scalar, Tuple or named aggregate; Copy and Non-Copy; reference held directly or inside Option/pattern bindings |
+| Access and dependency | Shared/exclusive paths; storage slot versus stored referent; independent inputs even when their Origins are equal; child Loan ending before or after a parent operation |
+| Execution | Source evaluation order, one selector evaluation, zero-sized values, Move, exactly-once cleanup, abandoned arguments and independent errors |
+| Reuse and publication | Reanalysis with retained capacity, failed-request recovery, exact source/configuration evidence, relevant CLI/LSP records and strict allocation checks |
+
+Acquisition has one authority in SPEC §3.5; a published Place result uses §3.4.1/§7.1.1 and indexing §4.6.9. Origin compatibility does not establish Loan identity or access authority (§15.3.5–7 and §15.6). Read those contracts together instead of introducing container-specific borrow exceptions. Record unresolved interactions in PLAN §7 and STATUS rather than broadening a completion claim.
+
+For duration-bound sessions, record implementation start, the last unit's start, verification completion and final documentation separately. Report actual total elapsed time, including required verification after the unit-work deadline. Keep failed runs and superseded experiments with the successful evidence; do not use a serial retry or extra warming to certify a failed parallel allocation check.
+
 ## Three purposes
 
 | Purpose | Location / selection | Required execution |
@@ -49,7 +67,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --verification > artifact
 
 This command reports input sizes, retained record counts, iteration counts and timings, and fails if an input stops binding or verifying. Allocation guarantees are checked by xUnit, separately from timing. Documentation measurements remain available through the existing Benchmark entries; normal documentation regressions retain their allocation comparisons without timing-only output or unasserted measurement passes. See the measurement-specific documents in `src/Benchmark` for their commands. Compare repeated runs on the same configuration before claiming a speedup.
 
-`Benchmark --borrow-storage` measures the shared string-inspection workload's first analysis allocation, retained dependency-table cells and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Stored references and conflicting later call arguments remain functional controls in `BorrowDependencyStorageTest`.
+`Benchmark --borrow-storage` measures shared inspection-only and stored-reference workloads: first analysis allocation, retained dependency-table cells, physical table bytes and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Storage bounds and conflicting later call arguments remain regressions in `BorrowDependencyStorageTest`.
 
 ## Native fixtures
 
