@@ -50,4 +50,70 @@ public enum SyntaxForm : ushort
 
     /// <summary>An indented body that no header introduces.</summary>
     IndentedBody,
+
+    /// <summary>An opening parenthesis.</summary>
+    OpenParenthesis,
+
+    /// <summary>A declaration, which attributes, modifiers and compile-time prefixes introduce.</summary>
+    Declaration,
+
+    /// <summary>The Type annotation or the initializer a let or var declaration needs.</summary>
+    TypeOrInitializer,
+
+    /// <summary>The initializer an inferred element Type needs.</summary>
+    Initializer,
+
+    /// <summary>The get accessor a computed Property or Property requirement declares.</summary>
+    Getter,
+
+    /// <summary>An attribute where none is permitted.</summary>
+    Attribute,
+
+    /// <summary>The uppercase Name of an attribute.</summary>
+    AttributeName,
+
+    /// <summary>A member access, Type argument list or index after an attribute's Name.</summary>
+    AttributeSuffix,
+
+    /// <summary>The static keyword used as a modifier.</summary>
+    StaticModifier,
+
+    /// <summary>The open modifier on a declaration other than a struct.</summary>
+    OpenModifier,
+
+    /// <summary>A modifier or attribute on a declaration that takes none.</summary>
+    Decoration,
+
+    /// <summary>A receiver parameter that is repeated, renamed, defaulted or declared outside a struct or Contract.</summary>
+    ReceiverParameter,
+
+    /// <summary>A default value or attribute on a Contract requirement's parameter.</summary>
+    RequirementParameterDefault,
+
+    /// <summary>A body on a Contract requirement.</summary>
+    RequirementBody,
+
+    /// <summary>A qualified Name in a function declaration.</summary>
+    QualifiedFunctionName,
+
+    /// <summary>A Name on a function expression.</summary>
+    FunctionExpressionName,
+
+    /// <summary>A header element that init does not take.</summary>
+    ConstructorHeader,
+
+    /// <summary>A header element a specialization does not take, or the Type arguments it lacks.</summary>
+    SpecializationHeader,
+
+    /// <summary>The base list of a struct with other than one base.</summary>
+    BaseList,
+
+    /// <summary>An extension declaration, which the language does not introduce.</summary>
+    ExtensionDeclaration,
+
+    /// <summary>An associate declaration outside a Contract.</summary>
+    AssociatedTypeDeclaration,
+
+    /// <summary>A Property declaration in a container that does not take it.</summary>
+    PropertyDeclaration,
 }

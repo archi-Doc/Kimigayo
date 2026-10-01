@@ -178,9 +178,11 @@ public static partial class Parser
                 continue;
             }
 
-            if (hasReceiver || parameter.ExternalName != "self" || parameter.DefaultValue is not null)
+            // A repeated self is already a duplicate external name; a renamed or defaulted one is a misplaced receiver, and the
+            // function's own checks rest on it.
+            if (!hasReceiver && (parameter.ExternalName != "self" || parameter.DefaultValue is not null) && parameter.Type.Unexpected(SyntaxForm.ReceiverParameter) is { } cause)
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "receiver parameter");
+                function.CodeContext.RecordRecovery(function, cause);
             }
 
             hasReceiver = true;
@@ -197,20 +199,20 @@ public static partial class Parser
         function.IsRequirement = true;
         if (function.Modifier is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
         {
-            function.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement modifiers");
+            function.Unexpected(SyntaxForm.Decoration);
         }
 
         foreach (var parameter in function.Parameters)
         {
             if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement parameter");
+                parameter.Type.Unexpected(SyntaxForm.RequirementParameterDefault);
             }
         }
 
         if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement body");
+            reader.Unexpected(SyntaxForm.RequirementBody);
             reader.Advance();
             _ = ParseRequiredExpression(ref reader);
         }

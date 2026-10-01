@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Compiler;
@@ -764,7 +762,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.EndBlock)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Declaration);
         }
 
         return !reader.TryConsume(TokenKind.EndBlock);
@@ -785,7 +783,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (tokenKind == TokenKind.Extension)
         {
-            reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
+            reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
         }
 
         reader.Advance();
@@ -809,7 +807,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
         else if (container is EnumKoto)
         {
-            container.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.CodeContext.RecordRecovery(container, reader.Expect(SyntaxForm.Body));
         }
 
         return true;
@@ -877,10 +875,18 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
             else
             {
-                var name = reader.Read();
-                if (this is not ContractKoto || !name.Kind.IsIdentifierOrContextualKeyword())
+                if (this is not ContractKoto)
                 {
-                    reader.Diagnostic.Add(name.Span, DiagnosticCode.UnexpectedToken_Kd, "associate");
+                    // Only a Contract declares an associated Type requirement; the declaration is skipped with its line.
+                    reader.Unexpected(SyntaxForm.AssociatedTypeDeclaration, token.Span);
+                    Parser.SkipDeclarationLine(ref reader);
+                    return true;
+                }
+
+                var name = reader.Read();
+                if (!name.Kind.IsIdentifierOrContextualKeyword())
+                {
+                    reader.Expect(SyntaxForm.Name, name);
                 }
 
                 if (IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
@@ -919,21 +925,21 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
                 {
-                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property declaration container");
+                    propertyKoto.Unexpected(SyntaxForm.PropertyDeclaration);
                     return true;
                 }
 
                 if (propertyKoto.IsContractRequirement &&
                     (propertyKoto.Modifier != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
                 {
-                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property requirement modifiers or attributes");
+                    propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
 
                 foreach (var accessor in propertyKoto.Accessors)
                 {
                     if (accessor.ReceiverType is not null && this is not (StructKoto or ContractKoto))
                     {
-                        accessor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "static accessors omit self");
+                        accessor.Unexpected(SyntaxForm.ReceiverParameter);
                     }
                 }
 
@@ -956,7 +962,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)
             {
-                destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "drop declaration");
+                destructor.Unexpected(SyntaxForm.Decoration);
             }
 
             destructor.Parse(ref reader);
@@ -1005,19 +1011,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="token">The unsupported declaration's first token.</param>
     protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
     {
-        reader.Diagnostic.Add(
-            token.Span,
-            DiagnosticCode.UnexpectedToken_Kd,
-            reader.GetSpan(token).ToString());
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
-        reader.SkipSeparators();
-
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            reader.SkipCurrentBlock(false);
-        }
-
-        reader.ClearContext();
+        reader.Expect(SyntaxForm.Declaration, token);
+        Parser.SkipDeclarationLine(ref reader);
     }
 
     /// <summary>Writes one type constraint in the syntax used by this Declaration Container kind.</summary>

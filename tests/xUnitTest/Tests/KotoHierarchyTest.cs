@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Expectations name legacy syntax codes of reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
@@ -235,11 +233,10 @@ public class KotoHierarchyTest
         Assert.Empty(root.Members);
         var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
         Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
+        // The Properties in the enum and the Contract and the extension declaration are misplaced; an enum without cases is Binding's check.
         var diagnostics = TestDiagnostics.Of(compilation);
-        Assert.Equal(4, diagnostics.Length);
-        Assert.All(
-            diagnostics,
-            diagnostic => Assert.Contains(diagnostic.Code, new[] { nameof(DiagnosticCode.UnexpectedToken_Kd), nameof(DiagnosticCode.IncompleteSyntax_Kd) }));
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, diagnostic => Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code));
     }
 
     [Fact]

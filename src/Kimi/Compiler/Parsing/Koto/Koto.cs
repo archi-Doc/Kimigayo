@@ -621,6 +621,13 @@ public abstract class Koto
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
         => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument);
 
+    /// <summary>Reports that this node is a form of syntax not permitted where it stands (docs/dev/DIAGNOSTICS.md §4.4). The caller
+    /// records the node as a recovery when its later checks depend on the misplaced syntax; independent checks stay direct.</summary>
+    /// <param name="form">The misplaced form.</param>
+    /// <returns>The key of the Error, or <see langword="null"/> when the node reports nowhere.</returns>
+    internal DiagnosticKey? Unexpected(SyntaxForm form)
+        => this.DiagnosticCollection?.ReportSyntax(this.Span, DiagnosticCode.MisplacedSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+
     /// <summary>Attaches an attribute chain and links its parents.</summary>
     /// <param name="attributeChain">The attribute chain, or <see langword="null"/>.</param>
     internal void SetAttributeChain(AttributeKoto? attributeChain)

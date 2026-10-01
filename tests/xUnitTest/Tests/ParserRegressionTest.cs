@@ -531,7 +531,7 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Code);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
@@ -602,7 +602,7 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Code);
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), diagnostic.Code);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.IsType<PropertyKoto>(Assert.Single(GetChildren(type)));
     }
@@ -732,18 +732,23 @@ public class ParserRegressionTest
     [Fact]
     public void DiagnosesAndRecoversChainedAttributePostfixExpressions()
     {
-        var (root, diagnostics) = Parse("#Example<T>(value)\nvar result = 0");
+        // A malformed attribute is consumed with its chained postfix syntax and attaches to nothing; the declaration after it is checked on its own.
+        var (root, diagnostics) = Parse("#Example<T>(value)\nfunc run() => ()");
 
-        Assert.NotEmpty(diagnostics);
-        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
-        var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
+        Assert.Equal("<", diagnostic.Text);
+        var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        Assert.Null(function.AttributeChain);
+
+        // A well-formed attribute keeps its operand tree with every parent link.
+        (root, diagnostics) = Parse("#Example(value)\nfunc run() => ()");
+        Assert.Empty(diagnostics);
+        function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        var attribute = Assert.IsType<AttributeKoto>(function.AttributeChain);
         var invocation = Assert.IsType<InvocationKoto>(attribute.Operand);
-        var generic = Assert.IsType<GenericsKoto>(invocation.Method);
-        Assert.Single(generic.TypeArguments);
         Assert.Same(attribute, invocation.Parent);
-        Assert.Same(invocation, generic.Parent);
-        Assert.Same(generic, generic.Identifier!.Parent);
-        Assert.Same(generic, generic.TypeArguments[0].Parent);
+        Assert.Same(invocation, invocation.Method.Parent);
     }
 
     [Fact]

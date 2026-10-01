@@ -70,6 +70,115 @@
     Phrase="indented body"
     Advice="An indented body follows a header such as if, while or func; add the header or dedent these lines."
 
+  + Name="Syntax.OpenParenthesis"
+    Description="the opening parenthesis is written"
+    Phrase="'('"
+
+  + Name="Syntax.Declaration"
+    Description="a declaration follows its attributes, modifiers or compile-time prefix"
+    Phrase="declaration"
+    Advice="Attributes, modifiers and compile-time prefixes introduce a declaration such as func, struct, let or var."
+
+  + Name="Syntax.TypeOrInitializer"
+    Description="the declaration states its Type or has an initializer"
+    Phrase="': Type' or '= value'"
+    Advice="Declare the Type after ':' or give an initializer after '='."
+
+  + Name="Syntax.Initializer"
+    Description="the declaration has an initializer"
+    Phrase="initializer"
+    Advice="An inferred element Type is taken from the initializer: write '= value'."
+
+  + Name="Syntax.Getter"
+    Description="the Property declares its get accessor"
+    Phrase="get accessor"
+    Advice="A computed Property and a Property requirement declare get."
+
+  + Name="Syntax.Attribute"
+    Description="no attribute precedes this syntax"
+    Phrase="attribute"
+    Advice="An attribute precedes a declaration; statements, expressions and Types take none."
+
+  + Name="Syntax.AttributeName"
+    Description="the attribute has an uppercase Name"
+    Phrase="attribute Name"
+    Advice="An attribute is '#' followed by an uppercase Name and optional arguments in parentheses."
+
+  + Name="Syntax.AttributeSuffix"
+    Description="the attribute Name is followed only by its arguments"
+    Phrase="member access, Type arguments or index after an attribute Name"
+    Advice="An attribute takes only arguments in parentheses after its Name."
+
+  + Name="Syntax.StaticModifier"
+    Description="no static modifier is written"
+    Phrase="'static' modifier"
+    Advice="'static' is not a declaration modifier; remove it (SPEC 6.1)."
+
+  + Name="Syntax.OpenModifier"
+    Description="the open modifier precedes a struct"
+    Phrase="'open' modifier"
+    Advice="'open' applies only to a struct (SPEC 6.2.2)."
+
+  + Name="Syntax.Decoration"
+    Description="the declaration takes no modifier or attribute"
+    Phrase="modifier or attribute"
+    Advice="This declaration takes no modifier or attribute."
+
+  + Name="Syntax.ReceiverParameter"
+    Description="the receiver parameter is declared once, as self, without rename or default, in a struct or Contract"
+    Phrase="receiver parameter"
+    Advice="'self' is the first parameter of a member function of a struct or Contract, declared once and without rename or default value (SPEC 7.3)."
+
+  + Name="Syntax.RequirementParameterDefault"
+    Description="a requirement parameter has no default value or attribute"
+    Phrase="default value or attribute on a requirement parameter"
+    Advice="A Contract requirement declares its parameters without default values or attributes."
+
+  + Name="Syntax.RequirementBody"
+    Description="a requirement has no body"
+    Phrase="body on a Contract requirement"
+    Advice="A Contract requirement is a signature; the conforming Types supply the body."
+
+  + Name="Syntax.QualifiedFunctionName"
+    Description="the function declaration names an unqualified Name"
+    Phrase="qualified Name in a function declaration"
+    Advice="Declare the function inside its container instead of qualifying its Name."
+
+  + Name="Syntax.FunctionExpressionName"
+    Description="the function expression is anonymous"
+    Phrase="Name on a function expression"
+    Advice="A function expression is anonymous: func(parameters) => body."
+
+  + Name="Syntax.ConstructorHeader"
+    Description="init takes an access modifier and parameters only"
+    Phrase="Type parameters, result Type, attribute or non-access modifier on init"
+    Advice="init takes an access modifier and a parameter list, then its body (SPEC 6.2.3)."
+
+  + Name="Syntax.SpecializationHeader"
+    Description="the specialization names Type arguments and takes no modifier, attribute or Origin list"
+    Phrase="specialization header"
+    Advice="A specialization is 'specialize func Name<Type arguments>(parameters)' without modifiers, attributes or Origin parameters."
+
+  + Name="Syntax.BaseList"
+    Description="the struct names one base"
+    Phrase="base list with other than one base"
+    Advice="A struct derives from exactly one base."
+
+  + Name="Syntax.ExtensionDeclaration"
+    Description="no extension declaration is written"
+    Phrase="extension declaration"
+    Advice="Extension declarations are not introduced (SPEC Appendix D); declare the members in the container itself."
+
+  + Name="Syntax.AssociatedTypeDeclaration"
+    Description="an associate declaration stands in a Contract"
+    Phrase="associate declaration outside a Contract"
+    Advice="'associate' declares an associated Type requirement inside a Contract."
+
+  + Name="Syntax.PropertyDeclaration"
+    Description="the container takes this Property declaration"
+    Phrase="Property declaration"
+    Advice="A Contract declares Property requirements with 'has'; a struct declares stored or computed Properties; an enum declares none."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

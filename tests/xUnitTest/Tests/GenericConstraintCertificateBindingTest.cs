@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Expectations name legacy syntax codes of reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -58,7 +56,7 @@ public class GenericConstraintCertificateBindingTest
     public void MissingMandatoryGetterIsRejectedWithoutCrashing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.IncompleteSyntax_Kd));
+        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single()).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);

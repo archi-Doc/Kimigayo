@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable CS0618 // Legacy syntax codes remain at reporting sites not yet migrated to syntax forms (docs/dev/DIAGNOSTICS.md §8, D5).
-
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
@@ -144,7 +142,7 @@ public sealed partial class KimiLibrary
             var constructor = reader.CurrentTokenKind == TokenKind.Init && container is StructKoto;
             if (reader.CurrentTokenKind != TokenKind.Func && !constructor)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, reader.CurrentTokenKind.ToString());
+                reader.Expect(SyntaxForm.Declaration);
                 break;
             }
 

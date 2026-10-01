@@ -92,7 +92,6 @@ public class LayoutAttributeBindingTest
     [InlineData("#Layout(\"C\")\nenum E\n    A")]
     [InlineData("#Layout(\"C\")\n#Test\nfunc test() => Missing.api()")]
     [InlineData("#Test\n#Layout(\"C\")\nfunc test() => Missing.api()")]
-    [InlineData("#Test\nfunc test()\n    #Layout(\"C\")\n    let value = Missing.api()\n    ()")]
     [InlineData("struct S {}\n#Layout(\"bad\")\nstruct S {}")]
     [InlineData("#Layout(\"C\")\nstruct S {}\n#Layout(\"Kimigayo\")\nstruct S {}")]
     [InlineData("#Layout(\"C\")\nstruct S {}\n    var a: i32\nstruct S {}\n    var b: i32")]
@@ -103,6 +102,18 @@ public class LayoutAttributeBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLayoutAttribute_Kd or DiagnosticCode.ConflictingLayout_Kd or DiagnosticCode.SplitCLayoutStorage_Kd);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
+    // DIAGNOSTICS.md §4.4: an attribute before a statement is misplaced syntax. It attaches to nothing, so the parser's Error is the
+    // only one and the statement is checked on its own; Binding does not judge the Layout target again.
+    [Fact]
+    public void ALayoutAttributeOnAStatementIsMisplacedSyntax()
+    {
+        var c = MinimalEmissionTest.Analyze("#Test\nfunc test()\n    #Layout(\"C\")\n    let value = 1\n    ()");
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal("#Layout(\"C\")", error.Text);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidLayoutAttribute_Kd);
     }
 
     [Theory]
