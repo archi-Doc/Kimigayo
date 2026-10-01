@@ -8,6 +8,7 @@ This index is a reading aid, sorted alphabetically. The linked sections contain 
 | --- | --- | --- |
 | Access Designator | A resolved access target, without a promise of storage or Consume permission. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
 | Access path | How a Place is reached: directly, or through an exclusive or shared reference. It bounds every borrow of the Place. | [Value model](../03-types-and-values.md#34-values-places-and-storage) |
+| Acquisition conflict | At an overloaded call, one bare Place argument that one remaining candidate acquires by value and another borrows as a new shared borrow. It needs an explicit `@ref`, `@copy` or `@move` and is never resolved by ranking. | [Acquisition conflicts](../10-overload-resolution-and-inference.md#1022-acquisition-conflicts) |
 | Adaptation Target | The Semantics and Core, inner Type or object View Target that `@` requests; outer borrow Origins are inferred. | [Explicit operations](../13-operators-and-assignment.md#1351-forms-and-adaptation-targets) |
 | Admitted set | The Semantics a Semantics binding may take under its available premises; it decides every Semantics requirement by containment. | [Constraint proof system](../08-generics-constraints-and-contracts.md#87-constraint-proof-system) |
 | Alias | A source-local resolved Container reference that opens direct members or introduces a named Qualifier. | [Source aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases) |

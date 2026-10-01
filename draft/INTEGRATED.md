@@ -50,6 +50,7 @@ Existing historical entries and their evidence are retained. This policy change 
 | `2026-09-30 Contextual Labels and Named Transfers.md` | 取り込み済み | 2026-09-30、改訂を含む全決定を作業ブランチの正式仕様へ統合：§1.2・§2.5.1・§12.1・§13.1・§13.5.1・§14.4–14.5、付録 F、実装仕様 §21・付録 A.15、STYLE と関連例。原案の `c3d9fe5b` に対し、転送値の共通省略判定、Primary 文法、宛先と値の非隣接、括弧保存を反映。無条件のコロン削除による意味保存は不採用。全項目の扱いが確定し本文を凍結。実装・検証の完了は意味しない。 |
 | `2026-09-30 Drop Declaration and Defer.md` | 取り込み済み | 2026-09-30、全決定を統合：§2.5.1、§3・§6–8・§14–17、§16.3 の制約一覧、付録 E/F、実装仕様と関連例を `drop` へ改名。`init`・`defer` の意味と既存の破棄制約は維持。`finally` への改名、クロージャー化、制約緩和は不採用。将来の契約案は今回の採用範囲外。本文を凍結し、古い節アンカーは正式仕様側で更新済み。実装・検証の完了は意味しない。 |
 | `2026-09-29 Verification Performance.md` | 取り込み済み | 2026-09-30: §20.8.2.4–§20.8.8, SPEC index, verification workflow, compiler/toolchain and original-source milestone harnesses. |
+| `2026-10-01 Explicit Acquisition in Overload Resolution.md` | 取り込み済み | 2026-10-01 取り込み。本書 1–3（取得競合の定義、検査順序、Copy 条件を順位付け前に置く理由、適用範囲、ジェネリック）を §10.1、§10.2、§10.2.1、§10.2.2（新設）、§10.4、§10.5 へ、4（診断と回復）を §10.6 へ反映し、§3.5、§8.9、§13.5.3、付録 E、SPEC.md 索引、STYLE §3.2 を整合。5（Uniform Borrow Acquisition 案との関係）：取り込み順は本案が先。相手案は未取り込みで、その「Copy による値渡し候補の優先は変更しない」という文は合流後の仕様に残さない。相手案の receiver・capture の採否は本案から推定しない。6–8（実装計画・文書更新計画・設計判断）は計画と判断理由であり仕様項目ではない。全項目の扱いが確定し本文を凍結。実装・検証の完了は意味しない。 |
 
 ## Design
 

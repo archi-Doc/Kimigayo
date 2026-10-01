@@ -125,6 +125,9 @@ across fragments for style: logical order controls initializer effects and rever
 - `[Kimi]` A try-prefixed operation is the try form of the operation with the same inputs: `tryGet(k)` is
   the try form of `x[k]` for a position, as Dictionary's `tryGet` is for a key, and `trySlice(r)` for a range.
   Constraints alone never distinguish overloads (SPEC §9.1), so a position and a range entry need different names.
+- `[Kimi]` Do not overload only on how an input is acquired, such as `T` and `ref/T` at the same position: a
+  caller passing a Place must then write `@ref`, `@copy` or `@move` (SPEC §10.2.2), and adding such an
+  overload, or importing one, rejects existing calls. Give operations with different purposes different names.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
 
 ### 3.3. Properties and comparisons

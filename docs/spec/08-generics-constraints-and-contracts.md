@@ -854,7 +854,7 @@ Generic analysis
 
 A by-value acquisition's effect follows its spelling:
 
-- a bare Place Copies and requires Copy evidence at definition checking; unproven Copy is an error, never deferred checking or an inferred Move;
+- a bare Place Copies and requires Copy evidence at definition checking; unproven Copy is an error, never deferred checking or an inferred Move, and overload resolution decides it before ranking (§10.2.2);
 - `@copy` Copies and requires the same evidence;
 - `@move` transfers;
 - `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
