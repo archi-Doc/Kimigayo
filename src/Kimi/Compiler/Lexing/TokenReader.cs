@@ -135,7 +135,7 @@ public ref partial struct TokenReader
             {
                 if (!this.tokens[i].IsMissing && this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
                 {
-                    return TokenHelper.WrittenEnd(this.tokens[i], this.sourceText);
+                    return this.tokens[i].Span.End;
                 }
             }
 
@@ -162,7 +162,7 @@ public ref partial struct TokenReader
                 }
             }
 
-            return last < 0 ? this.PreviousSyntaxEnd : TokenHelper.WrittenEnd(this.tokens[last], this.sourceText);
+            return last < 0 ? this.PreviousSyntaxEnd : this.tokens[last].Span.End;
         }
     }
 

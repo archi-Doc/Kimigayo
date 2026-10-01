@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -140,6 +141,100 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
+
+    // A written string literal spans its delimiters, so a diagnostic at a node that ends with one covers the closing quote.
+    [Fact]
+    public void ClosureEndingInAStringCoversTheClosingQuote()
+    {
+        var error = Assert.Single(TestDiagnostics.Of(Analyze("let text = \"owned\"\nlet keep = func () => text == \"owned\"")));
+        Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
+        Assert.Equal("func () => text == \"owned\"", error.Text);
+        Assert.Empty(TestDiagnostics.Of(Analyze("let text = \"owned\"\nlet keep = func [text@move] () => text == \"owned\"")));
+    }
+
+    [Fact]
+    public void CliAndLspUnderlineTheClosingQuote()
+    {
+        const string Closure = "func () => text == \"owned\"";
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = Analyze("let text = \"owned\"\nlet keep = " + Closure, path);
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(new SourceRange(new(1, 11), new(1, 11 + Closure.Length)), error.Display!.Range);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(new string('^', Closure.Length) + " ", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('^', Closure.Length + 1), console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var capability in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, capability)[identity]);
+            Assert.Equal(error.Display.Range, sent.Range);
+        }
+    }
+
+    [Theory]
+    [InlineData("\"owned\"", "owned")]
+    [InlineData("\"\"", "")]
+    [InlineData("\"a\\\"b\"", "a\"b")]
+    [InlineData("\"first\nsecond\"", "first\nsecond")]
+    [InlineData("\"\"\"raw\\n\"\"\"", "raw\\n")]
+    public void LiteralsAndTheirEnclosingNodesSpanTheDelimiters(string literal, string value)
+    {
+        var source = "let text = " + literal + "\nlet same = text == " + literal;
+        var c = Analyze(source);
+        Assert.Empty(TestDiagnostics.Of(c));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var literals = nodes.OfType<StringLiteralKoto>().ToArray();
+        Assert.Equal(2, literals.Length);
+        Assert.All(literals, x => Assert.Equal((literal, value), (Text(source, x.Span), x.Literal)));
+        Assert.Equal("text == " + literal, Text(source, Assert.Single(nodes.OfType<EqualsEqualsKoto>()).Span));
+    }
+
+    // An interpolation segment has no delimiters of its own: it spans its text, while the literal spans both quotes.
+    [Fact]
+    public void InterpolationSegmentsSpanTheirTextBetweenTheDelimiters()
+    {
+        const string Literal = "\"a \\(n) b \\(\"c\")!\"";
+        var source = "let n: i32 = 1\nlet text = " + Literal;
+        var c = Analyze(source);
+        Assert.Empty(TestDiagnostics.Of(c));
+        var interpolated = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InterpolatedStringKoto>());
+        Assert.Equal(Literal, Text(source, interpolated.Span));
+        Assert.Equal(["a ", " b ", "!"], interpolated.Segments.Select(x => Text(source, x.Span)));
+        Assert.Equal(["a ", " b ", "!"], interpolated.Segments.Select(static x => x.Literal));
+        var nested = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StringLiteralKoto>(), x => !interpolated.Segments.Contains(x));
+        Assert.Equal(("\"c\"", "c"), (Text(source, nested.Span), nested.Literal));
+    }
+
+    // Escape problems are located at the literal's text, without the delimiters, in literals and interpolation segments alike.
+    [Theory]
+    [InlineData("let text = \"a\\qb\"", "a\\qb")]
+    [InlineData("let text = \"\\u(D800)\"", "\\u(D800)")]
+    [InlineData("let n: i32 = 1\nlet text = \"a\\q \\(n) b\"", "a\\q ")]
+    [InlineData("let c = '\\q'", "'\\q'")]
+    public void EscapeProblemsStayAtTheLiteralText(string source, string text)
+    {
+        var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
+        Assert.True(error.Code is nameof(DiagnosticCode.UnsupportedEscape_Kd) or nameof(DiagnosticCode.InvalidUnicodeScalar_Kd), error.ToString());
+        Assert.Equal(text, error.Text);
+    }
+
+    // A missing form is inserted after the closing quote of a string that ends the line.
+    [Theory]
+    [InlineData("Console.writeLine(\"hello\"")]
+    [InlineData("let texts = [\"a\", \"b\"")]
+    [InlineData("let texts = [\"a\", \"\"")]
+    public void MissingCloserFollowsTheClosingQuote(string source)
+    {
+        var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
+        Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), error.Code);
+        Assert.Equal(new SourceSpan(source.Length, 0), error.Span);
+    }
+
+    private static string Text(string source, SourceSpan span) => source.Substring(span.Start, span.Length);
 
     private static Compilation Analyze(string source, string path = "Hello.kimi")
     {

@@ -245,19 +245,6 @@ public static partial class TokenHelper
         => TokenTexts[(int)tokenKind];
 
     /// <summary>
-    /// Gets the end of a token as written, where a missing form is inserted after it. A quoted string token spans its content
-    /// only, so its closing quote follows the span.
-    /// </summary>
-    /// <param name="token">The token.</param>
-    /// <param name="text">The source text the token references.</param>
-    /// <returns>The end offset.</returns>
-    public static int WrittenEnd(Token token, ReadOnlySpan<char> text)
-    {
-        var end = token.Span.End;
-        return token.Kind == TokenKind.StringLiteral && end < text.Length && text[end] == '"' && token.Start > 0 && text[token.Start - 1] == '"' ? end + 1 : end;
-    }
-
-    /// <summary>
     /// Determines whether a character terminates an identifier or keyword scan.
     /// </summary>
     /// <param name="c">The character to test.</param>
