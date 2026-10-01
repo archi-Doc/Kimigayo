@@ -84,19 +84,14 @@ public class BorrowedTupleProjectionTest
             Assert.Equal(original, output.ToString());
         }
 
-        for (var i = 0; i < 32; i++)
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 16; i++)
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var bytes = AllocationMeasurement.Measure(
+            () =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 16,
+            warmupIterations: 32);
+        Assert.Equal(0, bytes);
     }
 }
