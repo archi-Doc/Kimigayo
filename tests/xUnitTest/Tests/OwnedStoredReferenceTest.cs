@@ -43,6 +43,31 @@ public class OwnedStoredReferenceTest
         ScalarEmissionTest.EmitFixture("OwnedStoredReferenceIteration" + name, source, string.Empty);
     }
 
+    // SPEC 10.2: at a ref/uniq parameter the stored reference is Reborrowed through its slot, as at a borrowed root.
+    private const string Calls = "func change(target: uniq/i32) => target@follow = 99\nfunc inspect(target: ref/i32) -> i32 => target@follow\nfunc both(target: uniq/i32, other: ref/i32) => target@follow = other@follow + 1\n";
+
+    [Theory]
+    [InlineData("LetExclusive", "var value = 42\nlet item = (value@uniq, 7)\nchange(item.0)\nrequire value == 99 else => $abort(\"changed\")")]
+    [InlineData("VarExclusive", "var value = 42\nvar item = (value@uniq, 7)\nchange(item.0)\nrequire value == 99 else => $abort(\"changed\")")]
+    [InlineData("Shared", "var value = 42\nlet item = (value@uniq, 7)\nrequire inspect(item.0) == 42 else => $abort(\"read\")")]
+    [InlineData("Field", Holder + "func run(value: uniq/i32 during a)\n    let holder = Holder.init(value@move, 7)\n    require inspect(holder.item) == 42 else => $abort(\"read\")\n    change(holder.item)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")")]
+    [InlineData("Iteration", "func run(value: uniq/i32 during a)\n    var items = [(value@move, 7)]\n    for item in items@move\n        require inspect(item.0) == 42 else => $abort(\"read\")\n        change(item.0)\nvar value = 42\nrun(value@uniq)\nrequire value == 99 else => $abort(\"changed\")")]
+    public void StoredReferenceArgumentsReborrowThroughTheSlot(string name, string source)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceArgument" + name, Calls + source, string.Empty);
+
+    [Theory]
+    [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", true)]
+    [InlineData("both(item.0, item.0)", true)]
+    [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", false)]
+    public void StoredReferenceArgumentsRespectLiveChildren(string body, bool activation)
+    {
+        var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
     [Theory]
     [InlineData("var items = [(value@move, 7)]\n    for item in items@move\n        let child = item.0@follow@uniq\n        item.0@follow = 5\n        child@follow = 1", "item.0")]
     [InlineData("let first = (value@follow@uniq, 1)\n    value@follow = 5\n    first.0@follow = 99", "value")]

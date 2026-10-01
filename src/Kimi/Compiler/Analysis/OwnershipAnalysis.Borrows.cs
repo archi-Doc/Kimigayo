@@ -174,6 +174,14 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStoredReference(storedField, storedField, type, reservation);
         }
 
+        if (unwrapped is BinaryKoto storedPart && !Binding.IsGetterResult(storedPart) && !this.SpecialField(storedPart) &&
+            ReferenceTypes.IsBorrow(storedPart.BoundType) && ReferenceEquals(storedPart.BoundType!.Components[0], type.Components[0]) &&
+            ElementAccess.OwnedPathRoot(storedPart) is not null)
+        {
+            // SPEC 10.2, 13.5.5.1: the same Reborrow of a pointer stored in an inline part of an owned root.
+            return this.BorrowStoredReference(storedPart, storedPart, type, reservation);
+        }
+
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
