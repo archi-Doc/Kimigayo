@@ -107,11 +107,11 @@ Typed values, explicit `@` operations, calls, and array or Dictionary literals a
 A literal-only expression fits a Type as follows:
 
 - **Propagation:** the Type flows to operands under each operator's Type rule: to both operands of arithmetic and bitwise operators, to the operand of a unary operator, to each boundary of a range separately as its `S` or `E` (§4.6.3.1), to the operand of `^` as the `T` of `FromEnd<T>`, and only to the left operand of a shift. A shift count is typed independently (§13.3).
-- **Condition:** every literal fits the Type it receives (a directly attached sign follows §13.5.4), and every operator is defined for that Type. Thus `-(1)` does not fit `u8`, because unary `-` requires a signed integer.
+- **Condition:** every literal fits the Type it receives (a directly attached sign follows §13.5.4), and every operator is defined for that Type. Thus `-(1)` does not fit `u8`, because unary `-` requires a signed integer, but it fits `Wrapping<u8>`, whose unary `-` is defined (§13.3). An integer literal fits a wrapping integer Type exactly when it fits the Type's integer argument.
 - **Class:** fitting a value directly is Literal fitting; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies (§10.2.1).
 - **Defaults:** applied only after all other evidence and never during candidate comparison: `i32` for an integer, including every range boundary and `^` operand without another source of its Type (§4.6.3.1), and `isize` in length contexts (§4.2).
 
-The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
+The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed, and fitted to `Wrapping<i8>` it is `-128`. Constant folding keeps the meaning of each operation in the fitted Type; computing a literal-only expression exactly and wrapping once at the end is not equivalent when `/`, `%`, `>>` or a comparison is involved. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
 
 ```kimi
 func choose(value: i32) -> () => ()
@@ -167,7 +167,7 @@ An interpolated literal produces an owning `string`. Each embedded expression fi
 
 Equivalent duplicate keys in a Dictionary literal are errors.
 
-**Mandatory static checking** covers Boolean, integer, `char`, plain string and Unit literals, grouped or not; integers may have one direct unary sign. Each such key is fitted to the determined built-in key Type, its escapes and separators are decoded, and the values are compared without user equality. All eligible entries are compared, even across ineligible entries, and later duplicates are diagnosed even in unreachable syntax. Names (including Constant-readable `let` bindings), arithmetic, conversions, Tuples, floats, interpolation and user Types are excluded, and optimizer folding cannot extend the set.
+**Mandatory static checking** covers Boolean, integer, `char`, plain string and Unit literals, grouped or not; integers may have one direct unary sign, and a wrapping integer key Type fits its keys by the range of its integer argument. Each such key is fitted to the determined built-in key Type, its escapes and separators are decoded, and the values are compared without user equality. All eligible entries are compared, even across ineligible entries, and later duplicates are diagnosed even in unreachable syntax. Names (including Constant-readable `let` bindings), arithmetic, conversions, Tuples, floats, interpolation and user Types are excluded, and optimizer folding cannot extend the set.
 
 **Runtime checking.** Otherwise, entries are processed in source order:
 

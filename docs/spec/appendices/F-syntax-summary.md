@@ -305,8 +305,10 @@ Additive             := Multiplicative (("+" | "-") Multiplicative)*
 Multiplicative       := Try (("*" | "/" | "%") Try)*
 Try                  := "try" Try | Adapted
 Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
-OperationTarget      := "move" | "copy" | Semantics | AdaptationType
+OperationTarget      := "move" | "copy" | "wrap" TypeArguments | "bits" TypeArguments
+                      | Semantics | AdaptationType
 // "@" "follow" is a PostfixSuffix (level 1), never an OperationTarget.
+// "wrap" and "bits" take exactly one Type argument adjacent to the Name (§13.5.4).
 AdaptationType       := AdaptationCore ("?")*
 AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
 AdaptationAtom       := ContainerPath | UnitType | "(" Type ")"

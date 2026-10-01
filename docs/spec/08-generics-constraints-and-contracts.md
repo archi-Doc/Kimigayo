@@ -457,8 +457,9 @@ A proven `T is PrimitiveInteger` supplies every built-in capability common to th
 
 - **Capabilities:** Scalar, Copy and Owned, `Position` (§4.6.2), and the built-in Equatable, Comparable and Utf8Format conformances. A reference to `T` is read by the [value read](03-types-and-values.md#353-value-read).
 - **Operators:** the built-in integer arithmetic, bitwise, shift and comparison operators, compound assignment, increment and decrement, with their ordinary operand, result and failure rules (§13.2–13.4). Unary `-` requires a signed integer and is unavailable.
-- **Conversions:** checked numeric conversion `value@U` between Types that satisfy PrimitiveInteger (§13.5.4).
+- **Conversions:** checked numeric conversion `value@U` between Types that satisfy PrimitiveInteger, the conversions `value@Wrapping<T>` and `value@T` between `T` and its wrapping integer Type, and the wrapping conversion `value@wrap<U>` to any integer Type or proven-PrimitiveInteger Type `U` and to its `Wrapping<U>` (§13.5.4). The bit conversion `@bits` is unavailable while either Type depends on a Type parameter.
 - **Literals:** an untyped literal fits an unbound `T` only when it fits all twelve Types, that is, 0 through 127. A literal-only expression fits `T` under the same condition (§12.3.1).
+- **Wrapping integers:** the formation of `Wrapping<T>` ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)), which is then a Scalar and a read Type with the capabilities above, with its own unary `-` on every instantiation, and with its literals 0 through 127.
 
 A generic body is checked once against these capabilities, and each instantiation uses the operations of its concrete Type. This is a dedicated proof rule: a choice such as `T is i8 or u8 or …` supplies none of these capabilities, because §8.7 has no case analysis, and there is no user-extensible numeric Contract. An implementation profile that restricts an operation for some Types, such as 128-bit division (§21.5.3), diagnoses the concrete instantiation; the restriction does not weaken this requirement.
 
@@ -472,6 +473,14 @@ func sum<T>(values: Range<T, T>) -> T
 
 let small = sum(1..5@u8)   // T = u8; 10
 let large = sum(0..1000)   // T = i32; 499500
+
+func scramble<T>(value: Wrapping<T>, key: Wrapping<T>) -> Wrapping<T>
+    T is PrimitiveInteger
+    return -(value ^ key) * 31 // Wrapping<T> has unary -, and the product wraps.
+
+func foldToU64<T>(value: T) -> u64
+    T is PrimitiveInteger
+    return value@wrap<u64>     // Legal for every width; a signed value is sign-extended.
 ```
 
 ### 8.4.8. Conditional conformance

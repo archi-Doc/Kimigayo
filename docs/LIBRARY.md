@@ -26,7 +26,7 @@ These are compiler identities, not user-implementable replacements.
 | `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#86-callable-constraints) |
 | `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#8471-sealed) |
 | `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#8472-objectpayload) |
-| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
+| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, `@wrap`, the formation of `Wrapping<T>`, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable on `T` itself. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
 
 ### 1.2. Comparison
 
@@ -49,6 +49,16 @@ The floating-point Equatable mapping treats all NaNs as equal and signed zeros a
 | `enum Result<T, E>` | `Ok(T)`, `Err(E)` | Recoverable failure; Copy exactly when T and E are Copy. |
 
 `try` propagates `None` or `Err` from a compatible enclosing function; Result propagation keeps the same error Type. Payload Origins and Loans follow ordinary enum rules.
+
+### 1.4. Wrapping integers
+
+[Specification: wrapping integer Types](spec/03-types-and-values.md#3111-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals).
+
+| Declaration | Guarantee |
+| --- | --- |
+| `struct Wrapping<T>`, `T is PrimitiveInteger` | A Scalar with the representation, signedness, order, layout, ABI, formatting and comparison of `T`, whose arithmetic wraps modulo 2ᴺ instead of Aborting; division by zero and invalid shift counts still Abort. Unary `-` exists for every `T`. No members or constructor: enter and leave through `@Wrapping<T>`/`@T` (same `T`), `@wrap<…>` or `@bits<…>`. Not PrimitiveInteger and not a Position, so it is never an index, range boundary, length or shift count. |
+
+The wrapping conversion `@wrap<U>` and the bit conversion `@bits<U>` are language operations, not library declarations.
 
 ## 2. Iteration and Indexing
 

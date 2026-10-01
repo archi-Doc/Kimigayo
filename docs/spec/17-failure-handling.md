@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 
@@ -232,7 +232,7 @@ Failures in required compile-time evaluation are compile-time errors. This adds 
 
 Language-defined static checks, including literal fitting and the exact Dictionary duplicate-key subset of §12.3.4, apply independently of optimization. Outside required constant-evaluation contexts, knowledge obtained only by constant propagation or folding must not turn a specified runtime Abort into a compile-time error, even when the failing value is statically known.
 
-These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above; wrapping or saturating integer arithmetic requires separate explicit library APIs.
+These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above. Arithmetic that wraps instead of Aborting is selected by the wrapping integer Types ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)) and the wrapping conversion `@wrap` (§13.5.4.3), never by a build setting or an enclosing context; saturating arithmetic is not defined.
 
 ## 17.4. Warnings
 

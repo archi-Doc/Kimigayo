@@ -869,16 +869,18 @@ Existing arithmetic, conversion, indexing and failure order are preserved; `nsw`
 
 | Operation | Initial lowering |
 | --- | --- |
-| Integer add/subtract/multiply | Signed or unsigned overflow intrinsic, or an equivalent result-plus-overflow check; Abort on failure |
-| Negation, increment/decrement, compound assignment | Check first; commit the write only on success |
-| Integer division/remainder | Check for a zero divisor and for signed minimum / −1 before the instruction |
+| Integer add/subtract/multiply | Signed or unsigned overflow intrinsic, or an equivalent result-plus-overflow check; Abort on failure. A wrapping integer Type (SPEC §3.1.1.1) uses the plain `add`/`sub`/`mul` without `nsw`/`nuw` and without an overflow intrinsic |
+| Negation, increment/decrement, compound assignment | Check first; commit the write only on success. A wrapping integer Type writes the wrapped result |
+| Integer division/remainder | Check for a zero divisor before the instruction. A signed divisor of −1 never reaches `sdiv`/`srem`, whose behavior with the minimum dividend is undefined for both: the quotient is `0 - x` (checked for an integer Type, plain for a wrapping one) and the remainder is 0. A literal −1 generates only this replacement; a dynamic divisor selects it by a branch or a `select` that substitutes 1 for −1 and negates the quotient |
 | Shift | Check the count in its original Type, `0 <= count < left width`, then convert; `ashr` for signed right shift, `lshr` for unsigned, `shl` without treating discarded bits as arithmetic overflow |
-| Integer conversion | Check the destination range before extension or truncation |
+| Integer conversion | Check the destination range before extension or truncation; `T` ↔ `Wrapping<T>` emits nothing |
+| Wrapping conversion `@wrap<U>` | `trunc` when narrowing, `sext` or `zext` by the operand's signedness when widening, nothing at the same width; no check |
+| Bit conversion `@bits<U>` | `bitcast`; no check, and no path that could quiet a signaling NaN |
 | Float to integer | The ordered range checks below, then `fptosi`/`fptoui` only on success |
 | Integer to float / float width conversion | The required rounding; detect finite-to-infinity failure |
 | Array/index/range | Position and range resolution and the required bounds checks before a successful address calculation. Resolution checks `L >= 0` once and then one inequality chain over the whole range: `0 <= a <= b <= L` for `a..b`, `0 <= a <= b < L` for `a..=b` and `0 <= b <= a <= L` for `^a..^b`; a from-end position always resolves against the original `L`. An element position check and the `Indexable<isize>` bounds check are one check, and a same-width `0 <= n <= L` is one unsigned comparison. Constant positions and ranges on fixed arrays fold under §17.3.4. |
 
-Constant evaluation follows §17.3.4. A check is removed only after its success is proven; folding a failing path to Abort, or removing an unreachable path, is allowed.
+Constant evaluation follows §17.3.4. A check is removed only after its success is proven; folding a failing path to Abort, or removing an unreachable path, is allowed. A check whose success follows from the Types and literal operands alone (literal-only expressions included) is not generated even at O0: a numeric conversion whose source range lies within the destination range (`T` ↔ `Wrapping<T>`, `u8@u32`, `i8@i64`; `i8@u32` keeps its negative check), the zero check of a literal nonzero divisor, the minimum / −1 check of an integer division by a literal other than −1, and the count check of a literal in-range shift count. A direct literal conversion (SPEC §13.5.4.2) is folded to a constant at compile time with exact arithmetic, so it is available for combinations whose runtime conversion the profile does not yet support.
 
 ```llvm
 declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)

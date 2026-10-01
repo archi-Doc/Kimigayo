@@ -83,7 +83,7 @@ The 32-byte header contains total frame bytes (`u32`, offset 0), version (`u16`,
 | 4 | Require-Abort after temporary cleanup; no payload, valid SiteId and a nonzero failure count. IssueId may be zero when details were omitted. |
 | 5 | Ordinary Abort; no payload. |
 | 6 | Normal completion; no payload. A positive count requires an earlier basic failure. |
-| 7 | Scalar snapshot: operand role (`i32`, left=0/right=1), kind (`u16`, bool=1/signed=2/unsigned=3/float=4), bit width (`u16`), original bits zero-extended to `u128`. It refers to an earlier IssueId. |
+| 7 | Scalar snapshot: operand role (`i32`, left=0/right=1), kind (`u16`, bool=1/signed=2/unsigned=3/float=4), bit width (`u16`), original bits zero-extended to `u128`. A wrapping integer records the kind and width of its integer argument. It refers to an earlier IssueId. |
 
 Abort and completion are terminal records. A truncated final frame is an execution error. Scalar snapshots preserve the original value's bits, including floating-point encodings; they never call user formatting. A receiver discards optional details beyond its budgets without discarding failure state. UTF-8 truncation ends at a complete code point.
 

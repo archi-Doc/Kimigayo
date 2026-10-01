@@ -35,7 +35,7 @@ Type
 │  ├─ Object Borrow: objref, objuniq
 │  └─ Unsafe: unsafe
 ├─ Core
-│  ├─ Scalar: Integer, Floating-point, Boolean, Character
+│  ├─ Scalar: Integer, Wrapping integer, Floating-point, Boolean, Character
 │  ├─ String
 │  ├─ Unit
 │  ├─ Never
@@ -61,7 +61,9 @@ The named examples are neither separate declaration forms nor mutually exclusive
 
 Primitive Cores are built in. Listed sizes are storage sizes.
 
-**Scalar** (short for **primitive scalar**) is the closed set of the integer Cores (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), the floating-point Cores (`f32`, `f64`), `bool` and `char`. `string`, Unit and Never are not Scalars. Scalar is a specification category, not a source-level Type or Constraint name.
+**Scalar** is the closed set of Cores consisting of the primitive scalar Cores and the twelve wrapping integer Cores (§3.1.1.1). The primitive scalar Cores are the integer Cores (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), the floating-point Cores (`f32`, `f64`), `bool` and `char`. `string`, Unit and Never are not Scalars. Scalar is a specification category defined by Core identity, not a source-level Type or Constraint name.
+
+Three terms classify numbers throughout this specification. An **integer Type** is one of the twelve integer Cores under `owner` Semantics. A **wrapping integer Type** is `Wrapping<T>` for an integer Type `T` (§3.1.1.1). A **numeric Type** is an integer Type, a wrapping integer Type or a floating-point Type. A rule stated for integer Types applies to wrapping integer Types only where a rule says so; a rule stated for numeric Types applies to all three kinds.
 
 ### 3.1.1. Integer types
 
@@ -73,6 +75,29 @@ Primitive Cores are built in. Listed sizes are storage sizes.
 | `i64` | `u64` | 64 bits (8 bytes) |
 | `i128` | `u128` | 128 bits (16 bytes) |
 | `isize` | `usize` | Native pointer size of the target platform |
+
+#### 3.1.1.1. Wrapping integer types
+
+`Kimi.Wrapping<T>`, for an integer Type `T`, is a distinct Scalar with the same representation, signedness, value interpretation, layout and ABI as `T`. It differs from `T` in exactly one respect: an arithmetic result that `T` cannot represent wraps modulo 2ᴺ instead of Aborting ([integer results](13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators)). It is the Type for computations defined modulo 2ᴺ, such as hashing, pseudo-random generation, checksums and sequence numbers.
+
+- `Wrapping<T>` is a [required Kimi declaration](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) whose identity the compiler recognizes; the default alias makes `Wrapping<u32>` available. Whatever a local declaration named `Wrapping` denotes, only `::Kimi.Wrapping<T>` is a Scalar.
+- The Type argument must be an integer Type: `Wrapping<f32>`, `Wrapping<ref/u32>` and `Wrapping<Wrapping<u32>>` are invalid. Forming `Wrapping<T>` over a Type parameter requires a proven `T is PrimitiveInteger` ([§8.4.7.3](08-generics-constraints-and-contracts.md#8473-primitiveinteger)).
+- `Wrapping<T>` has no members and no public constructor. Its values come from literals ([§12.3.1](12-expressions.md#1231-type-inference)), arithmetic (§13.3) and conversions ([§13.5.4](13-operators-and-assignment.md#1354-numeric-conversions-and-literals)).
+- `Wrapping<T>` and `T` are different Types with no subtype relation and no implicit conversion, as are two wrapping integer Types over different arguments. Overload resolution treats them as different Types, so a literal argument that fits both candidates is ambiguous (§12.3.1).
+- As a Scalar, `Wrapping<T>` is Copy, Owned, Sealed, ObjectPayload and a read Type (§3.5.3), with the built-in Equatable, Comparable and Utf8Format conformances of `T`. It satisfies neither `PrimitiveInteger` nor `Position`, so it is a value and never a quantity or position: it cannot be an array or Slice position, a range boundary, the operand of `^`, a length constant, a ConstantIndexExpression or a shift count. It can be a Dictionary key like any other Equatable Type.
+- `Option<Wrapping<T>>` keeps an explicit tag like `Option<T>`.
+
+```kimi
+let a: Wrapping<u8> = 250
+let b: Wrapping<u8> = a + 10      // 4: wraps modulo 2⁸.
+let c: u8 = 250
+let d = c + 10                    // Abort: 260 is not representable in u8.
+
+func describe(value: u32) -> () => ()
+func describe(value: Wrapping<u32>) -> () => ()
+describe(5)                       // Error: both candidates fit.
+describe(5@Wrapping<u32>)         // OK.
+```
 
 ### 3.1.2. Floating-point and boolean types
 
@@ -538,7 +563,7 @@ Complete Types are classified by Core, Semantics and stored components:
 
 | Type | Classification |
 | --- | --- |
-| Integers, floating-point values, `bool`, `char`, Unit under `owner` Semantics | Copy |
+| Integers, wrapping integers, floating-point values, `bool`, `char`, Unit under `owner` Semantics | Copy |
 | `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of the referent `T` |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
@@ -597,7 +622,7 @@ Proof may depend on declared constraints, but successful individual instantiatio
 
 ### 3.5.3. Value read
 
-A **read Type** is a Scalar Type (§3.1) or a Type satisfying `Position` or `PositionRange`, that is, a [position or range Type](04-arrays-indexing-and-slices.md#462-positions). At a position that requires a read Type `T`, a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **value read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that read Type (§14.9.1), to built-in operator operands, including range boundaries and the operand of prefix `^`, to `bool` conditions and to an owning receiver of a read Type (§7.3). An operator selects its operation from the terminal Type of each operand. A generic Type is a read Type only when its [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger), `Position` or `PositionRange` requirement is proven. Every read Type is Copy and Owned.
+A **read Type** is a Scalar Type (§3.1) or a Type satisfying `Position` or `PositionRange`, that is, a [position or range Type](04-arrays-indexing-and-slices.md#462-positions). At a position that requires a read Type `T`, a value whose Type is `ref` or `uniq` layers ending in `T` supplies `T` by a **value read**: the safe reference layers are followed to the terminal Place and its value is copied. The read applies at the value positions of [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), to result sources whose common Type is that read Type (§14.9.1), to built-in operator operands, including range boundaries and the operand of prefix `^`, to `bool` conditions and to an owning receiver of a read Type (§7.3). An operator selects its operation from the terminal Type of each operand. A generic Type is a read Type only when its [`PrimitiveInteger`](08-generics-constraints-and-contracts.md#8473-primitiveinteger), `Position` or `PositionRange` requirement is proven, or when it is `Wrapping<T>` with `T is PrimitiveInteger` proven. Every read Type is Copy and Owned.
 
 ```kimi
 for number in numbers        // numbers: Array<i32>; number: ref/i32.
@@ -708,13 +733,13 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | --- | --- | --- |
 | Normalized Type identity | Two complete Types. Expand aliases, normalize grouping and redundant `owner` prefixes, and compare the resulting structure, declaration identity, generic arguments, Semantics and Origin bindings. Bound Origin parameters correspond by binder, not spelling. | No value operation. Different nominal declarations never become equal through matching names, fields or layout. This is not the Origin-erasing Runtime Type Identity used by object views. |
 | Alias equivalence | An alias and its resolved target, with substitutions and complete Type information preserved. | Part of normalized identity; no wrapper, conversion or ownership change. Alias lookup still follows the ordinary visibility and lookup rules. |
-| Subtyping | Two complete Types under the established generic and Origin constraints. Prove identity or a subtype relation explicitly defined by this specification. | Static fitting only. The proof inserts no acquisition, Borrow/Reborrow, follow, numeric conversion, object upcast or user conversion. |
+| Subtyping | Two complete Types under the established generic and Origin constraints. Prove identity or a subtype relation explicitly defined by this specification. `Wrapping<T>` and `T` have no subtype relation (§3.1.1.1). | Static fitting only. The proof inserts no acquisition, Borrow/Reborrow, follow, numeric conversion, object upcast or user conversion. |
 | Origin shortening and variance | Apply [Origin variance](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins) and outlives constraints at each relevant position. Covariance permits shortening, contravariance reverses the relation, and invariance requires equality. | A subtype proof, not a new borrow. Existing dependencies and Loans are preserved; lifetimes are not extended, and inner Origins are not replaced by an outer annotation. Exclusive Referent Type invariance remains mandatory. |
 | Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility): equal arity, `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It inserts no argument or result operations and does not itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
 | Expected-result compatibility | An instantiated candidate result Type and an independently established expected Type, under [expected-result filtering](10-overload-resolution-and-inference.md#103-expected-results). Requires that the use position admit an acquisition or common adaptation of the known result. | Excludes candidates whose result the position cannot admit; candidates are never ranked by result adaptation. Result acquisition and declared Loan propagation still apply. |
 | Never fitting | Never has no normally produced value and fits any otherwise valid expected value Type without a value conversion. | No outer value operation executes on a non-completing path. Target, Unsafe and local correctness checks remain, and transfer operands are validated against their own result boundary under [result validation](14-control-flow.md#149-result-validation). The Target Result Type stays separate from inferred Never; every syntactic result source is checked under §14.9. |
 | Implicit expression adaptation | An expression, a fixed expected Type and use-site context. Exactly one operation of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) or the fixed-expectation [common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) is selected. | May require acquisition, Borrow/Reborrow, a value read or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. Adaptations are never chained, and no universal implicit-conversion search exists. |
-| Explicit expression adaptation | An expression and a resolved Adaptation Target in context, `@move`, `@copy`, or the postfix `@follow`. Select one [defined `@` operation](13-operators-and-assignment.md#1353-defined-adaptations), then enforce its requirements and static result fitting. | May select a Place, change value representation, view or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
+| Explicit expression adaptation | An expression and a resolved Adaptation Target in context, `@move`, `@copy`, `@wrap<U>`, `@bits<U>`, or the postfix `@follow`. Select one [defined `@` operation](13-operators-and-assignment.md#1353-defined-adaptations), then enforce its requirements and static result fitting. | May select a Place, change value representation, view or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
 | Object upcast | An expression and a different object View Target, with proof of `Supports(S, V)` and a matching [explicit upcast row](13-operators-and-assignment.md#1357-object-upcasts). | One explicit view/acquisition operation. Inheritance or conformance alone establishes neither an implicit complete-value adaptation nor a callable argument/result conversion. |
 | Base subobject receiver projection | An instance member selected in a base layer by [inherited lookup](09-names-signatures-and-access.md#951-base-subobject-receiver-projection). | Locates the receiver subobject and applies the permitted receiver access; no standalone conversion or owning base value. |
 | Borrow / Reborrow | An expression with the required Place, access and Loan properties, and a permitted implicit or explicit borrow operation. | Establishes or derives Loans under the borrow rules. Changing `uniq/T` to `ref/T` requires a shared Reborrow, selected implicitly at an expected `ref/T` or written `@follow@ref`; it is not a subtype rule. |

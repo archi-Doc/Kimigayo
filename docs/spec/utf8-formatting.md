@@ -217,6 +217,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 | Value | Representation |
 | --- | --- |
 | Integer | ASCII decimal, `-` only for negatives, no redundant leading zeros; includes the minimum signed value. |
+| `Wrapping<T>` | That of its value as `T`: `Wrapping<u8>` 255 is `255`, and `Wrapping<i8>` -1 is `-1`. |
 | `bool` | `true` or `false`. |
 | `char` | UTF-8 encoding of the Unicode scalar. |
 | Unit | `()`. |
@@ -243,6 +244,7 @@ Borrow Types do not forward conformance; the argument adaptation of §5.2 select
 | `i64` / `u64` | 20 / 20 |
 | `i128` / `u128` | 40 / 39 |
 | `isize` / `usize` | Same as the pointer-width integer Type. |
+| `Wrapping<T>` | Same as `T`. |
 | `bool` / `char` / Unit | 5 / 4 / 2 |
 | `f32` / `f64` | 17 / 24 |
 

@@ -10,7 +10,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | --- | --- | --- |
 | 1 | `.name`, `(...)`, `<Types>`, `[...]`, `@follow`, postfix `++` `--` | Postfix chain, left to right |
 | 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
-| 3 | `@Type`, `@Semantics`, `@move`, `@copy` | Left |
+| 3 | `@Type`, `@Semantics`, `@move`, `@copy`, `@wrap<U>`, `@bits<U>` | Left |
 | 4 | Prefix `try` | Right |
 | 5 | `*` `/` `%` | Left |
 | 6 | `+` `-` | Left |
@@ -55,14 +55,14 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | Operator | Operand and result |
 | --- | --- |
 | `+value` | Numeric value; unchanged Type and value. |
-| `-value` | Negated signed integer or floating-point value. |
+| `-value` | Negated signed integer, wrapping integer or floating-point value. |
 | `not value` | Negated `bool`. |
 | `*pointer` | Raw-pointer Place under the [unsafe dereference rules](05-raw-pointers-and-unsafe-memory.md#52-dereference-and-ownership). |
 | `^value` | The from-end position `FromEnd<T>` storing `value` of any `T is PrimitiveInteger`, unchecked until resolution (§4.6.2). |
 | `++target` / `--target` | Increments or decrements an integer and returns the updated value. |
 | `target++` / `target--` | Increments or decrements an integer and returns the old value. |
 
-Increment and decrement require a readable, writable integer Place or Property; they do not apply to floats, raw pointers or other Types. The target is resolved, read and written once each, and overflow prevents the write. A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#1372-compound-assignment).
+Increment and decrement require a readable, writable integer or wrapping integer Place or Property; they do not apply to floats, raw pointers or other Types. The target is resolved, read and written once each; a result that an integer Type cannot represent Aborts before the write, and a wrapping integer Type writes the wrapped result (§13.3). A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#1372-compound-assignment).
 
 ```kimi
 var count: i32 = 1
@@ -84,9 +84,24 @@ let masked = bits & 0b0110  // 0b0010
 let shifted = bits << 1     // 0b10100
 ```
 
-Integer `+`, `-`, `*`, unary `-`, increment and decrement, and the arithmetic part of compound assignment are checked for overflow. Integer division or remainder by zero is invalid, as is the signed minimum divided by `-1`, including `% -1`. These failures follow [Abort Termination](17-failure-handling.md#173-abort-termination), including its constant-evaluation rule.
+**Integer results.** One rule covers the integer Types and the wrapping integer Types (§3.1.1.1). `+`, `-`, `*`, `/`, `%`, unary `-`, increment, decrement and the arithmetic part of compound assignment compute the mathematical result, division truncating toward zero. When the Type cannot represent that result, the Type's policy applies: an integer Type Aborts, and a wrapping integer Type **wraps**, producing the unique value of the Type that is congruent to the mathematical result modulo 2ᴺ, where N is the bit width. An input for which the operation is undefined Aborts for both kinds of Type: division or remainder by zero, and a shift count outside `0 <= count < N`. Wrapping removes the failure of unrepresentable results, not integer safety. Abort follows [Abort Termination](17-failure-handling.md#173-abort-termination), including its constant-evaluation rule.
 
-`&`, `|` and `^` perform bitwise AND, OR and XOR on operands of the same integer Type; they do not accept `bool`. `<<` and `>>` return the left operand's integer Type and accept any integer Type on the right, requiring `0 <= shift < bit width of the left operand`; an invalid count is a check failure. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed integers and zero-extends unsigned integers. Discarded shift bits are not arithmetic overflow.
+| Expression (`MIN` and `MAX` of 32 bits) | `i32` | `Wrapping<i32>` |
+| --- | --- | --- |
+| `MAX + 1` | Abort | `MIN` |
+| `MIN / -1` | Abort | `MIN` |
+| `MIN % -1` | `0` | `0` |
+| `x / 0`, `x % 0` | Abort | Abort |
+
+`MIN % -1` is 0 for both kinds because 0 is representable; only `MIN / -1` has an unrepresentable result. Unary `-` on an unsigned integer Type is rejected statically, because every nonzero result is unrepresentable; every wrapping integer Type, signed or unsigned, has unary `-`. A wrapping integer Type has the operators of its integer argument with the same operand, result, order and evaluation rules; both operands of a binary operation have the same wrapping integer Type, and comparisons use the argument's order (§13.4).
+
+```kimi
+func lowestBit(value: u32) -> u32
+    let w = value@Wrapping<u32>
+    return (w & -w)@u32 // -w wraps; the AND keeps the lowest set bit.
+```
+
+`&`, `|` and `^` perform bitwise AND, OR and XOR on operands of the same integer or wrapping integer Type; they do not accept `bool`. `<<` and `>>` return the left operand's Type and accept any integer Type on the right, requiring `0 <= shift < bit width of the left operand`; an invalid count is a check failure, and a wrapping integer Type is never a shift count. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed values and zero-extends unsigned values. Discarded shift bits are not an unrepresentable result.
 
 Floating-point operations follow IEEE 754 for `f32`/`f64`, rounding to nearest with ties to even. They support infinities, NaN and signed zero, and floating-point division by zero does not use the integer failure rules. Ordinary operations are not implicitly reassociated or fused when rounding or NaN results would change.
 
@@ -96,7 +111,7 @@ Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer
 
 ## 13.4. Comparison and logical operators
 
-`==`, `!=`, `<`, `<=`, `>` and `>=` return `bool`. Numeric operands must have the same Type. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic byte order, without normalization or locale processing.
+`==`, `!=`, `<`, `<=`, `>` and `>=` return `bool`. Numeric operands must have the same Type. A wrapping integer Type orders its values as its integer argument does, not cyclically: `Wrapping<u8>` has `0 < 255`, and `Wrapping<i8>` has `-128 < 127`. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic byte order, without normalization or locale processing.
 
 For floating-point values, `+0.0 == -0.0` is true. With a NaN operand, `==`, `<`, `<=`, `>` and `>=` are false and `!=` is true; floating-point ordering is not total.
 
@@ -162,7 +177,7 @@ Beyond the built-in cases above, comparing two operands of the same complete use
 | `==`, `!=` | `Equatable.equals` on shared borrows of both operands | The returned `bool`, or its negation |
 | `<`, `<=`, `>`, `>=` | `Comparable.compare` on shared borrows of both operands | The returned `i32` compared with zero |
 
-`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
+`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
 
 For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive equality defined in §12.3.4, whereas a built-in `==` expression still returns false for NaN. Generic comparison through an Equatable requirement uses the mapping, and such a generic call must not be specialized into a floating `==` instruction that changes its meaning.
 
@@ -189,6 +204,8 @@ Explicit @ Operation
 | `E@move` | The [transfer](#1353-defined-adaptations) of a Movable Place; no effect on a Temporary Value |
 | `E@copy` | A [Copy](#1353-defined-adaptations) of a proven-Copy value; never a transfer |
 | `E@follow` | Selection of the Place that the reference or complete object handle `E` points to (§13.5.5.1) |
+| `E@wrap<U>` | The [wrapping conversion](#13543-wrapping-conversion) of an integer value to `U` |
+| `E@bits<U>` | The [bit conversion](#13544-bit-conversion) between a floating-point value and a same-width integer |
 
 An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Written borrow Origins are forbidden on the target's outer Semantics chain, even through grouping; those Origins are inferred from the operand, operation, Loans and constraints. Complete Types inside an Option or another aggregate keep their own annotations and dependencies. Runtime `is` keeps its Origin-free target restrictions; `exit to Label value` belongs to control-transfer syntax.
 
@@ -244,7 +261,7 @@ For `saved: Option<ref/T during a>`, `saved@(ref/T? during a)` and `saved@Option
 
 ### 13.5.2. Static selection and inference
 
-The operation is resolved from the explicit designation and the operand's Type and category; access, ownership, Loans and Origins are checked afterward. Numeric conversion, Copy, Identity Acquisition and pointer casts use ordinary value acquisition, and Borrow targets use the Borrow table. A failure never selects a different operation, getter or overload.
+The operation is resolved from the explicit designation and the operand's Type and category; access, ownership, Loans and Origins are checked afterward. Numeric, wrapping and bit conversions, Copy, Identity Acquisition and pointer casts use ordinary value acquisition, and Borrow targets use the Borrow table. A failure never selects a different operation, getter or overload.
 
 Targets may guide permitted literal and generic inference but cannot change an established operand or result Type, and an outer expected Type cannot cancel the selected operation. The normal inference boundaries apply: no cyclic inference and no candidate-by-candidate retries. Subsequent result fitting is checked statically.
 
@@ -266,7 +283,9 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | Transfer | `@move` only; the operand is a Movable Place or a Temporary Value |
 | Copy | `@copy` only; the operand's Type is proven Copy |
 | Identity Acquisition | Same normalized complete Type, written as the Type or as a complete owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value |
-| Numeric Conversion | Integer and floating values under `owner` Semantics, per the numeric table in §13.5.4 |
+| Numeric Conversion | Integer, wrapping integer and floating values under `owner` Semantics, per the numeric table in §13.5.4 |
+| Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand and target (§13.5.4.3) |
+| Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
 | Raw Pointer Conversion | The [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-pointer-conversions) |
@@ -303,6 +322,16 @@ There is no elementwise Tuple or array conversion, structural struct conversion,
 
 ### 13.5.4. Numeric conversions and literals
 
+Three conversions exist between numeric Types. They are selected by the written designation and never by a failure of another conversion.
+
+| Form | Result | Failure | Operand and target Types |
+| --- | --- | --- | --- |
+| Numeric conversion `@Type` | The same value between integer kinds; the rounding or truncation below when a floating-point Type is involved | Abort outside the target range | Integer and floating-point Types, and `U` ↔ `Wrapping<U>` (§13.5.4.1) |
+| Wrapping conversion `@wrap<U>` | The value wrapped to `U` (§13.3) | None | Integer and wrapping integer Types (§13.5.4.3) |
+| Bit conversion `@bits<U>` | The same bit pattern | None | A floating-point Type and a same-width integer or wrapping integer Type (§13.5.4.4) |
+
+`@Type` never truncates or wraps an integer. A conversion that changes a value is spelled `@wrap`; one that reinterprets bits is spelled `@bits`.
+
 | Source -> target | Rule |
 | --- | --- |
 | Integer -> integer | Check the target range; no truncation or wrapping |
@@ -314,27 +343,91 @@ A finite value that rounds to infinity fails; rounding to a subnormal or zero is
 
 Float-to-float conversion preserves signed zero, including the sign of a nonzero value rounded to zero. Integer zero converts to positive floating zero, and either floating zero converts to integer zero. Floating rounding uses roundTiesToEven, with gradual underflow. The initial Windows profile requires the ABI-standard floating-point environment at entry and across foreign calls (§21.5.4); foreign code that violates this contract is outside the supported boundary, and the runtime does not repair its environment. These rules also apply to literal conversion.
 
-**Direct literals.** For a direct unresolved literal, `@` performs literal fitting:
+#### 13.5.4.1. Wrapping integer conversions
 
-- an integer literal with an integer target must fit the target range;
-- a floating literal with an `f32`/`f64` target follows the [single-rounding rule](02-source-and-lexical-structure.md#26-number-literals);
-- an integer literal with `@f32`/`@f64` rounds once from the exact integer value, without an intermediate default Type.
+The only numeric conversions that involve a wrapping integer Type are `U` → `Wrapping<U>` and `Wrapping<U>` → `U`. Both always succeed and change neither the value nor the bits. A `@Type` conversion between `Wrapping<U>` and an integer Type other than `U`, another wrapping integer Type or a floating-point Type is a static error, so that a conversion whose name suggests wrapping is rejected at compile time rather than Aborting at runtime. Entering or leaving the wrapping Type across a width, signedness or floating-point boundary states its intent:
 
-A failure to fit, including floating overflow to infinity, is a compile-time error, not a runtime numeric-conversion failure. The language's literal representation limits still apply. A floating literal with an integer target first gets its ordinary floating source Type and then undergoes truncation and range checking. Typed values and general arithmetic expressions use ordinary numeric conversion. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison.
+| Intent | Enter: `x` to `Wrapping<U>` | Leave: `w` to `V` |
+| --- | --- | --- |
+| Numeric conversion, checking the range | `x@U@Wrapping<U>` | `w@U@V` |
+| Wrapping | `x@wrap<Wrapping<U>>` | `w@wrap<V>` |
+| Floating-point bits | `f@bits<Wrapping<U>>` | `w@bits<F>` |
 
-The direct-literal category unwraps surrounding parentheses and then permits one unary sign directly attached to the number literal (§12.3.1). Thus `(-128)@i8` and `((-128))@i8` fit the signed literal, while `-(128)@i8` converts the result of an ordinary negation, and `-(128)@u8` fails at runtime. A completed adaptation such as `1@u8` is a typed expression for subsequent argument fitting and overload comparison.
+```kimi
+func mix64(state: u64) -> u64
+    var x = state@Wrapping<u64>         // Same integer argument: @.
+    x = (x ^ (x >> 30)) * 0xbf58_476d_1ce4_e5b9
+    x = (x ^ (x >> 27)) * 0x94d0_49bb_1331_11eb
+    return (x ^ (x >> 31))@u64
+
+let small: u8 = 200
+let seed: u64 = 0x1_0000_0007
+let w1 = small@wrap<Wrapping<u32>>  // 200: an unsigned widening keeps the value.
+let w2 = seed@wrap<Wrapping<u32>>   // 7: wrapped.
+let w3 = seed@u32@Wrapping<u32>     // Abort: the numeric conversion checks the range.
+// let bad = seed@Wrapping<u32>     // Error: different integer argument; write one of the forms above.
+```
+
+#### 13.5.4.2. Direct literals
+
+A direct literal operand (surrounding parentheses and one directly attached unary sign included, §12.3.1) is converted once from its exact value, without an intermediate default Type, by every conversion. A failure to fit is a compile-time error, not a runtime conversion failure; the language's literal representation limits still apply.
+
+| Conversion | Integer literal | Floating literal |
+| --- | --- | --- |
+| `@` integer Type | Must fit the target range | Truncated toward zero from the exact decimal value, then must fit the target range |
+| `@Wrapping<U>` | Must fit the range of `U` | Invalid (§13.5.4.1) |
+| `@f32`, `@f64` | Rounded once from the exact integer value | The [single-rounding rule](02-source-and-lexical-structure.md#26-number-literals) |
+| `@wrap<U>` | Wrapped to `U` | Invalid |
+| `@bits<F>`, `F` floating-point | Wrapped to the unsigned integer Type of `F`'s width, then read as `F` | Invalid |
+| `@bits<I>`, `I` integer or wrapping integer | Invalid; integers use `@wrap` | Rounded once to the floating-point Type of `I`'s width, then read as `I` |
+
+Every other operand is typed independently before the conversion (§13.5.2), so `(200 + 100)@u8` Aborts at runtime and `(200 + 100)@wrap<u8>` computes 300 in `i32` and then wraps it to 44. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison. Thus `(-128)@i8` and `((-128))@i8` fit the signed literal, while `-(128)@i8` converts the result of an ordinary negation, and `-(128)@u8` fails at runtime. A completed adaptation such as `1@u8` is a typed expression for subsequent argument fitting and overload comparison.
 
 ```kimi
 let minimum = -128@i8
-let large = 5000000000@f64 // No intermediate i32 range check.
+let large = 5000000000@f64         // No intermediate i32 range check.
 let single = 1@f32
 let negativeZero = -0.0@f32
-let truncated = 3.9@i32  // 3
+let truncated = 3.9@i32            // 3
+let exact = 9007199254740993.0@i64 // 9007199254740993; no intermediate f64.
+let mask = -1@wrap<u64>            // 0xFFFF_FFFF_FFFF_FFFF
+let low = 0x1_0000_0005@wrap<u32>  // 5
+let negativeInfinity = 0xFF80_0000@bits<f32>
+let halfBits = 1.5@bits<u32>       // 0x3FC0_0000
+let allOnes: Wrapping<u32> = 0xFFFF_FFFF
+let minusOne: Wrapping<u32> = -(1) // Unary - of Wrapping<u32>: 0xFFFF_FFFF.
 // 256@u8 // Error: direct literal does not fit.
 // 300@i8 // Compile-time error; a typed i32 value 300 converted to i8 instead Aborts.
+// 1e10@i32 // Compile-time error: the truncated value does not fit.
+// let invalid: Wrapping<u32> = -1 // Error: the signed literal -1 is outside u32.
 ```
 
 Rounding and checks apply at every `@` in a chain; an intermediate result is never removed if its rounding or failure would change.
+
+#### 13.5.4.3. Wrapping conversion
+
+`E@wrap<U>` converts an integer or wrapping integer value to the integer or wrapping integer Type `U` by wrapping (§13.3). Every combination of widths and signedness is valid, including the same Type, so a generic body may use it for any proven-PrimitiveInteger Type (§8.4.7.3); floating-point Types, `bool`, `char` and raw pointers are not operands or targets. It never fails. In terms of bits, a narrowing keeps the low N bits, a same-width conversion keeps the bits and a widening extends by the operand's signedness, signed values by sign and unsigned values by zero; the resulting bits are then read as `U`. A zero extension of a signed value is written through the unsigned Type of the same width. The Type argument is mandatory and must be a complete value Type without Semantics annotation.
+
+```kimi
+let a = 300@i32@wrap<u8>          // 44
+let b = 200@u8@wrap<i8>           // -56
+let c = 0xFFFF_FFFF@u32@wrap<i32> // -1
+let d = -1@i32@wrap<u64>          // 0xFFFF_FFFF_FFFF_FFFF: sign-extended.
+let e = -1@i32@wrap<u32>@u64      // 0x0000_0000_FFFF_FFFF: zero-extended through u32.
+
+func zigzagEncode(value: i64) -> u64
+    return ((value << 1) ^ (value >> 63))@wrap<u64>
+```
+
+#### 13.5.4.4. Bit conversion
+
+`E@bits<U>` reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of the same width: `f32` with `i32`, `u32`, `Wrapping<i32>` or `Wrapping<u32>`, and `f64` with `i64`, `u64`, `Wrapping<i64>` or `Wrapping<u64>`, in either direction. Exactly one of the two Types is floating-point; two integers (use `@wrap`), two floating-point Types, different widths, `isize`/`usize` (whose width is platform-dependent), 128-bit integers, `bool` and `char` are rejected. The result is the operand's IEEE 754 binary32 or binary64 encoding or the value it encodes; nothing is normalized, so NaN payloads, the quiet/signaling bit and the sign of zero are preserved, and later floating-point operations keep their ordinary rules. It never fails. It is unavailable while the operand or target Type depends on a Type parameter; inside a generic body a conversion between fixed Types is allowed.
+
+```kimi
+let raw = 1.5@f32@bits<u32>        // 0x3FC0_0000
+let back = raw@bits<f32>           // 1.5
+let quiet = 0x7FC0_0001@u32@bits<f32> // A quiet NaN with payload 1.
+```
 
 ### 13.5.5. Follow, borrow and reborrow
 
@@ -693,7 +786,7 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 ### 13.7.2. Compound assignment
 
-`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement follow the same steps without a right-hand side (§13.2).
+`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement follow the same steps without a right-hand side (§13.2). An integer result that the destination's integer Type cannot represent Aborts before the write; a wrapping integer destination writes the wrapped result (§13.3).
 
 String `+=` remains subject to the deferred operator ownership design of [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
 

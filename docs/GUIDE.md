@@ -39,6 +39,9 @@ public func main()
   UTF-8 `string`, Unit `()`. Unconstrained integer/float literals default to `i32`/`f64`.
 - Established numeric Types never mix implicitly. Convert with `x@i64`; integer range checks and invalid
   float-to-integer conversions Abort. Integer arithmetic is checked; division truncates toward zero.
+- `Wrapping<u32>` is a distinct integer Type whose arithmetic wraps modulo 2ᴺ instead of Aborting (division
+  by zero still Aborts); enter and leave it with `x@Wrapping<u32>` and `w@u32`. `x@wrap<u8>` wraps any
+  integer to another width or signedness, and `f@bits<u32>` reinterprets a float's bits; neither fails.
 - Boolean operators are short-circuit `and`, `or`, and unary `not`; conditions require `bool`.
   Write `not (a == b)` and `a < b and b < c`. Bitwise operators: `& | ^ << >>`.
 - Tuples: `(a, b)`, `(a,)`, fields `.0`, `.1`; Types `(A, B)`, `(A,)`. `(x)` is grouping.

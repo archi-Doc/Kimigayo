@@ -137,6 +137,17 @@ across fragments for style: logical order controls initializer effects and rever
   a negative, zero or positive `i32`. Do not introduce competing comparison Contracts or Boolean
   `lessThan` callbacks for the same purpose.
 
+### 3.4. Integer arithmetic and conversions
+
+- `[Kimi]` Make a wrapping integer Type visible on the line that introduces it: a Type annotation,
+  `@Wrapping<…>` or `@wrap<Wrapping<…>>`. Inference alone hides whether a line wraps or checks
+  ([SPEC §3.1.1.1](spec/03-types-and-values.md#3111-wrapping-integer-types)).
+- `[Kimi]` Write computations that are meant to wrap with `Wrapping<T>` and `@wrap`; do not avoid checks
+  by masking or by computing in a wider Type.
+- `[Kimi]` Enter and leave a wrapping integer Type over the same integer argument with `@`
+  (`x@Wrapping<u64>`, `w@u64`); use `@wrap` only across a width or signedness boundary
+  ([SPEC §13.5.4.1](spec/13-operators-and-assignment.md#13541-wrapping-integer-conversions)).
+
 ## 4. Ownership and borrowing
 
 ### 4.1. Inputs
