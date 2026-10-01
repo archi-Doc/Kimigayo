@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -102,9 +103,20 @@ public ref partial struct TokenReader
     {
         if (found.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || found.Length == 0)
         {
-            // Distinct forms missing at one insertion point, such as the closers of nested groupings, are distinct problems;
-            // a repeated report of one form merges by its key.
-            return this.Diagnostic.ReportSyntax(new SourceSpan(this.PreviousSyntaxEnd, 0), DiagnosticCode.MissingSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+            return this.Missing(form, this.PreviousSyntaxEnd);
+        }
+
+        if (IsCloser(form))
+        {
+            // The tokenizer reported the closer missing at the end of this line, with the grouping it closes: one problem, so the
+            // expectation at the token recalls it, and what the parser expects next at that line end rests on it too.
+            var lineEnd = this.LineEndInsertionPoint;
+            if (this.Diagnostic.RecallError(new SourceSpan(lineEnd, 0), DiagnosticRequirement.SyntaxOf(form)))
+            {
+                var recalled = this.Diagnostic.LastError!.Value;
+                this.lastMissing = (lineEnd, recalled);
+                return recalled;
+            }
         }
 
         // A token is blamed once: the lexical Error that rejected it, or an earlier expectation at it, explains this recovery too.
@@ -117,7 +129,18 @@ public ref partial struct TokenReader
     /// <param name="at">The insertion point.</param>
     /// <returns>The key of the Error that explains the recovery.</returns>
     internal DiagnosticKey Missing(SyntaxForm form, int at)
-        => this.Diagnostic.ReportSyntax(new SourceSpan(at, 0), DiagnosticCode.MissingSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+    {
+        // The first form missing at an insertion point is the problem; a later form the parser expects there is its consequence,
+        // except a closer: the closers of nested groupings are distinct problems, each merging by its own key.
+        if (this.lastMissing is { } last && last.At == at && !IsCloser(form))
+        {
+            return last.Key;
+        }
+
+        var key = this.Diagnostic.ReportSyntax(new SourceSpan(at, 0), DiagnosticCode.MissingSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+        this.lastMissing = (at, key);
+        return key;
+    }
 
     /// <summary>Reports that a form of syntax is not permitted where it stands. The reader is unchanged.</summary>
     /// <param name="form">The misplaced form.</param>
@@ -128,5 +151,36 @@ public ref partial struct TokenReader
         var at = span ?? this.currentToken.Span;
         return this.Diagnostic.RecallError(at) ? this.Diagnostic.LastError!.Value
             : this.Diagnostic.ReportSyntax(at, DiagnosticCode.MisplacedSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+    }
+
+    private static bool IsCloser(SyntaxForm form)
+        => form is SyntaxForm.CloseParenthesis or SyntaxForm.CloseBracket or SyntaxForm.CloseBrace or SyntaxForm.CloseAngleBracket;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void NoteMissingCloser(int index)
+    {
+        var token = this.tokens[index];
+        if (token.Kind is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace))
+        {
+            return;
+        }
+
+        // The tokenizer reported the closer right after the last written token before it (Tokenizer.InsertionPoint).
+        var at = token.Span.Start;
+        for (var i = index - 1; i >= 0; i--)
+        {
+            if (!this.tokens[i].IsMissing && this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+            {
+                at = TokenHelper.WrittenEnd(this.tokens[i], this.sourceText);
+                break;
+            }
+        }
+
+        if ((this.lastMissing is { } last && last.At == at) || !this.Diagnostic.RecallError(new SourceSpan(at, 0), DiagnosticRequirement.SyntaxOf(FormOf(token.Kind))))
+        {
+            return;
+        }
+
+        this.lastMissing = (at, this.Diagnostic.LastError!.Value);
     }
 }

@@ -37,10 +37,9 @@
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseBrace", "After": "{a", "Related": [ { "Role": "opening delimiter", "At": "{", "Length": 1 } ] } ] },
   { "Name": "unclosed-type-arguments", "Source": "struct Box<T>\n    public var item: T\nfunc f(x: Box<i32) => ()\npublic func main() => ()\n", "Intended": "a Type argument list closed by the parameter list's parenthesis instead of '>'",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "CloseAngleBracket", "At": "i32)", "Skip": 3, "Length": 1, "Found": ")" } ] },
-  { "Name": "missing-type-argument", "Source": "struct Box<T>\n    public var item: T\nfunc f(x: Box<\n", "Intended": "a Type argument list with its argument and closer missing at the end of the line; the parameter list is left open as well, and the function has no body",
+  { "Name": "missing-type-argument", "Source": "struct Box<T>\n    public var item: T\nfunc f(x: Box<\n", "Intended": "a Type argument list with its argument and closer missing at the end of the line; the parameter list is left open as well, and the body expected at the same point rests on the missing Type",
     "Records": [
       { "Code": "MissingSyntax_Kd", "Form": "Type", "After": "x: Box<" },
-      { "Code": "MissingSyntax_Kd", "Form": "Body", "After": "x: Box<" },
       { "Code": "MissingSyntax_Kd", "Form": "CloseParenthesis", "After": "x: Box<", "Related": [ { "Role": "opening delimiter", "At": "f(", "Skip": 1, "Length": 1 } ] },
       { "Code": "MissingStartupBody_Kd" } ] },
   { "Name": "stray-closer", "Source": "public func main()\n    var x = (1 + 2))\n", "Intended": "a closing parenthesis with no open grouping; the statement end does not report it again",
@@ -230,5 +229,19 @@
   { "Name": "valid-patterns-and-operators", "Source": "enum E\n    A(i32)\n    B\nfunc f() -> i32? => .Some(1)\nfunc g() -> i32?\n    let v = -(try f())\n    return .Some(v)\nfunc h<length N>(values: [N of i32]) => ()\nfunc k(cb: ((i32) -> i32)?) => ()\nstruct S\n    var v: i32 = 0\npublic func main()\n    let c = true\n    let v = if c => (if c => 1 else => 2) else => 3\n    if c => while c => ()\n    while (if c => true else => false) => ()\n    let r = (1..2)\n    let n = 2\n    let a = [(n + 1) of 0]\n    var b: [3 of i32] = [0, 0, 0]\n    let x = 1\n    let w = x@wrap<i64>\n    let q = 1\n    let y = q@move\n    for _ in [1, 2] => ()\n    let z = 1\n    let m = func [z@move] () => z\n    let e = E.B\n    match e\n        .A(let value) => ()\n        E.B => ()\n    match x\n        1 => ()\n        -1 => ()\n        _ => ()\n    let s = S.init()\n", "Intended": "the valid counterparts of the pattern, operator, Type and directive cases publish nothing",
     "Records": [] },
   { "Name": "if-condition-missing", "Source": "#if\n    ()\npublic func main()\n    ()\n", "Intended": "a #if directive without a condition; the condition is a recovery, so the evaluator does not judge it",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "#if" } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "#if" } ] },
+  { "Name": "for-header-cut", "Source": "public func main()\n    for (a, b", "Intended": "a for header cut inside its binding list at the end of the source; 'in', the iterable and the body expected at the same point rest on the missing closer",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseParenthesis", "After": "a, b", "Related": [{"Role": "opening delimiter", "At": "(a", "Skip": 0, "Length": 1}] } ] },
+  { "Name": "parameter-list-cut", "Source": "func f(\npublic func main()\n    ()\n", "Intended": "a parameter list cut at the end of its line; the body expected at the same point rests on the missing closer",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseParenthesis", "After": "f(", "Related": [{"Role": "opening delimiter", "At": "f(", "Skip": 1, "Length": 1}] } ] },
+  { "Name": "capture-list-unclosed", "Source": "public func main()\n    let x = 1\n    let g = func [x () => x\n", "Intended": "a capture list without its closer; the parser's expectation at '(' recalls the tokenizer's report at the line end, and the parameter list expected there rests on it",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseBracket", "After": "=> x", "Related": [{"Role": "opening delimiter", "At": "[x", "Skip": 0, "Length": 1}] } ] },
+  { "Name": "else-without-if", "Source": "public func main()\n    let c = true\n    else\n        ()\n", "Intended": "an else that no if body precedes; its indented body is read as part of the recovery",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "ElseWithoutIf", "At": "else" } ] },
+  { "Name": "else-without-if-arrow", "Source": "public func main()\n    let c = true\n    else => ()\n", "Intended": "an else that no if body precedes, with an expression body",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "ElseWithoutIf", "At": "else" } ] },
+  { "Name": "argument-without-comma", "Source": "func f(a: i32, b: i32) => ()\npublic func main()\n    f(1 2)\n", "Intended": "two arguments without a comma; the last argument read is a recovery, so overload selection rests on the Error",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Comma", "At": "1 2)", "Skip": 2, "Length": 1, "Found": "2" } ] },
+  { "Name": "while-header-cut", "Source": "public func main()\n    while", "Intended": "a while header cut after its keyword at the end of the source; the body expected at the same point rests on the missing condition",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "while" } ] }
 ]

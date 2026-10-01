@@ -38,6 +38,9 @@ public ref partial struct TokenReader
     private readonly Token endToken;
     private Token currentToken;
 
+    // The last form reported missing and its insertion point: later non-closer forms expected there are its consequences.
+    private (int At, DiagnosticKey Key)? lastMissing;
+
     /// <summary>
     /// Gets the current token position.
     /// </summary>
@@ -137,6 +140,29 @@ public ref partial struct TokenReader
             }
 
             return 0;
+        }
+    }
+
+    /// <summary>Gets the insertion point at the end of the current line: after the last written token before the next line boundary.</summary>
+    internal readonly int LineEndInsertionPoint
+    {
+        get
+        {
+            var last = -1;
+            for (var i = this.Position; i < this.tokens.Length; i++)
+            {
+                if (this.tokens[i].Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+                {
+                    break;
+                }
+
+                if (!this.tokens[i].IsMissing)
+                {
+                    last = i;
+                }
+            }
+
+            return last < 0 ? this.PreviousSyntaxEnd : TokenHelper.WrittenEnd(this.tokens[last], this.sourceText);
         }
     }
 
@@ -689,6 +715,16 @@ Loop:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void MoveTo(int position)
     {
+        // A synthesized closer the reader passes is the tokenizer's missing form at its insertion point; what the parser expects
+        // there next rests on it.
+        for (var i = this.Position; i < position && i < this.tokens.Length; i++)
+        {
+            if (this.tokens[i].IsMissing)
+            {
+                this.NoteMissingCloser(i);
+            }
+        }
+
         this.Position = position;
         this.currentToken = (uint)position < (uint)this.tokens.Length ? this.tokens[position] : this.endToken;
     }

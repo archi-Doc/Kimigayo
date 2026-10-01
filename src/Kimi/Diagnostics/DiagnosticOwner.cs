@@ -357,8 +357,9 @@ public sealed class DiagnosticOwner
     /// <param name="module">The module.</param>
     /// <param name="source">The source table index of the document.</param>
     /// <param name="range">The span.</param>
+    /// <param name="requirement">The requirement the Error must have reported; any syntax requirement by default.</param>
     /// <returns>The key, or <see langword="null"/> when no such Error was recorded.</returns>
-    internal DiagnosticKey? SyntaxErrorAt(int module, int source, SourceSpan range)
+    internal DiagnosticKey? SyntaxErrorAt(int module, int source, SourceSpan range, DiagnosticRequirement? requirement = null)
     {
         if ((uint)module >= (uint)this.syntax.Count)
         {
@@ -370,6 +371,7 @@ public sealed class DiagnosticOwner
         {
             var key = facts[i].Key;
             if (key.Subject is null && key.Source == source && key.Start == range.Start && key.Length == range.Length && key.Requirement.Partition == DiagnosticPartition.Syntax &&
+                (requirement is null || key.Requirement == requirement.Value) &&
                 DiagnosticEntries.TryGet(facts[i].Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
             {
                 return key;

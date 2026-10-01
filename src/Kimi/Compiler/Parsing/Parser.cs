@@ -4007,6 +4007,7 @@ ProcessPrefix:
         var arguments = default(TemporaryKotoList);
         var labels = default(TemporaryList<string?>);
         var hasLabels = false;
+        Koto? last = null;
         argumentLabels = default;
 
         var tokenKind = reader.CurrentTokenKind;
@@ -4038,10 +4039,12 @@ ProcessPrefix:
                 var positional = ParseRequiredExpression(ref reader);
                 reader.CodeContext.RecordRecovery(positional, misplaced);
                 arguments.Add(positional);
+                last = positional;
                 goto Separator;
             }
 
-            arguments.Add(ParseRequiredExpression(ref reader));
+            last = ParseRequiredExpression(ref reader);
+            arguments.Add(last);
 
 Separator:
 
@@ -4064,7 +4067,12 @@ Separator:
 
             if (tokenKind != TokenKind.CloseParenthesis)
             {
-                reader.TryConsume(TokenKind.Comma, out _);
+                if (!reader.TryConsume(TokenKind.Comma, out _) && last is not null)
+                {
+                    // The list's shape is uncertain from here: the last argument is a recovery, so overload selection rests on the Error.
+                    reader.CodeContext.RecordRecovery(last, reader.Diagnostic.LastError!.Value);
+                }
+
                 reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
 
                 if (reader.TryConsume(TokenKind.Comma))
@@ -4214,6 +4222,19 @@ Loop:
                         IdentifierNameKoto.TryCreate(ref reader, token, out var identifier))
                     {
                         return identifier;
+                    }
+
+                    if (token.Kind == TokenKind.Else)
+                    {
+                        // An else that no if body precedes introduces a body of its own; the body is read as part of the recovery.
+                        var orphan = reader.Unexpected(SyntaxForm.ElseWithoutIf, token.Span);
+                        var end = token.Span.End;
+                        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                        {
+                            end = ParseRequiredBody(ref reader).Span.End;
+                        }
+
+                        return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end)) { Cause = orphan };
                     }
 
                     return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.Expression, token) };

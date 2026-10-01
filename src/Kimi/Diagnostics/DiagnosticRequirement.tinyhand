@@ -378,6 +378,11 @@
     Phrase="Pattern"
     Advice="A Pattern is a literal, '_', 'let name', 'var name', a Tuple of Patterns or a case such as '.Circle(let radius)'."
 
+  + Name="Syntax.ElseWithoutIf"
+    Description="an else branch follows an if body"
+    Phrase="'else' without an if"
+    Advice="Write else at the indentation of the if whose body precedes it; 'require condition else => body' needs its condition on the same line."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

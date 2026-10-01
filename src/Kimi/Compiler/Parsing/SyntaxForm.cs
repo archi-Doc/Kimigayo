@@ -236,4 +236,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>A Pattern.</summary>
     Pattern,
+
+    /// <summary>An 'else' that no if body precedes; its own body is read as part of the recovery.</summary>
+    ElseWithoutIf,
 }

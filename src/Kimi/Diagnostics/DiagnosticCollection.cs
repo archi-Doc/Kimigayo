@@ -175,11 +175,12 @@ public sealed class DiagnosticCollection
 
     /// <summary>Makes the lexical Error that rejected a token of this target's document the cause of the parser's recovery, without
     /// reporting the token again (SPEC 23.3.6.4).</summary>
-    /// <param name="range">The rejected token's span.</param>
+    /// <param name="range">The rejected token's span, or the insertion point of a missing form.</param>
+    /// <param name="requirement">The form whose Error is recalled; any syntax Error at the range by default.</param>
     /// <returns><see langword="true"/> when such an Error was recorded; it is then <see cref="LastError"/>.</returns>
-    internal bool RecallError(SourceSpan range)
+    internal bool RecallError(SourceSpan range, DiagnosticRequirement? requirement = null)
     {
-        if (this.Document is null || this.Owner.SyntaxErrorAt(this.CurrentModule(), this.SourceOf(this.Document), range) is not { } key)
+        if (this.Document is null || this.Owner.SyntaxErrorAt(this.CurrentModule(), this.SourceOf(this.Document), range, requirement) is not { } key)
         {
             return false;
         }
