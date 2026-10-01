@@ -461,6 +461,7 @@ public sealed partial class Binding
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
         this.ResetPrerequisites();
+        this.partPrerequisites.Clear();
         this.obligations.Clear();
         this.obligationSet.Clear();
         this.associatedOrigins.Clear();
@@ -477,16 +478,20 @@ public sealed partial class Binding
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
+        => InvalidDeclarationContextCause(declaration) is not null;
+
+    // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
+    private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
             if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
             {
-                return true;
+                return node;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static bool UnresolvedTypeDeclarationContext(Koto declaration)

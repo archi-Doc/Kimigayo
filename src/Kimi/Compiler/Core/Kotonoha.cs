@@ -67,7 +67,14 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     public IReadOnlyList<SourceDocument> SourceDocuments => this.sourceDocuments;
 
+    /// <summary>Gets the syntax Errors at which the parser skipped a declaration of this source unit; a check over the member set rests on them.</summary>
+    [IgnoreMember]
+    internal IReadOnlyList<DiagnosticKey>? OmittedDeclarations => this.omittedDeclarations;
+
     private List<Documentation.DocumentationSource>? documentationSources;
+
+    [IgnoreMember]
+    private List<DiagnosticKey>? omittedDeclarations;
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
@@ -209,6 +216,11 @@ public sealed partial class Kotonoha
 
         this.sourceDocuments.Add(sourceDocument);
     }
+
+    /// <summary>Records that the parser skipped a declaration at a syntax Error, so the member set of this source unit is incomplete.</summary>
+    /// <param name="cause">The key of the syntax Error.</param>
+    internal void RecordOmission(DiagnosticKey cause)
+        => (this.omittedDeclarations ??= []).Add(cause);
 
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>

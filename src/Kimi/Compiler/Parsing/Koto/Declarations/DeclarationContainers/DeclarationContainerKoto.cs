@@ -1011,7 +1011,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="token">The unsupported declaration's first token.</param>
     protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
     {
-        reader.Expect(SyntaxForm.Declaration, token);
+        reader.CodeContext.Kotonoha.RecordOmission(reader.Expect(SyntaxForm.Declaration, token));
         Parser.SkipDeclarationLine(ref reader);
     }
 

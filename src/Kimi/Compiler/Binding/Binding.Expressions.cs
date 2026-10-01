@@ -513,7 +513,13 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.Unsupported, true);
                 }
 
-                return HasLengthParameter(container) ? this.Fail(node, BindingFailure.InvalidTypeFormation) : Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
+                if (LengthSlot(container) is { } slot)
+                {
+                    this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
+                    return this.Fail(node, BindingFailure.InvalidTypeFormation);
+                }
+
+                return Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
             case FunctionKoto function:
                 return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:

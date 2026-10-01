@@ -2819,7 +2819,7 @@ CloseParameters:
         if (reader.ModifierKind != ModifierKind.NoModifier && !IntroducesDeclaration(ref reader))
         {
             // Modifiers introduce a declaration; the line and the body it would have introduced are skipped as one.
-            reader.Expect(SyntaxForm.Declaration);
+            reader.CodeContext.Kotonoha.RecordOmission(reader.Expect(SyntaxForm.Declaration));
             SkipDeclarationLine(ref reader);
             return null;
         }
@@ -4765,9 +4765,10 @@ Loop:
                 var start = reader.Read().Span.Start;
                 var name = ParseName(ref reader);
                 typeKoto = new LengthParameterKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), (name as IdentifierNameKoto)?.IdentifierName ?? string.Empty);
-                if (!allowLength)
+                if (!allowLength && typeKoto.Unexpected(SyntaxForm.LengthParameter) is { } cause)
                 {
-                    typeKoto.Unexpected(SyntaxForm.LengthParameter); // The slot stays in the list; Binding keeps it out of the Type's components.
+                    // The slot stays in the list as a recovery: Binding keeps it out of the Type's components and rests on the Error.
+                    reader.CodeContext.RecordRecovery(typeKoto, cause);
                 }
             }
             else if (specialization)

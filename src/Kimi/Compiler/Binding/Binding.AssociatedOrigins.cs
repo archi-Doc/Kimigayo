@@ -184,6 +184,7 @@ public sealed partial class Binding
                 var syntax = application.ArgumentNodes[i];
                 if (syntax is not IdentifierNameKoto { IdentifierName: not ("_" or "static") } name)
                 {
+                    this.AddPrerequisite(node, syntax); // A parameter the parser rejected explains the failure.
                     this.Fail(node, BindingFailure.InvalidOrigin);
                     continue;
                 }
@@ -229,6 +230,7 @@ public sealed partial class Binding
             {
                 if (this.BindOrigin(application.ArgumentNodes[i], scope) is not { } origin)
                 {
+                    this.AddPrerequisite(application, application.ArgumentNodes[i]);
                     return this.Fail(application, BindingFailure.InvalidOrigin);
                 }
 

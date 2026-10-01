@@ -8,17 +8,17 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 8.1: length slots belong only to functions; a nominal header with one is invalid, but its recovery Type is kept.
-    private static bool HasLengthParameter(DeclarationContainerKoto container)
+    private static LengthParameterKoto? LengthSlot(DeclarationContainerKoto container)
     {
         for (var i = 0; i < container.GenericParameterNodes.Count; i++)
         {
-            if (container.GenericParameterNodes[i] is LengthParameterKoto)
+            if (container.GenericParameterNodes[i] is LengthParameterKoto slot)
             {
-                return true;
+                return slot;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
@@ -270,9 +270,10 @@ public sealed partial class Binding
                 }
 
                 parameters = container.GenericParameterNodes;
-                if (HasLengthParameter(container))
+                if (LengthSlot(container) is { } slot)
                 {
-                    this.Fail(node, BindingFailure.InvalidTypeFormation); // The invalid header is kept for recovery.
+                    this.AddPrerequisite(node, slot); // The invalid header is kept for recovery; a slot the parser reported explains the failure.
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
 
                 origins = container.OriginNames;
