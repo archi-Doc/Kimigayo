@@ -203,7 +203,15 @@ internal sealed partial class BodyLowering
                     var source = operation.Source;
                     var number = source is Parsing.PrefixMinusKoto or Parsing.PrefixPlusKoto
                         ? ((Parsing.UnaryKoto)source).Operand as Parsing.NumberLiteralKoto : source as Parsing.NumberLiteralKoto;
-                    if (number is not null)
+                    if (source is Parsing.ConversionKoto { FoldedConstant: { } folded })
+                    {
+                        // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded payload.
+                        if (folded != value.Constant || !ReferenceEquals(type, SignatureType(lowering, source.BoundType)))
+                        {
+                            return false;
+                        }
+                    }
+                    else if (number is not null)
                     {
                         if (!ReferenceEquals(type, SignatureType(lowering, source.BoundType)) || !number.TryGetIntegerMagnitude(out var magnitude) ||
                             !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
@@ -266,7 +274,7 @@ internal sealed partial class BodyLowering
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :
-            binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
+            binding is ConversionBinding.Integer or ConversionBinding.Wrap ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
             binding == ConversionBinding.Floating ? FloatingTypes.Supports(source) && FloatingTypes.Supports(target) :
             binding == ConversionBinding.Numeric &&
             ((FloatingTypes.Supports(source) && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||

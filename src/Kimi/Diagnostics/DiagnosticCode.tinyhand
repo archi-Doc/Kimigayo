@@ -667,6 +667,11 @@
     Category="Language"
     Message="@copy requires a value whose Type is proven Copy; write @move to transfer it, or borrow it with @ref or @uniq"
 
+  + Name="InvalidWrapConversion_Kd"
+    Category="Language"
+    Message="@wrap<U> converts an integer or wrapping integer value to an integer or wrapping integer Type U only"
+    Advice="Write @U for a range-checked numeric conversion, or @bits<U> to reinterpret the bits of a floating-point value"
+
   + Name="MissingSpecializationTarget_Kd"
     Category="Language"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"

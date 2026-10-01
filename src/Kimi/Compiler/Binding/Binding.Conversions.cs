@@ -27,7 +27,76 @@ public sealed partial class Binding
 
     // SPEC 13.5.4.1: the explanation of a numeric conversion rejected for a different integer argument.
     internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4.1)";
-    internal const string WrappingConversionAdvice = "Convert through the integer argument first, as in x@U@Wrapping<U> or w@U@V";
+    internal const string WrappingConversionAdvice = "Convert through the integer argument first, as in x@U@Wrapping<U> or w@U@V, or wrap the value with x@wrap<Wrapping<U>> or w@wrap<V>";
+
+    // SPEC 13.5.4.3: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
+    // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.
+    private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
+    {
+        var target = this.BindType(argument, scope);
+        if (operation != Constants.WrapOperation)
+        {
+            // @bits is bound by a later unit.
+            this.BindNode(conversion.Left, scope);
+            return this.Fail(conversion, BindingFailure.Unsupported, true);
+        }
+
+        var operand = KotoHelper.UnwrapParentheses(conversion.Left);
+        var number = operand as NumberLiteralKoto ?? (operand is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null);
+        if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
+        {
+            var width = ScalarTypes.Width(target, this.compilation.PointerWidth);
+            if (width == 0)
+            {
+                // A generic U: the literal must fit every instance, so it is an ordinary generic literal and no wrapping happens.
+                conversion.ConversionBinding = ConversionBinding.Literal;
+                Complete(conversion.Right, target);
+                return Complete(conversion, this.BindNode(conversion.Left, scope, target) is null ? null : target);
+            }
+
+            if (!number.TryGetIntegerMagnitude(out var magnitude))
+            {
+                return this.Fail(conversion, BindingFailure.InvalidLiteral);
+            }
+
+            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
+            var payload = operand is PrefixMinusKoto ? (UInt128)0 - magnitude : magnitude;
+            conversion.FoldedConstant = ScalarTypes.Normalize(unchecked((Int128)payload), width);
+            for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
+            {
+                Complete(node, target);
+                if (ReferenceEquals(node, number))
+                {
+                    break;
+                }
+            }
+
+            conversion.ConversionBinding = ConversionBinding.Wrap;
+            Complete(conversion.Right, target);
+            return Complete(conversion, target);
+        }
+
+        var source = this.BindNode(conversion.Left, scope);
+        if (source is null || target is null)
+        {
+            return Complete(conversion, null);
+        }
+
+        if (ReferenceEquals(source, BoundType.Never))
+        {
+            conversion.ConversionBinding = ConversionBinding.Abrupt;
+            return Complete(conversion, BoundType.Never);
+        }
+
+        if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
+        {
+            return this.Fail(conversion, BindingFailure.InvalidWrapConversion);
+        }
+
+        conversion.ConversionBinding = ConversionBinding.Wrap;
+        Complete(conversion.Right, target);
+        return Complete(conversion, target);
+    }
 
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
@@ -364,6 +433,11 @@ public sealed partial class Binding
 
             this.Fail(conversion.Right, BindingFailure.Unsupported, true);
             return this.Fail(conversion, BindingFailure.Unsupported, true);
+        }
+
+        if (syntax is TypeSemanticsKoto { ConversionOperation: { } operation, Type: { } argument })
+        {
+            return this.BindWrapConversion(conversion, scope, argument, operation);
         }
 
         var target = this.BindType(conversion.Right, scope);

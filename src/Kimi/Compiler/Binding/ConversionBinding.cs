@@ -10,6 +10,9 @@ internal enum ConversionBinding : byte
     Floating,
     Abrupt,
     Numeric,
+
+    // SPEC 13.5.4.3: E@wrap<U> wraps an integer value to U; it never fails, and a direct literal is folded.
+    Wrap,
     Identity,
 
     // SPEC 13.5.3: @move transfers a Movable Place, even a Copy one.

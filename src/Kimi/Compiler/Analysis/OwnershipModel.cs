@@ -483,6 +483,9 @@ internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Star
     // SPEC 4.6.9: the Constant of a Convert value that makes an integer position an isize one; a value isize cannot hold
     // becomes -1, which the position's one bounds check rejects.
     internal const int PositionConversion = 1;
+
+    // SPEC 13.5.4.3: the Constant of a Convert value that wraps an integer to the target's width, without a check.
+    internal const int WrapConversion = 2;
 }
 
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.

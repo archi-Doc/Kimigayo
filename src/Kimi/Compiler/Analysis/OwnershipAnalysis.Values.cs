@@ -233,6 +233,15 @@ public sealed partial class OwnershipAnalysis
 
     private int ConversionValue(ConversionKoto conversion)
     {
+        if (conversion.FoldedConstant is { } folded)
+        {
+            // SPEC 13.5.4.2: a direct literal converted at compile time is a constant of the target Type; the literal itself,
+            // which may not fit any Type, is never evaluated.
+            var constant = this.Temporary(conversion);
+            this.SetValue(this.Value(constant), OwnershipValueKind.Constant, [], constant: folded);
+            return constant;
+        }
+
         // SPEC 13.5.3: a transfer consumes its Place by Move even when the Type is Copy; a temporary passes its ownership.
         var transfer = conversion.ConversionBinding == ConversionBinding.Transfer;
         var identity = conversion.ConversionBinding == ConversionBinding.Identity || transfer;
@@ -262,7 +271,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(conversion);
-        this.SetValue(this.Value(output), OwnershipValueKind.Convert, [this.Value(input)]);
+        this.SetValue(this.Value(output), OwnershipValueKind.Convert, [this.Value(input)], constant: conversion.ConversionBinding == ConversionBinding.Wrap ? OwnershipValue.WrapConversion : 0);
         return output;
     }
 }

@@ -129,6 +129,9 @@ internal enum BindingFailure : byte
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
+
+    // SPEC 13.5.4.3: @wrap converts integer and wrapping integer values only.
+    InvalidWrapConversion,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,

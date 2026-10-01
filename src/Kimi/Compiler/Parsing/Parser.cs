@@ -3424,6 +3424,7 @@ CloseParameters:
                     // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
                     typeKoto = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: true);
                     CheckAdaptationOrigins(ref reader, typeKoto);
+                    typeKoto = ConversionOperationTarget(ref reader, typeKoto);
                 }
 
                 if (reader.IsCurrentIdentifier("during"))
@@ -3661,6 +3662,35 @@ ProcessPrefix:
         }
 
         return ParsePrimaryExpression(ref reader);
+    }
+
+    /// <summary>
+    /// Recognizes the conversion operations <c>@wrap&lt;U&gt;</c> and <c>@bits&lt;U&gt;</c> (SPEC §2.5.1, §13.5.4): <c>wrap</c> or
+    /// <c>bits</c> with adjacent Type arguments, parsed as a generic Type application and re-formed as an operation target.
+    /// </summary>
+    private static Koto ConversionOperationTarget(ref TokenReader reader, Koto target)
+    {
+        var inner = target is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : target;
+        var generic = inner as GenericsKoto;
+        var operation = generic is { TypeArguments.Count: > 0 } ? OperationName(generic.Identifier) : null;
+        if (operation is not (Constants.WrapOperation or Constants.BitsOperation))
+        {
+            return target;
+        }
+
+        if (generic!.TypeArguments.Count != 1)
+        {
+            reader.Diagnostic.Add(generic.Span, DiagnosticCode.UnexpectedToken_Kd, "exactly one Type argument: @" + operation + "<Type>");
+        }
+
+        return new TypeSemanticsKoto(ref reader, target.Span, operation == Constants.WrapOperation ? Constants.WrapOperation : Constants.BitsOperation, generic.TypeArguments[0]);
+
+        static string? OperationName(Koto? identifier) => identifier switch
+        {
+            IdentifierNameKoto name => name.IdentifierName,
+            TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } simple => simple.Identifier,
+            _ => null,
+        };
     }
 
     /// <summary>

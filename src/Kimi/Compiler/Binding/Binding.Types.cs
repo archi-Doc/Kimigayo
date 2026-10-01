@@ -17,7 +17,7 @@ public sealed partial class Binding
 
     private static Koto UnwrapTypeSyntax(Koto node)
     {
-        while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
+        while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
         {
             node = inner;
         }

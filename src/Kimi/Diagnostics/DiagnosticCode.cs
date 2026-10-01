@@ -139,6 +139,7 @@ public enum DiagnosticCode
     ReceiverShapeMismatch_Kd,
     BareOwningShorthand_Kd,
     NonCopyOperand_Kd,
+    InvalidWrapConversion_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,
 

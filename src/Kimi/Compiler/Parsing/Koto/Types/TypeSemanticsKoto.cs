@@ -25,7 +25,12 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     /// <inheritdoc/>
     public override string? SemanticsParameter
-        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.Type is null ? null : this.nameOrSemanticsParameter;
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.Type is null || this.isConversionOperation ? null : this.nameOrSemanticsParameter;
+
+    /// <summary>Gets the conversion operation <c>wrap</c> or <c>bits</c> whose Type argument <see cref="Type"/> holds (SPEC 13.5.4), or null.</summary>
+    public string? ConversionOperation => this.isConversionOperation ? this.nameOrSemanticsParameter : null;
+
+    private bool isConversionOperation;
 
     private TokenKind coreTypeToken;
 
@@ -114,6 +119,22 @@ public sealed class TypeSemanticsKoto : TypeKoto
         this.nameOrSemanticsParameter = operation;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for the conversion operations <c>@wrap&lt;U&gt;</c> and <c>@bits&lt;U&gt;</c> (SPEC 13.5.4).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The source span of the operation and its argument.</param>
+    /// <param name="operation">The operation name, <c>wrap</c> or <c>bits</c>.</param>
+    /// <param name="typeArgument">The Type argument <c>U</c>.</param>
+    internal TypeSemanticsKoto(ref TokenReader reader, SourceSpan range, string operation, Koto typeArgument)
+        : base(ref reader, range)
+    {
+        this.coreTypeToken = TokenKind.Identifier;
+        this.semanticsKind = SemanticsKind.Owner;
+        this.nameOrSemanticsParameter = operation;
+        this.Type = typeArgument;
+        this.isConversionOperation = true;
+        typeArgument.Parent = this;
+    }
+
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a compound type with explicit semantics.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
@@ -160,6 +181,15 @@ public sealed class TypeSemanticsKoto : TypeKoto
     internal void WriteTypeTo(ref IndentedStringBuilder builder, bool writeBorrowOrigin)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
+
+        if (this.isConversionOperation)
+        {
+            builder.Append(this.nameOrSemanticsParameter);
+            builder.Append('<');
+            this.Type!.WriteTo(ref builder);
+            builder.Append('>');
+            return;
+        }
 
         if (this.Type is not null)
         {

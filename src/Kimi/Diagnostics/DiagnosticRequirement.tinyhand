@@ -163,6 +163,9 @@
   + Name="Binding.NonCopyOperand"
     Description="the @copy operand is proven Copy"
 
+  + Name="Binding.InvalidWrapConversion"
+    Description="the @wrap operand and target are integer or wrapping integer Types"
+
   + Name="Binding.MissingSpecializationTarget"
     Description="a generic function matches the specialization"
 

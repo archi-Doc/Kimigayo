@@ -103,6 +103,12 @@ public static class Constants
     /// <summary>The postfix follow operation written after <c>@</c> (SPEC §13.5.5.1); an ordinary Name elsewhere.</summary>
     public const string FollowOperation = "follow";
 
+    /// <summary>The wrapping conversion written as <c>@wrap&lt;U&gt;</c> (SPEC §13.5.4.3); an ordinary Name elsewhere.</summary>
+    public const string WrapOperation = "wrap";
+
+    /// <summary>The bit conversion written as <c>@bits&lt;U&gt;</c> (SPEC §13.5.4.4); an ordinary Name elsewhere.</summary>
+    public const string BitsOperation = "bits";
+
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 

@@ -13,6 +13,14 @@ internal sealed partial class BodyLowering
     private bool[] folded = [];
     private Int128[] foldedValues = [];
 
+    // SPEC 13.5.4.3: a wrapping conversion keeps the low bits or extends by the operand's signedness, without a check.
+    internal static ConversionPlan PlanWrap(BoundType source, BoundType target, int pointerWidth)
+    {
+        var sourceWidth = ScalarTypes.Width(source, pointerWidth);
+        var targetWidth = ScalarTypes.Width(target, pointerWidth);
+        return new(sourceWidth == targetWidth ? null : sourceWidth > targetWidth ? "trunc" : ScalarTypes.Signed(source) ? "sext" : "zext", null, null, 0, 0);
+    }
+
     internal static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
     {
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
@@ -98,8 +106,9 @@ internal sealed partial class BodyLowering
         for (var id = 0; id < count; id++)
         {
             var kind = body.Values[id].Kind;
-            var plan = kind == OwnershipValueKind.Convert
-                ? PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth) : default;
+            var plan = kind != OwnershipValueKind.Convert ? default
+                : body.Values[id].Constant == OwnershipValue.WrapConversion ? PlanWrap(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth)
+                : PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth);
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && plan.Operator is null)
             {
                 // SPEC 4.6.9: an unsigned position of the same width reinterpreted as isize is negative exactly when isize
