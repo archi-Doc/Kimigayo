@@ -136,6 +136,11 @@ public sealed partial class Binding
                 // Whether main returns Unit cannot be decided when its written result Type failed.
                 issue.Node.ReportDerived(DiagnosticRequirement.Startup, this.CauseKeys(result));
             }
+            else if (issue.Code == DiagnosticCode.MissingStartupBody_Kd && this.compilation.Kotonoha.OmittedDeclarations is { Count: > 0 } omitted)
+            {
+                // The member set is incomplete where the parser skipped a declaration; whether a startup body exists rests on those Errors.
+                issue.Node.ReportDerived(DiagnosticRequirement.Startup, [.. omitted]);
+            }
             else
             {
                 issue.Node.Report(DiagnosticRequirement.Startup, issue.Code);

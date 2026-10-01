@@ -72,7 +72,7 @@ public static partial class Parser
 
         var right = ParseOriginExpression(ref reader);
         var relation = new OriginRelationKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(left.Span.End, right.Span.End)), left, right, equality);
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        reader.ExpectLineEnd();
         return relation;
     }
 

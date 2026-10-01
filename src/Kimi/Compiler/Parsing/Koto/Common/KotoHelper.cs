@@ -150,7 +150,8 @@ public static partial class KotoHelper
             }
             else
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
@@ -173,7 +174,7 @@ public static partial class KotoHelper
 
         if (expectsIdentifier)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         if (reader.CurrentTokenKind == TokenKind.Separator)
@@ -225,7 +226,8 @@ public static partial class KotoHelper
             }
             else if (token.Kind != TokenKind.Dot)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
@@ -234,7 +236,7 @@ public static partial class KotoHelper
 
         if (expectsIdentifier)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         return list;

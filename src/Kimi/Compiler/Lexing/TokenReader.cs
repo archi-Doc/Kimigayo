@@ -23,7 +23,7 @@ public readonly record struct TokenContext(AttributeKoto? AttributeKoto, Modifie
 /// The reader is a cursor over a contiguous token span. Lookahead is exposed through
 /// <see cref="PeekKind"/> and <see cref="TrySkipSeparatorsTo"/> instead of copying the reader.
 /// </remarks>
-public ref struct TokenReader
+public ref partial struct TokenReader
 {
     #region FieldsAndProperties
 
@@ -37,6 +37,9 @@ public ref struct TokenReader
     private readonly ReadOnlySpan<Token> tokens;
     private readonly Token endToken;
     private Token currentToken;
+
+    // The last form reported missing and its insertion point: later non-closer forms expected there are its consequences.
+    private (int At, DiagnosticKey Key)? lastMissing;
 
     /// <summary>
     /// Gets the current token position.
@@ -123,19 +126,43 @@ public ref struct TokenReader
 
     internal int DocumentationExcludedStart { get; set; }
 
+    /// <summary>Gets the end of the last written token before the current position: where a missing form is inserted.</summary>
     internal readonly int PreviousSyntaxEnd
     {
         get
         {
             for (var i = this.Position - 1; i >= 0; i--)
             {
-                if (this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+                if (!this.tokens[i].IsMissing && this.tokens[i].Kind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
                 {
-                    return this.tokens[i].Span.End;
+                    return TokenHelper.WrittenEnd(this.tokens[i], this.sourceText);
                 }
             }
 
             return 0;
+        }
+    }
+
+    /// <summary>Gets the insertion point at the end of the current line: after the last written token before the next line boundary.</summary>
+    internal readonly int LineEndInsertionPoint
+    {
+        get
+        {
+            var last = -1;
+            for (var i = this.Position; i < this.tokens.Length; i++)
+            {
+                if (this.tokens[i].Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+                {
+                    break;
+                }
+
+                if (!this.tokens[i].IsMissing)
+                {
+                    last = i;
+                }
+            }
+
+            return last < 0 ? this.PreviousSyntaxEnd : TokenHelper.WrittenEnd(this.tokens[last], this.sourceText);
         }
     }
 
@@ -245,21 +272,15 @@ public ref struct TokenReader
     /// Reads the current token and advances to the next token.
     /// </summary>
     /// <param name="token">The token that was read.</param>
-    /// <param name="addDiagnostic">Whether to report a diagnostic when the syntax is incomplete.</param>
-    /// <returns><see langword="true"/> if a token was read; otherwise, <see langword="false"/>.</returns>
+    /// <returns><see langword="true"/> if a token was read; otherwise, <see langword="false"/>, and the caller reports what it expected.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryRead(out Token token, bool addDiagnostic = true)
+    public bool TryRead(out Token token)
     {
         if (this.CanRead)
         {
             token = this.currentToken;
             this.AdvanceOne();
             return true;
-        }
-
-        if (addDiagnostic)
-        {
-            this.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
 
         token = default;
@@ -389,20 +410,18 @@ public ref struct TokenReader
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode? code)
-        => this.SkipUntil(kind1, kind1, kind1, code);
+    public TokenKind SkipUntil(TokenKind kind1)
+        => this.SkipUntil(kind1, kind1, kind1);
 
     /// <summary>
     /// Advances until either of the specified token kinds is reached.
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode? code = null)
-        => this.SkipUntil(kind1, kind2, kind2, code);
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2)
+        => this.SkipUntil(kind1, kind2, kind2);
 
     /// <summary>
     /// Advances until any of the specified token kinds is reached.
@@ -410,13 +429,8 @@ public ref struct TokenReader
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
     /// <param name="kind3">The third token kind at which to stop.</param>
-    /// <param name="code">The diagnostic, without arguments, reported for the first skipped token; <see langword="null"/> reports none.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(
-        TokenKind kind1,
-        TokenKind kind2,
-        TokenKind kind3,
-        DiagnosticCode? code = null)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
     {
         while (this.CanRead)
         {
@@ -426,45 +440,21 @@ public ref struct TokenReader
                 return tokenKind;
             }
 
-            if (code is { } reported)
-            {
-                this.AddDiagnostic(reported);
-                code = null;
-            }
-
             this.AdvanceOne();
         }
 
         return default;
     }
 
-    /// <summary>Advances until any of the specified token kinds is reached, reporting the first skipped token as <see cref="DiagnosticCode.UnexpectedToken_Kd"/>.</summary>
-    /// <param name="kind1">The first token kind at which to stop.</param>
-    /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="kind3">The third token kind at which to stop.</param>
-    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUnexpectedUntil(TokenKind kind1, TokenKind kind2, TokenKind kind3)
-    {
-        // Recovery from an error this reader just reported at the same token reports nothing again.
-        if (this.CanRead && this.currentToken.Kind != kind1 && this.currentToken.Kind != kind2 && this.currentToken.Kind != kind3 &&
-            this.Diagnostic.LastError?.Start != this.currentToken.Span.Start && !(this.currentToken.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(this.currentToken.Span)))
-        {
-            this.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, this.GetSpan(this.currentToken).ToString());
-        }
-
-        return this.SkipUntil(kind1, kind2, kind3);
-    }
-
     /// <summary>
-    /// Advances to the start of the immediately following block and reports at most one diagnostic
-    /// for trailing tokens on the declaration line. Stops before a subsequent statement.
+    /// Advances to the start of the immediately following block without reporting; the caller has reported what it
+    /// expected. Stops before a subsequent statement.
     /// </summary>
-    /// <param name="code">The diagnostic reported for the first trailing token.</param>
     /// <returns>
     /// <see cref="TokenKind.StartBlock"/> when a block was found;
     /// otherwise, the default value.
     /// </returns>
-    public TokenKind SkipUntilStartBlock(DiagnosticCode? code = DiagnosticCode.UnexpectedTrailingToken_Kd)
+    public TokenKind SkipUntilStartBlock()
     {
         var reachedNextStatement = false;
         while (this.CanRead)
@@ -492,12 +482,6 @@ public ref struct TokenReader
                 return default;
             }
 
-            if (code is { } reported)
-            {
-                this.AddDiagnostic(reported);
-                code = null;
-            }
-
             this.AdvanceOne();
         }
 
@@ -515,7 +499,7 @@ public ref struct TokenReader
     {
         if (isRootGroup)
         {
-            this.SkipUntil(TokenKind.RootGroup, null);
+            this.SkipUntil(TokenKind.RootGroup);
             return;
         }
 
@@ -572,21 +556,6 @@ public ref struct TokenReader
     /// <param name="count">The number of tokens to skip.</param>
     public void Advance(int count)
         => this.MoveTo(Math.Min(this.Position + count, this.tokens.Length));
-
-    /// <summary>
-    /// Reports an unexpected-token diagnostic.
-    /// </summary>
-    /// <param name="token">The unexpected token.</param>
-    public void ReportUnexpectedToken(Token token)
-    {
-        // A token the lexer rejected is explained by its lexical Error; recovery rests on that Error (SPEC 23.3.6.4).
-        if (token.Kind == TokenKind.Invalid && this.Diagnostic.RecallError(token.Span))
-        {
-            return;
-        }
-
-        this.Diagnostic.Add(token.Span, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
-    }
 
     /// <summary>
     /// Adds a diagnostic for the current token.
@@ -695,7 +664,8 @@ public ref struct TokenReader
         };
         if (remainingKind == TokenKind.Invalid)
         {
-            return this.TryConsume(TokenKind.GreaterThan, out range, true);
+            range = this.currentToken.Span;
+            return this.Expect(TokenKind.GreaterThan);
         }
 
         range = new SourceSpan(this.currentToken.Span.Start, 1);
@@ -725,8 +695,8 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
+                this.Expect(FormOf(targetKind));
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
         }
 
@@ -745,6 +715,16 @@ Loop:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void MoveTo(int position)
     {
+        // A synthesized closer the reader passes is the tokenizer's missing form at its insertion point; what the parser expects
+        // there next rests on it.
+        for (var i = this.Position; i < position && i < this.tokens.Length; i++)
+        {
+            if (this.tokens[i].IsMissing)
+            {
+                this.NoteMissingCloser(i);
+            }
+        }
+
         this.Position = position;
         this.currentToken = (uint)position < (uint)this.tokens.Length ? this.tokens[position] : this.endToken;
     }

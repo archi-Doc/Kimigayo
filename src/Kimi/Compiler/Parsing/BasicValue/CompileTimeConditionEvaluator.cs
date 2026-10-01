@@ -104,7 +104,12 @@ internal static class CompileTimeConditionEvaluator
 
     private static bool Invalid(Koto node)
     {
-        node.AddDiagnostic(DiagnosticCode.InvalidCompileTimeCondition_Kd);
+        if (node is not ErrorKoto)
+        {
+            // A condition the parser could not read rests on the syntax Error; any other form is outside the grammar.
+            node.AddDiagnostic(DiagnosticCode.InvalidCompileTimeCondition_Kd);
+        }
+
         return false;
     }
 

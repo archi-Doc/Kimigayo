@@ -144,7 +144,7 @@ public sealed partial class KimiLibrary
             var constructor = reader.CurrentTokenKind == TokenKind.Init && container is StructKoto;
             if (reader.CurrentTokenKind != TokenKind.Func && !constructor)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, reader.CurrentTokenKind.ToString());
+                reader.Expect(SyntaxForm.Declaration);
                 break;
             }
 

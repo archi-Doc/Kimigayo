@@ -104,7 +104,7 @@ public class BlockSyntaxParseTest
     [InlineData("match value\n    0 =>")]
     [InlineData("struct Example\n    func empty()")]
     public void RejectsEmptyExecutableBodies(string source)
-        => Assert.Contains(TestDiagnostics.Of(Parse(source)), x => x.Code == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        => Assert.Contains(TestDiagnostics.Of(Parse(source)), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
 
     [Theory]
     [InlineData("defer => ")]
@@ -116,7 +116,7 @@ public class BlockSyntaxParseTest
     public void MissingBodyDoesNotConsumeFollowingStatement(string header)
     {
         var tree = Parse($"func process()\n    {header}\n    nextProcess()\n");
-        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));
         Assert.Equal(2, function.Body!.Items.Count);
         Assert.IsType<InvocationKoto>(function.Body.Items[1]);

@@ -174,11 +174,11 @@ public class CompileTimeSwitchParseTest
     [InlineData("#switch:\n    #case _\n        ()")]
     [InlineData("#switch\n    #case _ extra\n        ()")]
     public void UnexpectedHeaderTokensAreRejected(string source)
-        => AssertDiagnostic(Parse(source), DiagnosticCode.UnexpectedTrailingToken_Kd);
+        => AssertDiagnostic(Parse(source), DiagnosticCode.ExpectedSyntax_Kd);
 
     [Fact]
     public void EachArmRequiresItsOwnIndentedBody()
-        => AssertDiagnostic(Parse("#switch\n    #case true\n    #case _\n        ()"), DiagnosticCode.EmptyExecutableBlock_Kd);
+        => AssertDiagnostic(Parse("#switch\n    #case true\n    #case _\n        ()"), DiagnosticCode.MissingSyntax_Kd);
 
     [Fact]
     public void EarlyFalseIfExcludesExactlyOneSwitch()
@@ -210,9 +210,9 @@ public class CompileTimeSwitchParseTest
     [Theory]
     [InlineData("#switch", DiagnosticCode.EmptyCompileTimeSwitch_Kd)]
     [InlineData("#switch\n    ()", DiagnosticCode.InvalidCompileTimeSwitchItem_Kd)]
-    [InlineData("#switch\n    #case true", DiagnosticCode.EmptyExecutableBlock_Kd)]
+    [InlineData("#switch\n    #case true", DiagnosticCode.MissingSyntax_Kd)]
     [InlineData("#switch\n    ;\n    #case true\n        ()", DiagnosticCode.SemicolonNotAllowed_Kd)]
-    [InlineData("#switch value\n    #case _\n        ()", DiagnosticCode.UnexpectedTrailingToken_Kd)]
+    [InlineData("#switch value\n    #case _\n        ()", DiagnosticCode.ExpectedSyntax_Kd)]
     public void ExcludedSwitchStillValidatesItsSourceStructure(string target, DiagnosticCode diagnostic)
     {
         var compilation = Parse($"#if false\n{target}\nvar following = 1");

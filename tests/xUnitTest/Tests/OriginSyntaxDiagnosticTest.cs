@@ -49,7 +49,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     {
         const string source = "func f(x: (ref/i32){static}, y: ref{a}/i32, z: ref/i32 during b?) => ()\nlet n = (1";
         var errors = Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics;
-        Assert.Equal(["OriginBindingSetName_Kd", "OriginBindingSetTarget_Kd", "LegacyBorrowOrigin_Kd", "BorrowOriginSuffixOrder_Kd", "MissingExpectedToken_Kd"], errors.Select(static x => x.Code));
+        Assert.Equal(["OriginBindingSetName_Kd", "OriginBindingSetTarget_Kd", "LegacyBorrowOrigin_Kd", "BorrowOriginSuffixOrder_Kd", "MissingSyntax_Kd"], errors.Select(static x => x.Code));
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     {
         const string source = "func f(x: ref/i32 during a and b, y: ref/i32 during c?) => ()\nlet n = (1";
         var errors = Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics;
-        Assert.Equal(["BorrowOriginIntersection_Kd", "BorrowOriginSuffixOrder_Kd", "MissingExpectedToken_Kd"], errors.Select(static x => x.Code));
+        Assert.Equal(["BorrowOriginIntersection_Kd", "BorrowOriginSuffixOrder_Kd", "MissingSyntax_Kd"], errors.Select(static x => x.Code));
     }
 
     // SPEC 3.3.6 and 15.3.1 fix annotation attachment and order before semantic lookup.
@@ -150,7 +150,7 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     {
         const string source = "\nfunc f(x: ref/i32 during a during b?) => ()\nlet n = (1";
         var errors = Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics;
-        Assert.Equal(["DuplicateBorrowOrigin_Kd", "BorrowOriginSuffixOrder_Kd", "MissingExpectedToken_Kd"], errors.Select(static x => x.Code));
+        Assert.Equal(["DuplicateBorrowOrigin_Kd", "BorrowOriginSuffixOrder_Kd", "MissingSyntax_Kd"], errors.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(source.IndexOf("during b", StringComparison.Ordinal), 6), errors[0].Span);
         Assert.Equal(new SourceSpan(source.IndexOf('?'), 1), errors[1].Span);
     }

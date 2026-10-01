@@ -135,7 +135,7 @@ public class Utf8TryWriteTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Setup + use);
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.ExpectedSyntax_Kd));
     }
 
     [Fact]

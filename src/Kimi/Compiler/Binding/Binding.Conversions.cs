@@ -93,6 +93,7 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
         {
             return this.Fail(conversion, BindingFailure.InvalidWrapConversion);
@@ -155,6 +156,7 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (source.ContainsParameter || target.ContainsParameter)
         {
             return this.Fail(conversion, BindingFailure.GenericBitConversion);
@@ -590,6 +592,13 @@ public sealed partial class Binding
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);
+        }
+
+        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
+        // safe reference layers ending in a read Type supply its value; borrow, follow and object targets took the reference above.
+        if (plain)
+        {
+            source = this.ReadReferent(conversion.Left, source)!;
         }
 
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))

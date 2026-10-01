@@ -4,6 +4,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Diagnostics;
 
@@ -18,8 +19,13 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
     /// <summary>Gets the requirement that inputs and configuration are established.</summary>
     public static DiagnosticRequirement Input => new(DiagnosticPartition.Input, 0);
 
-    /// <summary>Gets the requirement that the source follows the grammar.</summary>
+    /// <summary>Gets the requirement that the source follows the grammar, for lexical and rule checks that name no form.</summary>
     public static DiagnosticRequirement Syntax => new(DiagnosticPartition.Syntax, 0);
+
+    /// <summary>Gets the requirement that a form of syntax is present where the parser expects it, or absent where it is not permitted.</summary>
+    /// <param name="form">The form.</param>
+    /// <returns>The requirement, named <c>Syntax.&lt;Form&gt;</c>.</returns>
+    public static DiagnosticRequirement SyntaxOf(SyntaxForm form) => new(DiagnosticPartition.Syntax, (ushort)form);
 
     /// <summary>Gets the requirement of a valid startup.</summary>
     public static DiagnosticRequirement Startup => new(DiagnosticPartition.Startup, 0);
@@ -46,12 +52,13 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
     internal static DiagnosticRequirement Binding(BindingFailure failure) => new(DiagnosticPartition.Binding, (ushort)failure);
 }
 
-/// <summary>The requirement vocabulary: stable names from each phase's failure enumeration and their descriptions, validated when loaded.</summary>
+/// <summary>The requirement vocabulary: stable names from each phase's failure enumeration with their descriptions, and for
+/// syntax forms the phrase and advice their diagnostics display, validated when loaded.</summary>
 public static class DiagnosticRequirements
 {
     private const string ResourceName = "Diagnostics.DiagnosticRequirement.tinyhand";
 
-    private static readonly Dictionary<string, string> Descriptions;
+    private static readonly Dictionary<string, DiagnosticRequirementEntry> Entries;
 
     static DiagnosticRequirements()
     {
@@ -64,7 +71,7 @@ public static class DiagnosticRequirements
             stream.ReadExactly(bytes);
         }
 
-        (Descriptions, Anomalies) = Load(bytes);
+        (Entries, Anomalies) = Load(bytes);
     }
 
     /// <summary>Gets every requirement a phase can judge.</summary>
@@ -73,7 +80,11 @@ public static class DiagnosticRequirements
         get
         {
             yield return DiagnosticRequirement.Input;
-            yield return DiagnosticRequirement.Syntax;
+            foreach (var form in Enum.GetValues<SyntaxForm>())
+            {
+                yield return DiagnosticRequirement.SyntaxOf(form);
+            }
+
             foreach (var failure in Enum.GetValues<BindingFailure>())
             {
                 yield return DiagnosticRequirement.Binding(failure);
@@ -99,7 +110,7 @@ public static class DiagnosticRequirements
     public static string NameOf(DiagnosticRequirement requirement) => requirement.Partition switch
     {
         DiagnosticPartition.Input => "Input",
-        DiagnosticPartition.Syntax => "Syntax",
+        DiagnosticPartition.Syntax => requirement.Kind == 0 ? "Syntax" : "Syntax." + (SyntaxForm)requirement.Kind,
         DiagnosticPartition.Binding => requirement.Kind == 0 ? "Binding" : "Binding." + (BindingFailure)requirement.Kind,
         DiagnosticPartition.Startup => "Startup",
         DiagnosticPartition.ControlFlow => "ControlFlow",
@@ -112,14 +123,40 @@ public static class DiagnosticRequirements
     /// <param name="description">The description.</param>
     /// <returns><see langword="true"/> when the table describes the requirement.</returns>
     public static bool TryGetDescription(DiagnosticRequirement requirement, [MaybeNullWhen(false)] out string description)
-        => Descriptions.TryGetValue(requirement.Name, out description);
-
-    /// <summary>Loads a description table and lists its anomalies: unknown, duplicate and missing names and empty descriptions.</summary>
-    /// <param name="utf8">The table text, or <see langword="null"/> when the resource is missing.</param>
-    /// <returns>The descriptions by stable name and the anomalies.</returns>
-    internal static (Dictionary<string, string> Descriptions, string[] Anomalies) Load(byte[]? utf8)
     {
-        var descriptions = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (Entries.TryGetValue(requirement.Name, out var entry))
+        {
+            description = entry.Description;
+            return true;
+        }
+
+        description = null;
+        return false;
+    }
+
+    /// <summary>Gets the phrase a diagnostic displays for a syntax form, such as <c>expression</c> or <c>')'</c>.</summary>
+    /// <param name="requirement">The requirement; only a syntax form has a phrase.</param>
+    /// <param name="phrase">The phrase.</param>
+    /// <returns><see langword="true"/> when the table gives the requirement a phrase.</returns>
+    public static bool TryGetPhrase(DiagnosticRequirement requirement, [MaybeNullWhen(false)] out string phrase)
+    {
+        phrase = Entries.TryGetValue(requirement.Name, out var entry) ? entry.Phrase : null;
+        return phrase is not null;
+    }
+
+    /// <summary>Gets the conditional advice of a syntax form, or <see langword="null"/> when the table gives none.</summary>
+    /// <param name="requirement">The requirement.</param>
+    /// <returns>The advice.</returns>
+    public static string? AdviceOf(DiagnosticRequirement requirement)
+        => Entries.TryGetValue(requirement.Name, out var entry) ? entry.Advice : null;
+
+    /// <summary>Loads a requirement table and lists its anomalies: unknown, duplicate and missing names, empty descriptions,
+    /// a syntax form without a phrase, and a phrase or advice on a requirement that is not a syntax form.</summary>
+    /// <param name="utf8">The table text, or <see langword="null"/> when the resource is missing.</param>
+    /// <returns>The entries by stable name and the anomalies.</returns>
+    internal static (Dictionary<string, DiagnosticRequirementEntry> Entries, string[] Anomalies) Load(byte[]? utf8)
+    {
+        var descriptions = new Dictionary<string, DiagnosticRequirementEntry>(StringComparer.Ordinal);
         var anomalies = new List<string>();
         DiagnosticRequirementEntry[]? entries = null;
         if (utf8 is null)
@@ -141,6 +178,7 @@ public static class DiagnosticRequirements
         var names = new HashSet<string>(All.Select(static x => x.Name), StringComparer.Ordinal);
         foreach (var entry in entries ?? [])
         {
+            var isForm = entry.Name.StartsWith("Syntax.", StringComparison.Ordinal);
             if (!names.Contains(entry.Name))
             {
                 anomalies.Add($"{entry.Name}: no requirement has this name.");
@@ -149,7 +187,15 @@ public static class DiagnosticRequirements
             {
                 anomalies.Add($"{entry.Name}: the requirement has no description.");
             }
-            else if (!descriptions.TryAdd(entry.Name, entry.Description))
+            else if (isForm && string.IsNullOrWhiteSpace(entry.Phrase))
+            {
+                anomalies.Add($"{entry.Name}: the syntax form has no phrase.");
+            }
+            else if (!isForm && (entry.Phrase is not null || entry.Advice is not null))
+            {
+                anomalies.Add($"{entry.Name}: only a syntax form has a phrase or advice.");
+            }
+            else if (!descriptions.TryAdd(entry.Name, entry))
             {
                 anomalies.Add($"{entry.Name}: the entry is duplicated.");
             }
@@ -170,11 +216,18 @@ public static class DiagnosticRequirements
     }
 }
 
-/// <summary>One entry of the requirement description table.</summary>
+/// <summary>One entry of the requirement table.</summary>
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 internal sealed partial class DiagnosticRequirementEntry
 {
     public string Name { get; init; } = string.Empty;
 
     public string Description { get; init; } = string.Empty;
+
+    /// <summary>Gets the phrase a syntax form displays in a message or label; it has no article and starts in lower case
+    /// unless it is a quoted token or a capitalized term such as Type.</summary>
+    public string? Phrase { get; init; }
+
+    /// <summary>Gets the conditional advice a diagnostic of a syntax form carries; prose, from which no edit is inferred.</summary>
+    public string? Advice { get; init; }
 }

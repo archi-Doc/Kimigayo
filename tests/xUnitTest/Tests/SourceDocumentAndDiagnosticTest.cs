@@ -123,12 +123,12 @@ public class SourceDocumentAndDiagnosticTest
         var sourceDocument = new SourceDocument("test.kimi", "let x = 1\r\nvar value = bad\n");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(1, 12), new(1, 15)));
         var owner = new DiagnosticOwner();
-        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IndentationLevelMismatch_Kd);
 
         kimigayo.Render(owner.Finalize(), string.Empty);
 
         Assert.Equal(
-            "Identifier expected : IdentifierExpected_Kd\n" +
+            "The indentation level does not match the expected level : IndentationLevelMismatch_Kd\n" +
             " --> test.kimi:2:13\n" +
             "  |\n" +
             "2 | var value = bad\n" +
@@ -146,7 +146,7 @@ public class SourceDocumentAndDiagnosticTest
         var sourceDocument = new SourceDocument("test.kimi", "abc\ndefg\nhij");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(0, 1), new(2, 2)));
         var owner = new DiagnosticOwner();
-        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IndentationLevelMismatch_Kd);
 
         kimigayo.Render(owner.Finalize(), string.Empty);
 

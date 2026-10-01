@@ -2047,8 +2047,8 @@ Counter wrapped to 4, a key seen 3 times.
 
 Separate checks are unit tests: `WrappingIntegerTest` (capability matrix, arithmetic, generic bodies, keys, Patterns and
 rejections), `WrapConversionTest`, `BitConversionTest`, `NumericConversionEmissionTest` (direct literals) and
-`DivisionEmissionTest` (integer results). A reference operand is not value-read by a conversion yet (`b@u32` with
-`b: ref/u8` is Unsupported), so the program reads iterated values into typed bindings first.
+`DivisionEmissionTest` (integer results) and `ConversionReadTest` (the hash and the checksum convert the iterated
+`ref/u8` and `ref/T` values directly: a conversion operand is a read position, SPEC §13.5.2).
 
 Focus: [wrapping integer Types](../../docs/spec/03-types-and-values.md#3111-wrapping-integer-types),
 [integer results](../../docs/spec/13-operators-and-assignment.md#133-arithmetic-operators),

@@ -119,10 +119,10 @@ public class DiagnosticPrecisionTest
     // ownership record for a body that the syntax Error left missing.
     [Theory]
     [InlineData("func f() ->\n    return 1\nlet a = f()", "MissingReturnType_Kd")]
-    [InlineData("let a = 1\nlet v = a + @", "UnmatchedToken_Kd")]
+    [InlineData("let a = 1\nlet v = a + @", "ExpectedSyntax_Kd")]
     [InlineData("let v: i32 = 0x", "InvalidNumericLiteral_Kd")]
-    [InlineData("let a = 1\nlet v = a.\nlet w = 2", "IdentifierExpected_Kd")]
-    [InlineData("func f() -> i32\n\nfunc g()\n\nlet y = 1", "EmptyExecutableBlock_Kd,EmptyExecutableBlock_Kd")]
+    [InlineData("let a = 1\nlet v = a.\nlet w = 2", "MissingSyntax_Kd")]
+    [InlineData("func f() -> i32\n\nfunc g()\n\nlet y = 1", "MissingSyntax_Kd,MissingSyntax_Kd")]
     [InlineData("func f() ->\nlet y = 1", "MissingReturnType_Kd")]
     public void RecoveredSyntaxExplainsItsDependents(string source, string codes)
         => Assert.Equal(codes.Split(','), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
@@ -133,7 +133,7 @@ public class DiagnosticPrecisionTest
     {
         const string Source = "let a = 1\nlet v = a.\nlet w = 2";
         var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(Source)));
-        Assert.Equal(nameof(Kimi.DiagnosticCode.IdentifierExpected_Kd), error.Code);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.MissingSyntax_Kd), error.Code);
         Assert.Equal(Source.IndexOf("a.\n", StringComparison.Ordinal) + 2, error.Span.Start);
         Assert.Equal(0, error.Span.Length);
     }

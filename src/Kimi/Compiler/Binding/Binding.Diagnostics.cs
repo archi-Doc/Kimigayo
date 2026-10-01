@@ -16,6 +16,7 @@ public sealed partial class Binding
     private readonly List<Koto> derivedIssues = [];
     private readonly List<Koto> prerequisiteStore = [];
     private readonly Dictionary<Koto, (int Start, int Count)> prerequisites = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, Koto> partPrerequisites = new(ReferenceEqualityComparer.Instance);
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<Koto> prerequisitePending = new();
@@ -248,12 +249,61 @@ public sealed partial class Binding
         }
     }
 
-    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved; a
-    // recovery node derives from its syntax error. A failure explained by the Origin rule, or any definite failure, is direct.
+    // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
+    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
+    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
+    // a failure explained by the Origin rule, or any other definite failure, is direct.
     private bool IsDerived(Koto node)
-        => IsRecovery(node, out _) ||
+        => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null);
+
+    // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
+    private bool RestsOnRecovery(Koto node)
+    {
+        if (!this.prerequisites.ContainsKey(node) && !this.partPrerequisites.ContainsKey(node))
+        {
+            return false;
+        }
+
+        var visited = this.prerequisiteVisited;
+        var pending = this.prerequisitePending;
+        visited.Add(node);
+        this.PushPrerequisites(node, pending);
+        var found = false;
+        while (pending.TryPop(out var cause))
+        {
+            if (!visited.Add(cause))
+            {
+                continue;
+            }
+
+            if (IsRecovery(cause, out _))
+            {
+                found = true;
+                pending.Clear();
+                break;
+            }
+
+            this.PushPrerequisites(cause, pending);
+        }
+
+        visited.Clear();
+        return found;
+    }
+
+    /// <summary>Records that a declaration-level check read a part outside a consultation frame; the part explains the node's failure when it did not resolve.
+    /// Declaration checks run once per Bind, so the record outlives the per-pass prerequisite storage.</summary>
+    /// <param name="node">The checked node.</param>
+    /// <param name="part">The part it read.</param>
+    private void AddPrerequisite(Koto node, Koto part)
+    {
+        // A recovery part explains the failure even when a Type was formed for it (a length slot binds as isize).
+        if (IsRecovery(part, out _) || (part.BindingState != BindingState.Resolved && !this.partPrerequisites.ContainsKey(node)))
+        {
+            this.partPrerequisites[node] = part;
+        }
+    }
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
     // operands still unresolved when Binding ends are prerequisites.
@@ -320,15 +370,21 @@ public sealed partial class Binding
 
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
-        if (!this.prerequisites.TryGetValue(node, out var range))
+        var pushed = false;
+        if (this.partPrerequisites.TryGetValue(node, out var part) && (part.BindingState != BindingState.Resolved || IsRecovery(part, out _)))
         {
-            return false;
+            pending.Push(part);
+            pushed = true;
         }
 
-        var pushed = false;
+        if (!this.prerequisites.TryGetValue(node, out var range))
+        {
+            return pushed;
+        }
+
         for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
         {
-            if (this.prerequisiteStore[i].BindingState != BindingState.Resolved)
+            if (this.prerequisiteStore[i].BindingState != BindingState.Resolved || IsRecovery(this.prerequisiteStore[i], out _))
             {
                 pending.Push(this.prerequisiteStore[i]);
                 pushed = true;

@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -52,12 +53,14 @@ public class ReferenceReadTest
     }
 
     [Fact]
-    public void NoConversionAppliesThroughAReference()
+    public void ConversionsReadThroughAReference()
     {
-        // SPEC 13.5.3: a referent is read only under the Copy read; `r@i64` converts nothing through `r`.
-        var c = MinimalEmissionTest.Analyze("func f(r: ref/i32) -> i64 => r@i64");
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Single(c.Binding.Issues);
+        // SPEC 13.5.2: the operand of a numeric conversion is a read position; `r@i64` converts the value read through `r`.
+        var c = MinimalEmissionTest.Analyze("func f(r: ref/i32) -> i64 => r@i64\nlet x: i32 = 7\nlet y = f(x)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().First();
+        Assert.True(c.Binding.ReadsReferent(conversion.Left));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Trait("Purpose", "Allocation")]

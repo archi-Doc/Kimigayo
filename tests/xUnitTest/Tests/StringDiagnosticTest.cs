@@ -63,10 +63,10 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("missing(\"hello)", "UnresolvedBinding_Kd,MissingStringLiteralEnd_Kd")]
     [InlineData("Console.writeLine(missing, \"hello)", "UnresolvedBinding_Kd,MissingStringLiteralEnd_Kd")]
-    [InlineData("let before = (1\n" + BrokenCall, "MissingExpectedToken_Kd,MissingStringLiteralEnd_Kd")]
+    [InlineData("let before = (1\n" + BrokenCall, "MissingSyntax_Kd,MissingStringLiteralEnd_Kd")]
     [InlineData("Console.writeLine(0x)", "InvalidNumericLiteral_Kd")]
     [InlineData("Console.writeLine(true)", "NoApplicableOverload_Kd")]
-    [InlineData("Console.writeLine(\"hello\"", "MissingExpectedToken_Kd")]
+    [InlineData("Console.writeLine(\"hello\"", "MissingSyntax_Kd")]
     public void IndependentRequirementsStillExplainTheirFailures(string source, string codes)
     {
         var errors = Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics;
@@ -83,7 +83,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         c.Bind();
         c.Binding.ReportDiagnostics();
         var result = c.Diagnostics.Finalize(rejected: true);
-        Assert.Equal([nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), nameof(DiagnosticCode.MissingExpectedToken_Kd)], result.Diagnostics.Select(static x => x.Code));
+        Assert.Equal([nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), nameof(DiagnosticCode.MissingSyntax_Kd)], result.Diagnostics.Select(static x => x.Code));
         Assert.Equal(["first.kimi", "second.kimi"], result.Sources.Select(static x => x.Path));
         Assert.Equal([0, 1], result.Diagnostics.Select(static x => x.Source));
     }
@@ -97,7 +97,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         var source = lineEnd + BrokenCall + lineEnd + "let wrong: i32 = true" + lineEnd + "missing()" + lineEnd + "let x = (1";
         var errors = Analyze(source).Diagnostics.Finalize(rejected: true).Diagnostics;
         Assert.Equal(
-            [nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd), nameof(DiagnosticCode.MissingExpectedToken_Kd)],
+            [nameof(DiagnosticCode.MissingStringLiteralEnd_Kd), nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnresolvedBinding_Kd), nameof(DiagnosticCode.MissingSyntax_Kd)],
             errors.Select(static x => x.Code));
         Assert.Equal(new SourceRange(new(1, 25), new(1, 26)), errors[0].Display!.Range);
     }

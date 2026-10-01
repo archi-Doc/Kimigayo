@@ -629,6 +629,8 @@ for number in numbers        // numbers: Array<i32>; number: ref/i32.
     let reference = number   // Copy of the reference; the binding keeps ref/i32.
     let snapshot: i32 = number
     let doubled = number * 2 // i32.
+    let wide = number@i64    // Value read, then the numeric conversion (§13.5.2).
+    let same = number@i32    // Value read, then Identity Acquisition: a Copy of the referent.
     total += number
 
 for number in numbers@uniq   // number: uniq/i32.

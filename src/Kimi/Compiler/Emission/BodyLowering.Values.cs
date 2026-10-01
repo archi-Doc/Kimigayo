@@ -26,11 +26,13 @@ internal sealed partial class BodyLowering
             {
                 var source = identity.Source;
                 // A transfer (@move) and a Copy (@copy) designate their acquired input like Identity Acquisition, for every
-                // acquired Type; the Type targets of Identity Acquisition keep their supported set.
+                // acquired Type; the Type targets of Identity Acquisition keep their supported set. An operand read through its
+                // reference layers (SPEC 13.5.2) supplies the read Type.
+                var left = OperandType(source);
                 if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
                     SignatureType(lowering, source.BoundType) is not { } type ||
                     (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
-                    !ReferenceEquals(type, SignatureType(lowering, source.Left.BoundType)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
+                    !ReferenceEquals(type, SignatureType(lowering, left)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
                     return false;
@@ -130,7 +132,7 @@ internal sealed partial class BodyLowering
                     ? !IsPositionConversion(operation.Source, ValueType(body, Input(body, id, 0)), ValueType(body, id))
                     : operation.Source is not Parsing.ConversionKoto conversion ||
                         !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
-                        !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, conversion.Left.BoundType)) ||
+                        !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, OperandType(conversion))) ||
                         !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id)))))
             {
                 return false;
@@ -273,6 +275,10 @@ internal sealed partial class BodyLowering
     private static bool IsPositionConversion(Parsing.Koto source, BoundType? input, BoundType? target)
         => ReferenceEquals(target, BoundType.ISize) && ScalarTypes.Width(input) != 0 && !ReferenceEquals(input, BoundType.ISize) &&
         (source.Parent is Parsing.RangeKoto or Parsing.FromEndIndexKoto || (source.Parent is Parsing.IndexKoto index && ReferenceEquals(index.Right, source)));
+
+    // SPEC 13.5.2: an operand read through its reference layers supplies the read Type to its conversion.
+    private static BoundType? OperandType(Parsing.ConversionKoto conversion)
+        => conversion.CodeContext.Compilation.Binding.TryGetAdaptation(conversion.Left, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead ? read.Type : conversion.Left.BoundType;
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :

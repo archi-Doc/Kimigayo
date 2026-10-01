@@ -49,7 +49,7 @@ internal static class DiagnosticMeasurements
         {
             var owner = new DiagnosticOwner();
             var document = new SourceDocument("excerpt.kimi", new string('x', prefix) + "bad" + new string('z', 300));
-            owner.GetOrAddCollection("excerpt").For(document).Add(new(prefix, 3), DiagnosticCode.IdentifierExpected_Kd);
+            owner.GetOrAddCollection("excerpt").For(document).Add(new(prefix, 3), DiagnosticCode.SemicolonNotAllowed_Kd);
             owner.Finalize();
             results[$"finalize-excerpt-{prefix}-prefix"] = Measure(() => owner.Finalize(), 8);
         }

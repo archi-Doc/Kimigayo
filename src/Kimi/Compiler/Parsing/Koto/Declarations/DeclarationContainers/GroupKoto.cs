@@ -124,7 +124,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                     var context = reader.TakeContext();
                     if (context.ModifierKind != default || context.AttributeKoto is not null)
                     {
-                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                        reader.Unexpected(SyntaxForm.Decoration, token.Span);
                     }
 
                     var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
@@ -159,10 +159,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
             var oldPosition = reader.Position;
             var item = Parser.ParseBlockItem(ref reader);
-            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
-            {
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-            }
+            reader.ExpectLineEnd();
 
             if (item is not null)
             {

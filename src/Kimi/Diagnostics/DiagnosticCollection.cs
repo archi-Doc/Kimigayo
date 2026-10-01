@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Diagnostics;
 
@@ -140,6 +141,26 @@ public sealed class DiagnosticCollection
         return isError;
     }
 
+    /// <summary>Records that a form of syntax is expected, missing or not permitted at a span (docs/dev/DIAGNOSTICS.md §4.4). The
+    /// form is the requirement of the check; its phrase and advice come from the requirement table, so the recorder supplies no
+    /// text beyond the token it found. The report becomes <see cref="LastError"/>, which the parser's recovery rests on.</summary>
+    /// <param name="range">The found token, the insertion point of the missing form, or the misplaced syntax.</param>
+    /// <param name="code"><c>ExpectedSyntax_Kd</c>, <c>MissingSyntax_Kd</c> or <c>MisplacedSyntax_Kd</c>.</param>
+    /// <param name="form">The form.</param>
+    /// <param name="found">The text of the token found where the form was expected; <see langword="null"/> for the other codes.</param>
+    /// <param name="document">The source; the target's document by default.</param>
+    /// <param name="related">Locations obtained through <see cref="Relate"/>, such as the opening delimiter of a missing closer.</param>
+    /// <returns>The key of the check.</returns>
+    internal DiagnosticKey ReportSyntax(SourceSpan range, DiagnosticCode code, SyntaxForm form, string? found, SourceDocument? document = null, DiagnosticRelatedFact[]? related = null)
+    {
+        document ??= this.Document;
+        var requirement = DiagnosticRequirement.SyntaxOf(form);
+        var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
+        this.Report(DiagnosticPartition.Syntax, key, range, code, requirement, found, null, DiagnosticRequirements.AdviceOf(requirement), null, document, related: related);
+        this.LastError = key;
+        return key;
+    }
+
     /// <summary>Records a syntax check whose decision depends on an earlier lexical or syntax failure.</summary>
     /// <param name="range">The check's source boundary.</param>
     /// <param name="condition">The syntax expected at that boundary.</param>
@@ -154,11 +175,12 @@ public sealed class DiagnosticCollection
 
     /// <summary>Makes the lexical Error that rejected a token of this target's document the cause of the parser's recovery, without
     /// reporting the token again (SPEC 23.3.6.4).</summary>
-    /// <param name="range">The rejected token's span.</param>
+    /// <param name="range">The rejected token's span, or the insertion point of a missing form.</param>
+    /// <param name="requirement">The form whose Error is recalled; any syntax Error at the range by default.</param>
     /// <returns><see langword="true"/> when such an Error was recorded; it is then <see cref="LastError"/>.</returns>
-    internal bool RecallError(SourceSpan range)
+    internal bool RecallError(SourceSpan range, DiagnosticRequirement? requirement = null)
     {
-        if (this.Document is null || this.Owner.SyntaxErrorAt(this.CurrentModule(), this.SourceOf(this.Document), range) is not { } key)
+        if (this.Document is null || this.Owner.SyntaxErrorAt(this.CurrentModule(), this.SourceOf(this.Document), range, requirement) is not { } key)
         {
             return false;
         }

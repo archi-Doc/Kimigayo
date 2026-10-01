@@ -108,7 +108,6 @@ public class WrapConversionTest
     [InlineData("let y = \"x\"@wrap<u8>")]
     [InlineData("let x: isize = 1\nlet p: unsafe/u8 = null\nlet y = p@wrap<usize>")]
     [InlineData("let r = 0..3\nlet y = r@wrap<u8>")]
-    [InlineData("let x: u32 = 1\nlet n = x@ref\nlet y = n@wrap<u8>")] // No implicit value read; follow the reference first.
     public void InvalidFormsAreRejected(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

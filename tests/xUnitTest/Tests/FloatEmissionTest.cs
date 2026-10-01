@@ -136,7 +136,9 @@ public class FloatEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.NotEmpty(c.Binding.Issues);
+
+        // A floating-point literal Pattern is rejected by the parser; Binding's own failures then rest on that Error and are derived.
+        Assert.True(c.Binding.Issues.Count != 0 || c.Binding.DerivedIssues.Count != 0, MinimalEmissionTest.Describe(c, null));
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

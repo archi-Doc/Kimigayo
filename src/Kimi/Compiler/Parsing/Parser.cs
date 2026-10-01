@@ -193,16 +193,23 @@ public static partial class Parser
         {
             methodName = string.Empty;
         }
+        else if (anonymous && !(methodToken.Kind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.OpenParenthesis))
+        {
+            // A function expression continues with its parameter list; only a Name before one is parsed further, to be reported as misplaced.
+            reader.Expect(SyntaxForm.OpenParenthesis);
+            return default;
+        }
         else
         {
             if (!reader.TryRead(out methodToken))
             {
+                reader.Expect(anonymous ? SyntaxForm.OpenParenthesis : SyntaxForm.Name);
                 return default;
             }
 
             if (!methodToken.Kind.IsIdentifierOrContextualKeyword() && !(constructor && methodToken.Kind == TokenKind.Init))
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name, methodToken);
                 goto SkipAndExit;
             }
 
@@ -218,12 +225,16 @@ public static partial class Parser
 
         while (reader.TryConsume(TokenKind.Dot))
         {
-            reader.Diagnostic.Add(methodToken.Span, DiagnosticCode.UnexpectedToken_Kd, "qualified function declaration");
-            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() ||
-                !reader.TryGetIdentifier(reader.Read(), out var memberName))
+            reader.Unexpected(SyntaxForm.QualifiedFunctionName, methodToken.Span);
+            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
                 goto SkipAndExit;
+            }
+
+            if (!reader.TryGetIdentifier(reader.Read(), out var memberName))
+            {
+                goto SkipAndExit; // The invalid identifier is reported.
             }
 
             methodName += "." + memberName;
@@ -335,23 +346,32 @@ public static partial class Parser
             }
 
             var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
-            var hasType = reader.TryConsume(TokenKind.Colon, out _, !anonymous && !allowsReceiverShorthand);
-            if (!hasType && !anonymous && !allowsReceiverShorthand)
+            Koto parameterType;
+            if (reader.TryConsume(TokenKind.Colon))
             {
-                goto Exit;
+                parameterType = ParseDeclarationType(ref reader);
+            }
+            else if (anonymous || allowsReceiverShorthand)
+            {
+                parameterType = new SyntaxFormKoto(ref reader, externalNameToken.Span, KotoKind.InferredType, "_", []);
+            }
+            else
+            {
+                // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.3.6.4).
+                parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
+                SkipParameter(ref reader);
             }
 
-            var parameterType = hasType ? ParseDeclarationType(ref reader) : new SyntaxFormKoto(ref reader, externalNameToken.Span, KotoKind.InferredType, "_", []);
             Koto? defaultValue = default;
             if (reader.TryConsume(TokenKind.Equals))
             {
                 defaultValue = ParseRequiredExpression(ref reader);
             }
 
-            if ((anonymous && (internalName != externalName || defaultValue is not null || parameterAttribute is not null)) ||
-                (specialization && (defaultValue is not null || parameterAttribute is not null)))
+            // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them.
+            if (anonymous && (internalName != externalName || defaultValue is not null || parameterAttribute is not null))
             {
-                reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "parameter");
+                reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameToken.Span);
             }
 
             (parameters ??= new(4)).Add(new(
@@ -374,7 +394,7 @@ NextParameter:
             }
             else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                reader.Expect(SyntaxForm.Comma);
                 SkipParameter(ref reader);
                 reader.TryConsume(TokenKind.Comma);
             }
@@ -419,7 +439,7 @@ NextParameter:
         functionKoto.SetOrigins(origins);
         if (anonymous && methodName.Length != 0)
         {
-            functionKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "named function expression");
+            reader.Unexpected(SyntaxForm.FunctionExpressionName, methodToken.Span);
         }
 
         functionKoto.IsAnonymous = anonymous;
@@ -433,24 +453,44 @@ NextParameter:
 
         if (constructor && reader.TryConsume(TokenKind.Colon))
         {
-            reader.TryConsume(TokenKind.Base, out var baseSpan, true);
-            reader.TryConsume(TokenKind.OpenParenthesis, out _, true);
-            var arguments = ParseArgumentList(ref reader, out var labels);
-            reader.TryConsume(TokenKind.CloseParenthesis, out var close, true);
-            var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
-            functionKoto.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
+            var baseSpan = reader.CurrentTokenRange;
+            if (reader.Expect(TokenKind.Base) && reader.Expect(TokenKind.OpenParenthesis))
+            {
+                var arguments = ParseArgumentList(ref reader, out var labels);
+                if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
+                {
+                    reader.Expect(SyntaxForm.CloseParenthesis);
+                    reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
+                    reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
+                }
+
+                var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
+                functionKoto.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
+            }
+            else
+            {
+                // The initializer is skipped up to the body; the constructor is a recovery, so its own checks rest on the one
+                // Error and its body is bound but not analyzed for ownership.
+                reader.CodeContext.RecordRecovery(functionKoto, reader.Diagnostic.LastError!.Value);
+                reader.SkipUntil(TokenKind.EqualsGreaterThan, TokenKind.Separator, TokenKind.EndBlock);
+            }
         }
 
         // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
         if (constructor && (genericArguments is not null || returnType is not null ||
             context.AttributeKoto is not null || context.ModifierKind != context.ModifierKind.ExtractAccessibilityModifiers()))
         {
-            functionKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constructor header");
+            functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
         }
 
         if (specialization && (genericArguments is null || origins is not null || context.AttributeKoto is not null || context.ModifierKind != 0))
         {
-            functionKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "specialization header");
+            // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
+            var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
+            if (genericArguments is null && key is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(functionKoto, cause);
+            }
         }
 
         if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
@@ -458,11 +498,7 @@ NextParameter:
             return functionKoto;
         }
 
-        reader.SkipUntil(
-            TokenKind.StartBlock,
-            TokenKind.Separator,
-            TokenKind.EndBlock,
-            DiagnosticCode.UnexpectedTrailingToken_Kd);
+        reader.ExpectLineEnd(bodyMayFollow: true);
         return functionKoto;
 
 SkipAndExit:
@@ -502,13 +538,13 @@ Exit:
         Koto[]? bases = null;
         if (!reader.TryRead(out var token))
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Name);
             goto Exit;
         }
 
         if (!token.Kind.IsIdentifierOrContextualKeyword())
         {
-            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name, token);
             goto SkipAndExit;
         }
 
@@ -538,15 +574,19 @@ Exit:
             bases = types.ToArray();
             if (declarationKind == TokenKind.Struct && bases.Length != 1)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "base clause");
+                // The recovery keeps the first base, so the struct is checked as derived from it alone.
+                reader.Unexpected(SyntaxForm.BaseList, SourceSpan.FromBounds(bases[0].Span.Start, bases[^1].Span.End));
+                bases = bases[..1];
             }
         }
 
-        reader.SkipUntilStartBlock();
+        // The header ends with its line; a body may follow on indented lines.
+        reader.ExpectLineEnd(bodyMayFollow: true);
+        reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
         goto Exit;
 
 SkipAndExit:
-        reader.SkipUntilStartBlock(null);
+        reader.SkipUntilStartBlock();
 
 Exit:
         return (name, genericArguments, origins, bases);
@@ -566,7 +606,7 @@ Exit:
             var token = reader.Read();
             if (!token.Kind.IsIdentifierOrContextualKeyword() || reader.GetSpan(token) is "static" or "_")
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name, token);
                 reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
                 break;
             }
@@ -626,7 +666,7 @@ Exit:
             ConsumeAttributeAndModifier(ref reader, out isEnd);
             if (isEnd)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Type);
                 return default;
             }
 
@@ -651,21 +691,28 @@ Exit:
             initializerKoto = ParseRequiredExpression(ref reader);
         }
 
+        // A binding states its Type or has an initializer, and an inferred element Type needs the initializer; the recovery
+        // Type stands for what is missing, so the uses of the binding rest on this Error (SPEC 23.3.6.4).
+        if (typeKoto is null && initializerKoto is null)
+        {
+            typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameToken.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeOrInitializer) };
+        }
+        else if (inferredArrayElement && initializerKoto is null)
+        {
+            typeKoto = new ErrorKoto(ref reader, typeKoto!.Span) { Cause = reader.Expect(SyntaxForm.Initializer) };
+        }
+
         reader.RestoreContext(variableContext);
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
         reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameToken.Span.End), variableContext.AttributeKoto);
-        if (inferredArrayElement && initializerKoto is null)
-        {
-            fieldKoto.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
 
         ParseAttachedOriginBlock(ref reader, fieldKoto);
 
         if (!allowParenthesizedTerminator ||
             reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
         {
-            reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.ExpectLineEnd();
         }
 
         return fieldKoto;
@@ -680,7 +727,7 @@ Exit:
         var propertyContext = reader.TakeContext();
         while (reader.CurrentTokenKind == TokenKind.Sharp)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
+            reader.Unexpected(SyntaxForm.Attribute);
             _ = ParseAttributeKoto(ref reader);
         }
 
@@ -690,53 +737,54 @@ Exit:
             return default;
         }
 
+        var computed = token.Kind is TokenKind.Computed or TokenKind.Property;
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {
             while (reader.CurrentTokenKind == TokenKind.Sharp)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
+                reader.Unexpected(SyntaxForm.Attribute);
                 _ = ParseAttributeKoto(ref reader);
             }
 
             typeKoto = ParseType(ref reader);
         }
-
-        Koto? initializerKoto = default;
-        if (reader.TryConsume(TokenKind.Equals, out _, false))
+        else if (computed)
         {
-            initializerKoto = ParseRequiredExpression(ref reader);
+            // A computed Property or requirement states its Type; the recovery Type stands for the missing annotation (SPEC 23.3.6.4).
+            typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameToken.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeAnnotation) };
         }
 
-        var hasInlineAccessors = reader.TryConsume(TokenKind.Has);
+        Koto? initializerKoto = default;
+        if (reader.TryConsume(TokenKind.Equals, out var equalsSpan, false))
+        {
+            initializerKoto = ParseRequiredExpression(ref reader);
+            if (computed)
+            {
+                // The value of a computed Property comes from get; the written initializer is discarded.
+                reader.Unexpected(SyntaxForm.ComputedInitializer, SourceSpan.FromBounds(equalsSpan.Start, initializerKoto.Span.End));
+                initializerKoto = null;
+            }
+        }
+
+        if (!computed && typeKoto is null && initializerKoto is null)
+        {
+            // A stored Property states its Type or has an initializer; the recovery Type stands for the missing one (SPEC 23.3.6.4).
+            typeKoto = new ErrorKoto(ref reader, new SourceSpan(nameToken.Span.End, 0)) { Cause = reader.Expect(SyntaxForm.TypeOrInitializer) };
+        }
+
+        var hasInlineAccessors = reader.TryConsume(TokenKind.Has, out var hasSpan, false);
 
         reader.RestoreContext(propertyContext);
         var property = new PropertyKoto(ref reader, token, nameKoto, typeKoto, initializerKoto, hasInlineAccessors);
         reader.Document(property, SourceSpan.FromBounds(token.Span.Start, nameToken.Span.End), propertyContext.AttributeKoto);
-
-        if (property.Modifier != property.Modifier.ExtractAccessibilityModifiers())
-        {
-            property.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property declaration modifier");
-        }
-
-        if (property.DeclarationKind is PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement)
-        {
-            if (typeKoto is null || initializerKoto is not null)
-            {
-                property.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property type or initializer");
-            }
-        }
-        else if (typeKoto is null && initializerKoto is null)
-        {
-            property.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
 
         var unavailableAccessor = false;
         if (hasInlineAccessors)
         {
             if (!property.IsContractRequirement)
             {
-                property.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "has is only permitted on property requirements");
+                reader.Unexpected(SyntaxForm.InlineAccessors, hasSpan);
             }
 
             unavailableAccessor = ParseInlinePropertyAccessors(ref reader, property);
@@ -746,7 +794,7 @@ Exit:
         {
             if (hasInlineAccessors)
             {
-                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.UnexpectedToken_Kd, TokenKind.StartBlock.ToText());
+                reader.Unexpected(SyntaxForm.IndentedBody);
                 reader.SkipCurrentBlock(false);
             }
             else
@@ -754,9 +802,9 @@ Exit:
                 unavailableAccessor = ParsePropertyAccessorBlock(ref reader, property);
             }
         }
-        else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+        else
         {
-            reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.ExpectLineEnd();
         }
 
         if (unavailableAccessor)
@@ -765,9 +813,9 @@ Exit:
         }
 
         if (property.DeclarationKind is PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement &&
-            property.GetAccessor(PropertyAccessorKind.Get) is null)
+            property.GetAccessor(PropertyAccessorKind.Get) is null && reader.CodeContext.RecoveryCause(property) is null)
         {
-            property.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Getter));
         }
 
         return property;
@@ -794,27 +842,32 @@ Exit:
 
             var start = reader.CurrentTokenRange.Start;
             var modifier = ParseAccessorAccessibility(ref reader);
+            var modifierEnd = reader.PreviousEnd;
             var accessorToken = reader.CurrentToken;
+            parsedAny = true;
             if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
             {
-                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
-                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, null);
+                // The Property's accessor set is unknown after this; its accessor checks rest on the Error.
+                reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Accessor));
+                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
             reader.Advance();
-            parsedAny = true;
-            if (modifier != ModifierKind.NoModifier)
-            {
-                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, "requirement accessor accessibility");
-            }
-
             var accessor = new PropertyAccessorKoto(
                 ref reader,
                 SourceSpan.FromBounds(start, accessorToken.Span.End),
                 modifier,
                 accessorKind,
                 default);
+            if (modifier != ModifierKind.NoModifier)
+            {
+                // The accessor and its Property are checked as recoveries: the modifier is the one Error.
+                var decorated = reader.Unexpected(SyntaxForm.AccessorAccessibility, SourceSpan.FromBounds(start, modifierEnd));
+                reader.CodeContext.RecordRecovery(accessor, decorated);
+                reader.CodeContext.RecordRecovery(property, decorated);
+            }
+
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
             if (!reader.TryConsume(TokenKind.Comma))
@@ -824,14 +877,14 @@ Exit:
 
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Accessor);
                 break;
             }
         }
 
         if (!parsedAny)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Accessor);
         }
 
         return unavailableAccessor;
@@ -860,10 +913,14 @@ Exit:
                 var relation = ParseOriginRelation(ref reader);
                 if (seenAccessor)
                 {
-                    relation.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin clauses precede accessors");
+                    // The misplaced clause is not a relation of the Property; Binding judges only the clauses kept.
+                    relation.Unexpected(SyntaxForm.OriginClause);
+                }
+                else
+                {
+                    OriginClauses.Add(property, relation);
                 }
 
-                OriginClauses.Add(property, relation);
                 continue;
             }
 
@@ -877,21 +934,19 @@ Exit:
 
             var start = reader.CurrentTokenRange.Start;
             var modifier = ParseAccessorAccessibility(ref reader);
+            var modifierEnd = reader.PreviousEnd;
             var accessorToken = reader.CurrentToken;
             if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
             {
-                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
+                // The Property's accessor set is unknown after this; its accessor checks rest on the Error.
+                reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Accessor));
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 continue;
             }
 
             reader.Advance();
-            var origins = RejectCallableOriginList(ref reader);
+            RejectCallableOriginList(ref reader);
             var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
-            if (origins is not null && !hasSignature)
-            {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin parameters require an accessor signature");
-            }
 
             Koto? receiverType = null;
             Koto? valueType = null;
@@ -902,15 +957,17 @@ Exit:
             }
 
             var returnType = ParseAccessorReturnType(ref reader);
-            if (hasSignature != (returnType is not null))
+            if (hasSignature && returnType is null)
             {
-                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, "accessor requires a parameter list and result type");
+                reader.Expect(SyntaxForm.AccessorResult);
             }
 
             if (accessorKind == PropertyAccessorKind.Set && returnType is not null &&
                 returnType is not TupleTypeKoto { ElementNodes.Count: 0 })
             {
-                reader.Diagnostic.Add(returnType.Span, DiagnosticCode.UnexpectedToken_Kd, "setter result must be ()");
+                // The recovery keeps the setter's Unit result, so its body is checked as a setter body.
+                returnType.Unexpected(SyntaxForm.SetterResult);
+                returnType = new TupleTypeKoto(ref reader, returnType.Span, []);
             }
 
             var accessor = new PropertyAccessorKoto(
@@ -922,8 +979,7 @@ Exit:
                 returnType,
                 hasSignature,
                 receiverType,
-                valueType,
-                origins);
+                valueType);
             Koto? body = default;
             if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
             {
@@ -935,32 +991,44 @@ Exit:
                 body = property.IsContractRequirement && block.Items.Count == 0 ? null : block;
             }
 
+            // An accessor that needs a signature, or that carries a result Type or a body, lacks its parameter list right after the keyword.
+            if (!hasSignature && (returnType is not null || body is not null || property.IsContractRequirement || property.DeclarationKind == PropertyDeclarationKind.Computed))
+            {
+                reader.Missing(SyntaxForm.AccessorParameters, accessorToken.Span.End);
+            }
+
             if (property.IsContractRequirement)
             {
-                if (!hasSignature || body is not null || modifier != ModifierKind.NoModifier)
+                // A requirement accessor is a bare signature: no access modifier and no body. A decorated accessor and its
+                // Property are checked as recoveries, so the modifier is the one Error.
+                if (modifier != ModifierKind.NoModifier)
                 {
-                    reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, "bodyless requirement signature");
+                    var decorated = reader.Unexpected(SyntaxForm.AccessorAccessibility, SourceSpan.FromBounds(start, modifierEnd));
+                    reader.CodeContext.RecordRecovery(accessor, decorated);
+                    reader.CodeContext.RecordRecovery(property, decorated);
+                }
+
+                if (body is not null)
+                {
+                    body.Unexpected(SyntaxForm.RequirementBody);
                 }
             }
-            else if (hasSignature != (body is not null) ||
-                (property.DeclarationKind == PropertyDeclarationKind.Computed && body is null))
+            else if (hasSignature && body is null)
             {
-                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, "custom accessor requires an explicit signature and body");
+                reader.Expect(SyntaxForm.Body);
             }
 
             accessor.SetBody(body);
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
-            if (body is not CodeBlockKoto &&
-                reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) &&
-                reader.CanRead)
+            if (body is not CodeBlockKoto)
             {
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                reader.ExpectLineEnd();
             }
         }
 
         property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
-        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        reader.Expect(SyntaxForm.Accessor);
         return unavailableAccessor;
     }
 
@@ -977,21 +1045,16 @@ Exit:
         if (reader.IsCurrentIdentifier("self"))
         {
             reader.Advance();
-            if (!reader.TryConsume(TokenKind.Colon))
+            if (!reader.Expect(TokenKind.Colon))
             {
-                reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, ":");
                 goto CloseParameters;
             }
 
             receiverType = ParseDeclarationType(ref reader);
             end = Math.Max(end, receiverType.Span.End);
-            if (kind == PropertyAccessorKind.Set)
+            if (kind == PropertyAccessorKind.Set && !reader.Expect(TokenKind.Comma))
             {
-                if (!reader.TryConsume(TokenKind.Comma))
-                {
-                    reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, ",");
-                    goto CloseParameters;
-                }
+                goto CloseParameters;
             }
         }
 
@@ -1000,9 +1063,8 @@ Exit:
             if (reader.IsCurrentIdentifier("value"))
             {
                 reader.Advance();
-                if (!reader.TryConsume(TokenKind.Colon))
+                if (!reader.Expect(TokenKind.Colon))
                 {
-                    reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, ":");
                     goto CloseParameters;
                 }
 
@@ -1011,24 +1073,20 @@ Exit:
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "setter value parameter");
+                reader.Expect(SyntaxForm.SetterValueParameter);
             }
         }
 
 CloseParameters:
-        if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+        if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
         {
-            reader.SkipUnexpectedUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
+            // Whatever remains of the list is skipped after the one report at its first token.
+            reader.Expect(SyntaxForm.CloseParenthesis);
+            reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
+            reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
         }
 
-        if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
-        {
-            end = close.End;
-        }
-        else
-        {
-            reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, ")");
-        }
+        end = Math.Max(end, close.End);
     }
 
     private static Koto? ParseAccessorReturnType(ref TokenReader reader)
@@ -1186,6 +1244,7 @@ CloseParameters:
         reader.ClearContext();
 
         var inspectHeader = true;
+        var openSpan = default(SourceSpan);
         while (reader.CanRead)
         {
             if (inspectHeader && allowCompileTimeDirectives && !reader.IsExcluded && TryConsumeUnavailableModifiers(ref reader))
@@ -1213,13 +1272,14 @@ CloseParameters:
                     // static is not a declaration modifier; it is kept only for recovery (SPEC 6.1).
                     if (!reader.IsExcluded)
                     {
-                        reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, Constants.StaticKeyword);
+                        reader.Unexpected(SyntaxForm.StaticModifier);
                     }
 
                     ReadFlag(ref reader, ModifierKind.Static);
                     continue;
 
                 case TokenKind.Open:
+                    openSpan = reader.CurrentTokenRange;
                     ReadFlag(ref reader, ModifierKind.Open);
                     continue;
 
@@ -1260,7 +1320,7 @@ CloseParameters:
                     if (reader.ModifierKind.HasFlag(ModifierKind.Open) && tokenKind != TokenKind.Struct && !reader.IsExcluded)
                     {
                         // open applies only to structures (SPEC 6.2.2, F.3).
-                        reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, Constants.OpenKeyword);
+                        reader.Unexpected(SyntaxForm.OpenModifier, openSpan);
                     }
 
                     isEnd = false;
@@ -1268,14 +1328,9 @@ CloseParameters:
             }
         }
 
-        if (reader.HasCompileTimeIfPrefix)
+        if (reader.HasCompileTimeIfPrefix || reader.AttributeKoto is not null)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
-
-        if (reader.AttributeKoto is not null)
-        {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Declaration);
         }
 
         isEnd = true;
@@ -1451,7 +1506,10 @@ CloseParameters:
         if (disambiguateGenerics && reader.CurrentTokenKind == TokenKind.Question &&
             left is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out _))
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "optional suffix on Semantics shorthand");
+            // The shorthand names no Type to make optional; the target rests on the Error.
+            var cause = reader.Unexpected(SyntaxForm.SemanticsShorthandSuffix);
+            var question = reader.Read();
+            return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, question.Span.End)) { Cause = cause };
         }
 
         return optionalSuffix ? ParseOptionalSuffix(ref reader, left, parseBorrowOrigin: !disambiguateGenerics) : left;
@@ -1460,7 +1518,7 @@ CloseParameters:
         {
             if (reader.CurrentTokenKind == TokenKind.Underscore)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "_");
+                reader.Expect(SyntaxForm.Type);
             }
 
             if (reader.CurrentTokenKind == TokenKind.ColonColon)
@@ -1475,7 +1533,7 @@ CloseParameters:
 
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Comma or TokenKind.CloseParenthesis or TokenKind.CloseBrace or TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.Equals)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Type);
                 return null;
             }
 
@@ -1491,24 +1549,26 @@ CloseParameters:
             {// Attachment is chosen by the enclosing AnnotatedType, not this recursion.
                 var semantics = reader.GetSpan(token);
                 string? semanticsParameter = default;
+                DiagnosticKey? cause = null;
                 if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
                 {
                     if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                     {
-                        // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1).
-                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, semantics[0] == 'm' ? "move as a Semantics prefix" : "copy as a Semantics prefix");
+                        // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1); the Type rests on the Error.
+                        cause = reader.Unexpected(SyntaxForm.OperationAsSemanticsPrefix, token.Span);
                     }
 
                     semanticsParameter = reader.GetIdentifier(token);
                 }
 
-                if (!reader.TryConsume(TokenKind.Slash, out _, true))
-                {
-                    return reader.NewErrorKoto();
-                }
-
+                reader.Advance(); // The slash that selected this path.
                 var attribute = reader.PopAttribute();
                 var type = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: disambiguateGenerics, optionalSuffix: false);
+                if (cause is { } operationCause)
+                {
+                    return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, type.Span.End)) { Cause = operationCause };
+                }
+
                 if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
                 {
                     type = transparentType.Type;
@@ -1529,7 +1589,7 @@ CloseParameters:
                 return new TypeSemanticsKoto(ref reader, token);
             }
 
-            reader.ReportUnexpectedToken(token);
+            reader.Expect(SyntaxForm.Type, token);
             return null;
         }
     }
@@ -1560,8 +1620,12 @@ CloseParameters:
         return type;
     }
 
-    private static void CheckAdaptationOrigins(ref TokenReader reader, Koto type)
+    /// <summary>Reports an Origin annotation on a borrow layer of an adaptation target.</summary>
+    /// <param name="type">The parsed target.</param>
+    /// <returns>The key of the first Error, or <see langword="null"/> when every layer is unannotated.</returns>
+    private static DiagnosticKey? CheckAdaptationOrigins(Koto type)
     {
+        DiagnosticKey? cause = null;
         while (true)
         {
             if (type is ParenthesizedTypeKoto grouped)
@@ -1572,7 +1636,7 @@ CloseParameters:
             {
                 if (!layer.IsTransparentWrapper && layer.HasOrigin)
                 {
-                    reader.Diagnostic.Add(layer.Span, DiagnosticCode.UnexpectedToken_Kd, "Origin annotation on adaptation borrow layer");
+                    cause ??= layer.Unexpected(SyntaxForm.AdaptationOrigin);
                 }
 
                 type = inner;
@@ -1581,7 +1645,7 @@ CloseParameters:
             {
                 // Stop at a Core. Payloads and function contracts contain independent
                 // complete Types; their annotations do not prescribe this operation's borrow.
-                return;
+                return cause;
             }
         }
     }
@@ -1713,7 +1777,7 @@ CloseParameters:
 
         if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
-            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
             return reader.NewErrorKoto();
         }
 
@@ -1728,7 +1792,7 @@ CloseParameters:
         {
             if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
                 return left;
             }
 
@@ -1752,9 +1816,10 @@ CloseParameters:
         var typeList = default(TemporaryKotoList);
         var end = reader.CurrentTokenRange.End;
         reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
+        Koto type;
         while (true)
         {
-            var type = ParseTypeArgument(ref reader);
+            type = ParseTypeArgument(ref reader);
             typeList.Add(type);
             end = type.Span.End;
             reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
@@ -1770,7 +1835,8 @@ CloseParameters:
             }
         }
 
-        if (reader.TryConsumeTypeClose(out var range))
+        // The closer is checked only after a complete last argument; a failed argument explains an absent closer (DIAGNOSTICS.md §4.3).
+        if (type is ErrorKoto ? reader.TryConsume(TokenKind.GreaterThan, out var range, false) : reader.TryConsumeTypeClose(out range))
         {
             end = Math.Max(end, range.End);
         }
@@ -1788,15 +1854,17 @@ CloseParameters:
         reader.TryRead(out var attributeToken);
 
         var nameToken = reader.CurrentToken;
-        if (!nameToken.Kind.IsIdentifierOrContextualKeyword() || !UnicodeIdentifierHelper.IsUppercase(reader.GetSpan(nameToken)))
+        var wellFormed = nameToken.Kind.IsIdentifierOrContextualKeyword() && UnicodeIdentifierHelper.IsUppercase(reader.GetSpan(nameToken));
+        if (!wellFormed)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Attribute name");
+            reader.Expect(SyntaxForm.AttributeName);
         }
 
         var operand = ParsePrimaryExpression(ref reader);
         if (reader.CurrentTokenKind is TokenKind.Dot or TokenKind.LessThan or TokenKind.OpenBracket)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Attribute arguments");
+            reader.Unexpected(SyntaxForm.AttributeSuffix);
+            wellFormed = false;
         }
 
         while (TryParsePostfixExpression(ref reader, ref operand))
@@ -1806,6 +1874,12 @@ CloseParameters:
         if (previousAttribute is not null)
         {
             reader.PushAttribute(previousAttribute);
+        }
+
+        if (!wellFormed)
+        {
+            // A malformed attribute attaches to nothing: its syntax Error explains it, and the declaration it precedes is checked on its own.
+            return null;
         }
 
         var attributeKoto = new AttributeKoto(
@@ -1827,13 +1901,12 @@ CloseParameters:
         }
 
         var attributes = reader.PopAttribute();
-        reader.Advance();
-        _ = reader.TryConsume(TokenKind.If, out _, true);
+        reader.Advance(2); // The caller saw '#' and 'if'.
         var condition = ParseRequiredCompileTimeCondition(ref reader);
         var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
         if (invalidHeader)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.Expect(SyntaxForm.LineEnd);
             SkipCompileTimeHeaderRemainder(ref reader);
         }
 
@@ -1871,7 +1944,7 @@ CloseParameters:
 
         if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.Expect(SyntaxForm.LineEnd);
             SkipCompileTimeHeaderRemainder(ref reader);
             invalidSyntax = true;
         }
@@ -1884,7 +1957,6 @@ CloseParameters:
         }
 
         reader.Advance(); // The #switch arm list is not a new lookup scope.
-        var closed = false;
 
         while (reader.CanRead)
         {
@@ -1892,7 +1964,6 @@ CloseParameters:
             if (reader.CurrentTokenKind == TokenKind.EndBlock)
             {
                 groupEnd = reader.Read().Span.End;
-                closed = true;
                 break;
             }
 
@@ -1922,7 +1993,7 @@ CloseParameters:
             }
 
             var sharp = reader.Read();
-            _ = reader.TryConsume(TokenKind.Case, out _, true);
+            reader.Advance(); // The loop saw '#' and 'case'.
 
             Koto? condition;
             CompileTimeConditionResult result;
@@ -1950,7 +2021,7 @@ CloseParameters:
 
             if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedTrailingToken_Kd);
+                reader.Expect(SyntaxForm.LineEnd);
                 SkipCompileTimeHeaderRemainder(ref reader);
                 invalidSyntax = true;
             }
@@ -1971,12 +2042,6 @@ CloseParameters:
             }
 
             groupEnd = Math.Max(groupEnd, body.Span.End);
-        }
-
-        if (!closed)
-        {
-            reader.Diagnostic.Add(header, DiagnosticCode.IncompleteSyntax_Kd);
-            invalidSyntax = true;
         }
 
         if (arms.Count == 0)
@@ -2073,7 +2138,7 @@ CloseParameters:
         }
 
         var startsWithPrefix = reader.CurrentTokenKind == TokenKind.Sharp;
-        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, null);
+        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.SkipCurrentBlock(false);
@@ -2135,11 +2200,18 @@ CloseParameters:
             var hasFunction = false;
             var hasContainer = false;
             var last = TokenKind.Invalid;
+            var headerEnd = header.End;
+            var switchTail = default(Token);
             if (first != TokenKind.StartBlock)
             {
                 while (reader.Position < end && reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
                 {
                     var kind = reader.CurrentTokenKind;
+                    if (isSwitchHeader && last == TokenKind.Switch)
+                    {
+                        switchTail = reader.CurrentToken;
+                    }
+
                     if (last == TokenKind.Sharp && reader.IsCurrentIdentifier("LibraryImport"))
                     {
                         importedDeclaration = true;
@@ -2166,6 +2238,7 @@ CloseParameters:
                     reader.Advance();
                 }
 
+                headerEnd = reader.PreviousSyntaxEnd;
                 if (hasContainer ||
                     (first is TokenKind.Let or TokenKind.Var && !hasAssignment))
                 {
@@ -2188,14 +2261,15 @@ CloseParameters:
                     bodyIsExecutable = true;
                 }
 
+                // Excluded syntax reports the forms the selected path would: a condition after #if or #case, nothing after #switch.
                 if (directive && last is TokenKind.If or TokenKind.Case)
                 {
-                    reader.Diagnostic.Add(header, DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.Missing(SyntaxForm.Expression, headerEnd);
                 }
 
                 if (isSwitchHeader && last != TokenKind.Switch)
                 {
-                    reader.Diagnostic.Add(header, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                    reader.Expect(SyntaxForm.LineEnd, switchTail);
                 }
 
                 reader.SkipSeparators();
@@ -2211,7 +2285,7 @@ CloseParameters:
 
                 if (bodyIsExecutable && (reader.Position >= end || !reader.CanRead || reader.CurrentTokenKind == TokenKind.EndBlock))
                 {
-                    reader.Diagnostic.Add(header, DiagnosticCode.EmptyExecutableBlock_Kd);
+                    reader.Missing(SyntaxForm.Body, headerEnd);
                 }
 
                 ValidateExcludedBodyStructure(
@@ -2222,13 +2296,17 @@ CloseParameters:
                     switchHeader: header);
                 reader.TryConsume(TokenKind.EndBlock);
             }
+            else if (requiresBody && isSwitchHeader)
+            {
+                reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
+            }
             else if (requiresBody)
             {
-                reader.Diagnostic.Add(header, isSwitchHeader ? DiagnosticCode.EmptyCompileTimeSwitch_Kd : DiagnosticCode.EmptyExecutableBlock_Kd);
+                reader.Missing(SyntaxForm.Body, headerEnd);
             }
             else if (prefix && (reader.Position >= end || !reader.CanRead || reader.CurrentTokenKind == TokenKind.EndBlock))
             {
-                reader.Diagnostic.Add(header, DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Missing(SyntaxForm.Declaration, headerEnd);
             }
 
             if (hasFunction || first != TokenKind.Sharp)
@@ -2257,8 +2335,9 @@ CloseParameters:
     {
         var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
 
-        if (!reader.TryConsume(TokenKind.Is, out var isRange, true))
+        if (!reader.TryConsume(TokenKind.Is, out var isRange, false))
         {
+            // Every caller saw the keyword through IsTypeConstraintStart; a subject that consumed it is parsed as no Constraint.
             return null;
         }
 
@@ -2270,7 +2349,7 @@ CloseParameters:
 
         if (finishLine)
         {
-            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.ExpectLineEnd();
         }
 
         return constraint;
@@ -2343,7 +2422,7 @@ CloseParameters:
                 TokenKind.EndBlock or
                 TokenKind.CloseParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Expression);
                 return reader.NewErrorKoto();
             }
 
@@ -2537,7 +2616,7 @@ CloseParameters:
         var start = reader.CurrentTokenRange;
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
-            reader.AddDiagnostic(DiagnosticCode.EmptyExecutableBlock_Kd);
+            reader.Expect(SyntaxForm.Body);
             return new CodeBlockKoto(ref reader, start, []);
         }
 
@@ -2560,7 +2639,7 @@ CloseParameters:
             {
                 if (!hasSourceItem)
                 {
-                    reader.Diagnostic.Add(start, DiagnosticCode.EmptyExecutableBlock_Kd);
+                    reader.Expect(SyntaxForm.Body);
                 }
 
                 var end = reader.CurrentTokenRange.End;
@@ -2589,7 +2668,7 @@ CloseParameters:
             {
                 if (reader.HasCompileTimeIfPrefix || reader.AttributeKoto is not null || reader.ModifierKind != ModifierKind.NoModifier)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.Expect(SyntaxForm.Declaration);
                 }
 
                 continue;
@@ -2621,7 +2700,7 @@ CloseParameters:
                 }
                 else
                 {
-                    relation.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "Origin clauses belong to the declaration's leading contract");
+                    relation.Unexpected(SyntaxForm.OriginClause);
                 }
 
                 continue;
@@ -2638,15 +2717,16 @@ CloseParameters:
                 var isGenericParameter = subject is not null && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
                 if (!seenExecutableItem || isGenericParameter)
                 {
-                    if (seenExecutableItem || !isGenericParameter)
-                    {
-                        reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.UnexpectedToken_Kd, subject ?? "::");
-                    }
-
+                    var misplaced = seenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
                     var constraint = ParseTypeConstraint(ref reader);
                     if (constraint is not null && function is { IsDestructor: false })
                     {
+                        // The prefix stays a Constraint of the function (SPEC 7.4); a misplaced one is a recovery, so Binding's own judgement of it is derived.
                         function.AddTypeConstraint(constraint);
+                        if (misplaced is { } cause)
+                        {
+                            reader.CodeContext.RecordRecovery(constraint, cause);
+                        }
                     }
 
                     continue;
@@ -2674,13 +2754,14 @@ CloseParameters:
             {
                 if (item is IdentifierNameKoto { IdentifierName: "during" })
                 {
-                    reader.Diagnostic.Add(
-                        reader.CurrentTokenRange,
-                        DiagnosticCode.UnexpectedTrailingToken_Kd,
-                        advice: "If this is a borrow annotation, keep 'during' on the Type's line or enclose the Type and annotation in parentheses.");
+                    // The line is a detached borrow annotation, not a statement; Binding does not resolve 'during' as a Name.
+                    reader.CodeContext.RecordRecovery(item, reader.Unexpected(SyntaxForm.DetachedDuring, item.Span));
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 }
-
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                else
+                {
+                    reader.ExpectLineEnd();
+                }
             }
 
             if (reader.Position == oldPosition)
@@ -2689,8 +2770,8 @@ CloseParameters:
             }
         }
 
+        // The tokenizer closes every block at the end of the source; the loop ends here only after the block's EndBlock.
         var eof = reader.CurrentTokenRange.End;
-        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         reader.RestoreContext(blockContext);
         return new CodeBlockKoto(
             ref reader,
@@ -2713,8 +2794,36 @@ CloseParameters:
         }
     }
 
+    /// <summary>Skips the rest of a declaration's line and the indented body it would have introduced, then clears the pending header.</summary>
+    /// <param name="reader">The token reader.</param>
+    internal static void SkipDeclarationLine(ref TokenReader reader)
+    {
+        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+        reader.SkipSeparators();
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.SkipCurrentBlock(false);
+        }
+
+        reader.ClearContext();
+    }
+
+    private static bool IntroducesDeclaration(ref TokenReader reader)
+        => reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or
+            TokenKind.Contract or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
+            (reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket)) ||
+            (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
+
     internal static Koto? ParseBlockItem(ref TokenReader reader)
     {
+        if (reader.ModifierKind != ModifierKind.NoModifier && !IntroducesDeclaration(ref reader))
+        {
+            // Modifiers introduce a declaration; the line and the body it would have introduced are skipped as one.
+            reader.CodeContext.Kotonoha.RecordOmission(reader.Expect(SyntaxForm.Declaration));
+            SkipDeclarationLine(ref reader);
+            return null;
+        }
+
         if (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals)
         {
             var discardToken = reader.Read();
@@ -2734,27 +2843,32 @@ CloseParameters:
                 reader.Advance();
                 if (!reader.TryConsume(TokenKind.OpenParenthesis))
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.Expect(SyntaxForm.OpenParenthesis);
                     return reader.NewErrorKoto();
                 }
 
                 var arguments = ParseArgumentList(ref reader, out var labels);
                 var trailing = reader.PeekKind(-1) == TokenKind.Comma;
                 var closed = reader.TryConsume(TokenKind.CloseParenthesis);
+                DiagnosticKey? malformed = null;
                 if (!closed || arguments.Length is < 1 or > 2 || trailing ||
                     (labels is not null && labels.Length > 0 && labels[0] is not null) ||
                     (arguments.Length == 2 && (labels is null || labels.Length < 2 || labels[1] != "message")))
                 {
-                    reader.Diagnostic.Add(start.Span, DiagnosticCode.UnexpectedToken_Kd, "test verification arguments");
+                    malformed = reader.Unexpected(SyntaxForm.TestVerificationArguments, start.Span);
                 }
 
-                return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), arguments.Length > 1 ? arguments[1] : null);
+                // A malformed list keeps its condition; a second argument stands as a recovery, so no message check repeats the Error.
+                var message = arguments.Length > 1 ? (malformed is { } cause ? new ErrorKoto(ref reader, arguments[1].Span) { Cause = cause } : arguments[1]) : null;
+                return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
             }
         }
 
-        if (reader.AttributeKoto is not null && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
+            // A misplaced attribute attaches to nothing, so the item it precedes is checked on its own.
+            reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
+            reader.PopAttribute();
         }
 
         if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
@@ -2807,7 +2921,7 @@ CloseParameters:
                 var supportsOriginHeader = token.Kind is TokenKind.Struct or TokenKind.Enum;
                 if (token.Kind == TokenKind.Extension)
                 {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
+                    reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
                 }
 
                 var state = reader.TakeContext();
@@ -2831,7 +2945,7 @@ CloseParameters:
                 }
                 else if (token.Kind == TokenKind.Enum)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.CodeContext.RecordRecovery(container, reader.Expect(SyntaxForm.Body));
                 }
 
                 return container;
@@ -2861,7 +2975,7 @@ CloseParameters:
 
         if (!HasLibraryImport(function.AttributeChain))
         {
-            reader.Diagnostic.Add(function.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
+            reader.Expect(SyntaxForm.Body);
             function.MissingBody = true;
         }
     }
@@ -2904,11 +3018,8 @@ CloseParameters:
 
     private static IfKoto ParseIfExpression(ref TokenReader reader)
     {
-        if (reader.IfBodyRegion)
-        {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "group the nested if expression");
-        }
-
+        // A nested if is parsed in full and recorded as a recovery, so its Type rests on the Error.
+        var cause = reader.IfBodyRegion ? reader.Unexpected(SyntaxForm.NestedIfExpression) : default(DiagnosticKey?);
         var ifToken = reader.Read();
         var branches = new List<ConditionalBranchKoto>(2);
         CodeBlockKoto? elseBody = null;
@@ -2937,11 +3048,17 @@ CloseParameters:
             break;
         }
 
-        return new IfKoto(
+        var result = new IfKoto(
             ref reader,
             SourceSpan.FromBounds(ifToken.Span.Start, end),
             branches,
             elseBody);
+        if (cause is { } nested)
+        {
+            reader.CodeContext.RecordRecovery(result, nested);
+        }
+
+        return result;
     }
 
     private static WhileKoto ParseWhileExpression(ref TokenReader reader)
@@ -2984,7 +3101,7 @@ CloseParameters:
         }
         else
         {
-            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
             if (reader.CanRead &&
                 reader.CurrentTokenKind != TokenKind.In &&
                 !IsExpressionBoundary(ref reader))
@@ -2993,10 +3110,7 @@ CloseParameters:
             }
         }
 
-        if (!reader.TryConsume(TokenKind.In))
-        {
-            reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, Constants.InKeyword);
-        }
+        reader.Expect(TokenKind.In);
 
         var iterable = ParseHeaderExpression(ref reader);
         var body = ParseRequiredBody(ref reader);
@@ -3022,7 +3136,7 @@ CloseParameters:
                 // An empty list or a trailing comma is not a ForBinding form (SPEC F.5).
                 if (expectsBinding)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                    reader.Expect(SyntaxForm.Name);
                 }
 
                 reader.Advance();
@@ -3037,14 +3151,12 @@ CloseParameters:
                 }
                 else if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
                 {
-                    reader.AddDiagnostic(
-                        DiagnosticCode.TokenMismatch_Kd,
-                        TokenKind.CloseParenthesis.ToText());
+                    reader.Expect(SyntaxForm.CloseParenthesis);
                     return;
                 }
                 else
                 {
-                    reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, TokenKind.Comma.ToText());
+                    reader.Expect(SyntaxForm.Comma);
                 }
 
                 expectsBinding = true;
@@ -3053,9 +3165,7 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
             {
-                reader.AddDiagnostic(
-                    DiagnosticCode.TokenMismatch_Kd,
-                    TokenKind.CloseParenthesis.ToText());
+                reader.Expect(SyntaxForm.CloseParenthesis);
                 return;
             }
 
@@ -3069,7 +3179,7 @@ CloseParameters:
                     }
                     else
                     {
-                        reader.Diagnostic.Add(binding.Span, DiagnosticCode.UnexpectedToken_Kd, "var slot beyond the 64th binding");
+                        reader.Diagnostic.Add(binding.Span, DiagnosticCode.ForBindingLimit_Kd);
                     }
                 }
 
@@ -3078,12 +3188,12 @@ CloseParameters:
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
                 reader.Advance();
             }
         }
 
-        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        reader.Expect(SyntaxForm.CloseParenthesis);
     }
 
     // SPEC 14.6.1: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding.
@@ -3097,7 +3207,7 @@ CloseParameters:
             mutable = true;
             if (reader.CurrentTokenKind == TokenKind.Underscore)
             {
-                reader.Diagnostic.Add(varToken.Span, DiagnosticCode.UnexpectedToken_Kd, "var _");
+                reader.Unexpected(SyntaxForm.WildcardBinding, varToken.Span);
             }
         }
 
@@ -3125,10 +3235,9 @@ CloseParameters:
         var arms = new List<MatchArmKoto>(4);
         var end = expression.Span.End;
 
-        reader.SkipSeparators();
-        if (reader.CurrentTokenKind != TokenKind.StartBlock)
+        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Body);
             return new MatchKoto(
                 ref reader,
                 SourceSpan.FromBounds(matchToken.Span.Start, end),
@@ -3173,7 +3282,7 @@ CloseParameters:
             }
         }
 
-        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        // The arm list ends only through its EndBlock, which the tokenizer supplies at the end of the source.
         return new MatchKoto(
             ref reader,
             SourceSpan.FromBounds(matchToken.Span.Start, end),
@@ -3259,7 +3368,7 @@ CloseParameters:
     {
         if (IsExpressionBoundary(ref reader))
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Expression);
             return reader.NewErrorKoto();
         }
 
@@ -3287,7 +3396,7 @@ CloseParameters:
             return ParseBlock(ref reader);
         }
 
-        reader.AddDiagnostic(DiagnosticCode.EmptyExecutableBlock_Kd);
+        reader.Expect(SyntaxForm.Body);
         return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
     }
 
@@ -3297,7 +3406,7 @@ CloseParameters:
         {
             if (reader.SingleBodyRegion)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "a nested body in this region requires =>");
+                reader.Expect(SyntaxForm.ArrowBody);
             }
 
             return ParseRequiredBlock(ref reader);
@@ -3313,7 +3422,8 @@ CloseParameters:
         var arrow = reader.Read();
         if (!reader.SameLine(headerEnd, arrow.Span.Start) || !reader.SameLine(arrow.Span.End, reader.CurrentTokenRange.Start) || IsExpressionBoundary(ref reader))
         {
-            reader.AddDiagnostic(DiagnosticCode.EmptyExecutableBlock_Kd);
+            // The expression body belongs on the header's line, right after its arrow.
+            reader.Expect(SyntaxForm.Expression);
             return reader.NewErrorKoto();
         }
 
@@ -3391,7 +3501,7 @@ CloseParameters:
 
             if (tokenKind == TokenKind.Sharp)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
+                reader.Unexpected(SyntaxForm.Attribute);
                 // Attributes following an expression are attached to the next parsed node.
                 _ = ParseAttributeKoto(ref reader);
                 continue;
@@ -3410,7 +3520,7 @@ CloseParameters:
                 Koto typeKoto;
                 if (IsExpressionBoundary(ref reader))
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.Expect(SyntaxForm.Type);
                     typeKoto = reader.NewErrorKoto();
                 }
                 else if (IsBareOperationTarget(ref reader))
@@ -3423,13 +3533,17 @@ CloseParameters:
                 {
                     // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
                     typeKoto = ParseType(ref reader, parseOrigin: true, disambiguateGenerics: true);
-                    CheckAdaptationOrigins(ref reader, typeKoto);
+                    if (CheckAdaptationOrigins(typeKoto) is { } annotated)
+                    {
+                        typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
+                    }
+
                     typeKoto = ConversionOperationTarget(ref reader, typeKoto);
                 }
 
                 if (reader.IsCurrentIdentifier("during"))
                 {
-                    reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "group an annotated adaptation target: @(ref/T? during a); outer borrow Origins must still be inferred");
+                    reader.Unexpected(SyntaxForm.AdaptationDuring);
                     reader.Advance();
                     _ = ParseOriginAtom(ref reader);
                 }
@@ -3453,10 +3567,7 @@ CloseParameters:
                 var end = ParseRangeEnd(ref reader, rangeToken);
                 if (left is RangeKoto)
                 {
-                    reader.Diagnostic.Add(
-                        rangeToken.Span,
-                        DiagnosticCode.UnexpectedToken_Kd,
-                        rangeToken.Kind.ToText());
+                    reader.Unexpected(SyntaxForm.ChainedRange, rangeToken.Span);
                     continue;
                 }
 
@@ -3492,7 +3603,7 @@ CloseParameters:
             Koto right;
             if (IsExpressionBoundary(ref reader))
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Expression);
                 right = reader.NewErrorKoto();
                 left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
             }
@@ -3542,7 +3653,7 @@ CloseParameters:
     {
         if (reader.HeaderRegion)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "group body-bearing header expressions");
+            reader.Unexpected(SyntaxForm.HeaderBodyExpression);
         }
 
         var introducer = reader.Read();
@@ -3618,12 +3729,12 @@ ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
         if (reader.HeaderRegion && tokenKind is TokenKind.If or TokenKind.Match or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "group body-bearing header expressions");
+            reader.Unexpected(SyntaxForm.HeaderBodyExpression);
         }
 
         if (tokenKind == TokenKind.Sharp)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "attribute placement");
+            reader.Unexpected(SyntaxForm.Attribute);
             _ = ParseAttributeKoto(ref reader);
             goto ProcessPrefix;
         }
@@ -3634,13 +3745,13 @@ ProcessPrefix:
             if (tokenKind == TokenKind.Try && minBindingPower > TryBindingPower)
             {
                 // A level-2 prefix operator cannot take a try expression directly: write -(try x) (SPEC §13.1).
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "grouped try operand");
+                reader.Unexpected(SyntaxForm.TryOperand, token.Span);
             }
 
             Koto operand;
             if (IsExpressionBoundary(ref reader))
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Expression);
                 operand = reader.NewErrorKoto();
             }
             else
@@ -3655,7 +3766,14 @@ ProcessPrefix:
                    write.GetArgumentLabel(0) is null && write.GetArgumentLabel(1) is null && write.ArgumentNodes[1] is StringLiteralKoto or InterpolatedStringKoto)) ||
                  (reader.PeekKind(-1) == TokenKind.CloseParenthesis && reader.PeekKind(-2) == TokenKind.Comma)))
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "$abort(Expression) or $tryWrite(writer, literal)");
+                // The prefix marks nothing Binding can select; the node rests on the Error and its operand is checked on its own.
+                var dollar = KotoHelper.NewUnaryKoto(ref reader, token, operand);
+                if (operand.Expected(SyntaxForm.DollarOperand) is { } cause)
+                {
+                    reader.CodeContext.RecordRecovery(dollar, cause);
+                }
+
+                return dollar;
             }
 
             return tokenKind == TokenKind.Try ? new TryKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, operand.Span.End), operand) : KotoHelper.NewUnaryKoto(ref reader, token, operand);
@@ -3680,7 +3798,7 @@ ProcessPrefix:
 
         if (generic!.TypeArguments.Count != 1)
         {
-            reader.Diagnostic.Add(generic.Span, DiagnosticCode.UnexpectedToken_Kd, "exactly one Type argument: @" + operation + "<Type>");
+            generic.Expected(SyntaxForm.ConversionTypeArgument);
         }
 
         return new TypeSemanticsKoto(ref reader, target.Span, operation == Constants.WrapOperation ? Constants.WrapOperation : Constants.BitsOperation, generic.TypeArguments[0]);
@@ -3775,7 +3893,7 @@ ProcessPrefix:
                     Koto index;
                     if (IsExpressionBoundary(ref reader))
                     {
-                        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                        reader.Expect(SyntaxForm.Expression);
                         index = reader.NewErrorKoto();
                     }
                     else
@@ -3889,6 +4007,7 @@ ProcessPrefix:
         var arguments = default(TemporaryKotoList);
         var labels = default(TemporaryList<string?>);
         var hasLabels = false;
+        Koto? last = null;
         argumentLabels = default;
 
         var tokenKind = reader.CurrentTokenKind;
@@ -3914,11 +4033,20 @@ ProcessPrefix:
             }
             else if (hasLabels)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "positional argument after named argument");
+                // The misplaced argument is kept as a recovery, so overload selection rests on this Error.
+                var misplaced = reader.Unexpected(SyntaxForm.PositionalAfterNamed);
                 labels.Add(null);
+                var positional = ParseRequiredExpression(ref reader);
+                reader.CodeContext.RecordRecovery(positional, misplaced);
+                arguments.Add(positional);
+                last = positional;
+                goto Separator;
             }
 
-            arguments.Add(ParseRequiredExpression(ref reader));
+            last = ParseRequiredExpression(ref reader);
+            arguments.Add(last);
+
+Separator:
 
             // A block-valued argument (including match) can leave a dedent separator
             // before the next comma. Keep the comma mandatory for the argument list.
@@ -3939,7 +4067,12 @@ ProcessPrefix:
 
             if (tokenKind != TokenKind.CloseParenthesis)
             {
-                reader.TryConsume(TokenKind.Comma, out _);
+                if (!reader.TryConsume(TokenKind.Comma, out _) && last is not null)
+                {
+                    // The list's shape is uncertain from here: the last argument is a recovery, so overload selection rests on the Error.
+                    reader.CodeContext.RecordRecovery(last, reader.Diagnostic.LastError!.Value);
+                }
+
                 reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
 
                 if (reader.TryConsume(TokenKind.Comma))
@@ -4032,7 +4165,7 @@ Loop:
                 }
 
             case TokenKind.StartBlock:
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "standalone indented body");
+                reader.Unexpected(SyntaxForm.IndentedBody);
                 return ParseBlock(ref reader);
 
             case TokenKind.DotDot:
@@ -4083,6 +4216,7 @@ Loop:
 
             default:
                 {
+                    // The token that cannot start an expression is consumed for recovery; an invalid identifier was already reported.
                     reader.TryRead(out var token);
                     if (token.Kind.IsIdentifierOrContextualKeyword() &&
                         IdentifierNameKoto.TryCreate(ref reader, token, out var identifier))
@@ -4090,9 +4224,20 @@ Loop:
                         return identifier;
                     }
 
-                    reader.ReportUnexpectedToken(token);
+                    if (token.Kind == TokenKind.Else)
+                    {
+                        // An else that no if body precedes introduces a body of its own; the body is read as part of the recovery.
+                        var orphan = reader.Unexpected(SyntaxForm.ElseWithoutIf, token.Span);
+                        var end = token.Span.End;
+                        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                        {
+                            end = ParseRequiredBody(ref reader).Span.End;
+                        }
 
-                    return new ErrorKoto(ref reader, token.Span) { Cause = reader.Diagnostic.LastError };
+                        return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end)) { Cause = orphan };
+                    }
+
+                    return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.Expression, token) };
                 }
         }
     }
@@ -4125,7 +4270,7 @@ Loop:
             var close = open + StringLiteralHelper.FindInterpolationEnd(text[open..]);
             if (close < open)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.IncompleteSyntax_Kd);
+                // The tokenizer ends an interpolated literal only after the matching ')'.
                 break;
             }
 
@@ -4151,13 +4296,7 @@ Loop:
                 var nested = new TokenReader(reader.CodeContext, ref tokenizer);
                 nested.TryConsume(TokenKind.OpenParenthesis);
                 var expression = ParseRequiredExpression(ref nested);
-                nested.TryConsume(TokenKind.CloseParenthesis, out _, true);
-                nested.SkipSeparators();
-                if (nested.CanRead)
-                {
-                    nested.AddDiagnostic(DiagnosticCode.UnexpectedTrailingToken_Kd);
-                }
-
+                nested.TryConsume(TokenKind.CloseParenthesis, out _, true); // The nested source ends at the matching ')'; a failed consume skips to it.
                 expressions.Add(expression);
             }
             finally
@@ -4289,7 +4428,7 @@ Loop:
             // SPEC 4.2: compound lengths must be parenthesized. Binding checks the constant grammar.
             if (first is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or ParenthesizedKoto))
             {
-                reader.Diagnostic.Add(first.Span, DiagnosticCode.UnexpectedToken_Kd, "array length (parenthesize a compound length)");
+                first.Unexpected(SyntaxForm.CompoundArrayLength);
             }
 
             reader.Advance();
@@ -4311,8 +4450,8 @@ Loop:
             {
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
+                    reader.Expect(SyntaxForm.Comma);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
                     if (reader.CurrentTokenKind == TokenKind.CloseBracket)
                     {
                         break;
@@ -4350,11 +4489,8 @@ Loop:
             {
                 if (reader.CurrentTokenKind != TokenKind.Colon)
                 {
-                    reader.Diagnostic.Add(
-                        reader.CurrentTokenRange,
-                        DiagnosticCode.TokenMismatch_Kd,
-                        TokenKind.Colon.ToText());
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
+                    reader.Expect(SyntaxForm.Colon);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
                 }
                 else
                 {
@@ -4372,8 +4508,8 @@ Loop:
 
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, null);
+                    reader.Expect(SyntaxForm.Comma);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
                     if (reader.CurrentTokenKind == TokenKind.CloseBracket)
                     {
                         break;
@@ -4407,7 +4543,7 @@ Loop:
         {
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                reader.Expect(SyntaxForm.Expression);
                 return reader.NewErrorKoto();
             }
 
@@ -4481,7 +4617,9 @@ Loop:
         {
             if (rangeToken.Kind == TokenKind.DotDotEquals)
             {
-                reader.Diagnostic.Add(rangeToken.Span, DiagnosticCode.IncompleteSyntax_Kd);
+                // A closed range needs its end; the open form may omit it. The recovery node stands for the missing end.
+                reader.Expect(SyntaxForm.Expression);
+                return reader.NewErrorKoto();
             }
 
             return default;
@@ -4522,7 +4660,7 @@ Loop:
                 }
                 else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                    reader.Expect(SyntaxForm.Comma);
                     reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
                     reader.TryConsume(TokenKind.Comma);
                 }
@@ -4575,7 +4713,7 @@ Loop:
         if (!parameterList)
         {
             // A bare or Semantics-applied Type cannot replace the Function Parameter List: ref/(T) -> U is invalid (SPEC 3.2).
-            reader.Diagnostic.Add(arrowRange, DiagnosticCode.UnexpectedToken_Kd, "function parameter list");
+            type.Expected(SyntaxForm.FunctionParameterList);
         }
 
         reader.Advance();
@@ -4622,7 +4760,7 @@ Loop:
             {
                 if (list is null)
                 {
-                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    reader.Expect(SyntaxForm.Type);
                 }
 
                 reader.TryConsumeTypeClose(out _);
@@ -4635,15 +4773,23 @@ Loop:
                 continue;
             }
 
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.Equals or TokenKind.EqualsGreaterThan or TokenKind.Colon)
+            {
+                // The list ends without its closer; the caller consumes nothing more of it.
+                reader.Expect(SyntaxForm.CloseAngleBracket);
+                return list;
+            }
+
             TypeKoto typeKoto;
             if (reader.IsCurrentIdentifier("length") && !specialization)
             {
                 var start = reader.Read().Span.Start;
                 var name = ParseName(ref reader);
                 typeKoto = new LengthParameterKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), (name as IdentifierNameKoto)?.IdentifierName ?? string.Empty);
-                if (!allowLength)
+                if (!allowLength && typeKoto.Unexpected(SyntaxForm.LengthParameter) is { } cause)
                 {
-                    typeKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "length");
+                    // The slot stays in the list as a recovery: Binding keeps it out of the Type's components and rests on the Error.
+                    reader.CodeContext.RecordRecovery(typeKoto, cause);
                 }
             }
             else if (specialization)
@@ -4684,13 +4830,13 @@ Loop:
             }
             else if (!IsTypeClose(reader.CurrentTokenKind))
             {
-                reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                reader.Expect(SyntaxForm.Comma);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.GreaterThan);
                 reader.TryConsume(TokenKind.Comma);
             }
         }
 
-        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        reader.Expect(SyntaxForm.CloseAngleBracket);
         return list;
     }
 

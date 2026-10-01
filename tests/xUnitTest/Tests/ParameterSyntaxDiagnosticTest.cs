@@ -143,7 +143,7 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
     {
         const string source = "func f(a: i32, !, b?: i32) => ()\nlet n = (1";
         var errors = Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics;
-        Assert.Equal(["ArgumentBoundaryComma_Kd", "ArgumentBoundaryComma_Kd", "ParameterNameMarker_Kd", "MissingExpectedToken_Kd"], errors.Select(static x => x.Code));
+        Assert.Equal(["ArgumentBoundaryComma_Kd", "ArgumentBoundaryComma_Kd", "ParameterNameMarker_Kd", "MissingSyntax_Kd"], errors.Select(static x => x.Code));
         Assert.Equal(source.IndexOf(','), errors[0].Span!.Value.Start);
         Assert.Equal(source.LastIndexOf(','), errors[1].Span!.Value.Start);
     }

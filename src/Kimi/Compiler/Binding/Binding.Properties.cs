@@ -292,8 +292,14 @@ public sealed partial class Binding
 
         var property = accessor.Property;
         var syntax = accessor.Declaration;
-        if (syntax?.BindingState == BindingState.Invalid || InvalidDeclarationContext(property.Declaration))
+        if (syntax?.BindingState == BindingState.Invalid)
         {
+            return ConstraintProof.Error;
+        }
+
+        if (InvalidDeclarationContextCause(property.Declaration) is { } context)
+        {
+            this.AddPrerequisite(property.Declaration, context); // The Property's proof rests on its invalid declaration context.
             return ConstraintProof.Error;
         }
 

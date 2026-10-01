@@ -87,7 +87,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         Assert.True(unexpected.Length == 0, string.Join("\n", unexpected.Take(50)));
     }
 
-    /// <summary>Lists the corpus: every milestone program, every example with a project file and every mutation case.</summary>
+    /// <summary>Lists the corpus: every milestone program, every example with a project file, every mutation case and every syntax case.</summary>
     /// <returns>The case names.</returns>
     internal static string[] CaseNames()
     {
@@ -97,7 +97,8 @@ public sealed class DiagnosticSnapshotTest : IDisposable
             .Where(static x => Directory.GetFiles(x, "*.kimiproj").Length == 1)
             .Select(static x => "example/" + Path.GetFileName(x));
         var mutations = DiagnosticCorpus.Mutations.Select(static x => "mutation/" + x.Name);
-        return [.. milestones.Concat(examples).Concat(mutations).Order(StringComparer.Ordinal)];
+        var syntax = DiagnosticCorpus.SyntaxCases.Select(static x => "syntax/" + x.Name);
+        return [.. milestones.Concat(examples).Concat(mutations).Concat(syntax).Order(StringComparer.Ordinal)];
     }
 
     /// <summary>Lists the differences between two snapshots as <c>kind TAB case TAB detail</c> lines.</summary>
@@ -191,7 +192,12 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         }
         else
         {
-            var source = kind == "milestone" ? File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")) : DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject));
+            var source = kind switch
+            {
+                "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
+                "syntax" => DiagnosticCorpus.Syntax(subject).Source,
+                _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
+            };
             var folder = Path.Combine(this.directory, kind, subject);
             Directory.CreateDirectory(folder);
             project = Path.Combine(folder, "Program.kimiproj");

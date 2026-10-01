@@ -300,7 +300,13 @@ public sealed partial class Binding
                     for (var j = 0; j < function.TypeConstraints.Count; j++)
                     {
                         var clause = (IsKoto)function.TypeConstraints[j];
-                        if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
+                        if (IsRecovery(clause, out _))
+                        {
+                            // The parser reported the prefix (SPEC 7.4); its parts are not judged again, and the clause rests on the Error.
+                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                            this.Fail(clause, BindingFailure.InvalidConstraint);
+                        }
+                        else if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[function]);
                         }

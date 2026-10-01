@@ -400,10 +400,9 @@ public sealed class FunctionKoto : DeclarationKoto
             return;
         }
 
-        reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
-        if (reader.CurrentTokenKind != TokenKind.StartBlock)
+        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.Diagnostic.Add(this.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
+            reader.Expect(SyntaxForm.Body);
             this.MissingBody = true;
             return;
         }

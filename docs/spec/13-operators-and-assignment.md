@@ -265,6 +265,8 @@ The operation is resolved from the explicit designation and the operand's Type a
 
 Targets may guide permitted literal and generic inference but cannot change an established operand or result Type, and an outer expected Type cannot cancel the selected operation. The normal inference boundaries apply: no cyclic inference and no candidate-by-candidate retries. Subsequent result fitting is checked statically.
 
+The operand of a numeric, wrapping or bit conversion, and of an Identity Acquisition whose target is a read Type, is a position that requires a read Type: safe reference layers ending in a read Type supply its value by the [value read](03-types-and-values.md#353-value-read) before the operation is selected, so `number@i64` with `number: ref/i32` converts the referent's value and `number@i32` Copies it. Borrow, `@follow`, `@copy`, `@move` and object targets take the reference itself.
+
 For numeric adaptation, target guidance is limited to the direct unresolved literal cases of §13.5.4. The conversion target is never passed as an expected Type into a general operand expression, including arithmetic, a literal-only expression or a generic call; the operand is inferred independently before the numeric conversion. Thus `(200 + 100)@u8` computes an `i32` value and then fails its conversion range check, and `id(300)@u8` does not infer the call's numeric Type from `u8`.
 
 ```kimi
@@ -282,10 +284,10 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | --- | --- |
 | Transfer | `@move` only; the operand is a Movable Place or a Temporary Value |
 | Copy | `@copy` only; the operand's Type is proven Copy |
-| Identity Acquisition | Same normalized complete Type, written as the Type or as a complete owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value |
-| Numeric Conversion | Integer, wrapping integer and floating values under `owner` Semantics, per the numeric table in §13.5.4 |
-| Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand and target (§13.5.4.3) |
-| Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type (§13.5.4.4) |
+| Identity Acquisition | Same normalized complete Type, written as the Type or as a complete owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value, or the value read of a reference to a read Type (§13.5.2) |
+| Numeric Conversion | Integer, wrapping integer and floating values under `owner` Semantics, including the value read of a reference to one (§13.5.2), per the numeric table in §13.5.4 |
+| Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand, a value or its value read, and such a target (§13.5.4.3) |
+| Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type, the operand a value or its value read (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
 | Raw Pointer Conversion | The [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-pointer-conversions) |
@@ -318,7 +320,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and only the numeric, wrapping and bit conversions and Identity Acquisition to a read Type read a referent through its reference (§13.5.2). Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 

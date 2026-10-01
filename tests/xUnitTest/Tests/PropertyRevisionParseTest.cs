@@ -56,7 +56,7 @@ public class PropertyRevisionParseTest
     public void MoveIsNotASemanticsPrefix()
     {
         var tree = Parse("let value = source@move/i32\nlet after = 1");
-        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
         Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
     }
 

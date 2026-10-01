@@ -6,8 +6,7 @@ func fnv1a(bytes: Slice<u8>, rounds: i32) -> u32
     var hash: u64 = 0x811C_9DC5
     for round in 0..rounds
         for b in bytes
-            let byte: u8 = b
-            hash = ((hash ^ byte@u64) * 0x0100_0193) & 0xFFFF_FFFF
+            hash = ((hash ^ b@u64) * 0x0100_0193) & 0xFFFF_FFFF
     return hash@u32
 
 func draws(seed: u64, count: i32) -> u64

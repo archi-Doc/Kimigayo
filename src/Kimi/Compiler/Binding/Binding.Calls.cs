@@ -390,7 +390,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!IsUnfittedLiteral(argument) && this.BindNode(argument, scope) is null)
+            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
+            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindNode(argument, scope) is null)
             {
                 if (argument is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
                 {

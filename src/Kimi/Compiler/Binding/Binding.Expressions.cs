@@ -448,6 +448,15 @@ public sealed partial class Binding
 
         switch (node)
         {
+            case ExpressionKoto recovered when recovered is not ErrorKoto && recovered.CodeContext.RecoveryCause(recovered) is not null:
+                // The parser's guess of a rejected form, or a form it reported as misplaced: its operands are checked on their
+                // own, its combination is not, and every check of it rests on the syntax Error (DIAGNOSTICS.md §4.3).
+                foreach (var part in recovered.ChildNodes)
+                {
+                    this.BindNode(part, scope);
+                }
+
+                return Complete(node, null);
             case EvaluatedKoto evaluated:
                 // A desugaring's evaluated operand has its source's Type; binding it evaluates nothing.
                 return Complete(evaluated, evaluated.Source.BoundType);
@@ -504,7 +513,13 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.Unsupported, true);
                 }
 
-                return HasLengthParameter(container) ? this.Fail(node, BindingFailure.InvalidTypeFormation) : Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
+                if (LengthSlot(container) is { } slot)
+                {
+                    this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
+                    return this.Fail(node, BindingFailure.InvalidTypeFormation);
+                }
+
+                return Complete(node, container.BoundSymbol?.Type ?? BoundType.Unit);
             case FunctionKoto function:
                 return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:
@@ -592,11 +607,6 @@ public sealed partial class Binding
                 return this.BindUnary(unary, scope, expected);
             case ConversionKoto conversion:
                 return this.BindConversion(conversion, scope, expected);
-            case BinaryKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
-                // The parser's guess of a rejected form: its operands are checked on their own, its combination is not.
-                this.BindNode(recovered.Left, scope);
-                this.BindNode(recovered.Right, scope);
-                return Complete(node, null);
             case IsKoto { IsRuntimeTest: true } test:
                 return this.BindRuntimeTypeTest(test, scope);
             case BinaryKoto binary:
@@ -633,13 +643,6 @@ public sealed partial class Binding
                 var loopResult = this.BeginResult(loop, scope, expected);
                 this.BindNode(loop.Body, scope);
                 return this.FinishResult(loop, loopResult);
-            case JumpKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
-                if (recovered.Expression is { } recoveredOperand)
-                {
-                    this.BindNode(recoveredOperand, scope);
-                }
-
-                return Complete(node, null);
             case JumpKoto jump:
                 var target = KotoHelper.ResolveTransferTarget(jump);
                 this.resultContexts.TryGetValue(target ?? jump, out var targetResult);
@@ -693,9 +696,6 @@ public sealed partial class Binding
                 return Complete(node, BoundType.Unit);
             case TestVerificationKoto verification:
                 return this.BindVerification(verification, scope);
-            case LabeledKoto recovered when recovered.CodeContext.RecoveryCause(recovered) is not null:
-                this.BindNode(recovered.Target, scope);
-                return Complete(node, null);
             case LabeledKoto labeled:
                 return Complete(node, this.BindNode(labeled.Target, scope, expected));
             case TupleLiteralKoto tuple:

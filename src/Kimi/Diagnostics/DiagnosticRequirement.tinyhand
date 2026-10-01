@@ -7,6 +7,382 @@
   + Name="Syntax"
     Description="the source follows the grammar"
 
+// Syntax forms (SyntaxForm): Phrase is what ExpectedSyntax_Kd, MissingSyntax_Kd and MisplacedSyntax_Kd display, without an
+// article; Advice is conditional prose for that form. A form is added here and in the enumeration together.
+
+  + Name="Syntax.Expression"
+    Description="the expression is written"
+    Phrase="expression"
+
+  + Name="Syntax.Type"
+    Description="the Type is written"
+    Phrase="Type"
+
+  + Name="Syntax.Name"
+    Description="the Name is written"
+    Phrase="Name"
+
+  + Name="Syntax.Body"
+    Description="the body is written"
+    Phrase="body"
+    Advice="Indent the body on the lines that follow, or write => followed by one expression."
+
+  + Name="Syntax.LineEnd"
+    Description="the line ends after the statement"
+    Phrase="the end of the line"
+    Advice="A line holds one statement; move what follows to its own line or remove it."
+
+  + Name="Syntax.Comma"
+    Description="the elements are separated by a comma"
+    Phrase="','"
+
+  + Name="Syntax.Colon"
+    Description="the colon is written"
+    Phrase="':'"
+
+  + Name="Syntax.CloseParenthesis"
+    Description="the grouping is closed"
+    Phrase="')'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseBracket"
+    Description="the grouping is closed"
+    Phrase="']'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseBrace"
+    Description="the grouping is closed"
+    Phrase="'}'"
+    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+
+  + Name="Syntax.CloseAngleBracket"
+    Description="the Type argument list is closed"
+    Phrase="'>'"
+    Advice="Close the Type argument list that is still open."
+
+  + Name="Syntax.UnmatchedCloser"
+    Description="every closing delimiter closes an open grouping"
+    Phrase="closing delimiter without an open grouping"
+    Advice="Remove the extra closing delimiter, or insert the opening delimiter it should close."
+
+  + Name="Syntax.IndentedBody"
+    Description="an indented body follows a header"
+    Phrase="indented body"
+    Advice="An indented body follows a header such as if, while or func; add the header or dedent these lines."
+
+  + Name="Syntax.OpenParenthesis"
+    Description="the opening parenthesis is written"
+    Phrase="'('"
+
+  + Name="Syntax.Declaration"
+    Description="a declaration follows its attributes, modifiers or compile-time prefix"
+    Phrase="declaration"
+    Advice="Attributes, modifiers and compile-time prefixes introduce a declaration such as func, struct, let or var."
+
+  + Name="Syntax.TypeOrInitializer"
+    Description="the declaration states its Type or has an initializer"
+    Phrase="': Type' or '= value'"
+    Advice="Declare the Type after ':' or give an initializer after '='."
+
+  + Name="Syntax.Initializer"
+    Description="the declaration has an initializer"
+    Phrase="initializer"
+    Advice="An inferred element Type is taken from the initializer: write '= value'."
+
+  + Name="Syntax.Getter"
+    Description="the Property declares its get accessor"
+    Phrase="get accessor"
+    Advice="A computed Property and a Property requirement declare get."
+
+  + Name="Syntax.Attribute"
+    Description="no attribute precedes this syntax"
+    Phrase="attribute"
+    Advice="An attribute precedes a declaration; statements, expressions and Types take none."
+
+  + Name="Syntax.AttributeName"
+    Description="the attribute has an uppercase Name"
+    Phrase="attribute Name"
+    Advice="An attribute is '#' followed by an uppercase Name and optional arguments in parentheses."
+
+  + Name="Syntax.AttributeSuffix"
+    Description="the attribute Name is followed only by its arguments"
+    Phrase="member access, Type arguments or index after an attribute Name"
+    Advice="An attribute takes only arguments in parentheses after its Name."
+
+  + Name="Syntax.StaticModifier"
+    Description="no static modifier is written"
+    Phrase="'static' modifier"
+    Advice="'static' is not a declaration modifier; remove it (SPEC 6.1)."
+
+  + Name="Syntax.OpenModifier"
+    Description="the open modifier precedes a struct"
+    Phrase="'open' modifier"
+    Advice="'open' applies only to a struct (SPEC 6.2.2)."
+
+  + Name="Syntax.Decoration"
+    Description="the declaration takes no modifier or attribute"
+    Phrase="modifier or attribute"
+    Advice="This declaration takes no modifier or attribute."
+
+  + Name="Syntax.ReceiverParameter"
+    Description="the receiver parameter is declared once, as self, without rename or default, in a struct or Contract"
+    Phrase="receiver parameter"
+    Advice="'self' is the first parameter of a member function of a struct or Contract, declared once and without rename or default value (SPEC 7.3)."
+
+  + Name="Syntax.RequirementParameterDefault"
+    Description="a requirement parameter has no default value or attribute"
+    Phrase="default value or attribute on a requirement parameter"
+    Advice="A Contract requirement declares its parameters without default values or attributes."
+
+  + Name="Syntax.RequirementBody"
+    Description="a requirement has no body"
+    Phrase="body on a Contract requirement"
+    Advice="A Contract requirement is a signature; the conforming Types supply the body."
+
+  + Name="Syntax.QualifiedFunctionName"
+    Description="the function declaration names an unqualified Name"
+    Phrase="qualified Name in a function declaration"
+    Advice="Declare the function inside its container instead of qualifying its Name."
+
+  + Name="Syntax.FunctionExpressionName"
+    Description="the function expression is anonymous"
+    Phrase="Name on a function expression"
+    Advice="A function expression is anonymous: func(parameters) => body."
+
+  + Name="Syntax.ConstructorHeader"
+    Description="init takes an access modifier and parameters only"
+    Phrase="Type parameters, result Type, attribute or non-access modifier on init"
+    Advice="init takes an access modifier and a parameter list, then its body (SPEC 6.2.3)."
+
+  + Name="Syntax.SpecializationHeader"
+    Description="the specialization names Type arguments and takes no modifier, attribute or Origin list"
+    Phrase="specialization header"
+    Advice="A specialization is 'specialize func Name<Type arguments>(parameters)' without modifiers, attributes or Origin parameters."
+
+  + Name="Syntax.BaseList"
+    Description="the struct names one base"
+    Phrase="base list with other than one base"
+    Advice="A struct derives from exactly one base."
+
+  + Name="Syntax.ExtensionDeclaration"
+    Description="no extension declaration is written"
+    Phrase="extension declaration"
+    Advice="Extension declarations are not introduced (SPEC Appendix D); declare the members in the container itself."
+
+  + Name="Syntax.AssociatedTypeDeclaration"
+    Description="an associate declaration stands in a Contract"
+    Phrase="associate declaration outside a Contract"
+    Advice="'associate' declares an associated Type requirement inside a Contract."
+
+  + Name="Syntax.PropertyDeclaration"
+    Description="the container takes this Property declaration"
+    Phrase="Property declaration"
+    Advice="A Contract declares Property requirements with 'has'; a struct declares stored or computed Properties; an enum declares none."
+
+  + Name="Syntax.ElseKeyword"
+    Description="the else keyword is written"
+    Phrase="'else'"
+    Advice="'require condition else => body' and an else branch write the keyword before the body."
+
+  + Name="Syntax.InKeyword"
+    Description="the for header names its source after in"
+    Phrase="'in'"
+    Advice="A for header is 'for binding in source'."
+
+  + Name="Syntax.BaseKeyword"
+    Description="the constructor initializer names base"
+    Phrase="'base'"
+    Advice="A constructor initializer is ': base(arguments)'."
+
+  + Name="Syntax.ParameterType"
+    Description="the parameter states its Type"
+    Phrase="': Type' after the parameter Name"
+    Advice="A parameter is 'name: Type'; a function expression may omit the Type."
+
+  + Name="Syntax.FunctionExpressionParameter"
+    Description="a function expression parameter is a plain Name and Type"
+    Phrase="external Name, default value or attribute on a function expression parameter"
+    Advice="A function expression's parameters are plain 'name: Type' or 'name'."
+
+  + Name="Syntax.PositionalAfterNamed"
+    Description="positional arguments precede named ones"
+    Phrase="positional argument after a named argument"
+    Advice="Name this argument too, or move it before the named arguments."
+
+  + Name="Syntax.TestVerificationArguments"
+    Description="the verification takes a condition and an optional message"
+    Phrase="argument list of $require or $expect"
+    Advice="$require and $expect take a condition and optionally 'message: text'."
+
+  + Name="Syntax.TypeAnnotation"
+    Description="the declaration states its Type"
+    Phrase="': Type'"
+    Advice="A computed Property and a Property requirement state their Type after ':'."
+
+  + Name="Syntax.ComputedInitializer"
+    Description="a computed Property has no initializer"
+    Phrase="initializer on a computed Property or requirement"
+    Advice="A computed Property computes its value in get; a requirement states no value."
+
+  + Name="Syntax.InlineAccessors"
+    Description="has declares the accessors of a Contract requirement"
+    Phrase="'has' accessor list"
+    Advice="'has get' and 'has set' declare a Property requirement in a Contract; a struct Property declares its accessors in an indented block."
+
+  + Name="Syntax.Accessor"
+    Description="the accessor is get or set"
+    Phrase="get or set"
+
+  + Name="Syntax.AccessorAccessibility"
+    Description="a requirement accessor takes no access modifier"
+    Phrase="access modifier on a requirement accessor"
+    Advice="A Contract requirement's accessors take no access modifier."
+
+  + Name="Syntax.AccessorParameters"
+    Description="the accessor declares its parameter list"
+    Phrase="accessor parameter list"
+    Advice="A custom accessor and an accessor requirement declare their signature: get(self: ref/S) -> T or set(self: uniq/S, value: T) -> ()."
+
+  + Name="Syntax.AccessorResult"
+    Description="the accessor declares its result Type after its parameter list"
+    Phrase="'-> Type' after the accessor's parameter list"
+    Advice="An accessor with a parameter list also declares its result: get(self: ref/S) -> T."
+
+  + Name="Syntax.SetterResult"
+    Description="a setter returns Unit"
+    Phrase="result Type other than () on set"
+    Advice="A setter returns Unit: set(self: uniq/S, value: T) -> ()."
+
+  + Name="Syntax.SetterValueParameter"
+    Description="the setter declares its value parameter"
+    Phrase="'value: Type'"
+    Advice="A setter's signature ends with its value parameter: set(self: uniq/S, value: T) -> ()."
+
+  + Name="Syntax.OriginClause"
+    Description="the 'origin' clauses lead the body"
+    Phrase="'origin' clause"
+    Advice="Write 'origin' clauses at the start of the body, before the accessors or the executable items."
+
+  + Name="Syntax.ConstraintPrefix"
+    Description="the Constraint prefix leads the body and names a generic parameter"
+    Phrase="Constraint prefix"
+    Advice="A body begins with its Constraint prefix, whose subject is a generic parameter of the declaration (SPEC 7.4); parenthesize a runtime 'is' test."
+
+  + Name="Syntax.SemanticsShorthandSuffix"
+    Description="a Semantics shorthand takes no '?'"
+    Phrase="'?' after a Semantics shorthand"
+    Advice="A bare Semantics shorthand such as 'ref' names no Type; write the optional Type in full: ref/T?."
+
+  + Name="Syntax.OperationAsSemanticsPrefix"
+    Description="a Semantics prefix names a Semantics"
+    Phrase="'move' or 'copy' as a Semantics prefix"
+    Advice="'@move' and '@copy' are operations on a value, never Semantics prefixes (SPEC 13.5.1); the prefix names a Semantics such as ref or uniq."
+
+  + Name="Syntax.AdaptationOrigin"
+    Description="the adaptation infers its borrow Origin"
+    Phrase="Origin annotation on an adaptation's borrow layer"
+    Advice="The adaptation infers its borrow Origin; annotate only the complete payload Type."
+
+  + Name="Syntax.AdaptationDuring"
+    Description="an annotated adaptation target is grouped"
+    Phrase="'during' after an ungrouped adaptation target"
+    Advice="Group an annotated adaptation target: @(ref/T? during a); the adaptation's own borrow Origin is inferred."
+
+  + Name="Syntax.NestedIfExpression"
+    Description="a nested if expression is grouped"
+    Phrase="nested if expression"
+    Advice="Group an if expression nested in the body of an if: (if c => a else b)."
+
+  + Name="Syntax.ArrowBody"
+    Description="a body nested in an expression body is an expression"
+    Phrase="'=>' before the nested body"
+    Advice="A body nested in an expression body is written '=> expression'; an indented block is not permitted there."
+
+  + Name="Syntax.HeaderBodyExpression"
+    Description="a body-bearing expression in a header is grouped"
+    Phrase="body-bearing expression in a header"
+    Advice="Group an if, match, for, while, loop, do or func expression in parentheses when it appears in a header."
+
+  + Name="Syntax.TryOperand"
+    Description="a try operand of a prefix operator is grouped"
+    Phrase="'try' as the operand of a prefix operator"
+    Advice="A prefix operator cannot take a try expression directly; group it: -(try x)."
+
+  + Name="Syntax.ChainedRange"
+    Description="a range has one range operator"
+    Phrase="second range operator"
+    Advice="A range has one '..' or '..='; group a range used as an operand."
+
+  + Name="Syntax.DollarOperand"
+    Description="the '$' prefix marks abort or tryWrite"
+    Phrase="'abort(expression)' or 'tryWrite(writer, literal)' after '$'"
+    Advice="'$' marks only $abort(expression) and $tryWrite(writer, literal) with positional arguments."
+
+  + Name="Syntax.ConversionTypeArgument"
+    Description="a conversion operation takes one Type argument"
+    Phrase="one Type argument on the conversion operation"
+    Advice="A conversion operation names its target once: @wrap<Type> or @bits<Type>."
+
+  + Name="Syntax.CompoundArrayLength"
+    Description="a compound array length is parenthesized"
+    Phrase="compound length before 'of'"
+    Advice="Parenthesize a compound length: [(n + 1) of value] (SPEC 4.2)."
+
+  + Name="Syntax.FunctionParameterList"
+    Description="a Function Type has a Function Parameter List"
+    Phrase="Function Parameter List before '->'"
+    Advice="A Function Type is '(Parameter Types) -> Result'; a Semantics prefix, '?' or an Origin annotation applies to the whole Function Type when it is grouped: ref/((T) -> U), ((T) -> U)? (SPEC 3.2)."
+
+  + Name="Syntax.LengthParameter"
+    Description="a length slot is declared in a function's Type parameter list"
+    Phrase="'length' parameter"
+    Advice="A length slot is declared in a function's Type parameter list: func f<length N>() (SPEC 4.4)."
+
+  + Name="Syntax.WildcardBinding"
+    Description="the wildcard binds nothing"
+    Phrase="'var' on the wildcard '_'"
+    Advice="The wildcard '_' binds nothing; write it alone (SPEC 2.5)."
+
+  + Name="Syntax.DetachedDuring"
+    Description="a 'during' annotation stays on the Type's line"
+    Phrase="'during' annotation on its own line"
+    Advice="Keep 'during' on the Type's line, or enclose the Type and its annotation in parentheses."
+
+  + Name="Syntax.CaptureOperation"
+    Description="a capture names its operation"
+    Phrase="'move', 'ref' or 'uniq' as the capture operation"
+    Advice="A capture is 'name', 'name@move', 'name@ref' or 'name@uniq'; 'var' combines only with a bare entry or '@move' (SPEC 7.6)."
+
+  + Name="Syntax.Constraint"
+    Description="a clause block lists Constraints"
+    Phrase="Constraint"
+    Advice="A signature's clause block holds Constraints such as 'T is Contract' and 'origin' clauses."
+
+  + Name="Syntax.OfKeyword"
+    Description="a fixed-array Type names its element Type after 'of'"
+    Phrase="'of'"
+    Advice="A fixed-array Type is '[length of Type]'."
+
+  + Name="Syntax.PatternLiteral"
+    Description="a literal Pattern is an integer, char, string or bool"
+    Phrase="integer, char, string or bool literal Pattern"
+    Advice="A literal Pattern is an integer (optionally negative), a char, a string, true or false; a floating-point value is not matched."
+
+  + Name="Syntax.CasePattern"
+    Description="a case Pattern names its case"
+    Phrase="qualified case Pattern"
+    Advice="Name the case with its Type ('Shape.Circle') or infer the Type with a leading dot ('.Circle'); bind a value with 'let name' or 'var name'."
+
+  + Name="Syntax.Pattern"
+    Description="a Pattern is written"
+    Phrase="Pattern"
+    Advice="A Pattern is a literal, '_', 'let name', 'var name', a Tuple of Patterns or a case such as '.Circle(let radius)'."
+
+  + Name="Syntax.ElseWithoutIf"
+    Description="an else branch follows an if body"
+    Phrase="'else' without an if"
+    Advice="Write else at the indentation of the if whose body precedes it; 'require condition else => body' needs its condition on the same line."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

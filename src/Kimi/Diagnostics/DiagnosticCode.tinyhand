@@ -274,11 +274,6 @@
     Label="The value starts immediately after the target Name"
     Advice="Insert a space before the value; calls, member access, and indexing cannot extend a target Name"
 
-  + Name="EmptyExecutableBlock_Kd"
-    Category="Language"
-    Message="An executable Block requires at least one Syntax item"
-    Advice="Indent the intended body, or write () to explicitly do nothing"
-
   + Name="BlockStatementInExpression_Kd"
     Category="Language"
     Message="Unsafe and Deferred Blocks are statements and cannot be used as expressions"
@@ -365,13 +360,26 @@
     Label="external name is repeated"
     Advice="Rename one external name to make all names in this parameter list distinct; use 'external => internal: T' if its local binding should stay unchanged"
 
-  + Name="IdentifierExpected_Kd"
-    Category="Language"
-    Message="Identifier expected"
+// Syntax forms (docs/dev/DIAGNOSTICS.md §4.4): the expected or misplaced form is a Syntax requirement whose phrase and
+// advice come from DiagnosticRequirement.tinyhand, so these three codes explain every form the parser knows.
 
-  + Name="IncompleteSyntax_Kd"
+  + Name="ExpectedSyntax_Kd"
     Category="Language"
-    Message="The syntax is incomplete"
+    Message="Expected {0}, found '{1}'"
+    Arguments="expected:Requirement, found:Text"
+    Label="expected {0} here"
+
+  + Name="MissingSyntax_Kd"
+    Category="Language"
+    Message="Missing {0}"
+    Arguments="expected:Requirement"
+    Label="expected {0} here"
+
+  + Name="MisplacedSyntax_Kd"
+    Category="Language"
+    Message="Unexpected {0}"
+    Arguments="form:Requirement"
+    Label="not permitted here"
 
   + Name="MissingReturnType_Kd"
     Category="Language"
@@ -435,15 +443,6 @@
     Message="Code cannot follow a multiline block comment's closing delimiter on the same physical line"
     Advice="Move the code to the next line and use ordinary indentation"
 
-  + Name="MissingComma_Kd"
-    Category="Language"
-    Message="A comma is required to separate syntax elements"
-
-  + Name="MissingExpectedToken_Kd"
-    Category="Language"
-    Message="Expected: {0}, but reached the end of line."
-    Arguments="expected:Text"
-
   + Name="MissingStringLiteralEnd_Kd"
     Category="Language"
     Message="Unterminated string literal; expected closing {0}."
@@ -459,11 +458,6 @@
   + Name="NonExhaustiveCompileTimeCase_Kd"
     Category="Language"
     Message="No compile-time Case Group arm matches and no fallback arm is present"
-
-  + Name="TokenMismatch_Kd"
-    Category="Language"
-    Message="The token does not match the expected token. Expected: {0}"
-    Arguments="expected:Text"
 
   + Name="TopLevelKeywordAfterCode_Kd"
     Category="Language"
@@ -538,36 +532,6 @@
   + Name="InvalidInlineLayout_Kd"
     Category="Language"
     Message="A Type that contains itself by value without indirection has no finite inline layout"
-
-  + Name="UnexpectedToken_Kd"
-    Category="Language"
-    Message="Token {0} is not expected at this position"
-    Arguments="token:Text"
-
-  + Name="UnexpectedTrailingToken_Kd"
-    Category="Language"
-    Message="Unexpected token at the end of the statement"
-
-  + Name="UnmatchedAngleBracket_Kd"
-    Category="Language"
-    Message="Unmatched angle bracket"
-
-  + Name="UnmatchedBrace_Kd"
-    Category="Language"
-    Message="Unmatched brace"
-
-  + Name="UnmatchedBracket_Kd"
-    Category="Language"
-    Message="Unmatched bracket"
-
-  + Name="UnmatchedParenthesis_Kd"
-    Category="Language"
-    Message="Unmatched parenthesis"
-
-  + Name="UnmatchedToken_Kd"
-    Category="Language"
-    Message="Unmatched token {0}"
-    Arguments="token:Text"
 
   + Name="UnsupportedEscape_Kd"
     Category="Language"
@@ -744,6 +708,12 @@
     Arguments="requiredBytes:Number,limitBytes:Number"
     Evidence="table:Text"
     Label="ownership storage limit reached for {2} in this function"
+
+  + Name="ForBindingLimit_Kd"
+    Category="Resource"
+    Message="A for header declares at most 64 bindings"
+    Label="binding beyond the 64th"
+    Advice="Iterate over fewer Tuple elements per for header, or bind the Tuple to one Name and read its elements in the body."
     Advice="If this body contains independent work, move that work into smaller functions. This limit does not make the source invalid under the language rules."
 
   + Name="ProjectPreparationFailed_Kd"

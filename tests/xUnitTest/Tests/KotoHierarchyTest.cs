@@ -233,11 +233,10 @@ public class KotoHierarchyTest
         Assert.Empty(root.Members);
         var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
         Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
+        // The Properties in the enum and the Contract and the extension declaration are misplaced; an enum without cases is Binding's check.
         var diagnostics = TestDiagnostics.Of(compilation);
-        Assert.Equal(4, diagnostics.Length);
-        Assert.All(
-            diagnostics,
-            diagnostic => Assert.Contains(diagnostic.Code, new[] { nameof(DiagnosticCode.UnexpectedToken_Kd), nameof(DiagnosticCode.IncompleteSyntax_Kd) }));
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, diagnostic => Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code));
     }
 
     [Fact]

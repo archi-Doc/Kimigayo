@@ -20,16 +20,16 @@ public sealed class DiagnosticOwnerTest
         var second = new SourceDocument("second.kimi", "xyz");
         var target = owner.GetOrAddCollection("first.kimi").For(first);
         var other = owner.GetOrAddCollection("second.kimi").For(second);
-        other.Add(new(0, 1), DiagnosticCode.IdentifierExpected_Kd);
-        target.Add(new(4, 3), DiagnosticCode.IdentifierExpected_Kd);
-        target.Add(new(0, 3), DiagnosticCode.IncompleteSyntax_Kd);
+        other.Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
+        target.Add(new(4, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
+        target.Add(new(0, 3), DiagnosticCode.SemicolonNotAllowed_Kd);
         owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, null, note: "no source");
         owner.Report(DiagnosticPartition.Input, DiagnosticCode.SourceReadFailed_Kd, "third.kimi", note: "whole input");
 
         var result = owner.Finalize();
         Assert.Equal(["first.kimi", "second.kimi", "third.kimi"], result.Sources.Select(static x => x.Path));
         Assert.Equal(
-            ["IncompleteSyntax_Kd", "IdentifierExpected_Kd", "IdentifierExpected_Kd", "SourceReadFailed_Kd", "ProjectPreparationFailed_Kd"],
+            ["SemicolonNotAllowed_Kd", "IndentationLevelMismatch_Kd", "IndentationLevelMismatch_Kd", "SourceReadFailed_Kd", "ProjectPreparationFailed_Kd"],
             result.Diagnostics.Select(static x => x.Code));
         Assert.Null(result.Diagnostics[3].Span);
         Assert.Equal(-1, result.Diagnostics[^1].Source);
@@ -45,14 +45,14 @@ public sealed class DiagnosticOwnerTest
         var target = c.Kotonoha.DiagnosticCollection;
         var key = target.KeyOf(document, new(0, 5), document, DiagnosticRequirement.Binding(BindingFailure.MissingName));
         target.Report(DiagnosticPartition.Binding, key, new(0, 5), DiagnosticCode.UnresolvedBinding_Kd, null, null, null, null, null, document);
-        c.Kotonoha.DiagnosticCollection.Add(new(0, 5), DiagnosticCode.IdentifierExpected_Kd, sourceDocument: document);
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 5), DiagnosticCode.IndentationLevelMismatch_Kd, sourceDocument: document);
         c.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "kept");
         Assert.True(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
 
         c.Diagnostics.InvalidateSemantics();
         Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
-        Assert.Equal(["ProjectPreparationFailed_Kd", "IdentifierExpected_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal).Reverse());
+        Assert.Equal(["ProjectPreparationFailed_Kd", "IndentationLevelMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal).Reverse());
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public sealed class DiagnosticOwnerTest
     {
         var owner = new DiagnosticOwner();
         var text = new string('a', 300) + "bad" + new string('z', 300);
-        owner.GetOrAddCollection("long.kimi").For(new SourceDocument("long.kimi", text)).Add(new(300, 3), DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("long.kimi").For(new SourceDocument("long.kimi", text)).Add(new(300, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
         var line = Assert.Single(Assert.Single(owner.Finalize().Diagnostics).Display!.Excerpt);
         Assert.True(line.Text.Length <= 162, line.Text);
         Assert.StartsWith("…", line.Text, StringComparison.Ordinal);
@@ -74,7 +74,7 @@ public sealed class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         var prefix = string.Concat(Enumerable.Repeat("\tab", 1000));
         var document = new SourceDocument("tabs.kimi", prefix + "bad" + new string('z', 500));
-        owner.GetOrAddCollection("tabs").For(document).Add(new(prefix.Length, 3), DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("tabs").For(document).Add(new(prefix.Length, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
         var record = Assert.Single(owner.Finalize().Diagnostics);
         var line = Assert.Single(record.Display!.Excerpt);
         Assert.True(line.Text.Length <= DiagnosticLimits.ExcerptWidth + 2);
@@ -89,7 +89,7 @@ public sealed class DiagnosticOwnerTest
     {
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("end.kimi", new string('x', 10000));
-        owner.GetOrAddCollection("end").For(document).Add(new(10000, 0), DiagnosticCode.IdentifierExpected_Kd);
+        owner.GetOrAddCollection("end").For(document).Add(new(10000, 0), DiagnosticCode.IndentationLevelMismatch_Kd);
         var line = Assert.Single(Assert.Single(owner.Finalize().Diagnostics).Display!.Excerpt);
         Assert.Equal(line.Text.Length, line.Start);
         Assert.Equal(1, line.Length);
@@ -112,7 +112,7 @@ public sealed class DiagnosticOwnerTest
             {
                 var owner = new DiagnosticOwner();
                 var document = new SourceDocument("long.kimi", new string('x', prefix) + "bad" + new string('z', 300));
-                owner.GetOrAddCollection("long").For(document).Add(new(prefix, 3), DiagnosticCode.IdentifierExpected_Kd);
+                owner.GetOrAddCollection("long").For(document).Add(new(prefix, 3), DiagnosticCode.IndentationLevelMismatch_Kd);
                 owner.Finalize(); // Source line indexing is input preparation; measure only repeated record formation.
                 return owner;
             }
@@ -126,16 +126,16 @@ public sealed class DiagnosticOwnerTest
     {
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "let x = 1\n");
-        owner.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.UnmatchedToken_Kd, "x");
+        owner.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.InvalidCharacter_Kd, "x");
         var result = DiagnosticFaults.Create(DiagnosticFault.Exception, "detail", "App.kimiproj", owner.Finalize());
         Assert.Equal(["App.kimiproj", "main.kimi"], result.Sources.Select(static x => x.Path));
-        Assert.Equal(["CheckFaulted_Kd", "UnmatchedToken_Kd"], result.Diagnostics.Select(static x => x.Code));
+        Assert.Equal(["CheckFaulted_Kd", "InvalidCharacter_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.Equal([0, 1], result.Diagnostics.Select(static x => x.Source));
 
         // A project file registered when the check starts keeps its place before later sources in ordinary records too.
         var ordered = new DiagnosticOwner();
         ordered.RegisterPath("App.kimiproj");
-        ordered.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.UnmatchedToken_Kd, "x");
+        ordered.GetOrAddCollection("main.kimi").For(document).Add(new SourceSpan(4, 1), DiagnosticCode.InvalidCharacter_Kd, "x");
         ordered.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "late");
         Assert.Equal(["App.kimiproj", "main.kimi"], ordered.Finalize().Sources.Select(static x => x.Path));
     }
