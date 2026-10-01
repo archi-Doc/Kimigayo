@@ -198,8 +198,8 @@
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "WildcardBinding", "At": "var _", "Length": 3 } ] },
   { "Name": "detached-during", "Source": "func f(a: ref/i32) -> ref/i32\n    let y: ref/i32 = a\n    during a\n    return a\npublic func main()\n    ()\n", "Intended": "a 'during' annotation on its own line; the line is a recovery, not a statement",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "DetachedDuring", "At": "during a", "Length": 6 } ] },
-  { "Name": "capture-operation", "Source": "public func main()\n    let x = 1\n    let g = func [x@copy] () => x\n    var y = 1\n    let h = func [var y@ref] () => y\n", "Intended": "'copy' as a capture operation, and 'ref' on a var capture",
-    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "CaptureOperation", "At": "copy]", "Length": 4, "Found": "copy" }, { "Code": "ExpectedSyntax_Kd", "Form": "CaptureOperation", "At": "ref]", "Length": 3, "Found": "ref" } ] },
+  { "Name": "capture-operation", "Source": "public func main()\n    let x = 1\n    let g = func [x@copy] () => x\n    var y = 1\n    let h = func [var y@follow] () => y\n", "Intended": "'copy' and 'follow' as capture operations, with or without var",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "CaptureOperation", "At": "copy]", "Length": 4, "Found": "copy" }, { "Code": "ExpectedSyntax_Kd", "Form": "CaptureOperation", "At": "follow]", "Length": 6, "Found": "follow" } ] },
   { "Name": "constraint-expected", "Source": "contract C\n    func f<T>(self, v: T)\n        1 + 1\npublic func main()\n    ()\n", "Intended": "a line of a requirement's clause block that is no Constraint; the line is skipped",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Constraint", "At": "1 + 1", "Length": 1, "Found": "1" } ] },
   { "Name": "of-expected", "Source": "public func main()\n    var a: [3 i32] = [0, 0, 0]\n", "Intended": "a fixed-array Type without 'of'",
@@ -243,5 +243,7 @@
   { "Name": "argument-without-comma", "Source": "func f(a: i32, b: i32) => ()\npublic func main()\n    f(1 2)\n", "Intended": "two arguments without a comma; the last argument read is a recovery, so overload selection rests on the Error",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Comma", "At": "1 2)", "Skip": 2, "Length": 1, "Found": "2" } ] },
   { "Name": "while-header-cut", "Source": "public func main()\n    while", "Intended": "a while header cut after its keyword at the end of the source; the body expected at the same point rests on the missing condition",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "while" } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "while" } ] },
+  { "Name": "effect-bound", "Source": "contract C\n    func f(self: ref/Self)\n        effect pure\n    func g(self: ref/Self)\n        effect preserves\npublic func main() => ()\n", "Intended": "an unknown effect bound, and 'preserves' without 'results'",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "EffectBound", "At": "pure", "Length": 4, "Found": "pure" }, { "Code": "ExpectedSyntax_Kd", "Form": "EffectBound", "At": "preserves\n", "Length": 9, "Found": "preserves" } ] }
 ]

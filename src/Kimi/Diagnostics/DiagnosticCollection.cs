@@ -113,6 +113,17 @@ public sealed class DiagnosticCollection
         return entry;
     }
 
+    /// <summary>Records excluded syntax of this target's document (SPEC 19.5).</summary>
+    /// <param name="range">The excluded syntax.</param>
+    /// <param name="directive">The innermost excluding directive.</param>
+    internal void RecordExcludedRange(SourceSpan range, SourceSpan directive)
+    {
+        if (this.Document is { } document)
+        {
+            this.Owner.RecordExcludedRange(document, range, directive);
+        }
+    }
+
     /// <summary>Records a syntax problem with optional related evidence, preserving the parser's recovery cause.</summary>
     /// <param name="range">The primary span.</param>
     /// <param name="code">The diagnostic code.</param>

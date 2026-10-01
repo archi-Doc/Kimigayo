@@ -205,7 +205,7 @@ The returned integers, Booleans and `ResolvedRange` values acquire no receiver o
 | `values[i] = value` | Ordinary initialization or replacement, with write permissions and Loan checks |
 | `values[i]@ref` / `@uniq` | Shared or exclusive borrow of that Place; exclusive access requires write permission |
 | `values[i]@move` | Transfer, only through an eligible static Move Path of an owned fixed array |
-| Bare value read | Copy for a proven-Copy element; a Non-Copy element is an error without an expected borrow Type. A bare read never Moves |
+| Bare value read | Bare acquisition (§3.5): Copy for a proven-Copy element, and a Reborrow for an element storing `uniq/U` or `objuniq/U`, which selects `indexUniq` (§4.6.9); any other Non-Copy element is an error without an expected borrow Type. A bare read never Moves |
 
 Static paths use only the [integer-literal recognition rule](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move); Array elements, runtime indices, positions other than integer literals and paths through borrows never become movable. `@ref` borrows the element Place whatever the index form, and a fixed expected `ref/T` borrows it implicitly (§10.2). An exclusive borrow of an owned element needs `@uniq`. An element that stores a reference or handle is instead adapted under the same table, for example Reborrowed; its slot is not borrowed implicitly. Slice element Places are shared-only (§4.6.6).
 
@@ -629,12 +629,15 @@ contract UniqIndexable<Key>: Indexable<Key>
 Both requirements share one `Element`, and the same key selects the same element. `UniqIndexable` grants exclusive access to the element Place; it does not change the stored Type to `uniq/Element`. An index expression `receiver[key]` is resolved statically in this order, without changing runtime evaluation:
 
 1. Determine the `Indexable<Key>` conformance and `Element` from the receiver, after [reference-path selection](03-types-and-values.md#341-reference-path-selection), and the key Type; `Key` is never inferred from the expected result.
-2. Determine the capability the use requires from its acquisition or update plan, including an exclusive Reborrow that §10.2 requires of the element's stored reference.
-3. Select `index` for reads and shared borrows, and `indexUniq` of the same conformance for updates and exclusive borrows; the latter requires `UniqIndexable<Key>` and checks the path, initialization and Loans.
+2. Determine the capability that the final acquisition plan of the use requires: its bare acquisition (§3.5), including the Reborrow of an element's stored exclusive reference, its adaptation at a fixed expected Type (§10.2), a write, an explicit borrow, a Subject (§15.1.6) or a Receiver Expression (§7.3).
+3. Select `index` for reads and shared borrows, and `indexUniq` of the same conformance for updates, exclusive borrows and exclusive Reborrows; the latter requires `UniqIndexable<Key>` and checks the path, initialization and Loans.
+
+The receiver acquisition of a selected `indexUniq` belongs to this Place selection (§3.4.1) and needs no `@uniq` on the receiver. Being synthesized grants it no authority: it uses only the exclusive capability that the receiver's path already has, so a `let`-owned collection or a shared path cannot supply it (§15.1.5).
 
 ```kimi
 // refs: a writable Array<uniq/Node>.
 normalize(refs[0]) // Parameter uniq/Node: indexUniq selects the slot and the stored reference is Reborrowed.
+let first = refs[0] // The same selection and Reborrow without an expected Type (§3.5).
 ```
 
 A shared path cannot satisfy an exclusive requirement. Ordinary functions and getters keep their declared result modes, and a capability or Loan failure never reselects a mode, a candidate or a layer. The receiver and key are evaluated once each in the ordinary call order; assignment evaluates its right-hand side first (§13.7). Every input, including the key, stays Loaned during the call. The result depends on the receiver under its contract; a result that depends on the key's borrow does not satisfy the contract.

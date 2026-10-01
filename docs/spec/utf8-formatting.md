@@ -9,6 +9,7 @@ This normative profile is part of §22. It owns UTF-8 formatting, the standard b
 ```kimi
 contract BufferWriter
     func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        effect confined
 
 contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -35,7 +36,7 @@ Only the error types expose initializers; the other types are obtained through t
 
 ### 1.2. Effects and erasure
 
-`BufferWriter.reserve` may use only authority supplied through `self`; it cannot acquire access to mutable state from the ambient environment. Conformance checking (§8.4.5) rejects an implementation whose transitive effect summary includes access through a mutable static Field, including called functions, lazy initialization or destruction, or a call with unknown effects. Access through a borrowed Field of `self` uses ordinary Loan checking, even when its referent has static storage.
+`BufferWriter.reserve` declares the `confined` bound (§8.4.10.2). Because `minimum` carries no authority, an implementation may use only authority supplied through `self` and cannot acquire access to mutable state from the ambient environment. Erased `Utf8Writer` reservations are checked with this bound (§8.4.10.4).
 
 `Utf8Writer` erases the concrete Writer Type. Standard `FixedBuffer` and `HeapBuffer` reservations use direct calls, including inside a non-generic `format` body, and a user Writer uses one function-pointer call per reservation. The implementation may inline capacity checks and share growth and copy routines. Different Writer Types do not require separate `format` instances.
 

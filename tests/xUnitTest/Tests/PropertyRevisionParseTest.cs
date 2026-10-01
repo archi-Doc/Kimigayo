@@ -61,9 +61,8 @@ public class PropertyRevisionParseTest
     }
 
     [Theory]
-    [InlineData("var x@ref")]
-    [InlineData("var x@uniq")]
     [InlineData("x@copy")]
+    [InlineData("var x@follow")]
     public void RejectsUnavailableCaptureOperations(string capture)
     {
         var tree = Parse($"let f = func[{capture}]() => ()\nlet after = 1");
@@ -78,6 +77,8 @@ public class PropertyRevisionParseTest
     [InlineData("x@uniq")]
     [InlineData("x@move")]
     [InlineData("var x@move")]
+    [InlineData("var x@ref")]
+    [InlineData("var x@uniq")]
     public void PreservesCurrentCaptureForms(string capture)
         => RoundTrip(ParseSuccess($"let f = func[{capture}]() => ()"));
 

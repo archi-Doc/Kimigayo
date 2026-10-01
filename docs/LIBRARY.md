@@ -74,9 +74,10 @@ contract LendingIterator
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
+    effect LendingIterator.next preserves results
 ```
 
-`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and an effect bound that permits retaining earlier items across later calls. External source dependencies still apply.
+`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and declares `preserves results` for `next` ([§8.4.10.3](spec/08-generics-constraints-and-contracts.md#84103-preserves-results)): a later `next` on the same iterator conflicts with no Loan an earlier item keeps, so callers may retain earlier items across later calls. LendingIterator declares no bound. External source dependencies still apply.
 
 `for` stops at the first `None`. A general LendingIterator, including a user Iterator, may later return `Some`. Standard collection, Slice and range iterators remain exhausted after `None`.
 
@@ -309,7 +310,7 @@ All lengths and capacities here are byte counts of Type `isize`. [The formatting
 | Declaration | Member | Guarantee |
 | --- | --- | --- |
 | `struct BufferFull` | `init()` | Stateless Copy error for insufficient destination capacity. |
-| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>` | Reserves a Window dependent on the receiver borrow. Its effect bound permits only authority supplied through self. |
+| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>`, `effect confined` | Reserves a Window dependent on the receiver borrow. `confined` ([§8.4.10.2](spec/08-generics-constraints-and-contracts.md#84102-confined)) permits only authority supplied through the inputs: no mutable static, Console output or unclassified call. |
 | `contract Utf8Format` | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes a complete UTF-8 representation on success, with no output dependency on the input borrow. |
 
 User formatting may allocate or have side effects. Each adapter write calls it once, without a size pre-pass or retry. Success must not abbreviate output to fit.
@@ -480,7 +481,7 @@ Each stopped interval discards its sub-microsecond fraction. Floating-point Prop
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
-[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound remains P28 work.
+[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item` and declares `preserves results` for `next`, which every conformance is checked against.
 
 [Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P28 work.
 

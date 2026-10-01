@@ -568,6 +568,9 @@ public sealed class ControlFlowAnalysis
             case SyntaxFormKoto { Akind: KotoKind.AssociatedType }:
                 // SPEC 8.4.3: associated-Type parameters and formation Types have no runtime evaluation.
                 return new(true, ControlFlowType.Unit);
+            case EffectBoundKoto:
+                // SPEC 8.4.10.1: an effect item is declaration metadata; its selector and Name are never evaluated.
+                return new(true, ControlFlowType.Unit);
             case AttributeKoto { BindingState: BindingState.Resolved, LayoutMode: not null }:
                 // SPEC 21.1.2: a checked layout attribute is declaration metadata;
                 // its syntax argument is not a runtime call or string acquisition.

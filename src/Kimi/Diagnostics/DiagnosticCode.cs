@@ -32,6 +32,7 @@ public enum DiagnosticCode
     UnsatisfiedConstraint_Kd,
     InvalidKimiLibrary_Kd,
     MissingContractImplementation_Kd,
+    InvalidEffectBound_Kd,
     IncompatibleContractImplementation_Kd,
     InvalidAssociatedType_Kd,
 
@@ -125,6 +126,7 @@ public enum DiagnosticCode
     TransferRequired_Kd,
     StaticMovePathRequired_Kd,
     ExclusiveBorrowRequired_Kd,
+    AcquisitionRequired_Kd,
     SharedBindingAssignment_Kd,
     ExclusiveBindingAssignment_Kd,
     SharedPathAccess_Kd,
@@ -154,6 +156,7 @@ public enum DiagnosticCode
     ComparisonLoanConflict_Kd,
     CallReservationConflict_Kd,
     CallActivationConflict_Kd,
+    CallEffectConflict_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,

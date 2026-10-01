@@ -61,10 +61,14 @@ public class FrontEndSyntaxTest
     [InlineData("abstract /* comment */\nstruct Next")]
     [InlineData("abstract\r\nfunc next() => ()")]
     [InlineData("let abstract = func() => ()\nabstract()")]
-    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
-    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
     public void UnavailableModifierSpellingsRemainOrdinaryNames(string source)
         => AssertValid(Parse(source));
+
+    [Theory]
+    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
+    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
+    public void ExcludedSyntaxReportsUnavailableModifiers(string source)
+        => Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(Parse(source))).Code);
 
     [Fact]
     public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
@@ -107,6 +111,7 @@ public class FrontEndSyntaxTest
     [InlineData("let a = func(x) => x")]
     [InlineData("let a = func[](x: i32) -> i32 => x")]
     [InlineData("let a = func[source@ref, var count, value@uniq](x) => x")]
+    [InlineData("let a = func[var source@ref, var count@uniq, var value@move](x) => x")]
     [InlineData("func f()\n    require valid else => return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
@@ -177,7 +182,6 @@ public class FrontEndSyntaxTest
     [InlineData("let a: [N + 1 of T] = values")]
     [InlineData("let a: [4 T] = values")]
     [InlineData("struct S<length N>")]
-    [InlineData("let a = func[var x@ref]() => x")]
     [InlineData("let a = func[x@T]() => x")]
     [InlineData("let a = func(x?: T) => x")]
     [InlineData("let a = match x\n    Name => 1")]
@@ -205,8 +209,8 @@ public class FrontEndSyntaxTest
     [Theory]
     [InlineData("#if false\nstatic func f() => ()\nlet a = 1")]
     [InlineData("#if false\nopen group G\nlet a = 1")]
-    public void ExcludedDeclarationsDoNotReportModifierPlacement(string source)
-        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
+    public void ExcludedDeclarationsReportModifierPlacement(string source)
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()

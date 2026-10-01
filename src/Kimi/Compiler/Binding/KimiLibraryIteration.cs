@@ -53,14 +53,16 @@ public sealed partial class KimiLibrary
             BoundFamilyReceiver(receiver, self, sourceParameter.Origin, semantics) && BoundFamilyProjection(result, family, self, sourceParameter.Origin);
     }
 
-    // SPEC 22.1.2.1: Iterator refines the recognized LendingIterator and fixes its LentItem family at
-    // every step to the declared Item of the same Self.
+    // SPEC 22.1.2.1: Iterator refines the recognized LendingIterator, fixes its LentItem family at every step to the
+    // declared Item of the same Self, and declares preserves results for LendingIterator.next (SPEC 8.4.10.3).
     private bool ValidBoundIterator(BindingSymbol symbol)
     {
-        if (symbol.Declaration is not ContractKoto { Bases: [var parent], Members: [SyntaxFormKoto item], ConstraintNodes: [IsKoto refinement] } ||
+        if (symbol.Declaration is not ContractKoto { Bases: [var parent], Members: [SyntaxFormKoto item, EffectBoundKoto effect], ConstraintNodes: [IsKoto refinement] } ||
             !ReferenceEquals(parent.BoundSymbol, this.LendingIterator) || !BoundContractSelf(symbol, out var self) ||
             item.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } itemSymbol || !ReferenceEquals(itemSymbol.Declaration, item) ||
             symbol.Contract is not { } contract || !contract.AssociatedTypes.Contains(itemSymbol) ||
+            contract.EffectBoundStorage is not [{ Bound: EffectBoundKind.PreservesResults } bound] || !ReferenceEquals(bound.Declaration, effect) ||
+            this.LendingIterator.Declaration is not ContractKoto { Members: [_, FunctionKoto next] } || !ReferenceEquals(bound.Requirement.Declaration, next) ||
             this.LendingIterator.Declaration is not ContractKoto { Members: [SyntaxFormKoto { BoundSymbol: { } lent }, ..] } || !ReferenceEquals(refinement.BoundSymbol, lent))
         {
             return false;

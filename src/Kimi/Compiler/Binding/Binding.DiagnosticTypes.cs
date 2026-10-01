@@ -34,6 +34,30 @@ public sealed partial class Binding
                 return;
             }
 
+            if (current.Kind == BoundTypeKind.AssociatedProjection && current.Components.Count != 0)
+            {
+                // SPEC 8.4.3: a projection reads as written, T.Item or Self.LentItem(step).
+                Append(current.Components[0]);
+                text.Append('.').Append(current.Name);
+                for (var i = 0; i < current.OriginArguments.Count; i++)
+                {
+                    text.Append(i == 0 ? '(' : ',');
+                    if (i != 0)
+                    {
+                        text.Append(' ');
+                    }
+
+                    text.Append(current.OriginArguments[i].Name);
+                }
+
+                if (current.OriginArguments.Count != 0)
+                {
+                    text.Append(')');
+                }
+
+                return;
+            }
+
             if (current.Kind == BoundTypeKind.Function && current.Components.Count == 2)
             {
                 Append(current.Components[0]);

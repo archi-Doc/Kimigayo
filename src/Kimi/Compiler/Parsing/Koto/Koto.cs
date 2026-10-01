@@ -363,6 +363,9 @@ public enum KotoKind : byte
     /// <summary>An associated-Type Origin application.</summary>
     OriginApplication,
 
+    /// <summary>A requirement effect bound: an effect clause or an effect specification.</summary>
+    EffectBound,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -595,7 +598,9 @@ public abstract class Koto
     /// <param name="evidence">The code's evidence facts, all of them or none.</param>
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Syntax related to the problem, with its role and label.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null)
+    /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
+    /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -612,7 +617,8 @@ public abstract class Koto
             }
         }
 
-        collection.Report(requirement.Partition, this.KeyOf(requirement), (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
+        // A span narrows the location within the located node's document, such as one capture entry of a closure.
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
     }
 
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>

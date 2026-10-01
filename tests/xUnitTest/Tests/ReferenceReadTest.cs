@@ -33,9 +33,10 @@ public class ReferenceReadTest
     [Fact]
     public void ExactReferenceParameterOutranksTheRead()
     {
-        // SPEC 10.2: the read is a cross-Semantics adaptation, so an Exact ref/i32 candidate wins over it.
+        // SPEC 10.2: the read is a cross-Semantics adaptation, so an Exact ref/i32 candidate wins over it. A bare x would be an
+        // acquisition conflict (SPEC 10.2.2); its explicit Copy is a temporary that the by-value candidate takes exactly.
         const string source = "func f(v: i32) -> i32 => 1\nfunc f(v: ref/i32) -> i32 => 2\nlet x: i32 = 7\nlet r = x@ref\n" +
-            "require f(x) == 1 and f(r) == 2 and f(x@ref) == 2 else => $abort(\"ranking\")";
+            "require f(x@copy) == 1 and f(r) == 2 and f(x@ref) == 2 else => $abort(\"ranking\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         ScalarEmissionTest.EmitFixture("ReferenceReadRanking", source, string.Empty);

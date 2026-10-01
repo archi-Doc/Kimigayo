@@ -265,11 +265,8 @@ public sealed partial class Binding
 
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate ||
-            KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
-            (IsBarePlace(conversion.Left) && PathAuthority(conversion.Left) != SemanticsKind.Owner))
+        if (!OffersTake(conversion.Left))
         {
-            // SPEC 15.1.5: only an owned path offers Take; a followed pair layer never does, even for owner (SPEC 13.5.5.1).
             var failure = AccessFailure(conversion.Left, take: true);
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
         }

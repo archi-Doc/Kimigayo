@@ -28,6 +28,10 @@ public enum OwnershipPlaceKind : byte
     Result,
     Payload,
     Subject,
+
+    // SPEC 8.4.10.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
+    // generic requirement calls access; no operation initializes or uses it.
+    EffectRegion,
 }
 
 public enum PlaceUseKind : byte
@@ -153,6 +157,9 @@ public enum OwnershipFailure : byte
     // owned fixed array.
     StaticMovePathRequired,
 
+    // SPEC 8.4.10.4, 8.4.10.6: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
+    CallEffectConflict,
+
     StorageLimit,
 }
 
@@ -200,7 +207,7 @@ public readonly record struct OwnershipLending(Koto Input, InvocationKoto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
-    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null)
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null, OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -216,6 +223,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
+        OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
@@ -307,6 +315,15 @@ public sealed partial class OwnershipBody
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
+    /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
+    internal List<(int Place, int Root)>? ConditionalReborrows { get; set; }
+
+    /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.4.10.4).</summary>
+    internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
+
+    /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.4.10.4).</summary>
+    internal List<OwnershipRequirementResult>? RequirementResults { get; set; }
+
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
     internal BoundCall? Instance { get; set; }
 
@@ -333,6 +350,9 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
+        this.ConditionalReborrows?.Clear();
+        this.RequirementEffects?.Clear();
+        this.RequirementResults?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
         this.SlotResults.Clear();
@@ -522,6 +542,19 @@ internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int
 internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
+
+// The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
+// unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
+// the same root or a dependency between roots.
+internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
+
+// SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
+// (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
+// the same receiver.
+internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
+
+// SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
+internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 

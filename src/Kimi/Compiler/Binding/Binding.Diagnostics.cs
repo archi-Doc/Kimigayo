@@ -9,6 +9,13 @@ public sealed partial class Binding
 {
     private const string RangeShapeAdvice = "If the function only resolves a range for slicing, accept R with R is PositionRange; if it enumerates, require the matching Iterable, UniqIterable or IntoIterable entry and its Item constraints; if it accesses boundaries, retain the required concrete range Type. Verify the function body after changing its contract";
 
+    // SPEC 10.6: the acquisitions an acquisition conflict admits, appended to the whole written argument. @copy is offered only
+    // when the Type is proven Copy and @move only when the Place offers Take; the selection that follows is not claimed.
+    private const string AcquisitionAdvice = "Append @ref to the whole argument to borrow the Place";
+    private const string AcquisitionAdviceCopy = "Append @ref to the whole argument to borrow the Place, or @copy to pass a Copy of it";
+    private const string AcquisitionAdviceMove = "Append @ref to the whole argument to borrow the Place, or @move to transfer it";
+    private const string AcquisitionAdviceCopyMove = "Append @ref to the whole argument to borrow the Place, @copy to pass a Copy of it, or @move to transfer it";
+
     // SPEC 23.3.6.4: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
@@ -20,6 +27,12 @@ public sealed partial class Binding
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<Koto> prerequisitePending = new();
+
+    // SPEC 10.2.2, 10.6: the arguments of a call whose candidates disagree on acquiring a bare Place, recorded only when it fails.
+    // The stores are reused across passes, so a warm rebind of the failure allocates nothing.
+    private readonly Dictionary<Koto, (int Start, int Count)> acquisitionConflicts = new(ReferenceEqualityComparer.Instance);
+    private readonly List<AcquisitionConflict> acquisitionConflictStore = [];
+    private readonly List<AcquisitionParty> acquisitionPartyStore = [];
 
     // Keep proof failures intact. Only diagnostic publication follows these recorded
     // missing-name causes; later validators must still see an invalid declaration.
@@ -44,7 +57,17 @@ public sealed partial class Binding
     // The candidates a failed overload selection considered, recorded only when it fails.
     private Dictionary<Koto, RejectedCandidate[]>? rejectedCandidates;
 
+    // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
+    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
+
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected);
+
+    // A conflicting argument with its stored Type, whether that Type is proven Copy, whether the Place offers Take, and the
+    // range of its candidates in the party store.
+    private readonly record struct AcquisitionConflict(Koto Argument, BoundType Type, bool CopyProven, bool Take, int PartyStart, int PartyCount);
+
+    // A candidate that acquires the argument by value or newly borrows it, with the parameter and its substituted Type.
+    private readonly record struct AcquisitionParty(FunctionKoto Function, int ParameterIndex, BoundType? ParameterType, bool ByValue);
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
@@ -175,7 +198,27 @@ public sealed partial class Binding
         return this.Fail(node, AccessFailure(target));
     }
 
-    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice.
+    // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
+    // located at the entry and names the initialization it stands for.
+    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var name = capture.Name;
+        switch (code)
+        {
+            case DiagnosticCode.InvalidAssignment_Kd:
+                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
+                break;
+            case DiagnosticCode.TransferRequired_Kd:
+                node.Report(requirement, code, note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference", evidence: [name], advice: $"Write {name}@move to transfer it, or {name}@ref to borrow it", span: capture.Span);
+                break;
+            default:
+                node.Report(requirement, code, span: capture.Span);
+                break;
+        }
+    }
+
+    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice. An
+    // Exclusive call of a closure (SPEC 7.6.3) borrows the callee exclusively, so the callee is the written target.
     private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (code != DiagnosticCode.InvalidAssignment_Kd)
@@ -191,7 +234,37 @@ public sealed partial class Binding
         }
 
         var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
-        node.Report(requirement, code, at: target, evidence: [target.ToString()], advice: immutable ? "Declare the binding with var to assign it again" : null);
+        var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
+        node.Report(
+            requirement,
+            code,
+            note: call ? "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent" : null,
+            at: target,
+            evidence: [target.ToString()],
+            advice: immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null);
+    }
+
+    // SPEC 10.6: one record per conflicting argument, in source order, located at the argument and relating each candidate's
+    // parameter Type. The call is the subject; the condition number distinguishes its arguments, and the first one carries the
+    // check that problems depending on the call name as their prerequisite.
+    private void ReportAcquisitionConflicts(Koto call, DiagnosticRequirement requirement, (int Start, int Count) range)
+    {
+        for (var k = 0; k < range.Count; k++)
+        {
+            var conflict = this.acquisitionConflictStore[range.Start + k];
+            var type = DiagnosticTypeName(conflict.Type);
+            var related = new (string Role, Koto At, string? Label)[conflict.PartyCount];
+            for (var p = 0; p < related.Length; p++)
+            {
+                var party = this.acquisitionPartyStore[conflict.PartyStart + p];
+                var parameter = party.ParameterType is { } shown ? DiagnosticTypeName(shown) : type;
+                related[p] = ("candidate", party.Function.Parameters[party.ParameterIndex].Type, party.ByValue ? $"{party.Function.Name} acquires it by value as {parameter}" : $"{party.Function.Name} borrows it as {parameter}");
+            }
+
+            var advice = conflict.CopyProven ? (conflict.Take ? AcquisitionAdviceCopyMove : AcquisitionAdviceCopy) : conflict.Take ? AcquisitionAdviceMove : AcquisitionAdvice;
+            var note = conflict.CopyProven ? null : $"{type} is not proven Copy, so a by-value candidate cannot Copy this Place";
+            call.Report(requirement, DiagnosticCode.AcquisitionRequired_Kd, note: note, at: conflict.Argument, evidence: [type], advice: advice, related: related, condition: (ushort)k);
+        }
     }
 
     private void ResetPrerequisites()
@@ -199,7 +272,11 @@ public sealed partial class Binding
         this.mismatches?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
+        this.captureFailures?.Clear();
         this.rejectedCandidates?.Clear();
+        this.acquisitionConflicts.Clear();
+        this.acquisitionConflictStore.Clear();
+        this.acquisitionPartyStore.Clear();
         this.duplicateDeclarations?.Clear();
         this.prerequisites.Clear();
         this.prerequisiteStore.Clear();

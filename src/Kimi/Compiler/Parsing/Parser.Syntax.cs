@@ -127,9 +127,10 @@ public static partial class Parser
                 var op = reader.Read();
                 operation = reader.GetSpan(op) switch
                 {
-                    "move" => Constants.MoveOperation,
-                    "ref" when !mutable => "ref",
-                    "uniq" when !mutable => "uniq",
+                    // SPEC 7.6.2: var changes only the mutability of the environment binding, with every operation.
+                    Constants.MoveOperation => Constants.MoveOperation,
+                    Constants.RefKeyword => Constants.RefKeyword,
+                    Constants.UniqKeyword => Constants.UniqKeyword,
                     _ => null,
                 };
                 if (operation is null)
@@ -237,6 +238,12 @@ public static partial class Parser
             if (IsOriginRelationStart(ref reader))
             {
                 OriginClauses.Add(function, ParseOriginRelation(ref reader));
+                continue;
+            }
+
+            if (IsEffectStart(ref reader, specification: true))
+            {
+                function.AddEffectBound(ParseEffectBound(ref reader));
                 continue;
             }
 

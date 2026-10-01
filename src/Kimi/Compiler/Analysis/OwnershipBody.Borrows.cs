@@ -7,6 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipBody
 {
     private readonly List<(int To, int Next)> checkingBorrowEdges = new();
+
+    // SPEC 8.4.10.4: each Place that keeps the result of a generic requirement call, with that result's index.
+    private readonly List<(int Holder, int Result)> requirementHolders = new();
     private PackedAnalysisTable borrowLive = new(1);
     private int[] checkingBorrowHeads = [];
     private PackedAnalysisTable borrowDependencies = new(2);
@@ -48,7 +51,7 @@ public sealed partial class OwnershipBody
         this.reservationOverlaps?.Clear();
         this.overlapActivations?.Clear();
         var count = this.Places.Count;
-        var dependent = false;
+        var dependent = this.ConditionalReborrows is { Count: > 0 } || this.RequirementResults is { Count: > 0 };
         for (var p = 0; p < count && !dependent; p++)
         {
             dependent = HasProjection(this.Places[p].Type) || this.IsExclusiveBorrowInput(p);
@@ -93,6 +96,12 @@ public sealed partial class OwnershipBody
             {
                 AddType(p, this.Places[p].Type);
             }
+        }
+
+        this.requirementHolders.Clear();
+        if (this.ConditionalReborrows is { Count: > 0 } || this.RequirementResults is { Count: > 0 })
+        {
+            AddExplicitDependencies();
         }
 
         if (!any)
@@ -227,13 +236,18 @@ public sealed partial class OwnershipBody
                     for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
                     {
                         var root = this.borrowRoots[rootIndex];
+                        if (this.Places[root].Kind == OwnershipPlaceKind.EffectRegion)
+                        {
+                            continue; // Only the derived effects of requirement calls reach a region (VerifyRequirementEffects).
+                        }
+
                         var mode = this.BorrowModeAt(p, root, op, this.borrowDependencies[(p * count) + root]);
                         if (mode == LoanRequirement.None)
                         {
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type));
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root));
                         var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
                             this.ElementAccessConflicts(operation, root, authority);
@@ -343,6 +357,7 @@ public sealed partial class OwnershipBody
         }
 
         this.ReportPreparedLoanConflicts();
+        this.VerifyRequirementEffects(count, liveWidth);
 
         void AddType(int place, BoundType type, LoanRequirement bound = LoanRequirement.Uniq)
         {
@@ -465,6 +480,138 @@ public sealed partial class OwnershipBody
                         AddType(place, source, mode);
                     }
                 }
+            }
+        }
+
+        // SPEC 8.9, 8.4.10.4: dependencies that no Origin of a Type carries. A conditional plan's Reborrow case is checked like a
+        // concrete exclusive reference: each pair parameter is an external capability root, and the reborrowed value inherits the
+        // dependencies of the Place it Reborrows; a Place with no known root keeps itself as the root, and the Copy cases add no
+        // Loan. The result of a generic requirement call keeps the Loans of the effect regions its call reached. Both follow the
+        // value, whole or as a part, into the Places whose Types have abstract parts.
+        void AddExplicitDependencies()
+        {
+            var conditional = this.ConditionalReborrows;
+            if (conditional is { Count: > 0 })
+            {
+                for (var p = 0; p < count; p++)
+                {
+                    if (this.IsPairInput(p))
+                    {
+                        RecordDependency(p, p, LoanRequirement.Uniq);
+                    }
+                }
+            }
+
+            if (this.RequirementResults is { Count: > 0 } results)
+            {
+                for (var i = 0; i < results.Count; i++)
+                {
+                    RecordDependency(results[i].Result, results[i].Region, results[i].Mode);
+                    this.requirementHolders.Add((results[i].Result, i));
+                }
+            }
+
+            Propagate();
+            var unrooted = false;
+            for (var i = 0; conditional is not null && i < conditional.Count; i++)
+            {
+                if (!HasDependency(conditional[i].Place))
+                {
+                    unrooted |= RecordDependency(conditional[i].Place, conditional[i].Root, LoanRequirement.Uniq);
+                }
+            }
+
+            if (unrooted)
+            {
+                Propagate();
+            }
+
+            void Propagate()
+            {
+                bool changed;
+                do
+                {
+                    changed = false;
+                    for (var i = 0; conditional is not null && i < conditional.Count; i++)
+                    {
+                        changed |= Inherit(conditional[i].Place, conditional[i].Root);
+                    }
+
+                    for (var id = 0; id < this.Operations.Count; id++)
+                    {
+                        var (destination, source) = this.Operations[id] switch
+                        {
+                            { Kind: OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject, Place: >= 0, Input: >= 0 } stored => (stored.Place, stored.Input),
+                            { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0, Input: >= 0 } moved => (moved.Input, moved.Place),
+                            { Kind: OwnershipOperationKind.AcquirePattern, Place: >= 0, Input: >= 0 } bound => (bound.Input, bound.Place),
+                            _ => (-1, -1),
+                        };
+                        if (destination >= 0 && Carries(destination))
+                        {
+                            changed |= Inherit(destination, source);
+                        }
+                    }
+
+                    for (var i = 0; i < this.Constructions.Count; i++)
+                    {
+                        var plan = this.Constructions[i];
+                        for (var p = 0; Carries(plan.Place) && p < plan.PayloadCount; p++)
+                        {
+                            changed |= Inherit(plan.Place, plan.PayloadStart + p);
+                        }
+                    }
+
+                    for (var i = 0; i < this.Decompositions.Count; i++)
+                    {
+                        var plan = this.Decompositions[i];
+                        for (var p = 0; p < plan.PayloadCount; p++)
+                        {
+                            if (Carries(plan.PayloadStart + p))
+                            {
+                                changed |= Inherit(plan.PayloadStart + p, plan.Place);
+                            }
+                        }
+                    }
+                }
+                while (changed);
+            }
+
+            bool Carries(int place)
+                => this.Places[place].Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.EffectRegion) && AbstractTypes.HasAbstractPart(this.Places[place].Type);
+
+            bool Inherit(int destination, int source)
+            {
+                var changed = false;
+                for (var rootIndex = 0; rootIndex < (this.borrowRoots?.Count ?? 0); rootIndex++)
+                {
+                    var root = this.borrowRoots![rootIndex];
+                    changed |= RecordDependency(destination, root, this.borrowDependencies[(source * count) + root]);
+                }
+
+                // The requirement results a source keeps are kept by its destination too.
+                for (var i = 0; i < this.requirementHolders.Count; i++)
+                {
+                    if (this.requirementHolders[i].Holder == source && !this.requirementHolders.Contains((destination, this.requirementHolders[i].Result)))
+                    {
+                        this.requirementHolders.Add((destination, this.requirementHolders[i].Result));
+                        changed = true;
+                    }
+                }
+
+                return changed;
+            }
+
+            bool HasDependency(int place)
+            {
+                for (var rootIndex = 0; rootIndex < (this.borrowRoots?.Count ?? 0); rootIndex++)
+                {
+                    if (this.borrowDependencies[(place * count) + this.borrowRoots![rootIndex]] != LoanRequirement.None)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
 
@@ -792,6 +939,139 @@ public sealed partial class OwnershipBody
             level = parent;
         }
     }
+
+    // SPEC 8.4.10.4: a generic requirement call's derived effects reach every Loan that its abstract inputs' Types may denote,
+    // in the inputs' modes. A live Place keeping an earlier requirement result with Loans of the same region conflicts, unless
+    // both only read, or preserves results excludes the earlier results of the same requirement on the same receiver. A
+    // conflict with the receiver borrow itself keeps the existing diagnostics, so a call that already has one is skipped.
+    private void VerifyRequirementEffects(int count, int liveWidth)
+    {
+        if (this.RequirementEffects is not { Count: > 0 } effects || this.RequirementResults is not { Count: > 0 } results || this.liveBorrowPlaces is null)
+        {
+            return;
+        }
+
+        var checkedCall = -1;
+        for (var e = 0; e < effects.Count; e++)
+        {
+            var effect = effects[e];
+            var op = effect.Call;
+            if (op == checkedCall || (!this.IsReachable(op) && !this.HasCheckingState(op)) || this.HasIssueAt(this.Operations[op].Source))
+            {
+                continue;
+            }
+
+            var loaded = false;
+            for (var slot = 0; slot < liveWidth; slot++)
+            {
+                var p = this.liveBorrowPlaces[slot];
+                if (!this.borrowLive.IsSet((op * liveWidth) + slot) || this.borrowDependencies[(p * count) + effect.Region] == LoanRequirement.None ||
+                    (effect.Receiver.Root >= 0 && this.borrowDependencies[(p * count) + effect.Receiver.Root] != LoanRequirement.None))
+                {
+                    continue;
+                }
+
+                if (!loaded)
+                {
+                    this.LoadInput(op, !this.IsReachable(op));
+                    loaded = true;
+                }
+
+                if ((this.CompleteState(p) & PlaceState.MayInit) == 0 || this.HeldRequirementConflict(p, effect, results, count) is not { } earlier)
+                {
+                    continue;
+                }
+
+                this.ReportIssue(new(this.Operations[op].Source, OwnershipFailure.CallEffectConflict, Place: p, LoanSource: this.Places[p].Source, Related: this.Operations[earlier.Call].Source));
+                checkedCall = op;
+                break;
+            }
+        }
+    }
+
+    // The earlier requirement result kept by `holder` whose Loans the effect may conflict with, if any: one reached through a
+    // related value, unless both only read or preserves results excludes it for the same receiver.
+    private OwnershipRequirementResult? HeldRequirementConflict(int holder, in OwnershipRequirementEffect effect, List<OwnershipRequirementResult> results, int count)
+    {
+        for (var h = 0; h < this.requirementHolders.Count; h++)
+        {
+            if (this.requirementHolders[h].Holder != holder)
+            {
+                continue;
+            }
+
+            var result = results[this.requirementHolders[h].Result];
+            if (result.Region != effect.Region || result.Call == effect.Call || (result.Mode != LoanRequirement.Uniq && effect.Mode != LoanRequirement.Uniq) ||
+                !this.RelatedValues(result.Input, effect.Input, count, false) ||
+                (effect.Preserves && ReferenceEquals(result.Requirement, effect.Requirement) && this.RelatedValues(result.Receiver, effect.Receiver, count, true)))
+            {
+                continue;
+            }
+
+            return result;
+        }
+
+        return null;
+    }
+
+    // Whether two input values may be the same: an unknown value may be any (but is never proven the same), the same root may be
+    // reached through the same Field, and roots are related through a dependency or a common root.
+    private bool RelatedValues(OwnershipValueIdentity left, OwnershipValueIdentity right, int count, bool same)
+    {
+        if (left.Root < 0 || right.Root < 0)
+        {
+            return !same;
+        }
+
+        if (left.Root == right.Root)
+        {
+            return ReferenceEquals(left.Field, right.Field) || (!same && (left.Field is null || right.Field is null));
+        }
+
+        if (left.Field is not null || right.Field is not null)
+        {
+            return !same && this.RootsRelated(left.Root, right.Root, count);
+        }
+
+        return this.RootsRelated(left.Root, right.Root, count);
+    }
+
+    private bool RootsRelated(int left, int right, int count)
+    {
+        if (this.borrowDependencies[(left * count) + right] != LoanRequirement.None || this.borrowDependencies[(right * count) + left] != LoanRequirement.None)
+        {
+            return true;
+        }
+
+        for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+        {
+            var root = this.borrowRoots[rootIndex];
+            if (this.Places[root].Kind != OwnershipPlaceKind.EffectRegion && this.borrowDependencies[(left * count) + root] != LoanRequirement.None &&
+                this.borrowDependencies[(right * count) + root] != LoanRequirement.None)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasIssueAt(Koto source)
+    {
+        for (var i = 0; i < this.IssueStorage.Count; i++)
+        {
+            if (ReferenceEquals(this.IssueStorage[i].Source, source))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.9: a pair parameter whose Reborrow case a definition's conditional plan checks; its referent is external.
+    private bool IsPairInput(int place)
+        => this.ConditionalReborrows is { Count: > 0 } && this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[place].Type, out _, out _);
 
     // Declared lifetime parameters need a capability root independent of their shared Origin name.
     private bool IsExclusiveBorrowInput(int place)
@@ -1178,7 +1458,8 @@ public sealed partial class OwnershipBody
                 var stored = operation.Kind switch
                 {
                     OwnershipOperationKind.Read when operation.Place >= 0 &&
-                        this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local && ReferenceTypes.IsBorrow(local.Type) => operation.Place,
+                        this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local &&
+                        (ReferenceTypes.IsBorrow(local.Type) || (this.ConditionalReborrows is { Count: > 0 } && Binding.TryPairLayer(local.Type, out _, out _))) => operation.Place,
                     OwnershipOperationKind.AcquirePattern => this.PayloadSubject(operation.Place),
                     OwnershipOperationKind.InitializeSubject => operation.Input,
                     OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Copy && operation.Place >= 0 &&

@@ -474,6 +474,14 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
+
+        // SPEC 10.2.2: among several candidates, the Copy proof of a bare Place's by-value acquisition is held until the
+        // conflict check; each candidate's plan per argument and one proof per argument are kept for it.
+        var holdCopies = candidateCount > 1 && argumentCount != 0;
+        var plans = this.acquisitionScratch.Rent(holdCopies ? candidateCount * argumentCount : 0);
+        var proofTypes = this.typeScratch.Rent(holdCopies ? argumentCount : 0);
+        var proven = this.flagScratch.Rent(holdCopies ? argumentCount : 0);
+        proofTypes.AsSpan(0, holdCopies ? argumentCount : 0).Clear();
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -523,6 +531,7 @@ public sealed partial class Binding
 
             var count = 0;
             var applicable = 0;
+            var held = 0;
             var winnerIndex = -1;
             var pending = false;
             var error = false;
@@ -537,6 +546,8 @@ public sealed partial class Binding
 
                 var index = count++;
                 operations.AsSpan(index * operationStride, operationStride).Clear();
+                var candidatePlans = holdCopies ? plans.AsSpan(index * argumentCount, argumentCount) : default;
+                candidatePlans.Clear();
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
@@ -550,13 +561,14 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), candidatePlans, proofTypes, proven, out defaultsUsed);
                     this.activeRequirementContract = null;
                 }
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
                 pending |= state == CandidateApplicability.Pending;
                 error |= state == CandidateApplicability.Error;
+                held += state == CandidateApplicability.CopyUnproven ? 1 : 0;
                 if (state != CandidateApplicability.Applicable)
                 {
                     incompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;
@@ -585,6 +597,13 @@ public sealed partial class Binding
                 return this.Fail(call, BindingFailure.UnprovenConstraint, true);
             }
 
+            if (applicable + held > 1 && this.CheckAcquisitionConflicts(call, evaluated.AsSpan(0, count), plans, argumentCount, operations, operationStride, proofTypes, proven))
+            {
+                return this.Fail(call, BindingFailure.AcquisitionRequired, true);
+            }
+
+            // SPEC 10.2.2 step 3: a candidate whose held Copy proof failed is excluded; a call left without one names @move.
+            this.transferRequired |= held != 0;
             if (applicable == 0 && incompleteSignature is not null)
             {
                 // A candidate whose signature failed cannot be judged, so the selection rests on that failure.
@@ -763,6 +782,9 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
+            this.flagScratch.Return(proven);
+            this.typeScratch.Return(proofTypes, clearArray: true);
+            this.acquisitionScratch.Return(plans);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
@@ -842,9 +864,13 @@ public sealed partial class Binding
         return proof;
     }
 
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
+    // A non-empty plans span holds the Copy proofs of bare by-value arguments for the conflict check (SPEC 10.2.2); proofTypes and
+    // proven share one proof per argument across candidates.
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, Span<ArgumentAcquisition> plans, BoundType?[] proofTypes, bool[] proven, out int defaultsUsed)
     {
         defaultsUsed = 0;
+        var holdCopy = !plans.IsEmpty;
+        var copyUnproven = false;
         if (function.IsConstructor && declaringType is null)
         {
             return CandidateApplicability.Inapplicable;
@@ -1164,9 +1190,20 @@ public sealed partial class Binding
 
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
-                if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsTypeAt(adapted, type, call)))
+                if (argument.BoundType is { } actual)
                 {
-                    return CandidateApplicability.Inapplicable;
+                    var fits = this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind, holdCopy: holdCopy);
+                    var plan = this.argumentAcquisition;
+                    if (!fits || !this.FitsTypeAt(adapted, type, call))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+
+                    if (holdCopy)
+                    {
+                        plans[i] = plan;
+                        copyUnproven |= plan == ArgumentAcquisition.Copy && !this.HeldCopyProven(i, adapted, argument, proofTypes, proven);
+                    }
                 }
 
                 operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
@@ -1253,7 +1290,7 @@ public sealed partial class Binding
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
         return proof switch
         {
-            ConstraintProof.Proven => CandidateApplicability.Applicable,
+            ConstraintProof.Proven => copyUnproven ? CandidateApplicability.CopyUnproven : CandidateApplicability.Applicable,
             ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
@@ -1300,7 +1337,7 @@ public sealed partial class Binding
             }
 
             pattern = this.ContractType(memberPattern, scope, self);
-            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver))
+            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver, holdCopy: holdCopy && !receiver))
             {
                 return false;
             }

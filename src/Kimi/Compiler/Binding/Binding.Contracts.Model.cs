@@ -23,6 +23,9 @@ public sealed class BoundContract
     /// <summary>Gets the effective associated-Type declaration identities.</summary>
     public IReadOnlyList<BindingSymbol> AssociatedTypes => this.AssociatedStorage;
 
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor exposes its own.</summary>
+    public IReadOnlyList<BoundEffectBound> EffectBounds => this.EffectBoundStorage;
+
     internal List<BindingSymbol> AncestorStorage { get; } = new();
 
     internal List<BindingSymbol> RequirementStorage { get; } = new();
@@ -30,6 +33,15 @@ public sealed class BoundContract
     internal List<BindingSymbol> AssociatedStorage { get; } = new();
 
     internal List<IsKoto> ClauseStorage { get; } = new();
+
+    /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor keeps its own.</summary>
+    internal List<BoundEffectBound> EffectBoundStorage { get; } = new();
+
+    /// <summary>Gets or sets the progress of building <see cref="EffectBoundStorage"/> in this pass: 0 unbuilt, 1 building, 2 built.</summary>
+    internal byte EffectState { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether this Contract or an ancestor declares a bound, once its table is built.</summary>
+    internal bool HasEffectBounds { get; set; }
 
     internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -39,6 +51,12 @@ public sealed class BoundContract
 
     internal bool HasUnresolvedParents { get; set; }
 }
+
+/// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
+/// <param name="Requirement">The requirement; its declaration is the Requirement Identity.</param>
+/// <param name="Bound">The bound.</param>
+/// <param name="Declaration">The effect item.</param>
+public readonly record struct BoundEffectBound(BindingSymbol Requirement, EffectBoundKind Bound, EffectBoundKoto Declaration);
 
 /// <summary>A definition-verified implementation of one stable requirement.</summary>
 public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation, BoundFunctionWitness? Function = null);

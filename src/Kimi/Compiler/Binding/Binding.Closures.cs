@@ -106,7 +106,7 @@ public sealed partial class Binding
                 }
 
                 // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
-                environment.TransferCapture = transfer;
+                environment.CaptureAcquisition = transfer ? CaptureAcquisition.Move : CaptureAcquisition.Copy;
                 if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
                 {
                     return this.Fail(function, BindingFailure.TransferRequired);
@@ -191,6 +191,39 @@ public sealed partial class Binding
         return environment;
     }
 
+    // SPEC 7.6.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
+    // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
+    // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot.
+    private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
+    {
+        var type = source.Type!;
+        switch (capture.Operation)
+        {
+            case Constants.MoveOperation:
+                environment.CaptureAcquisition = CaptureAcquisition.Move;
+                return null;
+            case null when this.ProveCopy(type, function) == ConstraintProof.Proven:
+                environment.CaptureAcquisition = CaptureAcquisition.Copy;
+                return null;
+            case null when type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 }:
+                environment.CaptureAcquisition = CaptureAcquisition.Reborrow;
+                return null;
+            case null:
+                return BindingFailure.TransferRequired;
+        }
+
+        var exclusive = capture.Operation == Constants.UniqKeyword;
+        if (exclusive && !(source.MutableCapture || IsMutableDeclaration(source.Declaration)))
+        {
+            return BindingFailure.InvalidAssignment; // A let binding's slot grants no Write (SPEC 15.1.5).
+        }
+
+        var binder = source.Declaration ?? function;
+        environment.Type = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, source.Slot));
+        environment.CaptureAcquisition = exclusive ? CaptureAcquisition.ExclusiveSlotBorrow : CaptureAcquisition.SharedSlotBorrow;
+        return null;
+    }
+
     private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope)
     {
         var plan = function.ClosureStorage ??= new();
@@ -210,12 +243,6 @@ public sealed partial class Binding
         {
             foreach (var capture in captures)
             {
-                var transfer = capture.Operation == Constants.MoveOperation;
-                if (capture.Operation is not null && !transfer)
-                {
-                    return this.Fail(function, BindingFailure.Unsupported);
-                }
-
                 if (scope.Values.ContainsKey(capture.Name))
                 {
                     return this.Fail(function, BindingFailure.Duplicate);
@@ -228,11 +255,10 @@ public sealed partial class Binding
                 }
 
                 environment.MutableCapture = capture.IsMutable;
-                // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
-                environment.TransferCapture = transfer;
-                if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
+                if (this.CaptureEntry(function, capture, source, environment) is { } failure)
                 {
-                    return this.Fail(function, BindingFailure.TransferRequired);
+                    (this.captureFailures ??= new(ReferenceEqualityComparer.Instance))[function] = (capture, source.Type!);
+                    return this.Fail(function, failure);
                 }
             }
         }
@@ -305,9 +331,20 @@ public sealed partial class Binding
                 {
                     foreach (var capture in child.Captures)
                     {
-                        if (ReferenceEquals(capture.Source.Declaration, function) && binding.ProveCopy(capture.Source.Type!, function) == ConstraintProof.Refuted)
+                        if (!ReferenceEquals(capture.Source.Declaration, function))
+                        {
+                            continue;
+                        }
+
+                        // SPEC 7.6.2, 7.6.3: moving an outer environment value is Consuming; Reborrowing it or borrowing its slot
+                        // exclusively needs exclusive access to the outer environment.
+                        if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move && binding.ProveCopy(capture.Source.Type!, function) == ConstraintProof.Refuted)
                         {
                             plan.Receiver = SemanticsKind.Owner;
+                        }
+                        else if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow && plan.Receiver != SemanticsKind.Owner)
+                        {
+                            plan.Receiver = SemanticsKind.Uniq;
                         }
                     }
                 }
@@ -329,9 +366,11 @@ public sealed partial class Binding
                 var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
                     ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected : null;
                 var memberBorrow = memberCall?.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
+                var exclusiveReference = symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
-                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq))
+                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
+                    (exclusiveReference && this.UsesReferentExclusively(use)))
                 {
                     if (plan.Receiver != SemanticsKind.Owner)
                     {
@@ -339,7 +378,7 @@ public sealed partial class Binding
                     }
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
-                    (binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
+                    (!exclusiveReference && binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
                     !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use)))
                 {
                     // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
@@ -374,6 +413,49 @@ public sealed partial class Binding
             }
 
             return false;
+        }
+
+        // SPEC 7.6.3: a captured exclusive reference used in a way that needs its referent exclusively: Reborrowed exclusively
+        // (bare, at an expected uniq Type or as a uniq argument), or followed to a Place that is written, incremented, borrowed
+        // exclusively or used as an exclusive receiver. Such a body mutates a captured referent, so the call is Exclusive.
+        private bool UsesReferentExclusively(Koto use)
+        {
+            if (binding.adaptations.TryGetValue(use, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow && adaptation.Type.Semantics == SemanticsKind.Uniq)
+            {
+                return true;
+            }
+
+            if (use.Parent is InvocationKoto { BoundCall: { } call })
+            {
+                foreach (var argument in call.ArgumentOperations)
+                {
+                    if (ReferenceEquals(argument.Source, use) && argument.Kind is ArgumentOperationKind.Reborrow or ArgumentOperationKind.Borrow &&
+                        argument.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            var target = use;
+            while (target.Parent is ParenthesizedKoto ||
+                (target.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } selected && ReferenceEquals(selected.Left, target)) ||
+                (target.Parent is MemberAccessKoto member && ReferenceEquals(member.Left, target)) ||
+                (target.Parent is IndexKoto index && ReferenceEquals(index.Left, target)))
+            {
+                target = target.Parent;
+            }
+
+            if (ReferenceEquals(target, use))
+            {
+                return false;
+            }
+
+            return (target.Parent is BinaryKoto write && write.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(write.Left, target)) ||
+                target.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
+                target.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
+                (target.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selectedCall } } receiverAccess && ReferenceEquals(receiverAccess.Left, target) &&
+                    ReferenceEquals(selectedCall.Receiver, target) && selectedCall.ReceiverOperation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
         }
     }
 }

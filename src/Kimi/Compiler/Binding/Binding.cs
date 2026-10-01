@@ -227,6 +227,7 @@ public sealed partial class Binding
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
             this.ValidateContractDeclarations();
+            this.PrepareEffectBounds();
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
@@ -374,6 +375,22 @@ public sealed partial class Binding
                 // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
                 var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
                 issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
+            }
+            else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
+            {
+                this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
+            }
+            else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
+            {
+                this.ReportEffectBound(effect, requirement);
+            }
+            else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 8.4.10.6: reported at the violating effect.
+            }
+            else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
+            {
+                this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
             }
             else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
             {
@@ -709,6 +726,8 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
+                    BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
@@ -1145,6 +1164,14 @@ public sealed partial class Binding
                 // Layout/Test are handled above. Unrecognized markers and non-function
                 // LibraryImport targets cannot certify; retain syntax and diagnostics.
                 binding.Fail(target, BindingFailure.InvalidTypeFormation);
+            }
+
+            if (node is EffectBoundKoto)
+            {
+                // SPEC 8.4.10.1: the selector and Name of an effect item designate a Contract and its requirement; they are
+                // resolved with the item, never as expressions.
+                binding.nodes.Add(node);
+                return;
             }
 
             if (node is ConversionKoto conversion)

@@ -830,7 +830,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void EarlyFalseCompileTimeIfDoesNotParseItsTargetKoto()
+    public void EarlyFalseCompileTimeIfParsesItsTargetAsExcludedSyntax()
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
@@ -843,7 +843,8 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(TestDiagnostics.Of(kotonoha));
+        // The excluded target is parsed with the ordinary grammar but contributes nothing (SPEC 19.5).
+        Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), Assert.Single(TestDiagnostics.Of(kotonoha)).Code);
         Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
     }
 
@@ -895,8 +896,7 @@ public class ParserRegressionTest
         Assert.Contains(TestDiagnostics.Of(restored), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
-        Assert.Equal(2, restoredGroup.Arms.Count);
-        Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
+        Assert.Empty(restoredGroup.ChildNodes);
     }
 
     [Fact]

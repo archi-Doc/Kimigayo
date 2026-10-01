@@ -207,9 +207,17 @@
     Category="Language"
     Message="No implementation matches the Contract requirement after Type substitution"
 
+  + Name="InvalidEffectBound_Kd"
+    Category="Language"
+    Message="The effect item declares no bound: a bound names one function requirement of its Contract or an ancestor, once, and appears only in a Contract"
+    Evidence="cause:Text"
+    Label="{0}"
+
   + Name="IncompatibleContractImplementation_Kd"
     Category="Language"
     Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="InvalidAssociatedType_Kd"
     Category="Language"
@@ -597,6 +605,12 @@
     Category="Language"
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
 
+  + Name="AcquisitionRequired_Kd"
+    Category="Language"
+    Message="One overload candidate acquires this Place by value and another borrows it; overload resolution does not choose between them, so write the acquisition explicitly"
+    Evidence="type:Type"
+    Label="{0} is either acquired by value or borrowed"
+
   + Name="SharedBindingAssignment_Kd"
     Category="Language"
     Message="This binding is a shared reference because its match or for Subject is Shared; bind a value from a ByValue Subject such as E@copy or E@move, or copy the referent into a local with @follow"
@@ -665,6 +679,12 @@
   + Name="CallActivationConflict_Kd"
     Category="Language"
     Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
+
+  + Name="CallEffectConflict_Kd"
+    Category="Language"
+    Message="This requirement call may affect a Loan that an earlier result keeps, and no effect bound available here excludes it"
+    Evidence="access:Text"
+    Label="{0}"
 
   + Name="DeferredExpansionLimit_Kd"
     Category="Resource"

@@ -225,6 +225,8 @@ public sealed partial class Binding
             shape.RequirementStorage.Clear();
             shape.AssociatedStorage.Clear();
             shape.ClauseStorage.Clear();
+            shape.EffectBoundStorage.Clear();
+            shape.EffectState = 0;
             shape.Seen.Clear();
             foreach (var members in shape.MembersByName.Values)
             {
@@ -249,11 +251,13 @@ public sealed partial class Binding
             }
         }
 
+        this.contractShapes.Clear();
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is ContractKoto contract)
             {
                 this.BuildContract(contract.BoundSymbol!.Contract!);
+                this.contractShapes.Add(contract.BoundSymbol!.Contract!);
             }
         }
     }
@@ -400,8 +404,9 @@ public sealed partial class Binding
                 Add(associated, shape.AssociatedStorage);
                 Complete(member, BoundType.Unit);
             }
-            else
+            else if (member is not EffectBoundKoto)
             {
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }

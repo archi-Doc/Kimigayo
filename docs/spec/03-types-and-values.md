@@ -424,7 +424,7 @@ The outer Semantics determines Copy: `ref/uniq/T` is Copy, while `uniq/ref/T` is
 
 A Non-Copy referent is never extracted through a reference ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)); it is inspected through the reference by selecting a part, by [comparison](13-operators-and-assignment.md#134-comparison-and-logical-operators) or by borrowing the selected Place.
 
-There is no safe `*` operator and no conversion between pointers and safe references. Explicit [borrows](13-operators-and-assignment.md#1355-follow-borrow-and-reborrow) always borrow the immediately written slot; implicit borrows at positions with a fixed expected Type follow the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types).
+There is no safe `*` operator and no conversion between pointers and safe references. Explicit [borrows](13-operators-and-assignment.md#1355-follow-borrow-and-reborrow) always borrow the immediately written slot; implicit borrows at positions with a fixed expected Type follow the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), and the [bare acquisition](#35-copy-and-move) of a stored exclusive reference Reborrows it.
 
 ## 3.4. Values, places, and storage
 
@@ -511,7 +511,23 @@ The same selection applies to the receiver of a borrowing `for` entry (§14.6.2)
 
 In a generic body, a Type parameter or associated Type whose shape the public Constraints and Type equalities do not determine, after normalization, is the terminal of the path. Only its published capabilities are used there, and instantiation never selects a different layer, member or comparison. A reference shape proven by a declared equality may be followed at definition time. A qualifying pair layer is not a terminal: it is followed to its direct target unless its complete Type publishes the requirement. For example, when an associated Type is identical to `s/T` and a Contract conformance of that associated Type is required, its members are selected on the complete `s/T`, not on `T`.
 
-Bare acquisition, a single-name binding and Type inference (§10.2) never select a referent or follow a pair layer. `@ref` and `@uniq` are not subject to selection: they always borrow the immediately written slot (§13.5.5). An update requirement, such as the exclusive access needed by `matrix[f()][j] = value`, propagates only along the selected projection path, never into the argument `f()` or behind an ordinary function or getter.
+Bare acquisition, including its Reborrow of a stored exclusive reference (§3.5), a single-name binding and Type inference (§10.2) never select a referent or follow a pair layer. `@ref` and `@uniq` are not subject to selection: they always borrow the immediately written slot (§13.5.5). An update requirement, such as the exclusive access needed by `matrix[f()][j] = value`, propagates only along the selected projection path, never into the argument `f()` or behind an ordinary function or getter.
+
+**Acquiring a selected Place.** A Field, a Tuple element and an index select a Place. The acquisition that uses it, whether bare (§3.5) or adapted at a fixed expected Type (§10.2), applies to the value kind of the selected Place, never to its parent:
+
+- A selected Place that stores `uniq/U` or `objuniq/U` is Reborrowed without a spelling when its access path grants the exclusive capability.
+- A selected owned Place that is lent exclusively at a position other than a Receiver Expression needs `@uniq` or `@objuniq` on that Place itself. A spelling on the parent lends the parent and does not replace it, so `holder@uniq.items` is still a bare owned Place at a `uniq` parameter (§15.1.5).
+- An index selects `index` or `indexUniq` by the capability that the final acquisition plan of its use requires (§4.6.9).
+
+```kimi
+// holder: a var Holder whose Fields are items: Array<i32> and link: uniq/Counter.
+// values: a var Array<Counter>; refs: a var Array<uniq/Counter>; fill takes uniq/Array<i32>.
+let link = holder.link        // A Field storing a reference: the Reborrow of §3.5.
+let first = refs[0]           // indexUniq, then the Reborrow; the same as let first: uniq/Counter = refs[0].
+fill(holder.items@uniq)       // An owned Field lent at an argument carries its own spelling.
+// fill(holder@uniq.items)    // Error: lending holder does not lend items at this argument.
+values[0].bump()              // A Receiver Expression (§7.3); selecting indexUniq needs no spelling.
+```
 
 ## 3.5. Copy and move
 
@@ -519,18 +535,46 @@ Bare acquisition, a single-name binding and Type inference (§10.2) never select
 
 **Move** transfers the value and its destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear the source memory.
 
-**Bare acquisition** is the acquisition of an expression written without an explicit `@` operation. The table compares it with the explicit forms for a Place `P` whose stored complete Type is `T`:
+**Bare acquisition** is the acquisition of an expression written without an explicit `@` operation. It depends only on the source, and the first matching row applies. The table compares it with the explicit forms for a Place `P` whose stored complete Type is `T`:
 
 | Operation | Result |
 | --- | --- |
-| Bare acquisition of a Place | Copy, only when `T` is proven Copy; the result Type is `T`. A Non-Copy or Copy-unproven Place is an error |
+| Bare acquisition of a Place whose `T` is proven Copy | Copy; the result Type is `T`. A stored `ref/U` or `objref/U` is Copied as a reference value |
+| Bare acquisition of a Place storing `uniq/U` or `objuniq/U` | Reborrow of the stored reference in the same Semantics; the result Type is `T` (below) |
+| Bare acquisition of any other Place | Error: `T` is Non-Copy or Copy-unproven; a transfer is written `@move` |
 | `P@move` | Transfer of `T` whatever its Copy capability; the source becomes Moved |
 | `P@copy` | Copy, only when `T` is proven Copy, spelled explicitly; the source stays Initialized |
 | `P@ref`, `P@ref/T` | Shared borrow of `P` itself: `ref/T` |
 | `P@uniq`, `P@uniq/T` | Exclusive borrow of `P` itself: `uniq/T` |
 | Bare acquisition or `@move` of a temporary | The already acquired value is transferred; no extra Copy or Move |
 
-`@move` is the only spelling that transfers a value out of a Place ([transfer](13-operators-and-assignment.md#1353-defined-adaptations)); it requires a Take-capable [Movable Place](15-ownership-and-lifetime-analysis.md#1515-movable-places). `@copy` is the explicit Copy and never transfers. The complete owning forms, such as `@owner/T` and `@obj/Base`, are not transfer spellings either: they perform the same-Type acquisition or upcast they name (§13.5.3), which Copies a Copy value, transfers a temporary and rejects a Non-Copy Place. The bare shorthands `@owner`, `@obj`, `@rc` and `@arc` are not operations. These rules apply to initialization, assignment sources, by-value arguments, by-value results, aggregate elements, payloads and defaults. At a position with a fixed expected Type, the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) is planned first and the value is acquired once; without an admitted adaptation, an unproven Copy is never replaced by an implicit Move or borrow.
+`@move` is the only spelling that transfers a value out of a Place ([transfer](13-operators-and-assignment.md#1353-defined-adaptations)); it requires a Take-capable [Movable Place](15-ownership-and-lifetime-analysis.md#1515-movable-places). `@copy` is the explicit Copy and never transfers. The complete owning forms, such as `@owner/T` and `@obj/Base`, are not transfer spellings either: they perform the same-Type acquisition or upcast they name (§13.5.3), which Copies a Copy value, transfers a temporary and rejects a Non-Copy Place. The bare shorthands `@owner`, `@obj`, `@rc` and `@arc` are not operations. These rules apply to initialization, assignment sources, arguments, by-value results, result sources (§14.9.1), aggregate elements, enum payloads, defaults, explicit Capture entries (§7.6.2) and explicit discard (§14.2.4). At a position with a fixed expected Type, the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) selects the one operation, which may be this bare acquisition, and the value is acquired once; without an admitted adaptation, an unproven Copy is never replaced by an implicit Move or borrow. A generic body plans these rows for each admitted case ([generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects)), and a Receiver Expression is acquired under [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) instead. At an overloaded call, a bare Place whose by-value acquisition competes with a new shared borrow of the same Place needs an explicit operation ([acquisition conflicts](10-overload-resolution-and-inference.md#1022-acquisition-conflicts)).
+
+**Reborrow of a stored exclusive reference.** The Reborrow row is the Reborrow that `P@follow@uniq` or `P@objuniq` writes explicitly (§13.5.5.2); it does not Move the source. The child has the stored complete Type with its internal Origins and an outer Origin within the parent's (§15.6.3). It keeps the actual Loan ancestry, the initialization state, the protection of the slot holding the parent and the destruction dependencies, and it depends on the referent and the parent Loan, gaining no dependency on that slot that the Reborrow does not need. While the child is live, conflicting uses of the parent are rejected; after its last use the parent is usable again (§15.6.3). The row requires the exclusive capability of its lending point, the referent, through the Place's access path, and Loan legality (§15.1.5):
+
+- A `let` binding or parameter holding the reference may be Reborrowed; a `let` owned value still grants no exclusive access.
+- An exclusive reference stored on a shared path, such as the referent of `ref/(uniq/U)`, cannot be Reborrowed exclusively, and the bare acquisition is an error; write an expected `ref/U` when shared access suffices (§10.2).
+- Only the outer exclusive reference is Reborrowed. A Place storing `Option<uniq/U>`, a struct that contains references or a whole array is acquired by its own complete Type and never decomposed, while an aggregate literal such as `[r]` acquires each element expression separately.
+
+A saved Reborrow starts no call reservation and is active when formed (§15.6.7). `@copy` is never a Reborrow spelling, so `r@copy` on `r: uniq/U` is an error. `r@move` transfers the reference value itself, which a later adaptation never corrects (§10.2). `_ = r` Reborrows a child and drops it at once without consuming `r` (§14.2.4).
+
+```kimi
+var number: i32 = 1
+let r = number@uniq
+let first = r                 // Reborrow: uniq/i32.
+first@follow += 1
+let second: uniq/i32 = r      // The same acquisition as without the annotation, after first's last use.
+second@follow += 1
+r@follow += 1                 // r is usable again after the last uses of its children.
+
+let held = r
+// r@follow += 1              // Error: it conflicts with the later use of held.
+held@follow += 1
+
+_ = r                         // Reborrow a child and drop it at once; r is not consumed.
+let transferred = r@move      // Transfer the reference value itself; r becomes Moved.
+transferred@follow += 1
+```
 
 A typed borrow `P@ref/T` must name exactly the stored Type; it never selects the referent, copies a same-Type reference or Reborrows (§13.5.5.2). Its outer Origin is inferred from the path, and the stored Type's internal Origins are kept. An explicit borrow of a temporary materializes it under the ordinary temporary lifetime (§3.6) and borrows that Temporary Place.
 
@@ -596,7 +640,7 @@ func duplicate<T>(value: T) -> (T, T)
 
 User-struct derivation is specific to `Self is Copy`, not a general consequence of `Self is Capability`. Compiler-generated Closures use the automatic rule in the table instead.
 
-`T is Copy` is a generic constraint; Copy is never assumed before constraints or instantiation establish it. Unknown Copy capability never changes an acquisition's effect: a bare by-value Place needs Copy evidence when the definition is checked ([generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects), §8.10), and element Places keep their stored Type (§4.6.1).
+`T is Copy` is a generic constraint; Copy is never assumed before constraints or instantiation establish it. Unknown Copy capability never changes an acquisition's effect: in each admitted case, a bare by-value Place needs Copy evidence or a proven exclusive-reference Type when the definition is checked ([generic access effects](08-generics-constraints-and-contracts.md#89-generic-access-effects), §8.10), and element Places keep their stored Type (§4.6.1).
 
 Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. `rc`/`arc` handles and Weak use [`Kimi.Intrinsics.clone`](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
 
@@ -748,6 +792,6 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Numeric conversion | An established numeric Type and a target admitted by the [explicit numeric conversion table](13-operators-and-assignment.md#1354-numeric-conversions-and-literals). | A value conversion with the specified rounding, range checks and failure behavior. `i32` is not a subtype of `i64`; representable literal fitting is separate. |
 | Acquisition legality | An expression, the selected access operation, and the current initialization, access, ownership and Loan state. Apply the ordinary Copy, Move, Borrow or Consume requirements. | Type compatibility does not prove legality: an exact Type match can still fail because storage is Moved, access is unavailable or a Loan conflicts. Such a failure does not reopen committed lookup or overload selection. |
 
-For example, `ref/T during longer <: ref/T during shorter` may hold when `longer outlives shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and by-value acquisition Copies when bare and transfers under `@move`.
+For example, `ref/T during longer <: ref/T during shorter` may hold when `longer outlives shorter`, without a new Loan. In contrast, `uniq/T` to `ref/T` needs a Reborrow, and an object view change needs its explicit upcast. The same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, as does the bare acquisition of a stored exclusive reference (§3.5), and by-value acquisition of a Copy Place Copies when bare and transfers under `@move`.
 
 Candidate analysis may record operation choices and unresolved obligations but must not commit source-state changes while testing candidates. After selection, the chosen acquisition and adaptation are enforced in the specified evaluation order, and static result fitting is applied without replacing that operation. The [implementation correspondence](../impl/appendices/B-reference-models.md#b5-type-relation-and-operation-plans) is informative; no particular internal API is required.

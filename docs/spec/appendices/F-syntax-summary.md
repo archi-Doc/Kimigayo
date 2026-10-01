@@ -163,8 +163,8 @@ ContractDeclaration  := Access? "contract" Name GenericParameters? ContractParen
 ContractParentList   := ":" ContractReference ("," ContractReference)*
 ContractReference    := ContainerReference
 ContractSelector     := ContainerPath | "(" ContractReference ")"
-ContractItem         := ContractRequirement | AssociatedTypeDeclaration
-                      | ConstraintClause | Directive<ContractItem>
+ContractItem         := ContractRequirement | AssociatedTypeDeclaration | AssociatedTypeSpecification
+                      | EffectSpecification | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
                         ParameterList<RequirementParameter> ("->" FunctionResult)?
@@ -172,7 +172,10 @@ FunctionRequirement  := "unsafe"? "func" Name GenericParameters?
 FunctionResult       := Type | PlaceResult
 PlaceResult          := "place" ("ref" | "uniq") "/" SemanticsType BorrowOrigin?
 RequirementParameter := ParameterName ":" Type | ReceiverShorthand
-RequirementConstraints := IndentedList<ConstraintClause | OriginRelation>
+RequirementConstraints := IndentedList<ConstraintClause | OriginRelation | EffectClause>
+EffectClause         := "effect" EffectBound
+EffectSpecification  := "effect" ContractSelector "." Name EffectBound
+EffectBound          := "confined" | "preserves" "results"
 PropertyRequirement  := "property" Name ":" Type
                         ("has" RequiredAccessor ("," RequiredAccessor)*
                          | IndentedList<RequiredSignature>)
@@ -266,7 +269,7 @@ An omitted result annotation in a named function declaration or Contract functio
 
 Ordinary parameter bindings are immutable under §7. A ParameterList permits at most one `!`, with no adjacent comma and at least one ordinary parameter on its right. Its external names are unique across both sections and the receiver. Receiver recognition uses the internal Name `self`, its position and the declaration context under §7.3; the shared Parameter production alone grants no receiver defaults, renaming or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group, rootgroup, struct and contract declarations follow §6.1.1; empty enums remain invalid.
 
-Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
+Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses, Origin relations and effect clauses; `effect`, `confined`, `preserves` and `results` are contextual words only in the effect forms (§8.4.10.1); method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
 
 `AssociatedTypeDeclaration` introduces a name only inside a Contract, optionally with Origin parameters, a formation Type and attached `origin` clauses (§8.4.3.1); a formation Type requires Origin parameters and no fixed Type. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances and repeats its Origin parameter count; a bare `associate Element` is not a specification. `OriginApplication` follows only an associated-Type name in Type context and is never a Type grouping, Tuple or call. `PlaceResult` is recognized only in result position when `place` is followed by `ref` or `uniq` and a slash (§7.1.1); anonymous functions use it only with an explicit result annotation, and Function Types accept it as their result. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` occupies a member position only in generic struct and enum bodies (§8.4.8), has one target Contract and introduces no namespace or generic binders; its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations, and all conditional blocks reject storage, Cases, constructors, drop, nested Types and nested conformances. Intrinsics keep their own rules.
 
@@ -349,7 +352,7 @@ FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := ExecutableBody
 CaptureList          := "[" TrailingList<Capture>? "]"
-Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
+Capture              := "var"? Name ("@" CaptureOperation)?
 CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
                            | "$" "tryWrite" "(" Expression "," StringLiteral ")"
@@ -445,7 +448,7 @@ Each concrete accessor occurs at most once, in either order. `let` forbids `set`
 
 The productions in F.2 distinguish schema and binding-set braces from the postfix borrow annotation `during OriginAtom`. An intersection immediately after `during` needs parentheses, while relation operands keep the full OriginExpression grammar. There are no function or accessor Origin lists and no Origin mappings. A trailing `during` after a named Type without a Semantics prefix binds its single schema slot (§15.3.1). Associated-Type Origin parameters and their applications are the F.3 and F.2 productions `OriginParameters` and `OriginApplication` (§8.4.3.1).
 
-An `OriginRelation` is attached to its owning declaration, one indentation level below it. Type, function and accessor relations share the leading Constraint region and precede executable items or members. Field, enum Case, associated-Type declaration and specification, local and Container-alias relations are attached to that declaration. Relations are declaration metadata, permitted only in these leading or attached positions, and a declaration-only signature may have only such clauses.
+An `OriginRelation` is attached to its owning declaration, one indentation level below it. Type, function and accessor relations share the leading Constraint region and precede executable items or members; placement is judged in source order including excluded syntax (§19.5). Field, enum Case, associated-Type declaration and specification, local and Container-alias relations are attached to that declaration. Relations are declaration metadata, permitted only in these leading or attached positions, and a declaration-only signature may have only such clauses.
 
 See [schemas, names and relations](../15-ownership-and-lifetime-analysis.md#153-origin-schemas-names-and-relations) for ownership, scope and implicit binders, and [completion](../15-ownership-and-lifetime-analysis.md#154-origin-completion-and-elision) for inference and omission. Labels written within a local initializer's Type arguments, construction qualifier or Adaptation Target belong to that local declaration; no general expression constraint block is added.
 
@@ -473,7 +476,7 @@ PlainString         := ? StringLiteral without interpolation, §19.2 ?
 
 ```
 
-The hash forms are `#` followed by the reserved lowercase keywords `if`, `switch` and `case`. An uppercase-initial `AttributeName` instead selects the Attribute grammar of F.3, and other lowercase hash forms are errors. `Item` keeps the surrounding syntax category, so a directive does not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
+The hash forms are `#` followed by the reserved lowercase keywords `if`, `switch` and `case`. An uppercase-initial `AttributeName` instead selects the Attribute grammar of F.3, and other lowercase hash forms are errors. `Item` keeps the surrounding syntax category, so a directive does not make an otherwise forbidden item legal there. Case layout and the checks of excluded syntax follow the linked sections; excluded syntax uses this same grammar.
 
 ## F.9. Syntax boundaries
 

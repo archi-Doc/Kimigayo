@@ -928,7 +928,7 @@ Exit:
             if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
             {
                 unavailableAccessor = true;
-                SkipExcludedSyntaxCore(ref reader);
+                SkipItemForRecovery(ref reader);
                 continue;
             }
 
@@ -1247,7 +1247,7 @@ CloseParameters:
         var openSpan = default(SourceSpan);
         while (reader.CanRead)
         {
-            if (inspectHeader && allowCompileTimeDirectives && !reader.IsExcluded && TryConsumeUnavailableModifiers(ref reader))
+            if (inspectHeader && allowCompileTimeDirectives && TryConsumeUnavailableModifiers(ref reader))
             {
                 isEnd = false;
                 return true;
@@ -1270,10 +1270,7 @@ CloseParameters:
 
                 case TokenKind.Static:
                     // static is not a declaration modifier; it is kept only for recovery (SPEC 6.1).
-                    if (!reader.IsExcluded)
-                    {
-                        reader.Unexpected(SyntaxForm.StaticModifier);
-                    }
+                    reader.Unexpected(SyntaxForm.StaticModifier);
 
                     ReadFlag(ref reader, ModifierKind.Static);
                     continue;
@@ -1307,8 +1304,15 @@ CloseParameters:
 
                     if (reader.PeekKind(1) == TokenKind.Case)
                     {
+                        if (allowCompileTimeDirectives)
+                        {
+                            // Its Condition is validated and its body is parsed as excluded syntax (SPEC 19.5).
+                            reader.HasCompileTimeIfPrefix |= ParseOrphanCompileTimeCase(ref reader);
+                            continue;
+                        }
+
                         reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
-                        SkipExcludedSyntaxCore(ref reader);
+                        SkipItemForRecovery(ref reader);
                         reader.ClearContext();
                         continue;
                     }
@@ -1317,7 +1321,7 @@ CloseParameters:
                     continue;
 
                 default:
-                    if (reader.ModifierKind.HasFlag(ModifierKind.Open) && tokenKind != TokenKind.Struct && !reader.IsExcluded)
+                    if (reader.ModifierKind.HasFlag(ModifierKind.Open) && tokenKind != TokenKind.Struct)
                     {
                         // open applies only to structures (SPEC 6.2.2, F.3).
                         reader.Unexpected(SyntaxForm.OpenModifier, openSpan);
@@ -1437,7 +1441,7 @@ CloseParameters:
 
     internal static void SkipUnavailableDeclaration(ref TokenReader reader)
     {
-        SkipExcludedSyntaxCore(ref reader);
+        SkipItemForRecovery(ref reader);
         reader.ClearContext();
     }
 
@@ -1891,185 +1895,6 @@ CloseParameters:
         return attributeKoto;
     }
 
-    private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
-    {
-        if (reader.IsExcluded)
-        {
-            reader.Advance(2);
-            SkipCompileTimeHeaderRemainder(ref reader);
-            return;
-        }
-
-        var attributes = reader.PopAttribute();
-        reader.Advance(2); // The caller saw '#' and 'if'.
-        var condition = ParseRequiredCompileTimeCondition(ref reader);
-        var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
-        if (invalidHeader)
-        {
-            reader.Expect(SyntaxForm.LineEnd);
-            SkipCompileTimeHeaderRemainder(ref reader);
-        }
-
-        if (attributes is not null)
-        {
-            reader.PushAttribute(attributes);
-        }
-
-        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
-        if (invalidHeader || result != CompileTimeConditionResult.True)
-        {
-            reader.IsExcluded = true;
-            reader.DocumentationExcludedStart = condition.Span.End;
-        }
-    }
-
-    /// <summary>Parses the arms in one explicit compile-time <c>#switch</c> body.</summary>
-    /// <param name="reader">The token reader positioned at <c>#switch</c>.</param>
-    /// <param name="declarationContext">The enclosing Declaration Container, when applicable.</param>
-    /// <returns>The selected body or an invalid Case Group retained for error recovery.</returns>
-    internal static Koto ParseCompileTimeSwitch(ref TokenReader reader, DeclarationContainerKoto? declarationContext = null)
-    {
-        var context = reader.TakeContext();
-        var header = reader.CurrentTokenRange;
-        var groupStart = reader.CurrentTokenRange.Start;
-        reader.Advance(2); // #switch has no subject or condition on its header.
-        var groupEnd = reader.CurrentTokenRange.Start;
-        var arms = new List<CompileTimeCaseArmKoto>();
-        var selectedIndex = -1;
-        var invalidCondition = false;
-        var fallbackSeen = false;
-        var fallbackMustBeLastReported = false;
-        var fallbackSpan = default(SourceSpan);
-        var invalidSyntax = false;
-
-        if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-        {
-            reader.Expect(SyntaxForm.LineEnd);
-            SkipCompileTimeHeaderRemainder(ref reader);
-            invalidSyntax = true;
-        }
-
-        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-        {
-            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-            reader.RestoreContext(context);
-            return new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(groupStart, groupEnd), arms);
-        }
-
-        reader.Advance(); // The #switch arm list is not a new lookup scope.
-
-        while (reader.CanRead)
-        {
-            reader.SkipSeparators();
-            if (reader.CurrentTokenKind == TokenKind.EndBlock)
-            {
-                groupEnd = reader.Read().Span.End;
-                break;
-            }
-
-            if (!reader.CanRead)
-            {
-                break;
-            }
-
-            if (!IsCompileTimeCaseStart(ref reader))
-            {
-                reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeSwitchItem_Kd);
-                invalidSyntax = true;
-                SkipCompileTimeHeaderRemainder(ref reader);
-                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                {
-                    reader.SkipCurrentBlock(false);
-                }
-
-                continue;
-            }
-
-            if (fallbackSeen && !fallbackMustBeLastReported)
-            {
-                reader.Diagnostic.Add(fallbackSpan, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
-                fallbackMustBeLastReported = true;
-                invalidSyntax = true;
-            }
-
-            var sharp = reader.Read();
-            reader.Advance(); // The loop saw '#' and 'case'.
-
-            Koto? condition;
-            CompileTimeConditionResult result;
-            if (reader.CurrentTokenKind == TokenKind.Underscore)
-            {
-                var fallbackToken = reader.Read();
-                if (fallbackSeen)
-                {
-                    reader.Diagnostic.Add(fallbackToken.Span, DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd);
-                }
-                else
-                {
-                    fallbackSeen = true;
-                    fallbackSpan = SourceSpan.FromBounds(sharp.Span.Start, fallbackToken.Span.End);
-                }
-
-                condition = null;
-                result = CompileTimeConditionResult.True;
-            }
-            else
-            {
-                condition = ParseRequiredCompileTimeCondition(ref reader);
-                result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
-            }
-
-            if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-            {
-                reader.Expect(SyntaxForm.LineEnd);
-                SkipCompileTimeHeaderRemainder(ref reader);
-                invalidSyntax = true;
-            }
-
-            var body = declarationContext is null || declarationContext.IsRoot
-                ? ParseRequiredBlock(ref reader)
-                : ParseDeclarationDirectiveBody(ref reader, declarationContext);
-            if (selectedIndex >= 0 || result != CompileTimeConditionResult.True)
-            {
-                reader.CodeContext.Documentation?.Exclude(sharp.Span.Start, reader.PreviousSyntaxEnd, reader.CurrentTokenRange.Start);
-            }
-
-            arms.Add(new CompileTimeCaseArmKoto(condition, body));
-            invalidCondition |= result == CompileTimeConditionResult.Error;
-            if (selectedIndex < 0 && result == CompileTimeConditionResult.True)
-            {
-                selectedIndex = arms.Count - 1;
-            }
-
-            groupEnd = Math.Max(groupEnd, body.Span.End);
-        }
-
-        if (arms.Count == 0)
-        {
-            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-            invalidSyntax = true;
-        }
-
-        reader.RestoreContext(context);
-        if (selectedIndex >= 0 && !invalidSyntax && !invalidCondition)
-        {
-            var selectedBody = arms[selectedIndex].Body;
-            selectedBody.SetAttributeChain(reader.PopAttribute());
-            return selectedBody;
-        }
-
-        var group = new CompileTimeSwitchKoto(
-            ref reader,
-            SourceSpan.FromBounds(groupStart, groupEnd),
-            arms);
-        if (!invalidSyntax && !invalidCondition && !fallbackSeen)
-        {
-            group.AddDiagnostic(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
-        }
-
-        return group;
-    }
-
     internal static CodeBlockKoto ParseDeclarationDirectiveBody(ref TokenReader reader, DeclarationContainerKoto declarationContext)
     {
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -2089,236 +1914,6 @@ CloseParameters:
             DeclarationContext = declarationContext.TokenKind,
         };
         return block;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsCompileTimeSwitchStart(ref TokenReader reader)
-        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Switch;
-
-    private static bool IsCompileTimeCaseStart(ref TokenReader reader)
-        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
-
-    private static void SkipCompileTimeHeaderRemainder(ref TokenReader reader)
-    {
-        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-        {
-            reader.Advance();
-        }
-    }
-
-    /// <summary>Consumes one syntax node controlled by an early-false directive without constructing Koto nodes.</summary>
-    /// <param name="reader">The token reader positioned at the controlled syntax.</param>
-    /// <param name="executableContext">Whether a directive's body is executable.</param>
-    internal static void SkipExcludedSyntax(ref TokenReader reader, bool executableContext = false)
-    {
-        var source = reader;
-        SkipExcludedSyntaxCore(ref reader);
-        reader.CodeContext.Documentation?.Exclude(source.DocumentationExcludedStart, reader.PreviousSyntaxEnd, reader.CurrentTokenRange.Start);
-        ValidateExcludedBodyStructure(ref source, reader.Position, executableContext, HasLibraryImport(source.AttributeKoto));
-    }
-
-    private static void SkipExcludedSyntaxCore(ref TokenReader reader)
-    {
-        if (IsCompileTimeSwitchStart(ref reader) || IsCompileTimeCaseStart(ref reader))
-        {
-            reader.Advance(2);
-            SkipCompileTimeHeaderRemainder(ref reader);
-            if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-            {
-                reader.SkipCurrentBlock(false);
-            }
-
-            return;
-        }
-
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            reader.SkipCurrentBlock(false);
-            return;
-        }
-
-        var startsWithPrefix = reader.CurrentTokenKind == TokenKind.Sharp;
-        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-        {
-            reader.SkipCurrentBlock(false);
-            return;
-        }
-
-        reader.SkipSeparators();
-        if (startsWithPrefix && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
-        {
-            SkipExcludedSyntaxCore(ref reader);
-        }
-    }
-
-    // Inspect only source structure in excluded syntax. Do not bind, evaluate conditions,
-    // construct Koto nodes, or infer emptiness from the selected tree.
-    private static void ValidateExcludedBodyStructure(
-        ref TokenReader reader,
-        int end,
-        bool executableContext,
-        bool importedDeclaration = false,
-        bool isSwitchBody = false,
-        SourceSpan switchHeader = default)
-    {
-        var caseCount = 0;
-        while (reader.Position < end && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
-        {
-            if (reader.CurrentTokenKind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-
-            var header = reader.CurrentTokenRange;
-            var first = reader.CurrentTokenKind;
-            var isCase = IsCompileTimeCaseStart(ref reader);
-            var isSwitchHeader = IsCompileTimeSwitchStart(ref reader);
-            if (isSwitchBody)
-            {
-                if (isCase)
-                {
-                    caseCount++;
-                }
-                else
-                {
-                    reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeSwitchItem_Kd);
-                }
-            }
-            else if (isCase)
-            {
-                reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
-            }
-
-            var directive = first == TokenKind.Sharp && reader.PeekKind(1) is TokenKind.If or TokenKind.Case or TokenKind.Switch;
-            var prefix = directive && reader.PeekKind(1) == TokenKind.If;
-            var bodyIsExecutable = executableContext;
-            var requiresBody = directive && !prefix;
-            var hasAssignment = false;
-            var hasArrow = false;
-            var hasFunction = false;
-            var hasContainer = false;
-            var last = TokenKind.Invalid;
-            var headerEnd = header.End;
-            var switchTail = default(Token);
-            if (first != TokenKind.StartBlock)
-            {
-                while (reader.Position < end && reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-                {
-                    var kind = reader.CurrentTokenKind;
-                    if (isSwitchHeader && last == TokenKind.Switch)
-                    {
-                        switchTail = reader.CurrentToken;
-                    }
-
-                    if (last == TokenKind.Sharp && reader.IsCurrentIdentifier("LibraryImport"))
-                    {
-                        importedDeclaration = true;
-                    }
-
-                    hasFunction |= kind == TokenKind.Func;
-                    hasContainer |= kind is TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract;
-                    if ((!directive && kind is TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func or TokenKind.Do or TokenKind.Defer) ||
-                        (!directive && reader.IsCurrentIdentifier(Constants.UnsafeKeyword) && reader.PeekKind(1) != TokenKind.Slash))
-                    {
-                        requiresBody = true;
-                        bodyIsExecutable = true;
-                    }
-
-                    if (kind is TokenKind.Match or TokenKind.Switch)
-                    {
-                        // The arm list is not itself an executable Block.
-                        bodyIsExecutable = false;
-                    }
-
-                    hasAssignment |= kind == TokenKind.Equals;
-                    hasArrow |= kind == TokenKind.EqualsGreaterThan;
-                    last = kind;
-                    reader.Advance();
-                }
-
-                headerEnd = reader.PreviousSyntaxEnd;
-                if (hasContainer ||
-                    (first is TokenKind.Let or TokenKind.Var && !hasAssignment))
-                {
-                    bodyIsExecutable = false;
-                }
-                else if (first is TokenKind.Get or TokenKind.Set)
-                {
-                    bodyIsExecutable = true;
-                }
-
-                if ((hasArrow && last is not (TokenKind.EqualsGreaterThan or TokenKind.Else)) || (hasFunction && importedDeclaration))
-                {
-                    requiresBody = false; // A complete Expression body on the header line.
-                }
-
-                if (last == TokenKind.EqualsGreaterThan ||
-                    (last == TokenKind.Colon && (first is not (TokenKind.Let or TokenKind.Var) || hasAssignment)))
-                {
-                    requiresBody = true;
-                    bodyIsExecutable = true;
-                }
-
-                // Excluded syntax reports the forms the selected path would: a condition after #if or #case, nothing after #switch.
-                if (directive && last is TokenKind.If or TokenKind.Case)
-                {
-                    reader.Missing(SyntaxForm.Expression, headerEnd);
-                }
-
-                if (isSwitchHeader && last != TokenKind.Switch)
-                {
-                    reader.Expect(SyntaxForm.LineEnd, switchTail);
-                }
-
-                reader.SkipSeparators();
-            }
-
-            if (reader.Position < end && reader.CurrentTokenKind == TokenKind.StartBlock)
-            {
-                reader.Advance();
-                while (reader.Position < end && reader.CurrentTokenKind == TokenKind.Separator)
-                {
-                    reader.Advance();
-                }
-
-                if (bodyIsExecutable && (reader.Position >= end || !reader.CanRead || reader.CurrentTokenKind == TokenKind.EndBlock))
-                {
-                    reader.Missing(SyntaxForm.Body, headerEnd);
-                }
-
-                ValidateExcludedBodyStructure(
-                    ref reader,
-                    end,
-                    isSwitchHeader ? executableContext : bodyIsExecutable,
-                    isSwitchBody: isSwitchHeader,
-                    switchHeader: header);
-                reader.TryConsume(TokenKind.EndBlock);
-            }
-            else if (requiresBody && isSwitchHeader)
-            {
-                reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-            }
-            else if (requiresBody)
-            {
-                reader.Missing(SyntaxForm.Body, headerEnd);
-            }
-            else if (prefix && (reader.Position >= end || !reader.CanRead || reader.CurrentTokenKind == TokenKind.EndBlock))
-            {
-                reader.Missing(SyntaxForm.Declaration, headerEnd);
-            }
-
-            if (hasFunction || first != TokenKind.Sharp)
-            {
-                importedDeclaration = false;
-            }
-        }
-
-        if (isSwitchBody && caseCount == 0)
-        {
-            reader.Diagnostic.Add(switchHeader, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-        }
     }
 
     /// <summary>
@@ -2621,15 +2216,32 @@ CloseParameters:
         }
 
         var blockContext = reader.TakeContext();
-        reader.Advance();
         var items = default(TemporaryKotoList);
-        var seenExecutableItem = false;
-        var hasSourceItem = false;
+        var state = new ExecutableItemState(function, originOwner);
+        var end = ParseExecutableBlockItems(ref reader, ref items, ref state);
+        reader.RestoreContext(blockContext);
+        return new CodeBlockKoto(
+            ref reader,
+            SourceSpan.FromBounds(start.Start, Math.Max(start.End, end)),
+            items.ToArray());
+    }
 
+    /// <summary>Parses one indented block, from its StartBlock through its EndBlock, appending its selected items.</summary>
+    /// <param name="reader">The token reader positioned at <see cref="TokenKind.StartBlock"/>.</param>
+    /// <param name="items">The selected items of the enclosing executable body.</param>
+    /// <param name="state">The Constraint-prefix state of the enclosing body, shared by its directive targets and arms.</param>
+    /// <returns>The end offset of the block.</returns>
+    /// <remarks>
+    /// Directive targets and arms are parsed by this same loop (SPEC 19.5): a selected one adds its items directly; excluded
+    /// syntax is parsed with the same grammar and recovery, extends the source-order Constraint prefix, and is dropped.
+    /// </remarks>
+    private static int ParseExecutableBlockItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
+    {
+        reader.Advance(); // StartBlock
+        var hasSourceItem = false;
         while (reader.CanRead)
         {
             reader.SkipSeparators();
-
             if (!reader.CanRead)
             {
                 break;
@@ -2644,11 +2256,7 @@ CloseParameters:
 
                 var end = reader.CurrentTokenRange.End;
                 reader.Advance();
-                reader.RestoreContext(blockContext);
-                return new CodeBlockKoto(
-                    ref reader,
-                    SourceSpan.FromBounds(start.Start, end),
-                    items.ToArray());
+                return end;
             }
 
             var unavailableDeclaration = ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
@@ -2674,123 +2282,165 @@ CloseParameters:
                 continue;
             }
 
-            // Count source syntax before early conditional selection can discard its nodes.
+            // Source items count before selection; a directive counts with its required syntax (SPEC 14.2.1).
             hasSourceItem = true;
-            var isExcluded = reader.IsExcluded;
-            if (isExcluded)
+            if (reader.IsExcluded)
             {
-                SkipExcludedSyntax(ref reader, executableContext: true);
-                continue;
+                var region = BeginExcludedRegion(ref reader);
+                ParseExecutableDirectiveOrItem(ref reader, ref items, ref state);
+                EndExcludedRegion(ref reader, region);
             }
-
-            if (IsCompileTimeSwitchStart(ref reader))
+            else if (reader.HasCompileTimeIfPrefix || IsCompileTimeSwitchStart(ref reader))
             {
-                var caseGroup = ParseCompileTimeSwitch(ref reader);
-                AddSelectedItems(ref items, caseGroup);
-                seenExecutableItem = true;
-                continue;
+                ParseExecutableDirectiveOrItem(ref reader, ref items, ref state);
             }
-
-            if (IsOriginRelationStart(ref reader))
+            else
             {
-                var relation = ParseOriginRelation(ref reader);
-                if ((function ?? originOwner) is { } owner && !seenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true } and not { IsSpecialization: true })
-                {
-                    OriginClauses.Add(owner, relation);
-                }
-                else
-                {
-                    relation.Unexpected(SyntaxForm.OriginClause);
-                }
-
-                continue;
-            }
-
-            // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
-            // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
-            if ((function is not null || originOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
-            {
-                // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
-                // accessor is never a conditional member, so no subject is permitted in its body.
-                var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
-                var subject = rootQualified ? null : reader.GetIdentifier(reader.CurrentToken);
-                var isGenericParameter = subject is not null && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
-                if (!seenExecutableItem || isGenericParameter)
-                {
-                    var misplaced = seenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
-                    var constraint = ParseTypeConstraint(ref reader);
-                    if (constraint is not null && function is { IsDestructor: false })
-                    {
-                        // The prefix stays a Constraint of the function (SPEC 7.4); a misplaced one is a recovery, so Binding's own judgement of it is derived.
-                        function.AddTypeConstraint(constraint);
-                        if (misplaced is { } cause)
-                        {
-                            reader.CodeContext.RecordRecovery(constraint, cause);
-                        }
-                    }
-
-                    continue;
-                }
-            }
-
-            seenExecutableItem = true;
-            var oldPosition = reader.Position;
-            var directiveBlock = reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock;
-            var item = directiveBlock
-                ? ParseBlock(ref reader) : ParseBlockItem(ref reader);
-            if (item is not null)
-            {
-                if (directiveBlock)
-                {
-                    AddSelectedItems(ref items, item);
-                }
-                else
-                {
-                    items.Add(item);
-                }
-            }
-
-            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
-            {
-                if (item is IdentifierNameKoto { IdentifierName: "during" })
-                {
-                    // The line is a detached borrow annotation, not a statement; Binding does not resolve 'during' as a Name.
-                    reader.CodeContext.RecordRecovery(item, reader.Unexpected(SyntaxForm.DetachedDuring, item.Span));
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-                }
-                else
-                {
-                    reader.ExpectLineEnd();
-                }
-            }
-
-            if (reader.Position == oldPosition)
-            {
-                reader.Advance();
+                ParseExecutableItem(ref reader, ref items, ref state);
             }
         }
 
         // The tokenizer closes every block at the end of the source; the loop ends here only after the block's EndBlock.
-        var eof = reader.CurrentTokenRange.End;
-        reader.RestoreContext(blockContext);
-        return new CodeBlockKoto(
-            ref reader,
-            SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
-            items.ToArray());
+        return reader.CurrentTokenRange.End;
     }
 
-    private static void AddSelectedItems(ref TemporaryKotoList items, Koto selected)
+    private static void ParseExecutableDirectiveOrItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
     {
-        if (selected is CodeBlockKoto block)
+        if (IsCompileTimeSwitchStart(ref reader))
         {
-            for (var i = 0; i < block.Items.Count; i++)
+            var start = reader.CurrentTokenRange.Start;
+            var selection = ScanCompileTimeSwitch(ref reader);
+            RejectDirectiveBlockAttributes(ref reader);
+            if (BeginCompileTimeSwitchArms(ref reader))
             {
-                items.Add(block.Items[i]);
+                for (var arm = 0; TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                {
+                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                    {
+                        reader.Expect(SyntaxForm.Body);
+                        continue;
+                    }
+
+                    if (arm == selection.Selected)
+                    {
+                        ParseExecutableBlockItems(ref reader, ref items, ref state);
+                    }
+                    else
+                    {
+                        var region = BeginExcludedRegion(ref reader, header, header.Start);
+                        ParseExecutableBlockItems(ref reader, ref items, ref state);
+                        EndExcludedRegion(ref reader, region);
+                    }
+                }
+            }
+
+            if (UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            {
+                items.Add(unselected);
+            }
+
+            return;
+        }
+
+        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            RejectDirectiveBlockAttributes(ref reader);
+            ParseExecutableBlockItems(ref reader, ref items, ref state);
+            return;
+        }
+
+        ParseExecutableItem(ref reader, ref items, ref state);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ParseExecutableItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
+    {
+        // Excluded syntax is parsed like selected syntax but registers nothing with the enclosing declarations (SPEC 19.5).
+        var excluded = reader.InExcludedSyntax;
+        var function = state.Function;
+        if (IsOriginRelationStart(ref reader))
+        {
+            var relation = ParseOriginRelation(ref reader);
+            if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true } and not { IsSpecialization: true })
+            {
+                if (!excluded)
+                {
+                    OriginClauses.Add(owner, relation);
+                }
+            }
+            else
+            {
+                relation.Unexpected(SyntaxForm.OriginClause);
+            }
+
+            return;
+        }
+
+        // SPEC 8.4.10.1: an effect item belongs to a requirement's Constraint region. At a body's Constraint prefix it is
+        // kept for Binding to reject, never read as an expression.
+        if (function is not null && !state.SeenExecutableItem && IsEffectStart(ref reader, specification: false))
+        {
+            var effect = ParseEffectBound(ref reader);
+            if (!excluded)
+            {
+                function.AddEffectBound(effect);
+            }
+
+            return;
+        }
+
+        // SPEC 7.4: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
+        // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
+        if ((function is not null || state.OriginOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
+        {
+            // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
+            // accessor is never a conditional member, so no subject is permitted in its body.
+            var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
+            var subject = rootQualified ? null : reader.GetIdentifier(reader.CurrentToken);
+            var isGenericParameter = subject is not null && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
+            if (!state.SeenExecutableItem || isGenericParameter)
+            {
+                var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
+                var constraint = ParseTypeConstraint(ref reader);
+                if (constraint is not null && function is { IsDestructor: false } && !excluded)
+                {
+                    // The prefix stays a Constraint of the function (SPEC 7.4); a misplaced one is a recovery, so Binding's own judgement of it is derived.
+                    function.AddTypeConstraint(constraint);
+                    if (misplaced is { } cause)
+                    {
+                        reader.CodeContext.RecordRecovery(constraint, cause);
+                    }
+                }
+
+                return;
             }
         }
-        else
+
+        state.SeenExecutableItem = true;
+        var oldPosition = reader.Position;
+        var item = ParseBlockItem(ref reader);
+        if (item is not null && !excluded)
         {
-            items.Add(selected); // Invalid switches retain recovery syntax and diagnostics.
+            items.Add(item);
+        }
+
+        if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
+        {
+            if (item is IdentifierNameKoto { IdentifierName: "during" })
+            {
+                // The line is a detached borrow annotation, not a statement; Binding does not resolve 'during' as a Name.
+                reader.CodeContext.RecordRecovery(item, reader.Unexpected(SyntaxForm.DetachedDuring, item.Span));
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+            }
+            else
+            {
+                reader.ExpectLineEnd();
+            }
+        }
+
+        if (reader.Position == oldPosition)
+        {
+            reader.Advance();
         }
     }
 
@@ -2819,7 +2469,13 @@ CloseParameters:
         if (reader.ModifierKind != ModifierKind.NoModifier && !IntroducesDeclaration(ref reader))
         {
             // Modifiers introduce a declaration; the line and the body it would have introduced are skipped as one.
-            reader.CodeContext.Kotonoha.RecordOmission(reader.Expect(SyntaxForm.Declaration));
+            var cause = reader.Expect(SyntaxForm.Declaration);
+            if (!reader.InExcludedSyntax)
+            {
+                // Excluded syntax records no omission for the selected program (SPEC 19.5).
+                reader.CodeContext.Kotonoha.RecordOmission(cause);
+            }
+
             SkipDeclarationLine(ref reader);
             return null;
         }

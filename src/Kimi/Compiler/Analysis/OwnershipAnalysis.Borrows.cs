@@ -213,13 +213,20 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
+        var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType)) &&
+            unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate;
         var place = this.SpecialField(unwrapped) ? this.Local(unwrapped)
             : source is FormattingKoto hidden && !ReferenceTypes.IsBorrow(hidden.BoundType) && this.formattingPlaces.TryGetValue(hidden, out var prepared) ? prepared
-            : (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate
-            ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
+            : direct ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
             return -1;
+        }
+
+        if (direct && ReferenceTypes.IsBorrow(this.body.Places[place].Type))
+        {
+            // SPEC 8.9: an instance's generic Place storing a reference is Reborrowed through the stored pointer it reads.
+            this.Emit(OwnershipOperationKind.Read, source, place);
         }
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
