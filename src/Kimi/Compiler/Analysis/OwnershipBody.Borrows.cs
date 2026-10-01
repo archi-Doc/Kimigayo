@@ -44,6 +44,7 @@ public sealed partial class OwnershipBody
     {
         this.storedBorrowStarts?.Clear();
         this.borrowRoots?.Clear();
+        this.preparedLoanConflicts?.Clear();
         var count = this.Places.Count;
         var dependent = this.ConditionalReborrows is { Count: > 0 };
         for (var p = 0; p < count && !dependent; p++)
@@ -298,6 +299,13 @@ public sealed partial class OwnershipBody
                             }
 
                             reported = true;
+                            if (!activating && operation.Reservation >= 0 && this.reservationPlaces[p] < 0)
+                            {
+                                // The reserved input itself meets a retained Loan; its activation decides the record.
+                                (this.preparedLoanConflicts ??= new()).Add((operation.Reservation, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, LoanSource: this.Places[p].Source)));
+                                continue;
+                            }
+
                             var reservation = activating ? r : operation.Reservation >= 0 ? operation.Reservation : this.reservationPlaces[p];
                             this.ReportIssue(new(activating ? this.Operations[op].Source : operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: p, Reservation: reservation, Activation: activating, LoanSource: this.Places[p].Source));
                         }
@@ -305,6 +313,8 @@ public sealed partial class OwnershipBody
                 }
             }
         }
+
+        this.ReportPreparedLoanConflicts();
 
         void AddType(int place, BoundType type, LoanRequirement bound = LoanRequirement.Uniq)
         {
