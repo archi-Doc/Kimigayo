@@ -1,4 +1,4 @@
-// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
 using System.Numerics;
@@ -90,6 +90,7 @@ public class ConversionEmissionTest
     [InlineData("ConversionParenthesizedSign", "-(128)@u8", 1, 1)]
     [InlineData("ConversionChainFirst", "let x = 65536\nx@u16@u8", 2, 1)]
     [InlineData("ConversionChainSecond", "let x = 256\nx@u16@u8", 2, 1)]
+    [InlineData("ConversionChainTruncated", "1e10@i64@i32", 1, 1)] // The folded i64 constant is checked at the second @.
     [InlineData("ConversionBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    let x = 256\n    return x@u8\nf()", 4, 12)]
     [InlineData("ConversionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    let x = -1\n    x@u8", 4, 5)]
     public void InvalidConversionsAbortWithoutCleanup(string name, string source, int line, int column)
@@ -104,10 +105,11 @@ public class ConversionEmissionTest
     [InlineData("let x: i128 = 1\nx@f64", "Unsupported")]
     [InlineData("let x: u128 = 5000000000\nx@f64", "Unsupported")]
     [InlineData("let x = 1\nx@obj", "BareOwningShorthand")]
-    [InlineData("3.9@i128", "Unsupported")]
+    [InlineData("let x: f64 = 3.9\nx@i128", "Unsupported")]
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
+    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4.2: a floating literal never enters a wrapping Type.
     [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {

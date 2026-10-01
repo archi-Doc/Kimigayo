@@ -1,4 +1,4 @@
-// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
 using Kimi.Compiler.Helper;
@@ -40,6 +40,15 @@ public sealed class NumberLiteralKoto : ExpressionKoto
         this.EnsureParsedValue();
         magnitude = unchecked((UInt128)this.uv);
         return this.parseResult == NumberLiteralParseResult.I128;
+    }
+
+    /// <summary>Gets the exact decimal value of a floating-point literal truncated toward zero (SPEC 13.5.4.2).</summary>
+    /// <param name="magnitude">The truncated magnitude, read from the spelling without an intermediate floating-point Type.</param>
+    /// <returns>Whether this is a floating-point literal whose truncated magnitude fits 128 bits.</returns>
+    public bool TryGetTruncatedMagnitude(out UInt128 magnitude)
+    {
+        magnitude = 0;
+        return !this.IsInteger && NumberLiteralHelper.TryTruncateDecimal(this.SourceSpelling, out magnitude);
     }
 
     /// <summary>Gets the normalized literal text.</summary>

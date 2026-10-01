@@ -1,4 +1,4 @@
-// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -333,6 +333,12 @@ public sealed partial class Binding
                 var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
                 issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
             }
+            else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
+            {
+                // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
+                var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
+                issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
+            }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
                 var (code, evidence, note) = this.TryFailure(issue.Node);
@@ -500,6 +506,23 @@ public sealed partial class Binding
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
             function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
+
+    // The target of the plain numeric conversion whose direct literal operand failed to fit, if the node is such a literal.
+    private static BoundType? LiteralConversionTarget(Koto node)
+    {
+        if (node is not (NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }))
+        {
+            return null;
+        }
+
+        var parent = node.Parent;
+        while (parent is ParenthesizedKoto)
+        {
+            parent = parent.Parent;
+        }
+
+        return parent is ConversionKoto { Right: not TypeSemanticsKoto { ConversionOperation: not null } } conversion ? conversion.Right.BoundType : null;
+    }
 
     private static BoundType? Complete(Koto node, BoundType? type)
     {

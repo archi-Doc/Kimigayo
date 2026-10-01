@@ -1,4 +1,4 @@
-// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
 
@@ -23,6 +23,24 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 13.5.4.2: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
+    // and the conversion carries the folded constant that is produced instead of evaluating the literal.
+    private static BoundType? CompleteFolded(ConversionKoto conversion, NumberLiteralKoto number, BoundType target, Int128 folded, ConversionBinding binding)
+    {
+        conversion.FoldedConstant = folded;
+        for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
+        {
+            Complete(node, target);
+            if (ReferenceEquals(node, number))
+            {
+                break;
+            }
+        }
+
+        conversion.ConversionBinding = binding;
+        return Complete(conversion, target);
     }
 
     // SPEC 13.5.4.1: the explanation of a numeric conversion rejected for a different integer argument.
@@ -59,19 +77,8 @@ public sealed partial class Binding
 
             // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
             var payload = operand is PrefixMinusKoto ? (UInt128)0 - magnitude : magnitude;
-            conversion.FoldedConstant = ScalarTypes.Normalize(unchecked((Int128)payload), width);
-            for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
-            {
-                Complete(node, target);
-                if (ReferenceEquals(node, number))
-                {
-                    break;
-                }
-            }
-
-            conversion.ConversionBinding = ConversionBinding.Wrap;
             Complete(conversion.Right, target);
-            return Complete(conversion, target);
+            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), width), ConversionBinding.Wrap);
         }
 
         var source = this.BindNode(conversion.Left, scope);
@@ -132,19 +139,8 @@ public sealed partial class Binding
                 return this.Fail(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion);
             }
 
-            conversion.FoldedConstant = folded;
-            for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
-            {
-                Complete(node, target);
-                if (ReferenceEquals(node, number))
-                {
-                    break;
-                }
-            }
-
-            conversion.ConversionBinding = ConversionBinding.Bits;
             Complete(conversion.Right, target);
-            return Complete(conversion, target);
+            return CompleteFolded(conversion, number, target, folded, ConversionBinding.Bits);
         }
 
         var source = this.BindNode(conversion.Left, scope);
@@ -174,6 +170,27 @@ public sealed partial class Binding
         conversion.ConversionBinding = ConversionBinding.Bits;
         Complete(conversion.Right, target);
         return Complete(conversion, target);
+    }
+
+    // SPEC 13.5.4.2: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
+    // value and must fit the target's range. The literal never takes an intermediate floating-point Type, so 9007199254740993.0@i64
+    // is exact, and a value outside the range is a compile-time error at the literal rather than a runtime Abort.
+    private BoundType? BindTruncatedLiteral(ConversionKoto conversion, BoundType target, Koto operand)
+    {
+        var number = operand as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)operand).Operand;
+        if (!number.TryGetTruncatedMagnitude(out var magnitude) ||
+            !ScalarTypes.TryLiteral(target, magnitude, operand is PrefixMinusKoto, this.compilation.PointerWidth, out var bits))
+        {
+            this.Fail(operand, BindingFailure.InvalidLiteral);
+            for (var node = conversion.Left; !ReferenceEquals(node, operand); node = ((UnaryKoto)node).Operand)
+            {
+                Complete(node, null);
+            }
+
+            return Complete(conversion, null);
+        }
+
+        return CompleteFolded(conversion, number, target, bits, ConversionBinding.Literal);
     }
 
     private BindingScope? conversionEvidenceScope;
@@ -544,6 +561,11 @@ public sealed partial class Binding
         var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
             PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
             PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
+        if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target, this.compilation.PointerWidth) != 0)
+        {
+            return this.BindTruncatedLiteral(conversion, target, operand);
+        }
+
         var fit = plain && ((literal && (target is { HasIntegerArithmetic: true } || this.TakesGenericLiterals(target, scope))) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
         var previousLiteral = this.floatingIntegerLiteral;
         BoundType? source;
