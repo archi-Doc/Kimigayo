@@ -323,6 +323,22 @@ public sealed partial class Binding
 
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
+        // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.2): a call bound inside
+        // it, such as a later argument, neither sees nor clears the enclosing call's reference.
+        var enclosingRequirementContract = this.activeRequirementContract;
+        this.activeRequirementContract = null;
+        try
+        {
+            return this.BindCallCore(call, scope, expected);
+        }
+        finally
+        {
+            this.activeRequirementContract = enclosingRequirementContract;
+        }
+    }
+
+    private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
+    {
         call.IsValueCall = false;
         var callee = call.Method;
         var generic = callee as GenericsKoto;
@@ -685,7 +701,11 @@ public sealed partial class Binding
             {
                 if (call.ArgumentNodes[i].BoundType is null)
                 {
+                    // The argument is an expression of the caller's context, not of the selected requirement.
+                    var selectedContract = this.activeRequirementContract;
+                    this.activeRequirementContract = null;
                     this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
+                    this.activeRequirementContract = selectedContract;
                     if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
                     {
                         return Complete(call, null);

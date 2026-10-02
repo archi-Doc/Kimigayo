@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -209,6 +210,21 @@ public class IndexableContractTest
     {
         var c = MinimalEmissionTest.Analyze(TwoKeys + use);
         Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Fact]
+    public void ARequirementCallKeepsItsReferenceAcrossAnArgumentBoundAfterSelection()
+    {
+        // The range literal argument is bound after selection through its own synthesized call; that call once cleared the
+        // enclosing requirement reference, so the generic call had no implementation mapping and generation failed.
+        const string Source = "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
+            "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n" +
+            "func pick<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<Range<i32, i32>>\n    return items.index(0..2)\n" +
+            "let keyed = Keyed<Range<i32, i32>>.init(7)\nrequire pick(keyed) == 7 else => $abort(\"pick\")\nConsole.writeLine(\"ok\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.ToString() == "items.index(0..2)");
+        Assert.NotNull(call.BoundCall!.RequirementContract);
+        ScalarEmissionTest.EmitFixture("IndexableRequirementRangeArgument", Source, "ok\n");
     }
 
     [Fact]
