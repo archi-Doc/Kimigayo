@@ -393,6 +393,10 @@ public sealed partial class Binding
             {
                 this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
             }
+            else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
+            {
+                ReportProtectedPlacement(issue.Node, requirement);
+            }
             else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
             {
                 this.ReportEffectBound(effect, requirement);
@@ -530,12 +534,12 @@ public sealed partial class Binding
         => InvalidDeclarationContextCause(declaration) is not null;
 
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
-    // A function whose only failure is a group shape rule (SPEC 7.3, 7.3.1) keeps a valid signature and body, so it is no such context.
+    // A declaration whose only failure is a form rule (IsFormFailure) keeps a valid signature and body, so it is no such context.
     private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid && !IsGroupShapeFailure(node))
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid && !IsFormFailure(node))
             {
                 return node;
             }
@@ -774,6 +778,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
                     BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
+                    BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

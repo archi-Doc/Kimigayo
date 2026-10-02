@@ -673,6 +673,13 @@
     Message="@bits<U> needs its operand and target Types fixed; the width of a Type parameter is unknown in the definition"
     Advice="Convert where the Types are concrete, or pass the bits through a fixed-width integer parameter"
 
+  + Name="ProtectedPlacement_Kd"
+    Category="Language"
+    Message="protected, protected internal and private protected apply only to members of a struct, including Containers declared directly in it, and to their accessors; this declaration belongs to {0}"
+    Arguments="container:Text"
+    Label="protected outside a struct"
+    Advice="Use public, internal or private, or declare it as a member of a struct"
+
   + Name="MissingSpecializationTarget_Kd"
     Category="Language"
     Message="No generic function with this Name, function kind and generic slots exists in the Declaration Container"

@@ -139,6 +139,7 @@ public enum DiagnosticCode
     InvalidWrapConversion_Kd,
     InvalidBitConversion_Kd,
     GenericBitConversion_Kd,
+    ProtectedPlacement_Kd,
     MissingSpecializationTarget_Kd,
     SpecializationInputMismatch_Kd,
 

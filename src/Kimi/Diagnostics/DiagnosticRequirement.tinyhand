@@ -588,6 +588,9 @@
   + Name="Binding.GenericBitConversion"
     Description="the @bits operand and target Types are fixed"
 
+  + Name="Binding.ProtectedPlacement"
+    Description="a protected access form modifies a member of a struct"
+
   + Name="Binding.MissingSpecializationTarget"
     Description="a generic function matches the specialization"
 
