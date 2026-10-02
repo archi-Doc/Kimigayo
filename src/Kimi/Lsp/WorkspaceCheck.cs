@@ -285,7 +285,7 @@ internal sealed class WorkspaceCheck
             }
             catch (PlatformNotSupportedException ex)
             {
-                return Blocked(DiagnosticCode.ProjectPreparationFailed_Kd, plan.Display, ex.Message);
+                return CheckOutput.Blocked(DiagnosticCode.ProjectPreparationFailed_Kd, plan.Display, ex.Message);
             }
         }
 
@@ -362,9 +362,6 @@ internal sealed class WorkspaceCheck
 
         return builder.ToString();
     }
-
-    private static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, string? note = null)
-        => new(CheckOutcome.Blocked, false, TestPresence.Unknown, CheckService.Create(code, location, note));
 
     private static LoadedProject CreateLoaded(SourceIdentity path, Project project, SnapshotInputSource source)
     {
@@ -878,14 +875,14 @@ internal sealed class WorkspaceCheck
     {
         if (plan.Key.Kind == UnitKind.FailedRoot || plan.Project is { Project: null })
         {
-            return Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project?.Failure ?? "The project could not be loaded.");
+            return CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, plan.Display, plan.Project?.Failure ?? "The project could not be loaded.");
         }
 
         if (plan.Key.Target.Length == 0)
         {
             return plan.Mode == CheckMode.Test
-                ? Blocked(DiagnosticCode.TestTargetUnavailable_Kd, plan.Display)
-                : Blocked(DiagnosticCode.TargetSelectionRequired_Kd, plan.Display);
+                ? CheckOutput.Blocked(DiagnosticCode.TestTargetUnavailable_Kd, plan.Display)
+                : CheckOutput.Blocked(DiagnosticCode.TargetSelectionRequired_Kd, plan.Display);
         }
 
         return this.start.Runner(inputs.Snapshot, inputs, plan, source, this.start.CancellationToken);

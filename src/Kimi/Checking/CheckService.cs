@@ -15,7 +15,7 @@ namespace Kimi.Checking;
 internal static class CheckService
 {
     /// <summary>Checks one unit.</summary>
-    /// <param name="project">The loaded project; its compiler service should render no diagnostic.</param>
+    /// <param name="project">The loaded project; the check sets its options and renders nothing, whatever its compiler service.</param>
     /// <param name="target">The unit's target.</param>
     /// <param name="mode">The unit's mode.</param>
     /// <param name="debug">The unit's <c>Debug</c> setting.</param>
@@ -23,24 +23,18 @@ internal static class CheckService
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
     /// <returns>The output.</returns>
     /// <exception cref="PendingInputException">The check needs an input with an event after its base.</exception>
-    /// <exception cref="OperationCanceledException">The check was cancelled.</exception>
+    /// <exception cref="OperationCanceledException">The check was cancelled; a cancelled check has no output (SPEC 23.3.3).</exception>
     public static CheckOutput Run(Project project, string target, CheckMode mode, bool debug, CheckInputSource inputs, CancellationToken cancellationToken)
     {
         var context = new CheckContext(inputs);
+        var location = project.FilePath;
         project.KimiOptions = new KimiOptions { Target = target, Debug = debug };
         var accepted = false;
-        var outcome = CheckOutcome.Completed;
-        var location = project.FilePath;
-        if (location is not null)
-        {
-            context.Diagnostics.RegisterPath(location); // SPEC 23.3.6.3: the project file is consumed before every source.
-        }
-
         Exception? failure = null;
         try
         {
             accepted = mode == CheckMode.Product
-                ? project.Check(context, cancellationToken).GetAwaiter().GetResult()
+                ? project.Check(context, cancellationToken)
                 : project.PrepareTests(cancellationToken, context) is not null;
         }
         catch (InvalidDataException ex)
@@ -51,65 +45,46 @@ internal static class CheckService
         catch (DiagnosticContractException ex)
         {
             // SPEC 23.3.3: a violated contract discards every partial record.
-            return new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(ex.Fault, ex.Message, location));
+            return Faulted(ex.Fault, ex.Message, location);
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
-            outcome = CheckOutcome.Faulted;
-            failure = ex;
-        }
-
-        if (outcome == CheckOutcome.Completed && !context.FrontEndRan)
-        {
-            outcome = CheckOutcome.Blocked;
-            if (!context.Diagnostics.HasErrorsThrough(DiagnosticPartition.Input))
-            {
-                // SPEC 23.3.3: the fallback of input preparation, a compiler defect to repair where it occurs.
-                context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: "The project inputs could not be established.");
-            }
+            failure = ex; // Analysis threw while collection stayed intact: the valid records are kept.
         }
 
         DiagnosticResult result;
         try
         {
-            // SPEC 23.3.3: a rejected result that publishes no Error violates the diagnostic contract.
-            result = context.Diagnostics.Finalize(rejected: outcome != CheckOutcome.Faulted && !accepted);
+            // SPEC 23.3.3, 23.3.6.7: a rejected result that publishes no Error violates the diagnostic contract; the front end
+            // reports its fallback where the command does, so a violation here is a defect of the check entry's input path.
+            result = context.Diagnostics.Finalize(rejected: failure is null && !accepted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex.Message, location));
+            return Faulted(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex.Message, location);
         }
 
         if (failure is not null)
         {
-            // Analysis threw while collection stayed intact: keep the valid records.
-            return new(outcome, false, TestPresence.Unknown, DiagnosticFaults.Create(DiagnosticFault.Exception, failure.Message, location, result));
+            return Faulted(DiagnosticFault.Exception, failure.Message, location, result);
         }
 
-        var presence = mode == CheckMode.Product ? ScanTestPresence(context) : TestPresence.Unknown;
-        return new(outcome, accepted && outcome == CheckOutcome.Completed, presence, result);
+        // SPEC 23.3.3: the outcome follows from how the check ended; a front end that never ran leaves the check Blocked.
+        if (context.Compilation is not { } compilation)
+        {
+            return new(CheckOutcome.Blocked, false, TestPresence.Unknown, result);
+        }
+
+        return new(CheckOutcome.Completed, accepted, mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown, result);
     }
 
-    /// <summary>Creates the diagnostics of a result that concerns a whole input, such as a project file.</summary>
-    /// <param name="code">The diagnostic code.</param>
-    /// <param name="location">The input, or the default value.</param>
-    /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>
-    /// <returns>The finalized diagnostics, without a range.</returns>
-    public static DiagnosticResult Create(DiagnosticCode code, SourceIdentity location, string? note = null)
-    {
-        var owner = new DiagnosticOwner();
-        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: note);
-        return owner.Finalize();
-    }
+    // SPEC 23.3.3: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.
+    private static CheckOutput Faulted(DiagnosticFault fault, string? detail, string? location, DiagnosticResult? kept = null)
+        => new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(fault, detail, location, kept));
 
     // SPEC 23.3.1: a syntax-level scan of the project's own sources; semantic failures never hide a marker.
-    private static TestPresence ScanTestPresence(CheckContext context)
+    private static TestPresence ScanTestPresence(Compilation compilation)
     {
-        if (context.Compilation is not { } compilation || !context.FrontEndRan)
-        {
-            return TestPresence.Unknown;
-        }
-
         var finder = new MarkerFinder();
         finder.Visit(compilation.Kotonoha.RootKoto);
         return finder.Found ? TestPresence.Yes : compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown : TestPresence.No;

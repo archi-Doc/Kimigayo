@@ -77,7 +77,7 @@ internal sealed class SourceContent
     /// <param name="bytes">The file bytes.</param>
     /// <returns>The content.</returns>
     public static SourceContent FromBytes(byte[] bytes)
-        => new(bytes, null, bytes.AsSpan().StartsWith("﻿"u8));
+        => new(bytes, null, bytes.AsSpan().StartsWith("\uFEFF"u8));
 
     /// <summary>Creates content from the text of an open document.</summary>
     /// <param name="text">The document text.</param>
@@ -100,7 +100,7 @@ internal sealed class SourceContent
         var encoded = new byte[prefix + Utf8.GetByteCount(text)];
         if (this.HasBom)
         {
-            "﻿"u8.CopyTo(encoded);
+            "\uFEFF"u8.CopyTo(encoded);
         }
 
         Utf8.GetBytes(text, encoded.AsSpan(prefix));
@@ -139,5 +139,30 @@ internal sealed class SourceContent
         }
 
         return SourceDocument.FromUtf8(path, this.bytes!, isTestOnly);
+    }
+}
+
+/// <summary>Signals a read of an open document that is out of sync (SPEC 23.4.2); the front end reports it as <c>DocumentDesynchronized_Kd</c>.</summary>
+internal sealed class DesynchronizedInputException : IOException
+{
+    /// <summary>The observed failure of a desynchronized document, which is its unestablished identity.</summary>
+    public const string Failure = "DocumentDesynchronized: the editor document is out of sync";
+
+    /// <summary>Initializes a new instance of the <see cref="DesynchronizedInputException"/> class.</summary>
+    public DesynchronizedInputException()
+        : base(Failure)
+    {
+    }
+}
+
+/// <summary>Signals that a check needs an input with an event after its base (SPEC 23.4.6); the check takes no effect.</summary>
+/// <remarks>It is no <see cref="IOException"/>, so a read handler that reports read failures lets it pass through to the state owner.</remarks>
+internal sealed class PendingInputException : Exception
+{
+    /// <summary>Initializes a new instance of the <see cref="PendingInputException"/> class.</summary>
+    /// <param name="path">The path of the pending input.</param>
+    public PendingInputException(string path)
+        : base("Pending input: " + path)
+    {
     }
 }

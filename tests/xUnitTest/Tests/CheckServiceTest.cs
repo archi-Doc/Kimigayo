@@ -352,6 +352,41 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
     }
 
+    // SPEC 23.3.3: a check that an input or its configuration blocks before the entry runs publishes one Input Error without a range.
+    [Fact]
+    public void ABlockedOutputPublishesOneInputErrorAtItsInput()
+    {
+        var project = SourceIdentity.FromPath(this.PathOf("Missing", "Missing.kimiproj"));
+        var output = CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, project, "The project file is missing.");
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.False(output.Accepted);
+        Assert.Equal(TestPresence.Unknown, output.Presence);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectLoadFailed_Kd), failure.Code);
+        Assert.Equal(DiagnosticSeverity.Error, failure.Severity);
+        Assert.Equal(DiagnosticCategory.Input, failure.Category);
+        Assert.Equal(project, Location(output, failure));
+        Assert.Null(failure.Span);
+        Assert.Equal("The project file is missing.", failure.Note);
+
+        var unlocated = Assert.Single(CheckOutput.Blocked(DiagnosticCode.TargetSelectionRequired_Kd, default).Diagnostics);
+        Assert.Equal(-1, unlocated.Source);
+        Assert.Null(unlocated.Note);
+    }
+
+    // SPEC 23.3.1: the scan is syntactic, so a marker on a local function is found; test preparation then explains the invalid definition.
+    [Fact]
+    public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
+    {
+        const string Source = "public func outer() -> ()\n    #Test\n    func inner() -> () => ()\n    inner()\n";
+        var project = this.WriteProject("Local", ("main.kimi", Source));
+        Assert.Equal(TestPresence.Yes, this.Run(project).Presence);
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Completed, output.Outcome);
+        Assert.False(output.Accepted);
+        Assert.Contains(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTestDefinition_Kd));
+    }
+
     private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)
         => diagnostic.Source < 0 ? default : SourceIdentity.FromPath(output.Sources[diagnostic.Source].Path);
 

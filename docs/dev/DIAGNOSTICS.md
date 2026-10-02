@@ -145,11 +145,12 @@ Unterminated strings keep an invalid operand token at their opening delimiter, w
 
 - Violations (SPEC §23.3.6.7) go through one fault path. It discards the partial records and reports `CheckFaulted_Kd` with fixed text and the fault kind as its Reason. The fault path depends on neither the catalog nor ordinary formatting; its fixed values live in one place, and a test checks them against the catalog.
 - When an analysis throws while the diagnostic path is intact, the valid facts are kept, `CheckFaulted_Kd` (kind `Exception`) is added, and the result is Faulted. `CheckService` no longer formats its own records.
-- Cancellation and waiting for an unestablished input keep their current handling.
+- The check entry decides Blocked from whether the front end ran (`CheckContext.Compilation`), never from the categories of the records.
+- Cancellation and waiting for an unestablished input keep their current handling: both propagate as exceptions, and a cancelled check has no output.
 
 ## 7. Outputs
 
-- **Commands** print a result once it is finalized; `Project.BuildTarget` has one finalization point for every return path, including an analysis exception, which it renders as the check entry's Faulted result (valid records plus `CheckFaulted_Kd`, or only the fault after a contract violation) before the command fails. Input preparation that ends without an Error reports its fallback in the shared front end, so the command and the check entry publish the same records. The project file is registered when the check starts, so records naming it keep its consumption order. `kimi test` keeps diagnostics on standard error.
+- **Commands** print a result once it is finalized; `Project.BuildTarget` has one finalization point for every return path, including an analysis exception, which it renders as the check entry's Faulted result (valid records plus `CheckFaulted_Kd`, or only the fault after a contract violation) before the command fails. Input preparation that ends without an Error reports its fallback in the shared front end, so the command and the check entry publish the same records; the check entry adds no fallback of its own, and a rejection that reaches finalization unexplained is the `UnexplainedRejection` fault on both paths. The project file is registered when its compilation is created, on both paths, so records naming it keep its consumption order. `kimi test` keeps diagnostics on standard error.
 - **Language server.** `LspDiagnostic` equality is structural, including related information, because deduplication and repeat suppression compare values. The client's `relatedInformation` capability is read at `initialize`.
 - **JSON** is prepared but not emitted: a source-generated serializer writes records, and the snapshot harness (§9.1) uses it for evidence. It is not a public schema.
 

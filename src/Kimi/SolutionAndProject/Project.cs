@@ -237,11 +237,11 @@ public partial class Project
         => this.BuildCore(true, cancellationToken);
 
     /// <summary>Checks one unit through the shared check entry (SPEC 23.3.2), with inputs and failures carried by a context.</summary>
-    /// <param name="context">The check context.</param>
+    /// <param name="context">The check context; its caller finalizes the diagnostics.</param>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every selected target passes front-end checks.</returns>
-    internal Task<bool> Check(CheckContext context, CancellationToken cancellationToken)
-        => this.BuildCore(false, cancellationToken, null, context);
+    internal bool Check(CheckContext context, CancellationToken cancellationToken)
+        => this.BuildTargetsAndPublish(false, cancellationToken, null, context);
 
     // Test sources were read without a handler; a failure is rethrown where the read used to happen.
     private static List<(string Path, SourceContent? Content, Exception? Failure)> ReadTestSources(CheckInputSource inputs, HashSet<string> testSources)
@@ -264,7 +264,10 @@ public partial class Project
 
     // Retain the Task exception/cancellation contract at the public boundary. Each target
     // is synchronous; do not build another async state machine around every compilation.
-    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null, CheckContext? context = null)
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
+        => this.BuildTargetsAndPublish(emit, cancellationToken, paths, null);
+
+    private bool BuildTargetsAndPublish(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context)
     {
         // A check request's caller finalizes its own diagnostics; a command renders the preparation result here.
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
@@ -391,11 +394,7 @@ public partial class Project
         // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
         // a check request shares its caller's owner.
         var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics) { IsTestBuild = prepared is not null };
-        if (context is not null)
-        {
-            context.Compilation = compilation;
-        }
-        else if (this.FilePath is { } file)
+        if (this.FilePath is { } file)
         {
             compilation.Diagnostics.RegisterPath(file); // SPEC 23.3.6.3: the project file is consumed before every source.
         }
@@ -482,7 +481,7 @@ public partial class Project
 
         if (context is not null)
         {
-            context.FrontEndRan = true;
+            context.Compilation = compilation; // SPEC 23.3.2, step 3: every input is established; the front end runs from here on.
         }
 
         var binding = compilation.Bind();

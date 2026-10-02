@@ -8,26 +8,20 @@ namespace Kimi.Checking;
 /// <summary>Carries one check through the shared check entry (SPEC 23.3.2).</summary>
 /// <remarks>
 /// Commands pass no context: they read the disk and render each result themselves. A context supplies the inputs and
-/// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation the entry created.
+/// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation whose front end ran.
 /// </remarks>
-internal sealed class CheckContext
+/// <param name="inputs">The input source of the check.</param>
+internal sealed class CheckContext(CheckInputSource inputs)
 {
-    /// <summary>Initializes a new instance of the <see cref="CheckContext"/> class.</summary>
-    /// <param name="inputs">The input source of the check.</param>
-    public CheckContext(CheckInputSource inputs)
-    {
-        this.Inputs = inputs;
-    }
-
     /// <summary>Gets the input source of the check.</summary>
-    public CheckInputSource Inputs { get; }
+    public CheckInputSource Inputs { get; } = inputs;
 
     /// <summary>Gets the diagnostic owner of this check request (SPEC 23.3.6).</summary>
     public DiagnosticOwner Diagnostics { get; } = new();
 
-    /// <summary>Gets or sets the compilation the entry created, if preparation got that far.</summary>
+    /// <summary>
+    /// Gets or sets the compilation whose front end ran (SPEC 23.3.2, step 3), or <see langword="null"/> while input preparation
+    /// has not established every input, which blocks the check (SPEC 23.3.3).
+    /// </summary>
     public Compilation? Compilation { get; set; }
-
-    /// <summary>Gets or sets a value indicating whether the front end ran after all inputs were read.</summary>
-    public bool FrontEndRan { get; set; }
 }
