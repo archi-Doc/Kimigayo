@@ -840,8 +840,7 @@ public sealed partial class Binding
 
             if (symbol is not null)
             {
-                var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
-                structural.Clear();
+                var structural = this.ResultStructure();
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
                     symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
                 {

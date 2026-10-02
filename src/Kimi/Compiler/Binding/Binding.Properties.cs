@@ -397,8 +397,7 @@ public sealed partial class Binding
         {
             var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
             var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
-            var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
-            structural.Clear();
+            var structural = this.ResultStructure();
             if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
                 actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
             {

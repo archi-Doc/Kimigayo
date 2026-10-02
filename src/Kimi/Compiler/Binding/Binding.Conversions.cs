@@ -311,8 +311,7 @@ public sealed partial class Binding
 
     private bool ConversionCanComplete(Koto source, BindingScope scope)
     {
-        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
-        structural.Clear();
+        var structural = this.ResultStructure();
         this.conversionEvidenceScope = scope;
         try
         {

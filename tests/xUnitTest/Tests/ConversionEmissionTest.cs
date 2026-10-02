@@ -292,6 +292,20 @@ public class ConversionEmissionTest
         Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
     }
 
+    [Theory]
+    [InlineData("func helper() -> i32 => 1\n", "")]
+    [InlineData("", "\nfunc helper() -> i32 => 1")]
+    [InlineData("struct Holder\n    var value: i32\n    var doubled: i32\n        get => 2\n", "")]
+    public void NoncompletingOperandEvidenceDoesNotDependOnDeclarationOrder(string before, string after)
+    {
+        // A named expression body or accessor checked before the conversion once fixed the structural completion's Never
+        // evidence to bound Types only, so the unbound stop() operand counted as completing and the branches mismatched.
+        var c = MinimalEmissionTest.Analyze($"{before}func stop() -> Never => loop => ()\nlet x = if false => stop()@i64 else => 300{after}");
+        Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
+        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+    }
+
     private static (BigInteger Min, BigInteger Max) Range(string name)
     {
         var width = ScalarTypes.Width(BoundType.Primitives[name], 64);

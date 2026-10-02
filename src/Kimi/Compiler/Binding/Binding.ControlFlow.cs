@@ -387,10 +387,18 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? FinishResult(Koto node, ResultContext context)
+    // The one structural completion of result, body and conversion checks, cleared for a new query. Its Never evidence is the
+    // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
+    private StructuralCompletion ResultStructure()
     {
         var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
         structural.Clear();
+        return structural;
+    }
+
+    private BoundType? FinishResult(Koto node, ResultContext context)
+    {
+        var structural = this.ResultStructure();
         switch (node)
         {
             case IfKoto conditional:
