@@ -92,15 +92,21 @@ public sealed partial class OwnershipAnalysis
         return this.Value(projected);
     }
 
-    private int ReadPointer(Koto source, PlaceUseKind use)
+    private int ReadPointer(Koto source, PlaceUseKind use, AcquisitionKind? acquisition)
     {
         // A non-consuming access needs a raw Place/borrow plan, not a Move to a
         // disposable owner. In particular, string comparisons must not consume *p.
-        if (!this.SupportsPointerValue(source, abstractRead: true) ||
-            (use != PlaceUseKind.Consume && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven))
+        var copy = this.compilation.Binding.ProveCopy(source.BoundType!, source) == ConstraintProof.Proven;
+        if (!this.SupportsPointerValue(source, abstractRead: true) || (use != PlaceUseKind.Consume && !copy))
         {
             this.Unsupported(source);
             return -1;
+        }
+
+        if (use == PlaceUseKind.Consume && acquisition is null && !copy)
+        {
+            // SPEC 3.5, 5.2.3: a raw Place, like every Place, never Moves by bare acquisition; (*p)@move takes its value.
+            this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
         }
 
         var pointer = this.PointerAddress(source);

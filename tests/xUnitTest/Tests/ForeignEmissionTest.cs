@@ -512,10 +512,10 @@ public class ForeignEmissionTest
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("func update(p: raw/bool, n: raw/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: raw/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: raw/R) -> R\n    unsafe => return (*p)@move\npublic func main() => ()")]
     [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc update(p: raw/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
-    [InlineData("func update(p: raw/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: raw/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: raw/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: raw/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("func update(p: raw/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: raw/string) -> string\n    unsafe => return (*p)@move\npublic func main() => ()")]
+    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: raw/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: raw/E) -> E\n    unsafe => return (*p)@move\npublic func main() => ()")]
     [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: raw/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value@move\npublic func main() => ()")]
     [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    drop => ()\nfunc update(p: raw/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
     [InlineData("func update(p: raw/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
@@ -863,7 +863,7 @@ public class ForeignEmissionTest
                     (*holders).count = 41
                     (*holders).count += 1
                     require (*holders).count == 42 else => $abort("count")
-                    let taken = (*holders).label
+                    let taken = (*holders).label@move
                     Console.writeLine(taken)
                 var freed: i32 = 0
                 unsafe => freed = Native.free(bytes, 0, 32768)
@@ -1034,7 +1034,7 @@ public class ForeignEmissionTest
                 #LibraryImport("kernel32", "VirtualFree")
                 public unsafe func free(address: raw/string, size: u64, kind: u32) -> i32
             func take(p: raw/string) -> string
-                unsafe => return *p
+                unsafe => return (*p)@move
             func use(p: raw/string, flag: bool)
                 unsafe
                     // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
@@ -1042,10 +1042,10 @@ public class ForeignEmissionTest
                     p[0] = "second"
                     Console.writeLine(take(p))
                     p[1] = "third"
-                    let moved = p[1]
+                    let moved = p[1]@move
                     if flag => Console.writeLine(moved)
                     p[2] = "compare"
-                    let compared = p[2]
+                    let compared = p[2]@move
                     require compared == "compare" else => $abort("comparison")
                     let skipped = false and take(p + 3) == "skip"
                     require not skipped else => $abort("short circuit")
@@ -1103,9 +1103,9 @@ public class ForeignEmissionTest
                     require *p == "alpha" and p[1] != "alpha" else => $abort("equal")
                     require p[1] > *p and "beta" == p[1] and not (p[1] < *p) else => $abort("order")
                     require (*holder).label >= p[1] and (*holder).label == "kept" else => $abort("field")
-                    let a = *p
-                    let b = p[1]
-                    let k = (*holder).label
+                    let a = (*p)@move
+                    let b = p[1]@move
+                    let k = (*holder).label@move
                     Console.writeLine(a)
                     Console.writeLine(b)
                     Console.writeLine(k)
@@ -1137,7 +1137,7 @@ public class ForeignEmissionTest
                 #LibraryImport("kernel32", "VirtualFree")
                 public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             func take(p: raw/E<R>) -> E<R>
-                unsafe => return *p
+                unsafe => return (*p)@move
             func values(bytes: raw/u8)
                 unsafe
                     let p = bytes@raw/E<R>
@@ -1153,17 +1153,17 @@ public class ForeignEmissionTest
                     *text = .Value("first")
                     *text = .Empty
                     text[1] = .Value("second")
-                    let retained = text[1]
+                    let retained = text[1]@move
                     let aligned = (bytes + 192)@raw/E<u128>
                     aligned[1] = .Value(340282366920938463463374607431768211455)
-                    let wide = aligned[1]
+                    let wide = aligned[1]@move
                     match wide@move
                         .Empty => $abort("wide tag")
                         .Value(let value)
                             require value == 340282366920938463463374607431768211455 else => $abort("wide value")
                     let nested = (bytes + 320)@raw/E<E<string>>
                     *nested = .Value(.Value("nested"))
-                    let nestedResult = *nested
+                    let nestedResult = (*nested)@move
                     Console.writeLine("done")
             public func main()
                 var bytes: raw/u8 = null
@@ -1211,17 +1211,17 @@ public class ForeignEmissionTest
                     *target(p) = make()
                     Console.writeLine("stored")
                     p[0] = if true => Resource.init(2) else => Resource.init(1)
-                    let result = *p
+                    let result = (*p)@move
                     require result.value == 2 else => $abort("value")
                     let empty = (bytes + 16)@raw/Empty
                     *empty = Empty.init()
-                    let emptyResult = *empty
+                    let emptyResult = (*empty)@move
                     let tuples = (bytes + 32)@raw/(Resource, Resource)
                     *tuples = (Resource.init(1), Resource.init(2))
-                    let tuple = *tuples
+                    let tuple = (*tuples)@move
                     let stopped = (bytes + 64)@raw/Resource
                     early(stopped)
-                    let untouched = *stopped
+                    let untouched = (*stopped)@move
                     require untouched.value == 0 else => $abort("early store")
                     Console.writeLine("scope")
             public func main()
@@ -1253,16 +1253,16 @@ public class ForeignEmissionTest
                 #LibraryImport("kernel32", "VirtualFree")
                 public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             func take(p: raw/Resource) -> Resource
-                unsafe => return *p
+                unsafe => return (*p)@move
             func use(value: Resource)
                 Console.writeLine("use")
             func choose(p: raw/Resource, flag: bool) -> Resource
                 unsafe
-                    if flag => return p[0]
-                    return p[1]
+                    if flag => return p[0]@move
+                    return p[1]@move
             func early(p: raw/Resource)
                 unsafe
-                    let value = *p
+                    let value = (*p)@move
                     defer => Console.writeLine("defer")
                     return
             func reads(bytes: raw/u8)
@@ -1271,13 +1271,13 @@ public class ForeignEmissionTest
                     // Each Non-Copy source is read exactly once; no raw owner is destroyed.
                     let first = take(bytes@raw/Resource)
                     use(first@move)
-                    let tuple = *((bytes + 16)@raw/(Resource, Resource))
-                    let array = ((bytes + 32)@raw/[2 of Resource])[0]
-                    let empty = *((bytes + 64)@raw/Empty)
+                    let tuple = (*((bytes + 16)@raw/(Resource, Resource)))@move
+                    let array = ((bytes + 32)@raw/[2 of Resource])[0]@move
+                    let empty = (*((bytes + 64)@raw/Empty))@move
                     use(choose((bytes + 80)@raw/Resource, true))
                     use(choose((bytes + 96)@raw/Resource, false))
                     early((bytes + 112)@raw/Resource)
-                    *((bytes + 128)@raw/Resource)
+                    _ = (*((bytes + 128)@raw/Resource))@move
                     Console.writeLine("scope")
             public func main()
                 var bytes: raw/u8 = null
@@ -1365,7 +1365,7 @@ public class ForeignEmissionTest
                 unsafe => markers = bytes@raw/Marker
                 unsafe
                     markers[offset()] = Marker.init() // Replacement destroys the value already at *markers.
-                    _ = markers[-2]                   // Moves out the new value, the same Place, and destroys it.
+                    _ = markers[-2]@move             // Moves out the new value, the same Place, and destroys it.
                 var freed: i32 = 0
                 unsafe => freed = Native.free(bytes, 0, 32768)
                 require freed != 0 else => $abort("free")
@@ -1402,7 +1402,7 @@ public class ForeignEmissionTest
                 var empty: raw/Empty = null
                 unsafe => empty = bytes@raw/Empty
                 unsafe
-                    let item = *empty
+                    let item = (*empty)@move
                     *empty = item
                 var arrays: raw/[0 of i32] = null
                 unsafe => arrays = bytes@raw/[0 of i32]
@@ -1581,7 +1581,7 @@ public class ForeignEmissionTest
                     let p = bytes@raw/Record
                     p[0] = Record.init(7, 42, 9)
                     p[1] = Record.init(11, 99, 13)
-                    let value = p[1]
+                    let value = p[1]@move
                     require value.a == 11 and value.b == 99 and value.c == 13 else => $abort("value")
                     require bytes[0] == 7 and bytes[16] == 9 and bytes[24] == 11 and bytes[40] == 13 else => $abort("C offsets")
                     require *((bytes + 8)@raw/u64) == 42 and *((bytes + 32)@raw/u64) == 99 else => $abort("C alignment")
@@ -1596,11 +1596,11 @@ public class ForeignEmissionTest
                     require (outer + 1)@usize - outer@usize == 32 else => $abort("nested stride")
                     let generic = (bytes + 192)@raw/Generic<u64>
                     bytes[200] = 23
-                    let instantiated = *generic
+                    let instantiated = (*generic)@move
                     require instantiated.value == 23 else => $abort("generic offset")
                     let resource = (bytes + 256)@raw/Resource
                     *resource = Resource.init(1)
-                    let moved = *resource
+                    let moved = (*resource)@move
                 var freed: i32 = 0
                 unsafe => freed = Native.free(bytes, 0, 32768)
                 require freed != 0 else => $abort("free")

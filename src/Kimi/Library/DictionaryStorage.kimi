@@ -40,7 +40,7 @@ group DictionaryStorage
             require link != 0 else => return .None
             let slot = state.storage + (link - 1) * state.stride
             unlink(layout.0@raw/Handle, layout.1, link)
-            return .Some((*Storage.keyAt<K, V>(slot), *Storage.valueAt<K, V>(slot)))
+            return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
 
     unsafe func reserve(
         handle: raw/Handle, stride: isize, additional: isize, maximumSize: isize,

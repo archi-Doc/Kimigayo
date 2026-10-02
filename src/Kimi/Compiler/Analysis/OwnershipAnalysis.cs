@@ -172,6 +172,7 @@ public sealed partial class OwnershipAnalysis
                 issue.Code,
                 note: AcquisitionNote(issue),
                 evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
+                advice: issue.Failure == OwnershipFailure.TransferRequired && issue.Source is DereferenceKoto ? $"Write ({issue.Source})@move to take the value; without the parentheses, @move applies to the pointer" : null,
                 related: RelatedLocations(issue));
         }
 
@@ -915,7 +916,7 @@ public sealed partial class OwnershipAnalysis
 
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
-                return this.ReadPointer(element, use);
+                return this.ReadPointer(element, use, acquisition);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" or "isEmpty" or "indices" } && ReferenceTypes.IsSlice(member.Left.BoundType)):
@@ -924,7 +925,7 @@ public sealed partial class OwnershipAnalysis
                 ElementAccess.BorrowedPathRoot(member) is not null:
                 return this.ReadBorrowedField(member);
             case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
-                return this.ReadPointer(element, use);
+                return this.ReadPointer(element, use, acquisition);
             case IndexKoto slice when ElementAccess.IsSlicing(slice):
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
@@ -982,7 +983,7 @@ public sealed partial class OwnershipAnalysis
 
                 return this.RegisterTemporary(blockValue);
             case DereferenceKoto dereference:
-                return this.ReadPointer(dereference, use);
+                return this.ReadPointer(dereference, use, acquisition);
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 return this.UnaryValue(unary);
             default:

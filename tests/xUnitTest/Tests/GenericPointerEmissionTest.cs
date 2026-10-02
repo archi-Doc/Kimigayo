@@ -27,9 +27,9 @@ public class GenericPointerEmissionTest
                 #LibraryImport("kernel32", "VirtualFree")
                 public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             func take<E>(pointer: raw/E) -> E
-                unsafe => return *pointer
+                unsafe => return (*pointer)@move
             func at<E>(pointer: raw/E, index: isize) -> E
-                unsafe => return pointer[index]
+                unsafe => return pointer[index]@move
             func reads(bytes: raw/u8)
                 unsafe
                     let integer = take(bytes@raw/i32)
@@ -56,8 +56,8 @@ public class GenericPointerEmissionTest
     }
 
     [Theory]
-    [InlineData("*pointer")]
-    [InlineData("pointer[index]")]
+    [InlineData("(*pointer)@move")]
+    [InlineData("pointer[index]@move")]
     public void AbstractOwnedPointeeCanBeAcquired(string expression)
     {
         var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E, index: isize) -> E\n    unsafe => return {expression}\npublic func main() => ()");
@@ -71,7 +71,7 @@ public class GenericPointerEmissionTest
     [InlineData("(ref/i32 during static, i32)")]
     public void DependentInstantiationsPreserveTheCompletePointee(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\nfunc read(pointer: raw/({type})) => take(pointer)\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc read(pointer: raw/({type})) => take(pointer)\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
@@ -82,7 +82,7 @@ public class GenericPointerEmissionTest
     [InlineData("(ref/i32 during static, i32)")]
     public void VerifiedTemplateBuildsDependentConcreteReads(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return *pointer\nfunc input(pointer: raw/({type})) => ()\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc input(pointer: raw/({type})) => ()\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
@@ -95,7 +95,7 @@ public class GenericPointerEmissionTest
     [Fact]
     public void AcquiredGenericValueCannotBeMovedTwice()
     {
-        var c = MinimalEmissionTest.Analyze("func take<E>(pointer: raw/E) -> E\n    unsafe\n        let value = *pointer\n        let moved = value@move\n        return value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("func take<E>(pointer: raw/E) -> E\n    unsafe\n        let value = (*pointer)@move\n        let moved = value@move\n        return value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
     }

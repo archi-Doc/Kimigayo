@@ -25,7 +25,7 @@ internal group Storage
             let storage: raw/E = self.storage
             while self.count > 0
                 self.count -= 1
-                unsafe => _ = storage[self.position + self.count]
+                unsafe => _ = storage[self.position + self.count]@move
             unsafe => release(storage)
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
@@ -69,8 +69,8 @@ internal group Storage
             unsafe
                 let slot = storage + (link - 1) * stride
                 link = (slot@raw/isize)[0]
-                _ = *valueAt<K, V>(slot)
-                _ = *keyAt<K, V>(slot)
+                _ = (*valueAt<K, V>(slot))@move
+                _ = (*keyAt<K, V>(slot))@move
 
     /// Returns the matching live link, or zero; comparison uses stored.equals(search), with no entry acquisition.
     internal func findDictionaryLink<K, V>(state: uniq/DictionaryRefRemainder<K, V>, key: ref/K) -> isize
@@ -88,7 +88,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe => return .Some(state.storage[position])
+        unsafe => return .Some(state.storage[position]@move)
 
     /// Lends the first untaken element and advances the shared remainder without allocating or invoking user code.
     internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
@@ -136,7 +136,7 @@ internal group Storage
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
             state.link = (slot@raw/isize)[1]
-            return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))
+            return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
     /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, whose contents the compiler never destroys
     /// (PLAN G33): its owner destroys what remains of `value` through unsafe element addressing. It takes the stored Type,
@@ -157,7 +157,7 @@ internal group Storage
             unsafe => elements = inlineBase<E, A>(self.storage@uniq)
             while self.count > 0
                 self.count -= 1
-                unsafe => _ = elements[self.position + self.count]
+                unsafe => _ = elements[self.position + self.count]@move
 
     /// Transfers the first unreturned element out of a fixed array's inline storage and advances the owning remainder.
     internal func takeFirst<E, A>(state: uniq/FixedOwnedRemainder<E, A>) -> Option<E>
@@ -165,7 +165,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position])
+        unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position]@move)
 
     /// Consumes a contiguous exclusive remainder and splits two distinct positions, preserving argument order.
     internal func tryGetPairUniq<E, P, Q>(
