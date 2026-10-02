@@ -796,8 +796,13 @@ public sealed class ControlFlowAnalysis
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
                 var destinationPointer = IsPointer(destinationType);
-                // SPEC 5: a conversion cannot cause undefined behavior, so it needs no unsafe context.
-                if ((sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
+                // SPEC 5: a conversion cannot cause undefined behavior, so it needs no unsafe context. An address (@raw, SPEC 5.4),
+                // a borrow and a follow convert no pointer.
+                var borrow = conversion.Right is TypeSemanticsKoto { Type: null } bare
+                    ? bare.Identifier == Constants.FollowOperation ||
+                        (CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Raw or SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                    : conversion.Right is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
+                if (!borrow && (sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
                 {
                     if ((sourcePointer && destinationType is not null && !destinationPointer && destinationType.Name != "usize") ||
                         (destinationPointer && sourceType is not null && !sourcePointer && sourceType.Name is not ("usize" or "Never" or "integer literal")))

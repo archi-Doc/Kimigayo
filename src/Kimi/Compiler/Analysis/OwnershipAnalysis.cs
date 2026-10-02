@@ -880,6 +880,21 @@ public sealed partial class OwnershipAnalysis
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
 
+                if (conversion.ConversionBinding == ConversionBinding.Address)
+                {
+                    // SPEC 5.4: P@raw checks P as an immediately ending shared borrow and converts the borrowed address. The
+                    // pointer carries no Origin, so the Loan ends with the borrow's only use.
+                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!);
+                    if (borrowed < 0)
+                    {
+                        return -1;
+                    }
+
+                    var address = this.Temporary(conversion);
+                    this.SetValue(this.Value(address), OwnershipValueKind.Convert, [this.Value(borrowed)]);
+                    return address;
+                }
+
                 if (this.ReadsStoredReference(conversion))
                 {
                     var stored = this.StoredReference(conversion);

@@ -25,8 +25,9 @@ internal sealed partial class BodyLowering
     {
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
         {
-            // SPEC 5.4-5.5: one address space and a usize-wide address, so pointer casts keep the value.
-            return ReferenceTypes.IsPointer(source) == ReferenceTypes.IsPointer(target) ? default : new(ReferenceTypes.IsPointer(source) ? "ptrtoint" : "inttoptr", null, null, 0, 0);
+            // SPEC 5.4-5.5: one address space and a usize-wide address, so pointer casts, and the address of a borrow, keep the value.
+            var address = ReferenceTypes.IsPointer(source) || ReferenceTypes.IsReference(source);
+            return address == ReferenceTypes.IsPointer(target) ? default : new(address ? "ptrtoint" : "inttoptr", null, null, 0, 0);
         }
 
         if (FloatingTypes.Supports(source))

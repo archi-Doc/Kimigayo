@@ -251,6 +251,11 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 13.5.5.2: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
+    private static bool BorrowsWrittenSlot(BoundType type)
+        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
+            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
     {
@@ -397,6 +402,34 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.RawKeyword, HasOrigin: false })
+        {
+            // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and
+            // converts the borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is
+            // recorded on the operator.
+            var stored = this.BindNode(conversion.Left, scope);
+            if (stored is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            if (ReferenceEquals(stored, BoundType.Never))
+            {
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, stored);
+            }
+
+            var shared = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]);
+            if (!BorrowsWrittenSlot(stored) || !this.AdaptInput(conversion.Left, shared, stored, scope, null, null, out var borrowed, out _, out _, explicitBorrow: true))
+            {
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+            }
+
+            Complete(conversion.Right, borrowed);
+            conversion.ConversionBinding = ConversionBinding.Address;
+            return Complete(conversion, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
+        }
+
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
@@ -513,9 +546,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String) || IsBorrow(operandType.Semantics) || IsObjectSemantics(operandType.Semantics)))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && BorrowsWrittenSlot(operandType))
             {
                 // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).

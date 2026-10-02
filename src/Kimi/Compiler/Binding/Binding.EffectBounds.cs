@@ -540,6 +540,9 @@ public sealed partial class Binding
                     this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
                     this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
                     break;
+                case ConversionKoto { ConversionBinding: ConversionBinding.Address } address:
+                    this.PlaceAccess(address.Left, LoanRequirement.Ref, node); // SPEC 5.4: an immediately ending borrow.
+                    break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
                     this.PlaceAccess(transfer.Left, LoanRequirement.Uniq, node); // A Move invalidates its Place.
                     break;
@@ -576,7 +579,7 @@ public sealed partial class Binding
 
             switch (parent)
             {
-                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } conversion:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } conversion:
                     return ReferenceEquals(conversion.Left, node);
                 case BinaryKoto assignment when IsAssignment(assignment.Akind):
                     return ReferenceEquals(assignment.Left, node);

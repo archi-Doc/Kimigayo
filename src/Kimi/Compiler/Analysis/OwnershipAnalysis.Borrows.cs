@@ -213,7 +213,7 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
-        var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType)) &&
+        var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType) || ReferenceTypes.IsPointer(source.BoundType)) &&
             unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate;
         var place = this.SpecialField(unwrapped) ? this.Local(unwrapped)
             : source is FormattingKoto hidden && !ReferenceTypes.IsBorrow(hidden.BoundType) && this.formattingPlaces.TryGetValue(hidden, out var prepared) ? prepared
