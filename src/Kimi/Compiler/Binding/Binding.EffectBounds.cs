@@ -75,7 +75,7 @@ public sealed partial class Binding
             if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
             {
                 (this.effectViolations ??= new(ReferenceEqualityComparer.Instance))[path.Use] =
-                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, requirement, shape, confined, preserves);
+                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves);
                 path.Invalid = true;
                 path.IsVerified = false;
                 path.Identity.Invalid = true;
@@ -101,6 +101,15 @@ public sealed partial class Binding
         private readonly List<BoundCall> calls = new();
         private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
+
+        // SPEC 8.4.10.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
+        // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
+        private readonly List<BoundType> itemParts = new();
+        private readonly List<(FunctionKoto Requirement, Koto Call, Koto? Receiver)> producers = new();
+        private readonly List<(FunctionKoto Requirement, Koto Call, Koto Receiver, bool Confined)> candidates = new();
+        private readonly List<(Koto Path, Koto Node)> replacements = new();
+        private BodyScan? scan;
+        private bool delegable;
         private IReadOnlyList<BoundOrigin> selfOrigins = [];
         private BindingScope? scope;
         private BoundType item = BoundType.Unit;
@@ -110,8 +119,6 @@ public sealed partial class Binding
         private int callCount;
         private FunctionKoto? implementation;
         private BoundType? receiverType;
-        private BindingSymbol? steppedField;
-        private FunctionKoto? delegated;
         private Koto? stepUse;
         private Koto? site;
         private Koto? last;
@@ -127,8 +134,11 @@ public sealed partial class Binding
         /// <summary>Gets the syntax of the implementation's own body through which that effect is reached.</summary>
         internal Koto? ViolationSite { get; private set; }
 
-        /// <summary>Gets why the delegation rule did not cover a requirement call, when it was tried.</summary>
+        /// <summary>Gets why the Loans of earlier results were not excluded for a requirement call, when exclusion was tried.</summary>
         internal DelegationFailure Delegation { get; private set; }
+
+        /// <summary>Gets the source or replacement that prevented the exclusion.</summary>
+        internal Koto? DelegationNode { get; private set; }
 
         public override void Visit(Koto node)
         {
@@ -140,7 +150,12 @@ public sealed partial class Binding
             this.last = node;
             if (node is FieldKoto local)
             {
-                this.Queue(local.InitializerKoto); // Its destruction, if any, is one of the body's cleanups.
+                // The initializer is evaluated in place, in the same body. Its destruction, if any, is one of the body's cleanups.
+                if (local.InitializerKoto is { } initializer)
+                {
+                    this.Visit(initializer);
+                }
+
                 return;
             }
 
@@ -169,11 +184,26 @@ public sealed partial class Binding
                     return;
                 }
 
+                // SPEC 8.4.10.2: immutability does not protect a pointee, so a raw pointer read from an immutable static
+                // obtains authority from the environment.
+                if (this.confined && node.BoundSymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
+                {
+                    this.Violate(EffectViolation.StaticPointer, node);
+                    return;
+                }
+
                 if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _))
                 {
                     this.Violate(EffectViolation.UnknownDestruction, node);
                     return;
                 }
+            }
+
+            // SPEC 8.4.10.2: a pointer made from an integer has no provenance; it obtains authority from the environment.
+            if (this.confined && node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Left.BoundType.Kind: BoundTypeKind.Primitive })
+            {
+                this.Violate(EffectViolation.IntegerPointer, node);
+                return;
             }
 
             if (node is InvocationKoto invocation && !binding.TryGetEnumConstruction(node, out _))
@@ -223,11 +253,14 @@ public sealed partial class Binding
             this.ViolationNode = null;
             this.ViolationSite = null;
             this.Delegation = DelegationFailure.None;
+            this.DelegationNode = null;
             this.implementation = implementation.Declaration as FunctionKoto;
             this.receiverType = null;
-            this.steppedField = null;
-            this.delegated = null;
             this.stepUse = null;
+            this.delegable = false;
+            this.itemParts.Clear();
+            this.producers.Clear();
+            this.candidates.Clear();
             if (preserves)
             {
                 if (implementation.Type is not { } declared)
@@ -251,6 +284,7 @@ public sealed partial class Binding
                     this.selfOrigins = SelfOrigins(implementation, out var receiver);
                     this.receiverType = receiver;
                     this.StoredValues(receiver);
+                    this.delegable = this.CollectItemParts(item);
                 }
             }
 
@@ -260,6 +294,11 @@ public sealed partial class Binding
                 this.context = this.pending[i].Context;
                 this.site = this.pending[i].Site;
                 this.Visit(this.pending[i].Node);
+            }
+
+            if (this.valid && this.candidates.Count != 0)
+            {
+                this.ValidateDelegations();
             }
 
             return this.valid;
@@ -276,25 +315,6 @@ public sealed partial class Binding
             }
 
             return receiver?.OriginArguments ?? [];
-        }
-
-        // Whether `type` is `iterator` or has it as a part, including an associated projection of it.
-        private static bool Names(BoundType type, BoundType iterator)
-        {
-            if (ReferenceEquals(type, iterator))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (Names(type.Components[i], iterator))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static BoundType? Dictionary(BoundType? type)
@@ -380,6 +400,51 @@ public sealed partial class Binding
 
         // An associated projection, whose root Type is not a part of its values.
         private static bool IsProjection(BoundType type) => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 };
+
+        // Whether a value of `type` holds a raw pointer at any depth: in a Type argument, a component, a stored Field or a
+        // Case payload. A recursive struct is cut off at a fixed depth, which counts as holding one.
+        private bool ContainsRawPointer(BoundType? type, int depth)
+        {
+            if (type is null || depth > 32)
+            {
+                return depth > 32;
+            }
+
+            if (type.Semantics == SemanticsKind.Unsafe)
+            {
+                return true;
+            }
+
+            // A referent or payload reached through the value is read from the same static too.
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (this.ContainsRawPointer(type.Components[i], depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            if (StructStorage.IsStruct(type))
+            {
+                for (var i = 0; i < StructStorage.Count(type); i++)
+                {
+                    if (this.ContainsRawPointer(StructStorage.FieldType(type, i), depth + 1))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            for (var i = 0; type.StoredCases is { } cases && i < cases.Length; i++)
+            {
+                if (this.ContainsRawPointer(cases[i], depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // A formatting root evaluates its synthesized calls. $tryWrite's acquisition only borrows its Writer operand, and
         // its written operand is replaced by the writes; an interpolation also evaluates its own segments.
@@ -812,7 +877,17 @@ public sealed partial class Binding
 
             if (function.Body is null && function.ExpressionBody is null && !(function.IsConstructor && function.IsGenerated))
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null); // An external function's effects are unknown.
+                // SPEC 22.3.1, 8.4.10.2: a foreign function accesses only what its arguments permit, which the arguments
+                // already accessed, and the environment, which confined excludes. Any other bodyless call is unknown.
+                if (!IsLibraryImport(function))
+                {
+                    this.Violate(EffectViolation.UnclassifiedCall, null);
+                }
+                else if (this.confined)
+                {
+                    this.Violate(EffectViolation.ForeignCall, null);
+                }
+
                 return;
             }
 
@@ -879,19 +954,24 @@ public sealed partial class Binding
                 preserves |= held;
             }
 
-            if (this.preserves && preserves)
+            if (this.preserves)
             {
-                if (!this.ForwardsResults(call, out var stored))
+                // SPEC 8.4.10.5: every requirement call producing a value of an abstract part of the result is recorded.
+                var own = this.OwnFieldPathReceiver();
+                if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
                 {
-                    this.Delegation = DelegationFailure.ResultType;
+                    this.producers.Add((requirement, this.stepUse ?? symbol.Declaration, own));
                 }
-                else if (this.StepsStoredValue(requirement, stored) is var failure && failure == DelegationFailure.None)
+
+                if (preserves && this.delegable && own is not null)
                 {
+                    this.candidates.Add((requirement, this.stepUse!, own, confined));
                     return;
                 }
-                else
+
+                if (preserves)
                 {
-                    this.Delegation = failure;
+                    this.Delegation = this.delegable ? DelegationFailure.CallSite : DelegationFailure.Untraced;
                 }
             }
 
@@ -914,71 +994,209 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.4.10.5 rule 2: the delegated call's result Type, normalized within the conformance, is the implementation's own.
-        private bool ForwardsResults(BoundCall call, out BoundType stored)
+        // SPEC 8.4.10.5: a result keeps Loans only through its abstract parts when its other parts carry no Origin. A value of
+        // such a part is produced only by a requirement call, an argument, or a Field that keeps one across calls, so a call of
+        // d on a value w reached from self through a Field path in the implementation's own body is compared with no Loan of
+        // an earlier result when every producer is d on w and the body replaces no value on the path to w. Candidates are
+        // judged after the whole summary is visited, when every producer is known.
+        private void ValidateDelegations()
         {
-            stored = BoundType.Unit;
-            if (Receiver(call) is not { Kind: BoundTypeKind.Semantics, Components: [var target] } || this.Type(call.ReturnType) is not { } result)
+            this.scan ??= new(this);
+            this.replacements.Clear();
+            if (this.implementation!.Body is { } body)
+            {
+                this.scan.Visit(body);
+            }
+
+            if (this.implementation.ExpressionBody is { } expression)
+            {
+                this.scan.Visit(expression);
+            }
+
+            for (var c = 0; this.valid && c < this.candidates.Count; c++)
+            {
+                var candidate = this.candidates[c];
+                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Receiver, out var blocking);
+                if (failure != DelegationFailure.None)
+                {
+                    // The call's effects are then those of SPEC 8.4.10.4, which reach every Loan of the abstract value.
+                    this.Delegation = failure;
+                    this.DelegationNode = blocking;
+                    this.site = null;
+                    this.stepUse = candidate.Call;
+                    this.Violate(candidate.Confined ? EffectViolation.UnclassifiedAccess : EffectViolation.UnboundedRequirement, candidate.Call);
+                }
+            }
+        }
+
+        private DelegationFailure DelegationFailureOf(FunctionKoto requirement, Koto receiver, out Koto? blocking)
+        {
+            for (var i = 0; i < this.replacements.Count; i++)
+            {
+                if (this.IsPathPrefix(this.replacements[i].Path, receiver))
+                {
+                    blocking = this.replacements[i].Node;
+                    return DelegationFailure.Replaced;
+                }
+            }
+
+            var function = this.implementation!;
+            var receiverIndex = function.BoundSymbol?.ReceiverIndex ?? -1;
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (i != receiverIndex && function.Parameters[i].Type.BoundType is { } parameter && this.MentionsItemPart(binding.ContractType(parameter, this.scope!)))
+                {
+                    blocking = function.Parameters[i].Type;
+                    return DelegationFailure.Argument;
+                }
+            }
+
+            for (var i = 0; StructStorage.IsStruct(this.receiverType) && i < StructStorage.Count(this.receiverType!); i++)
+            {
+                if (StructStorage.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
+                {
+                    blocking = StructStorage.Field(this.receiverType!, i);
+                    return DelegationFailure.Untraced;
+                }
+            }
+
+            for (var i = 0; i < this.producers.Count; i++)
+            {
+                var producer = this.producers[i];
+                var failure = !ReferenceEquals(producer.Requirement, requirement) ? DelegationFailure.OtherRequirement
+                    : producer.Receiver is not { } path || this.SelfPathDepth(path) != this.SelfPathDepth(receiver) || !this.IsPathPrefix(path, receiver) ? DelegationFailure.OtherValue
+                    : DelegationFailure.None;
+                if (failure != DelegationFailure.None)
+                {
+                    blocking = producer.Call;
+                    return failure;
+                }
+            }
+
+            blocking = null;
+            return DelegationFailure.None;
+        }
+
+        // The receiver path of a requirement call made on a value reached from self through a Field path, in the implementation's
+        // own body; null otherwise.
+        private Koto? OwnFieldPathReceiver()
+            => this.context == 0 && this.stepUse is InvocationKoto { Method: MemberAccessKoto { Left: var receiver } } call && this.IsOwnBody(call) &&
+                this.SelfPathDepth(receiver) >= 1 ? receiver : null;
+
+        // Whether a node is in the implementation's own body rather than in a function literal inside it.
+        private bool IsOwnBody(Koto node)
+        {
+            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent is FunctionKoto function)
+                {
+                    return ReferenceEquals(function, this.implementation);
+                }
+            }
+
+            return false;
+        }
+
+        // The number of Fields on a path from the implementation's receiver `self`, as in `self.inner`; -1 when the node is not
+        // such a path. Parentheses are transparent.
+        private int SelfPathDepth(Koto? node)
+        {
+            var depth = 0;
+            node = node is null ? null : KotoHelper.UnwrapParentheses(node);
+            while (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } access)
+            {
+                depth++;
+                node = KotoHelper.UnwrapParentheses(access.Left);
+            }
+
+            return node is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } } &&
+                ReferenceEquals(owner, this.implementation) && this.implementation?.BoundSymbol is { ReceiverIndex: >= 0 and var index } && slot == index ? depth : -1;
+        }
+
+        // Whether the self path `prefix` is `path` or one of the paths it passes through.
+        private bool IsPathPrefix(Koto prefix, Koto path)
+        {
+            var shorter = this.SelfPathDepth(prefix);
+            var longer = this.SelfPathDepth(path);
+            if (shorter < 0 || longer < shorter)
             {
                 return false;
             }
 
-            stored = target;
-            return ReferenceEquals(binding.ContractType(result, this.scope!), this.item);
+            path = KotoHelper.UnwrapParentheses(path);
+            for (; longer > shorter; longer--)
+            {
+                path = KotoHelper.UnwrapParentheses(((MemberAccessKoto)path).Left);
+            }
+
+            prefix = KotoHelper.UnwrapParentheses(prefix);
+            for (; shorter > 0; shorter--)
+            {
+                if (!ReferenceEquals(prefix.BoundSymbol, path.BoundSymbol))
+                {
+                    return false;
+                }
+
+                prefix = KotoHelper.UnwrapParentheses(((MemberAccessKoto)prefix).Left);
+                path = KotoHelper.UnwrapParentheses(((MemberAccessKoto)path).Left);
+            }
+
+            return true;
         }
 
-        // SPEC 8.4.10.5 rule 1: this call of the one delegated requirement d reaches `stored` as `self.f` in the implementation's
-        // own body, f being the one Field that stores it or a borrow of it, with no other Field naming it; every delegated
-        // call must use the same d and f.
-        private DelegationFailure StepsStoredValue(FunctionKoto requirement, BoundType stored)
+        // Collects the abstract parts of the result Type; false when another part carries an Origin, whose Loans may come from
+        // anywhere.
+        private bool CollectItemParts(BoundType type)
         {
-            if (this.context != 0 || this.stepUse is not InvocationKoto { Method: MemberAccessKoto { Left: MemberAccessKoto { Left: IdentifierNameKoto self, BoundSymbol: { } field } } } ||
-                this.implementation?.BoundSymbol is not { ReceiverIndex: >= 0 and var index } ||
-                self.BoundSymbol is not { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } || slot != index || !ReferenceEquals(owner, this.implementation))
+            if (AbstractTypes.IsAbstract(type))
             {
-                return DelegationFailure.CallSite;
-            }
-
-            if (this.delegated is not null && !ReferenceEquals(this.delegated, requirement))
-            {
-                return DelegationFailure.Requirement;
-            }
-
-            if (this.steppedField is not null)
-            {
-                return ReferenceEquals(this.steppedField, field) ? DelegationFailure.None : DelegationFailure.Field;
-            }
-
-            if (!StructStorage.IsStruct(this.receiverType))
-            {
-                return DelegationFailure.CallSite;
-            }
-
-            var found = false;
-            for (var i = 0; i < StructStorage.Count(this.receiverType!); i++)
-            {
-                if (StructStorage.FieldType(this.receiverType!, i) is not { } type)
+                if (!this.itemParts.Contains(type))
                 {
-                    return DelegationFailure.Field;
+                    this.itemParts.Add(type);
                 }
 
-                if (!Names(type, stored))
-                {
-                    continue;
-                }
-
-                if (found || !ReferenceEquals(StructStorage.Field(this.receiverType!, i).BoundSymbol, field) ||
-                    !(ReferenceEquals(type, stored) || (type is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var target] } && ReferenceEquals(target, stored))))
-                {
-                    return DelegationFailure.Field;
-                }
-
-                found = true;
+                return true;
             }
 
-            this.steppedField = found ? field : null;
-            this.delegated = found ? requirement : null;
-            return found ? DelegationFailure.None : DelegationFailure.Field;
+            if (type.Origin is not null || type.OriginArguments.Count != 0)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!this.CollectItemParts(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Whether a value of `type` may hold a value of an abstract part of the result. The root of a projection is not a part
+        // of its values.
+        private bool MentionsItemPart(BoundType type)
+        {
+            if (this.itemParts.Contains(type))
+            {
+                return true;
+            }
+
+            if (IsProjection(type))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (this.MentionsItemPart(type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void Specialization(FunctionKoto function, BoundCall call)
@@ -1513,6 +1731,62 @@ public sealed partial class Binding
             this.contexts.Add(call);
             this.contextIndex.Add(call, this.contexts.Count - 1);
             return this.contexts.Count - 1;
+        }
+
+        // Collects the replacements of values on self paths in the own body: a write, a Move, an exclusive borrow, or an
+        // exclusive acquisition by a call other than a requirement call's receiver, any of which may replace, swap or move the
+        // value (SPEC 8.4.10.5). Nested function literals are separate bodies.
+        private sealed class BodyScan(EffectSummary summary) : KotoVisitor
+        {
+            public override void Visit(Koto node)
+            {
+                if (node is FunctionKoto or DeclarationContainerKoto)
+                {
+                    return;
+                }
+
+                switch (node)
+                {
+                    case BinaryKoto assignment when IsAssignment(assignment.Akind):
+                        this.Replace(assignment.Left, node);
+                        break;
+                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
+                        this.Replace(transfer.Left, node);
+                        break;
+                    case ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } borrow:
+                        this.Replace(borrow.Left, node);
+                        break;
+                    case InvocationKoto { BoundCall: { } call }:
+                        // A requirement call's receiver is the called value itself, whose own bound covers its effects.
+                        var requirement = call.Target.Declaration is FunctionKoto { IsRequirement: true };
+                        if (!requirement && IsExclusive(call.ReceiverOperation.ParameterType))
+                        {
+                            this.Replace(call.Receiver, node);
+                        }
+
+                        for (var i = 0; i < call.ArgumentOperations.Length; i++)
+                        {
+                            if (IsExclusive(call.ArgumentOperations[i].ParameterType) && !(requirement && call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex))
+                            {
+                                this.Replace(call.ArgumentOperations[i].Source, node);
+                            }
+                        }
+
+                        break;
+                }
+
+                node.VisitChildren(this);
+            }
+
+            private static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+
+            private void Replace(Koto? path, Koto node)
+            {
+                if (path is not null && summary.SelfPathDepth(path) >= 0)
+                {
+                    summary.replacements.Add((path, node));
+                }
+            }
         }
     }
 

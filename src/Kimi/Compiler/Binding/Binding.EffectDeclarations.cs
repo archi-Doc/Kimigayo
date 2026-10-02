@@ -34,6 +34,15 @@ public sealed partial class Binding
         /// <summary>A standard operation on state outside the program, such as Console output, which confined excludes.</summary>
         ExternalOperation,
 
+        /// <summary>A call of a foreign function, an environment effect that confined excludes (SPEC 22.3.1).</summary>
+        ForeignCall,
+
+        /// <summary>A read of a raw pointer from an immutable static, which obtains environment authority.</summary>
+        StaticPointer,
+
+        /// <summary>A conversion of an integer to a pointer, which obtains environment authority.</summary>
+        IntegerPointer,
+
         /// <summary>An access that may conflict with a Loan an earlier result keeps, which preserves results excludes.</summary>
         ResultLoan,
 
@@ -50,23 +59,29 @@ public sealed partial class Binding
         UnknownDestruction,
     }
 
-    /// <summary>SPEC 8.4.10.5: the condition of the delegation rule that a requirement call did not meet.</summary>
+    /// <summary>SPEC 8.4.10.5: why the Loans of earlier results were not excluded for a requirement call.</summary>
     internal enum DelegationFailure : byte
     {
-        /// <summary>The rule applied, or was not tried.</summary>
+        /// <summary>The Loans were excluded, or exclusion was not tried.</summary>
         None,
 
-        /// <summary>The call's result Type, normalized within the conformance, is not the implementation's.</summary>
-        ResultType,
-
-        /// <summary>The call is not made through a Field of self in the implementation's own body.</summary>
+        /// <summary>The call is not made on a value reached through a Field path of self in the implementation's own body.</summary>
         CallSite,
 
-        /// <summary>Another Field also names the stored Type, or another Field is stepped.</summary>
-        Field,
+        /// <summary>The body replaces, swaps or moves a value on the path to the called value.</summary>
+        Replaced,
 
-        /// <summary>Another requirement is already delegated.</summary>
-        Requirement,
+        /// <summary>An earlier result may keep the Loans of an argument.</summary>
+        Argument,
+
+        /// <summary>An earlier result may come from another requirement.</summary>
+        OtherRequirement,
+
+        /// <summary>An earlier result may come from the same requirement on another value.</summary>
+        OtherValue,
+
+        /// <summary>An earlier result may come from a source that cannot be traced to a call.</summary>
+        Untraced,
     }
 
     // SPEC 8.4.10.6: why an effect item declares no bound.
@@ -205,31 +220,41 @@ public sealed partial class Binding
         var name = violation.Requirement.Name;
         var bound = violation.Kind switch
         {
-            EffectViolation.MutableStatic or EffectViolation.ExternalOperation => EffectBoundKind.Confined,
+            EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or EffectViolation.StaticPointer or EffectViolation.IntegerPointer => EffectBoundKind.Confined,
             EffectViolation.ResultLoan => EffectBoundKind.PreservesResults,
             _ => violation.Preserves ? EffectBoundKind.PreservesResults : EffectBoundKind.Confined,
         };
         var item = this.DeclaredEffectBound(violation.Contract, violation.Requirement, bound);
         var contract = item is null ? violation.Contract.Symbol.Name : DeclaringContract(item)?.BoundSymbol?.Name ?? violation.Contract.Symbol.Name;
         var spelling = EffectBoundKoto.Spelling(bound);
+
+        // SPEC 8.4.10.6: an environment effect is named by the operation that obtained the authority (SPEC 8.4.10.2).
         var effect = violation.Kind switch
         {
             EffectViolation.MutableStatic => "a mutable static access",
             EffectViolation.ExternalOperation => "an external operation",
+            EffectViolation.ForeignCall => "a foreign function call",
+            EffectViolation.StaticPointer => "a raw pointer read from an immutable static",
+            EffectViolation.IntegerPointer => "a pointer made from an integer",
             EffectViolation.ResultLoan => "an access to a Loan the result may keep",
             EffectViolation.UnboundedRequirement => "a requirement call with unknown effects",
             EffectViolation.UnclassifiedAccess => "an access with unknown Loans",
             EffectViolation.UnknownDestruction => "a destruction with unknown effects",
             _ => "a call with unknown effects",
         };
-        var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ResultLoan;
-        var delegation = violation.Delegation switch
+        var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or
+            EffectViolation.StaticPointer or EffectViolation.IntegerPointer or EffectViolation.ResultLoan;
+
+        // SPEC 8.4.10.5: why the Loans of earlier results were not excluded, with the source or replacement as a related location.
+        var (delegation, label) = violation.Delegation switch
         {
-            DelegationFailure.ResultType => "; the delegation rule does not apply, because the call's result Type is not the implementation's (SPEC 8.4.10.5)",
-            DelegationFailure.CallSite => "; the delegation rule does not apply, because the call is not made through a Field of self in the implementation's own body (SPEC 8.4.10.5)",
-            DelegationFailure.Field => "; the delegation rule does not apply, because another Field names the stored Type or is stepped (SPEC 8.4.10.5)",
-            DelegationFailure.Requirement => "; the delegation rule does not apply, because another requirement is already delegated (SPEC 8.4.10.5)",
-            _ => string.Empty,
+            DelegationFailure.CallSite => ("; the Loans of earlier results are not excluded, because the call is not made on a value reached through a Field path of self in the implementation's own body (SPEC 8.4.10.5)", null),
+            DelegationFailure.Replaced => ("; the Loans of earlier results are not excluded, because the body replaces, swaps or moves a value on the path to the called value (SPEC 8.4.10.5)", "the replaced value on the path"),
+            DelegationFailure.Argument => ("; the Loans of earlier results are not excluded, because an earlier result may keep the Loans of an argument (SPEC 8.4.10.5)", "the argument an earlier result may keep"),
+            DelegationFailure.OtherRequirement => ("; the Loans of earlier results are not excluded, because an earlier result may come from another requirement (SPEC 8.4.10.5)", "the other source of a result"),
+            DelegationFailure.OtherValue => ("; the Loans of earlier results are not excluded, because an earlier result may come from the same requirement on another value (SPEC 8.4.10.5)", "the other source of a result"),
+            DelegationFailure.Untraced => ("; the Loans of earlier results are not excluded, because the source of a result cannot be traced to a call on a Field path of self (SPEC 8.4.10.5)", "the untraced source of a result"),
+            _ => (string.Empty, (string?)null),
         };
         var note = (definite
             ? $"{name} must satisfy {spelling}, declared by {contract}, and this effect violates it"
@@ -237,14 +262,20 @@ public sealed partial class Binding
         var editable = item is not null && !ReferenceEquals(item.CodeContext.Kotonoha, this.Library.Kotonoha);
         var advice = (bound == EffectBoundKind.Confined
             ? "Keep the state in a Field of self or pass it as a parameter, so the implementation uses only authority from its inputs"
-            : "Avoid accesses that may reach a Loan the result keeps, or delegate to one stored value through a single Field") +
+            : "Avoid accesses that may reach a Loan the result keeps, or return only results of the same requirement on one value reached through a Field path of self") +
             (editable ? $". If no caller relies on the guarantee, {contract} may instead declare no bound, which affects the callers that do" : string.Empty);
-        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + 1 + (item is null ? 0 : 1);
+        var source = label is not null && violation.DelegationNode is { } delegationNode && !ReferenceEquals(delegationNode, violation.Site) ? delegationNode : null;
+        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + (source is null ? 0 : 1) + 1 + (item is null ? 0 : 1);
         var related = new (string Role, Koto At, string? Label)[count];
         var next = 0;
         if (violation.Node is { } effectNode && !ReferenceEquals(effectNode, violation.Site))
         {
             related[next++] = ("effect", effectNode, "the violating effect");
+        }
+
+        if (source is not null)
+        {
+            related[next++] = ("source", source, label);
         }
 
         related[next++] = ("conformance", use, "the conformance checked against the bound");
@@ -417,8 +448,9 @@ public sealed partial class Binding
 
     private void DeclareEffectBound(BoundContract shape, EffectBoundKoto effect, BindingSymbol requirement, BindingScope scope)
     {
+        // SPEC 8.4.10.1: a bound declared twice in one Contract is an error; restating an ancestor's bound forms one guarantee.
         var function = (FunctionKoto)requirement.Declaration;
-        if (this.DeclaredEffectBound(shape, function, effect.Bound) is { } earlier)
+        if (OwnEffectBound(shape, function, effect.Bound) is { } earlier)
         {
             this.RejectEffectBound(effect, new(EffectRejection.Duplicate, Requirement: function, Earlier: earlier));
             return;
@@ -578,7 +610,7 @@ public sealed partial class Binding
             EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}", $"Give the Type arguments of the intended reference, as ({rejection.Symbol!.Name}<...>).name"),
             EffectRejection.NoRequirement => ($"{rejection.Symbol!.Name} has no function requirement {name}", null, null),
             EffectRejection.OverloadedRequirement => ($"{name} names {rejection.Count} function requirements of {rejection.Symbol!.Name}", "An effect specification bounds exactly one function requirement", null),
-            EffectRejection.Duplicate => ($"{name} already has {spelling}", $"{DeclaringContract(rejection.Earlier!)?.BoundSymbol?.Name} declares {spelling} for {name}; a Contract and its ancestors declare each bound of a requirement once", null),
+            EffectRejection.Duplicate => ($"{name} already has {spelling}", $"{DeclaringContract(rejection.Earlier!)?.BoundSymbol?.Name} already declares {spelling} for {name}; a Contract declares each bound of a requirement once, though it may restate a bound of an ancestor", "Remove the repeated effect item"),
             EffectRejection.NoBorrowedReceiver => ($"{name} has no borrowed receiver", "preserves results needs a borrowed receiver, ref/Self or uniq/Self", null),
             _ => DependentResult(rejection),
         };
@@ -633,7 +665,7 @@ public sealed partial class Binding
     // The facts of a rejected effect item; its text is formed only when the record is published.
     // The violating effect of a rejected conformance: its kind, the own-body syntax reaching it, its node, why delegation did not
     // apply, the requirement and the bounds checked.
-    private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, DelegationFailure Delegation, FunctionKoto Requirement, BoundContract Contract, bool Confined, bool Preserves);
+    private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, DelegationFailure Delegation, Koto? DelegationNode, FunctionKoto Requirement, BoundContract Contract, bool Confined, bool Preserves);
 
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0, BoundType? Part = null, BoundType? Result = null, BoundOrigin? Atom = null);
 }

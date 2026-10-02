@@ -6,6 +6,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 22.3.1: whether a function carries the import Attribute; its validity is checked separately.
+    internal static bool IsLibraryImport(FunctionKoto function)
+    {
+        for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {
         var target = attribute.Parent;
