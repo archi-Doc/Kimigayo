@@ -87,6 +87,7 @@ public static class Constants
     public const string RcKeyword = "rc";
     public const string ArcKeyword = "arc";
     public const string UnsafeKeyword = "unsafe";
+    public const string RawKeyword = "raw";
     public const string ValueKeyword = "value";
     public const string ValueBorrowKeyword = "valueborrow";
     public const string ObjectKeyword = "object";

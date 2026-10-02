@@ -20,7 +20,7 @@ public enum SemanticsMask : ushort
     Arc = 1 << 5,
     ObjRef = 1 << 6,
     ObjUniq = 1 << 7,
-    Unsafe = 1 << 8,
+    Raw = 1 << 8,
 
     Value = Owner,
 
@@ -34,11 +34,11 @@ public enum SemanticsMask : ushort
 
     Owning = Value | Object,
 
-    Reference = ValueBorrow | Object | ObjectBorrow | Unsafe,
+    Reference = ValueBorrow | Object | ObjectBorrow | Raw,
 
     Safe = Value | ValueBorrow | Object | ObjectBorrow,
 
-    All = Safe | Unsafe,
+    All = Safe | Raw,
 }
 
 /// <summary>
@@ -91,7 +91,7 @@ public static class SemanticsMaskHelper
             SemanticsMask.Arc => Constants.ArcKeyword,
             SemanticsMask.ObjRef => Constants.ObjRefKeyword,
             SemanticsMask.ObjUniq => Constants.ObjUniqKeyword,
-            SemanticsMask.Unsafe => Constants.UnsafeKeyword,
+            SemanticsMask.Raw => Constants.RawKeyword,
             SemanticsMask.ValueBorrow => Constants.ValueBorrowKeyword,
             SemanticsMask.Object => Constants.ObjectKeyword,
             SemanticsMask.ObjectBorrow => Constants.ObjectBorrowKeyword,
@@ -121,7 +121,7 @@ public static class SemanticsMaskHelper
             SemanticsKind.Arc => SemanticsMask.Arc,
             SemanticsKind.ObjRef => SemanticsMask.ObjRef,
             SemanticsKind.ObjUniq => SemanticsMask.ObjUniq,
-            SemanticsKind.Unsafe => SemanticsMask.Unsafe,
+            SemanticsKind.Raw => SemanticsMask.Raw,
             _ => SemanticsMask.None,
         };
 

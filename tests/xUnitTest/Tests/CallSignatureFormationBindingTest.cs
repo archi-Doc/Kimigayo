@@ -10,7 +10,7 @@ public class CallSignatureFormationBindingTest
 {
     [Theory]
     [InlineData("Box<string>")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("(Box<string>, i32)")]
     [InlineData("[2 of Box<string>]")]
     [InlineData("() -> Box<string>")]
@@ -37,7 +37,7 @@ public class CallSignatureFormationBindingTest
 
     [Theory]
     [InlineData("Box<i32>")]
-    [InlineData("unsafe/Box<i32>")]
+    [InlineData("raw/Box<i32>")]
     [InlineData("(Box<i32>, i32)")]
     public void ValidSignaturesRemainCallable(string type)
     {
@@ -84,7 +84,7 @@ public class CallSignatureFormationBindingTest
     [Fact]
     public void WarmSignatureChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: unsafe/Box<i32>) => ()\n    func call(value: unsafe/Box<i32>) => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: raw/Box<i32>) => ()\n    func call(value: raw/Box<i32>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

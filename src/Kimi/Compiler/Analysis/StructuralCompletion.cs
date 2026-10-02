@@ -5,7 +5,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>Composes conservative source paths without evaluating constants or Scope Exit cleanup.</summary>
-internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
+/// <param name="isNever">Whether an evaluated node has Type Never.</param>
+/// <param name="isGuess">Whether a node is syntax the parser supplied for missing syntax, assumed here not to complete normally.</param>
+internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, bool>? isGuess = null)
 {
     private readonly Dictionary<Koto, Completion> cache = new(ReferenceEqualityComparer.Instance);
 
@@ -102,6 +104,9 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
         Completion result;
         switch (node)
         {
+            case Koto when isGuess?.Invoke(node) == true:
+                result = new(false, null);
+                break;
             case FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or TypeKoto or CompileTimeSwitchKoto:
                 result = new(true, null);
                 break;

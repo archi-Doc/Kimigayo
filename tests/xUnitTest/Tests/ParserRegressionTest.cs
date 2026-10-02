@@ -462,7 +462,7 @@ public class ParserRegressionTest
 
                 #Example
                 var item: obj/Container<C> = value
-                var converted = item@unsafe/C
+                var converted = item@raw/C
                 var called = transform(item, "text")
 
                 private func map<s/T>(value: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T

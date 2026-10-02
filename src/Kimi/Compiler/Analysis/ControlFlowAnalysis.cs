@@ -14,6 +14,12 @@ namespace Kimi.Compiler;
 /// <param name="Argument2">The second message argument.</param>
 public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Argument = null, object? Argument2 = null)
 {
+    /// <summary>Gets the part of the node that is the primary location, when it is not the whole node.</summary>
+    public SourceSpan? Span { get; init; }
+
+    /// <summary>Gets Advice formed from the facts.</summary>
+    public string? Advice { get; init; }
+
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, this.Argument2) : this.Code.ToString();
 
@@ -24,6 +30,9 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     public string? Note { get; init; }
 
     internal int Priority { get; init; } = 4;
+
+    /// <summary>Gets the syntax whose normal completion, down to the node, decided a check of a discarded tail.</summary>
+    internal Koto? CompletionRoot { get; init; }
 }
 
 /// <summary>Separates normal-expression typing from the target's result contract.</summary>
@@ -56,7 +65,7 @@ public sealed class ControlFlowNodeInfo
 /// </remarks>
 public sealed class ControlFlowAnalysis
 {
-    private const string PointerPrefix = "unsafe/";
+    private const string PointerPrefix = "raw/";
     private static readonly ControlFlowType IsizeType = new("isize");
 
     private readonly ControlFlowTypeSystem types;
@@ -90,10 +99,20 @@ public sealed class ControlFlowAnalysis
     private int transferCursor;
     private int registrationCursor;
 
+    // Created only after a parser recovery: completion that assumes the bodies the parser supplied never complete normally, and
+    // the syntax Errors of the supplied bodies it met.
+    private StructuralCompletion? writtenCompletion;
+    private List<DiagnosticKey>? suppliedCauses;
+
+    // SPEC 14.3.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
+    // need is unknown, such as an unresolved operation, may have.
+    private bool unsafeUsed;
+    private bool unsafeUncertain;
+
     private ControlFlowAnalysis(ControlFlowTypeSystem types)
     {
         this.types = types;
-        this.structural = new(node => this.types.GetExpressionType(node) == ControlFlowType.Never || this.nodes.GetValueOrDefault(node)?.ExpressionType == ControlFlowType.Never);
+        this.structural = new(this.IsNever);
         this.childCollector = new(this.childBuffer);
     }
 
@@ -143,6 +162,7 @@ public sealed class ControlFlowAnalysis
         this.arrivedTransfers.Clear();
         this.normalTransferArrivals.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
+        this.unsafeUsed = this.unsafeUncertain = false;
         this.Visit(root, true);
     }
 
@@ -151,12 +171,13 @@ public sealed class ControlFlowAnalysis
     {
         // A check that reads Binding's result at a node that Binding failed, or left resting on a failure, is not decided on
         // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement,
-        // and its warning is dropped. Structural checks stay independent of Binding, but require valid syntax.
+        // and its warning is dropped. Structural checks stay independent of Binding, but rest on a recovery that guessed what
+        // they read.
         foreach (var issue in this.issues)
         {
-            if (GuessedBy(issue) is { } syntax)
+            if (this.GuessedBy(issue) is { } syntax)
             {
-                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, [syntax]);
+                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, syntax);
             }
             else if (ReadsBinding(issue.Code) && Causes(issue) is { } causes)
             {
@@ -170,9 +191,10 @@ public sealed class ControlFlowAnalysis
 
         foreach (var warning in this.warnings)
         {
-            if (!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null)
+            if ((!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null) &&
+                this.GuessedBy(warning) is null)
             {
-                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2);
+                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span);
             }
         }
     }
@@ -183,17 +205,8 @@ public sealed class ControlFlowAnalysis
     // reachability. Dead transfers still supply result Types, not normal arrivals.
     internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
 
-    // A check rests on a recovery's syntax Error only where the recovery guessed what the check reads: an unlabeled jump or a
-    // label, or a require failure body supplied for a missing one (the empty block or an ErrorKoto). A recovered operand does not
-    // invalidate independently parsed target syntax, and a failure body written in source, even a recovered form, is judged on its own.
-    private static DiagnosticKey? GuessedBy(ControlFlowIssue issue)
-        => issue switch
-        {
-            { Node: LabeledKoto or JumpKoto { Label: "" } } or { Code: DiagnosticCode.RequireFallthrough_Kd, Node: CodeBlockKoto { Items.Count: 0 } } =>
-                issue.Node.CodeContext.RecoveryCause(issue.Node),
-            { Code: DiagnosticCode.RequireFallthrough_Kd, Node: ErrorKoto error } => error.Cause ?? DiagnosticKey.Unresolved,
-            _ => null,
-        };
+    // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
+    internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
 
     // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
     private static DiagnosticKey[]? Causes(ControlFlowIssue issue)
@@ -242,12 +255,75 @@ public sealed class ControlFlowAnalysis
         return left;
     }
 
-    private void Warn(Koto node, DiagnosticCode code, int priority = 4)
+    // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
+    private static bool IsBodyItem(Koto node) => node.Parent switch
+    {
+        CodeBlockKoto block => block.IsExpressionBody,
+        RequireKoto require => require.ElseBody == node,
+        MatchKoto match => KotoHelper.IsSelectionBody(match, node),
+        _ => false,
+    };
+
+    private bool IsNever(Koto node)
+        => this.types.GetExpressionType(node) == ControlFlowType.Never || this.nodes.GetValueOrDefault(node)?.ExpressionType == ControlFlowType.Never;
+
+    // The syntax Errors of the recoveries that guessed what a check reads, or null when it reads written syntax alone. A recovered
+    // operand does not invalidate independently parsed target syntax, so only the guessed target of an unlabeled jump or a label
+    // counts. A fallthrough or a discarded tail reads normal completion: it rests on the bodies the parser supplied for missing
+    // ones when the syntax completes normally only through them, since a written body might have returned or exited.
+    private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
+    {
+        var node = issue.Node;
+        if (!node.CodeContext.HasRecoveries)
+        {
+            return null;
+        }
+
+        if (node is LabeledKoto or JumpKoto { Label: "" })
+        {
+            return node.CodeContext.RecoveryCause(node) is { } syntax ? [syntax] : null;
+        }
+
+        return issue.Code is DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.RequireFallthrough_Kd or DiagnosticCode.DiscardedTail_Kd
+            ? this.SuppliedCompletion(node, issue.CompletionRoot ?? node) : null;
+    }
+
+    // Each syntax from the node up to the root completed normally for the check; one that completes only through supplied bodies
+    // makes the check rest on their syntax Errors.
+    private DiagnosticKey[]? SuppliedCompletion(Koto node, Koto root)
+    {
+        var causes = this.suppliedCauses ??= new();
+        var written = this.writtenCompletion ??= new(this.IsNever, this.IsSuppliedBody);
+        causes.Clear();
+        written.Clear();
+        var guessed = false;
+        for (Koto? part = node; part is not null && !guessed; part = part == root ? null : part.Parent)
+        {
+            guessed = this.structural.CanComplete(part) && !written.CanComplete(part);
+        }
+
+        return guessed && causes.Count > 0 ? [.. causes] : null;
+    }
+
+    // A body the parser supplied for a missing one, a recovery: the empty block in place of an indented body, or the Error
+    // expression in place of a single-item body (other Error expressions stand for operands). Records its syntax Error.
+    private bool IsSuppliedBody(Koto node)
+    {
+        if ((node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node))) && node.CodeContext.RecoveryCause(node) is { } cause)
+        {
+            this.suppliedCauses!.Add(cause);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void Warn(Koto node, DiagnosticCode code, int priority = 4, Koto? completionRoot = null)
     {
         node = KotoHelper.UnwrapParentheses(node);
         if (this.warningNodes.Add(node))
         {
-            this.warnings.Add(new(node, code) { Priority = priority });
+            this.warnings.Add(new(node, code) { Priority = priority, CompletionRoot = completionRoot });
             return;
         }
 
@@ -255,7 +331,7 @@ public sealed class ControlFlowAnalysis
         {
             if (this.warnings[i].Node == node && priority < this.warnings[i].Priority)
             {
-                this.warnings[i] = new(node, code) { Priority = priority };
+                this.warnings[i] = new(node, code) { Priority = priority, CompletionRoot = completionRoot };
                 break;
             }
         }
@@ -318,7 +394,9 @@ public sealed class ControlFlowAnalysis
         return true;
     }
 
-    private void WarnUnitTail(Koto body)
+    // Descends from the root through syntax that completes normally; the warning keeps the root, so it can tell whether that
+    // completion passes only through bodies the parser supplied.
+    private void WarnUnitTail(Koto body, Koto root)
     {
         if (!this.structural.CanComplete(body))
         {
@@ -329,7 +407,7 @@ public sealed class ControlFlowAnalysis
         {
             if (block.Items.Count > 0)
             {
-                this.WarnUnitTail(block.Items[^1]);
+                this.WarnUnitTail(block.Items[^1], root);
             }
 
             return;
@@ -338,35 +416,35 @@ public sealed class ControlFlowAnalysis
         body = KotoHelper.UnwrapParentheses(body);
         if (body is LabeledKoto label)
         {
-            this.WarnUnitTail(label.Target);
+            this.WarnUnitTail(label.Target, root);
         }
         else if (body is DoKoto scoped)
         {
-            this.WarnUnitTail(scoped.Body);
+            this.WarnUnitTail(scoped.Body, root);
         }
         else if (body is IfKoto conditional)
         {
             for (var i = 0; i < conditional.Branches.Count; i++)
             {
-                this.WarnUnitTail(conditional.Branches[i].Body);
+                this.WarnUnitTail(conditional.Branches[i].Body, root);
             }
 
             if (conditional.ElseBody is { } other)
             {
-                this.WarnUnitTail(other);
+                this.WarnUnitTail(other, root);
             }
         }
         else if (body is MatchKoto match && body is not TryKoto)
         {
             for (var i = 0; i < match.Arms.Count; i++)
             {
-                this.WarnUnitTail(match.Arms[i].Body);
+                this.WarnUnitTail(match.Arms[i].Body, root);
             }
         }
         else if (body is ExpressionKoto and not (UnitLiteralKoto or JumpKoto or LoopKoto or ForKoto or WhileKoto) &&
             this.nodes.GetValueOrDefault(body)?.ExpressionType is { } type && type != ControlFlowType.Unit && type != ControlFlowType.Never)
         {
-            this.Warn(body, DiagnosticCode.DiscardedTail_Kd, 1);
+            this.Warn(body, DiagnosticCode.DiscardedTail_Kd, 1, root);
         }
     }
 
@@ -462,9 +540,15 @@ public sealed class ControlFlowAnalysis
             }
         }
 
-        if (this.types.RequiresUnsafeContext(node) == true)
+        var requiresUnsafe = this.types.RequiresUnsafeContext(node);
+        if (requiresUnsafe == true)
         {
             this.CheckUnsafePermission(node);
+        }
+        else if (requiresUnsafe is null && node is ExpressionKoto)
+        {
+            // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
+            this.unsafeUncertain = true;
         }
 
         Flow flow;
@@ -620,7 +704,16 @@ public sealed class ControlFlowAnalysis
                 // Registration never evaluates its body. Its completion matters at scope exit only.
                 return new(true, ControlFlowType.Unit);
             case UnsafeBlockKoto unsafeBlock:
+                // SPEC 14.3.3: an operation uses the permission of the innermost enclosing Unsafe Block.
+                var (outerUsed, outerUncertain) = (this.unsafeUsed, this.unsafeUncertain);
+                (this.unsafeUsed, this.unsafeUncertain) = (false, false);
                 flow = this.Visit(unsafeBlock.Body, reachable);
+                if (!this.unsafeUsed && !this.unsafeUncertain)
+                {
+                    this.WarnUnnecessaryUnsafe(unsafeBlock);
+                }
+
+                (this.unsafeUsed, this.unsafeUncertain) = (outerUsed, outerUncertain || this.unsafeUncertain);
                 var unsafeInfo = this.RentInfo();
                 unsafeInfo.CanCompleteNormally = flow.Normal;
                 unsafeInfo.IsCompletionPending = flow.Pending;
@@ -779,10 +872,14 @@ public sealed class ControlFlowAnalysis
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
                 var destinationPointer = IsPointer(destinationType);
-                // SPEC 5.4: same-Type acquisition needs no unsafe context.
-                if ((sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
+                // SPEC 5: a conversion cannot cause undefined behavior, so it needs no unsafe context. An address (@raw, SPEC 5.4),
+                // a borrow and a follow convert no pointer.
+                var borrow = conversion.Right is TypeSemanticsKoto { Type: null } bare
+                    ? bare.Identifier == Constants.FollowOperation ||
+                        (CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Raw or SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                    : conversion.Right is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
+                if (!borrow && (sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
                 {
-                    this.CheckUnsafePermission(conversion);
                     if ((sourcePointer && destinationType is not null && !destinationPointer && destinationType.Name != "usize") ||
                         (destinationPointer && sourceType is not null && !sourcePointer && sourceType.Name is not ("usize" or "Never" or "integer literal")))
                     {
@@ -881,6 +978,32 @@ public sealed class ControlFlowAnalysis
         if (!KotoHelper.IsUnsafeContext(node))
         {
             this.Error(node, DiagnosticCode.UnsafeBlockRequired_Kd);
+        }
+        else
+        {
+            this.unsafeUsed = true;
+        }
+    }
+
+    // SPEC 14.3.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body, an
+    // independent scope (SPEC 14.3.1), declares no Name and registers no defer; otherwise the Advice says what would change.
+    private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
+    {
+        var scoped = false;
+        if (block.Body is CodeBlockKoto { IsExpressionBody: false } body)
+        {
+            foreach (var item in body.Items)
+            {
+                scoped |= item is FieldKoto or FunctionKoto or DeferredBlockKoto or DeclarationContainerKoto;
+            }
+        }
+
+        var advice = scoped
+            ? "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately"
+            : "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
+        if (this.warningNodes.Add(block))
+        {
+            this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice });
         }
     }
 
@@ -1375,15 +1498,15 @@ public sealed class ControlFlowAnalysis
         {
             if (node is DoKoto scoped)
             {
-                this.WarnUnitTail(scoped.Body);
+                this.WarnUnitTail(scoped.Body, scoped.Body);
             }
             else if (node is IfKoto or MatchKoto)
             {
-                this.WarnUnitTail(node);
+                this.WarnUnitTail(node, node);
             }
             else if (node is FunctionKoto { IsAnonymous: true, Body: { } body })
             {
-                this.WarnUnitTail(body);
+                this.WarnUnitTail(body, body);
             }
         }
 

@@ -338,4 +338,5 @@ When the CSP is introduced, it must:
 - report the diagnostic records of §23.3.6 unchanged, with a public schema for their JSON form;
 - give stable handles to syntax and semantic nodes within a snapshot; syntax handles include excluded syntax (§19.5) and state that the node is excluded and which innermost directive excludes it, while semantic handles cover selected syntax only;
 - bind every check, test and measurement to its exact source and configuration, and report its outcome and any remaining uncertainty;
+- list the places where unsafe promises are made, each with the obligations to satisfy (the conditions of §5 and the `- safety:` item): every Unsafe Block with the operations that use its permission, every call of an unsafe function, and every `#LibraryImport` declaration;
 - keep the principle of §23.2 and the outcomes of §23.3.3, and never narrow a language rule.

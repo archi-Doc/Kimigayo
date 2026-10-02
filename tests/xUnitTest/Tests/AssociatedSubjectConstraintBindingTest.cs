@@ -44,7 +44,7 @@ public class AssociatedSubjectConstraintBindingTest
     [Theory]
     [InlineData("(Box<Source>, i32)")]
     [InlineData("[2 of Box<Source>]")]
-    [InlineData("unsafe/Box<Source>")]
+    [InlineData("raw/Box<Source>")]
     public void NestedTypeFormationCannotBypassTheSubjectClause(string type)
     {
         var c = MinimalEmissionTest.Analyze(Source(false, "string", "i32").Replace("x: Box<Source>", "x: " + type, StringComparison.Ordinal));

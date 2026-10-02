@@ -109,6 +109,36 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         }
     }
 
+    // DIAGNOSTICS.md §4.3: a fallthrough or a discarded tail reached only through a body the parser supplied rests on the body's
+    // syntax Error, so the console and the language server show the syntax record alone; one that written syntax reaches stays,
+    // and the result it leaves undelivered rests on the fallthrough (§2 rule 1).
+    [Theory]
+    [InlineData("guessed-then-body", "MissingSyntax_Kd")]
+    [InlineData("guessed-discarded-tail", "MissingSyntax_Kd")]
+    [InlineData("written-branch-falls-through", "FunctionFallthrough_Kd,MissingSyntax_Kd,DiscardedValue_Kd")]
+    [InlineData("written-fallthrough", "FunctionFallthrough_Kd,DiscardedValue_Kd")]
+    public void CliAndLspShowTheRecordsOfSuppliedBodies(string name, string codes)
+    {
+        var check = DiagnosticCorpus.Check(DiagnosticCorpus.Syntax(name).Source);
+        Assert.Equal(codes.Split(','), check.Diagnostics.Select(static x => x.Code));
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new DiagnosticResult(check.Diagnostics, check.Sources), string.Empty);
+        output.WriteLine(console.Text);
+        foreach (var record in check.Diagnostics)
+        {
+            Assert.Contains(record.Code, console.Text, StringComparison.Ordinal);
+            Assert.Contains(record.Label ?? record.Message, console.Text, StringComparison.Ordinal);
+        }
+
+        var identity = SourceIdentity.FromPath(check.Sources[check.Diagnostics[0].Source].Path!);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = WorkspaceCheck.Place(check, [identity], identity, related)[identity];
+            Assert.Equal(check.Diagnostics.Select(static x => x.Code), sent.Select(static x => x.Code));
+            Assert.Equal(check.Diagnostics.Select(static x => x.Display!.Range), sent.Select(static x => (SourceRange?)x.Range));
+        }
+    }
+
     private static string Describe(CheckDiagnostic diagnostic)
         => $"{diagnostic.Code} {diagnostic.Span}: {diagnostic.Message}" + (diagnostic.Reason is null ? string.Empty : " [" + string.Join(", ", diagnostic.Reason.Select(static x => $"{x.Name}={x.Value}")) + "]");
 }

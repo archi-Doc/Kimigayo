@@ -48,7 +48,7 @@ public sealed partial class OwnershipAnalysis
     {
         loan = -1;
         reference = -1;
-        if (IsPointerPlace(KotoHelper.UnwrapParentheses(source)))
+        if (ElementAccess.IsRawPlace(KotoHelper.UnwrapParentheses(source)))
         {
             // SPEC 5.2: read a raw string Place in place through its handle address.
             // No owner, Move or Loan is created; the comparison has no Place.

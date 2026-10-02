@@ -308,27 +308,27 @@ let yes = a.same(Box<i32>.init(1))   // OK: i32 is Equatable.
 
 ## 7.5. Unsafe functions
 
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. A function is declared unsafe only when its caller has obligations that its Types cannot express; those obligations are its safety contract. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.
 
 ```kimi
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
 // with valid range, alignment, provenance, and read permission.
 // Access must obey reference, aliasing, and data-race rules.
-unsafe func read(pointer: unsafe/i32) -> i32
+unsafe func read(pointer: raw/i32) -> i32
     unsafe => return *pointer
 
 // Safety: the same requirements as read.
-unsafe func forward(pointer: unsafe/i32) -> i32
+unsafe func forward(pointer: raw/i32) -> i32
     unsafe
         return read(pointer)
 
-unsafe func invalidRead(pointer: unsafe/i32) -> i32
+unsafe func invalidRead(pointer: raw/i32) -> i32
     return *pointer // Error: unsafe func does not make its body an unsafe context.
 ```
 
 `unsafe` is not part of the Signature and does not distinguish overloads. Overload resolution ignores the caller's unsafe context; the selected call's requirement is checked afterward, and another overload is never substituted because the selected one is unsafe.
 
-Unsafe functions support direct calls only. Taking one as a function value, assigning it to a variable, passing it as an argument or converting it to an ordinary Function Type is an error. Unsafe Function Types are not specified in this revision (§5.6).
+Unsafe functions support direct calls only. Taking one as a function value, assigning it to a variable, passing it as an argument or converting it to an ordinary Function Type is an error. Unsafe Function Types are not specified in this revision (Appendix D).
 
 ```kimi
 let reader = read // Error: an unsafe function cannot be taken as a function value.

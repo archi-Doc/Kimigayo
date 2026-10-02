@@ -24,7 +24,7 @@ public sealed partial class Binding
 
         var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
         var copyCases = admitted & ~Exclusive;
-        if ((admitted & Exclusive) == 0 || (copyCases & ~(SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Unsafe)) != 0)
+        if ((admitted & Exclusive) == 0 || (copyCases & ~(SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw)) != 0)
         {
             return false;
         }
@@ -436,7 +436,7 @@ public sealed partial class Binding
             // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
             return (admitted & SemanticsMask.Borrow) == 0 &&
                 ((admitted & SemanticsMask.Object) == 0 || this.HasValueRole(type, scope, true)) &&
-                ((admitted & (SemanticsMask.Owner | SemanticsMask.Unsafe)) == 0 || this.HasValueRole(type, scope, false));
+                ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) == 0 || this.HasValueRole(type, scope, false));
         }
 
         return false;
@@ -468,7 +468,7 @@ public sealed partial class Binding
         {
             return true;
         }
-        else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope))
+        else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Raw, scope))
         {
             return true;
         }

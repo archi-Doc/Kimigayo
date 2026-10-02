@@ -594,20 +594,24 @@ Exit:
 
     private static List<string>? ParseOriginParameters(ref TokenReader reader)
     {
-        if (!reader.TryConsume(TokenKind.OpenBrace))
+        if (!reader.TryConsume(TokenKind.OpenBrace, out var open, false))
         {
             return null;
         }
 
+        // SPEC 15.3.2: a header names one or more slots; a Type without own slots omits it, so empty braces are an error and
+        // recover as an omitted header.
         var list = new OriginNameList();
+        var reported = false;
         reader.SkipSeparators();
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
             var token = reader.Read();
             if (!token.Kind.IsIdentifierOrContextualKeyword() || reader.GetSpan(token) is "static" or "_")
             {
-                reader.Expect(SyntaxForm.Name, token);
+                reader.Expect(SyntaxForm.OriginSlotName, token);
                 reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
+                reported = true;
                 break;
             }
 
@@ -627,13 +631,20 @@ Exit:
             reader.SkipSeparators();
         }
 
-        if (!reader.TryConsume(TokenKind.CloseBrace, out _, true))
+        if (list.Count == 0 && !reported && reader.CurrentTokenKind == TokenKind.CloseBrace)
         {
-            reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
-            reader.TryConsume(TokenKind.CloseBrace);
+            reader.Expect(SyntaxForm.OriginSlotName);
         }
 
-        return list;
+        if (!reader.TryConsume(TokenKind.CloseBrace, out var close, true))
+        {
+            reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
+            reader.TryConsume(TokenKind.CloseBrace, out close, false);
+        }
+
+        // The header is a related location of the diagnostics that name its slots (SPEC 15.3.2).
+        list.HeaderSpan = new(open.Start, Math.Max(close.End, list.Spans.Count == 0 ? open.End : list.Spans[^1].End) - open.Start);
+        return list.Count == 0 ? null : list;
     }
 
     /// <summary>Parses a local binding declaration.</summary>
@@ -3073,17 +3084,18 @@ CloseParameters:
             return ParseBlock(ref reader);
         }
 
-        // The empty body stands for the missing one, so a check that reads it rests on the Error (DIAGNOSTICS.md §4.3). The rest of
-        // the header's line goes with it, so an aligned else on the next line still continues the header.
+        // An empty body is supplied where the body is missing. It is a recovery: a check that reads its Type or its normal
+        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3). The rest of a statement header's line
+        // goes with it, so an aligned else on the next line still continues the header.
         var cause = reader.Expect(SyntaxForm.Body);
-        var body = new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
-        reader.CodeContext.RecordRecovery(body, cause);
+        var supplied = new CodeBlockKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0), []);
+        reader.CodeContext.RecordRecovery(supplied, cause);
         if (statementHeader)
         {
             reader.SkipHeaderLine();
         }
 
-        return body;
+        return supplied;
     }
 
     internal static CodeBlockKoto ParseRequiredBody(ref TokenReader reader, bool ifBody = false)
@@ -3108,9 +3120,12 @@ CloseParameters:
         var arrow = reader.Read();
         if (!reader.SameLine(headerEnd, arrow.Span.Start) || !reader.SameLine(arrow.Span.End, reader.CurrentTokenRange.Start) || IsExpressionBoundary(ref reader))
         {
-            // The expression body belongs on the header's line, right after its arrow.
-            reader.Expect(SyntaxForm.Expression);
-            return reader.NewErrorKoto();
+            // The expression body belongs on the header's line, right after its arrow. The Error expression is supplied for the
+            // missing body, a recovery like the empty block of a missing indented body.
+            var cause = reader.Expect(SyntaxForm.Expression);
+            var supplied = reader.NewErrorKoto();
+            reader.CodeContext.RecordRecovery(supplied, cause);
+            return supplied;
         }
 
         var region = (reader.SingleBodyRegion, reader.IfBodyRegion);

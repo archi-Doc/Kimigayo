@@ -251,6 +251,11 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 13.5.5.2: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
+    private static bool BorrowsWrittenSlot(BoundType type)
+        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
+            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
     {
@@ -346,6 +351,19 @@ public sealed partial class Binding
         return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
     }
 
+    // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
+    // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
+    // Origin, and any other one is static, which fits every destination.
+    private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
+    {
+        var origin = ResultFunction(conversion)?.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components: [var declared], Origin: { } result } declaredResult &&
+            declaredResult.Semantics == semantics && ReferenceEquals(declared, referent) ? result : BoundOrigin.Static;
+        var borrowed = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+        Complete(conversion.Right, borrowed);
+        conversion.ConversionBinding = ConversionBinding.Borrow;
+        return Complete(conversion, borrowed);
+    }
+
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
@@ -397,6 +415,40 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
+        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.RawKeyword, HasOrigin: false })
+        {
+            // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and
+            // converts the borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is
+            // recorded on the operator.
+            var stored = this.BindNode(conversion.Left, scope);
+            if (stored is null)
+            {
+                return Complete(conversion, null);
+            }
+
+            if (ReferenceEquals(stored, BoundType.Never))
+            {
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, stored);
+            }
+
+            BoundType borrowed;
+            if (ElementAccess.IsRawPlace(conversion.Left))
+            {
+                // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
+                borrowed = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
+            }
+            else if (!BorrowsWrittenSlot(stored) ||
+                !this.AdaptInput(conversion.Left, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
+            {
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+            }
+
+            Complete(conversion.Right, borrowed);
+            conversion.ConversionBinding = ConversionBinding.Address;
+            return Complete(conversion, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
+        }
+
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             var pattern = this.BindType(conversion.Right, scope, this.TypeContext(conversion.Right, scope) with { SuppressOuter = true });
@@ -423,6 +475,11 @@ public sealed partial class Binding
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
             {
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
+            }
+
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawPlace(conversion.Left))
+            {
+                return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
 
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
@@ -513,9 +570,12 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
-                (StructStorage.IsStruct(operandType) || Compiler.EnumStorage.IsEnum(operandType) || operandType.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ReferenceTypes.IsStorage(operandType) ||
-                    ScalarTypes.Supports(operandType) || ReferenceEquals(operandType, BoundType.Unit) || ReferenceEquals(operandType, BoundType.String) || IsBorrow(operandType.Semantics) || IsObjectSemantics(operandType.Semantics)))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawPlace(conversion.Left))
+            {
+                return this.BorrowRawPlace(conversion, semantics, operandType);
+            }
+
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && BorrowsWrittenSlot(operandType))
             {
                 // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
@@ -572,8 +632,10 @@ public sealed partial class Binding
         {
             this.floatingIntegerLiteral = fit && literal && target is { IsFloatingPoint: true }
                 ? operand as NumberLiteralKoto ?? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null;
-            // SPEC 5.4: an integer literal pointer-cast input is first fitted to usize.
-            source = this.BindNode(conversion.Left, scope, fit ? target : literal && ReferenceTypes.IsPointer(target) ? BoundType.USize : null);
+            // SPEC 5.4: an integer literal pointer-cast input is first fitted to usize; null@raw/U is Typed Null Formation, a null
+            // of the target Type (SPEC 5.1).
+            var pointerInput = !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
+            source = this.BindNode(conversion.Left, scope, fit ? target : pointerInput);
         }
         finally
         {

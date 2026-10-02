@@ -354,9 +354,10 @@ public sealed class LlvmEmitter
             return resultType is null ? null : new(name, resultType, parameters);
         }
 
-        // Binding admits only fixed-width integers, f32/f64 and raw pointers (an opaque ptr).
+        // Binding admits fixed-width integers, f32/f64, raw pointers and ref/uniq borrows of C-exchangeable referents, which pass
+        // the referent's address (SPEC 22.3.2); no Scalar borrow is passed by value.
         static string? ImportType(BoundType type)
-            => ReferenceTypes.IsPointer(type) || type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
+            => ReferenceTypes.IsPointer(type) || ReferenceTypes.IsReference(type) ? "ptr" : type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
     }
 
     // Only the selected implicit Application body executes. Other source-module

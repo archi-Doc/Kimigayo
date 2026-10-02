@@ -31,7 +31,7 @@ The table is the minimal set that language rules name, not a promise of a genera
 | `RangeIterator<T>`, `ClosedRangeIterator<T>` | Owned, Non-Copy Iterators with `Item` `T`, requiring `T is PrimitiveInteger`; no public constructor or entry conformance (§4.6.3.4) |
 | `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` publishing `place ref/T during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, `UniqIndexable<K>` existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and the three iteration conformances with the pair items of §14.6.2 |
-| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, intrinsic Origin/Loan/variance metadata and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
+| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, `Loan<T>` Fields and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
 | `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and its `preserves results` bound for `next` (§8.4.10, §22.1.2.4) |
@@ -39,6 +39,8 @@ The table is the minimal set that language rules name, not a promise of a genera
 | `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place ref/Element during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self` (§4.6.9) |
 | `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>` and `owning`, `borrowing` under §22.1.2.3 |
 | `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
+| `Raw` group | `allocate`, `release`, `initialize` and `slice` with the signatures and contracts of §5.6 |
+| `Loan<T>` | Compiler-managed zero-sized struct over a complete borrow Type `T` whose outer Semantics is `ref`, `uniq`, `objref` or `objuniq`; safe `init(value: T)`; analyzed as storing `T`, Copy exactly when `T` is Copy (§15.3.5) |
 | Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed, ObjectPayload and PrimitiveInteger); not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
 | Whole-value update intrinsics | Ordinary generic declarations `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts; their signatures impose no Sealed requirement, and completeness is checked at each actual storage target |
@@ -183,7 +185,7 @@ for item in iterator@uniq
 
 An Iterator's `Item` names no Origin parameter of `next`, so its items satisfy the [independence of published results](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) (§15.6.3): an item depends neither on the receiver Loan of that call nor on the Iterator's own Storage. An exclusive item is either a child split from the Iterator's authority (§22.1.2.5) or a value the Iterator transfers out, such as a stored `uniq` reference, so moving or freeing the Iterator's Storage invalidates no returned item. Consequently, an item of an Iterator `J` stored behind a borrow `s/J during o` keeps no Loan of `o`: a wrapper may reach and step `J` through `o` while earlier items of `J` are retained.
 
-`Iterator` declares `effect LendingIterator.next preserves results` (§8.4.10.3): the effects of `next` conflict with no Loan kept by an item that the same Iterator returned earlier, including Loans kept through ordinary transfer or Reborrow of that item. A Move of the Iterator carries the bound. Its declaration, verification, use by generic and erased callers and the single-Field delegation rule are those of §8.4.10; every implementation, including specializations and callees, must satisfy it, user Types that declare `Self is Iterator` undergo the same verification, and nothing is derived from `LendingIterator` automatically. Composite adapters that step several Iterators, such as `zip` or `chain`, are not Iterators under this bound. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
+`Iterator` declares `effect LendingIterator.next preserves results` (§8.4.10.3): the effects of `next` conflict with no Loan kept by an item that the same Iterator returned earlier, including Loans kept through ordinary transfer or Reborrow of that item. A Move of the Iterator carries the bound. Its declaration, verification, use by generic and erased callers and delegation are those of §8.4.10 (§8.4.10.5); every implementation, including specializations and callees, must satisfy it, user Types that declare `Self is Iterator` undergo the same verification, and nothing is derived from `LendingIterator` automatically. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
 
 ```kimi
 func nextPair<I>(iterator: uniq/I) -> (Option<I.Item>, Option<I.Item>)
@@ -197,7 +199,7 @@ Destroying or replacing the whole Iterator is an effect separate from `next`: a 
 
 #### 22.1.2.5. Standard storage boundary
 
-The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to the standard declaration identities: no alias, re-export or same-spelled declaration grants it. Public Iterators keep these Types in private Fields and never expose them in results or associated Types. No public exclusive Slice or raw-pointer conversion is added.
+The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to the standard declaration identities: no alias, re-export or same-spelled declaration grants it. Public Iterators keep these Types in private Fields and never expose them in results or associated Types. No public exclusive Slice is added. The operations are ordinary Kimigayo built on raw pointers (§5); only the representations of Array and Dictionary stay compiler-managed.
 
 | Type | Responsibility |
 | --- | --- |
@@ -205,7 +207,7 @@ The internal group `Kimi.Storage` holds the operations that split standard colle
 | `UniqRemainder<E>` | The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements |
 | `OwnedRemainder<E>` | Heap Storage transferred from `Array<E>` and the destruction responsibility for unreturned elements, retaining `E`'s internal dependencies |
 
-The contiguous remainders are parameterized by the complete element Type `E`, with `storage: unsafe/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder holds the Loan of the Array or fixed-array source from which it was constructed. Its safe results keep that source and `E`'s internal dependencies; the raw pointer field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads.
+The contiguous remainders are parameterized by the complete element Type `E`, with `storage: raw/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder keeps the Loan of the Array or fixed-array source from which it was constructed in a `Loan<ref/E during source>` or `Loan<uniq/E during source>` Field (§15.3.5); the Dictionary remainders use `Loan<ref/(K, V) during source>` and `Loan<uniq/(K, V) during source>`. Their safe results keep that source and the element Types' internal dependencies; the raw pointer Field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads.
 
 | Signature template | Contract |
 | --- | --- |
@@ -229,11 +231,11 @@ internal func takeFirst<E>(state: uniq/OwnedRemainder<E>)
 
 Borrowed results depend on `source`, never on the `state` borrow or slot. The shared form needs no non-overlap proof but still delivers each element once, in order.
 
-The contiguous owning remainder's `takeFirst` and `drop` bodies use ordinary Kimigayo Copy/Move and cleanup. The internal unsafe `release<E>(storage: unsafe/E)` primitive releases the original heap region after the caller has transferred or destroyed every initialized element. It accepts null for an empty region, accesses no element and invokes no element destructor. The caller retains the raw-pointer validity and unique-release obligations; failures follow Runtime.Free (§22.5.2). It is confined to `Kimi.Storage`, with no public raw deallocation API.
+The contiguous owning remainder's `takeFirst` and `drop` bodies use ordinary Kimigayo: they take or destroy elements as raw Places (§5.2.3) and release the original heap region with `Raw.release` (§5.6) after every initialized element is transferred or destroyed.
 
-The contiguous `splitFirst` bodies are ordinary Kimigayo. Two internal unsafe primitives provide their capability boundary: `lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source` and `split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source`. The caller proves that the aligned, initialized element belongs to the live source region; for `split`, it removes exactly that element from the untaken remainder before the call and never splits it again. The primitives neither advance state nor access the element's contents, allocate or call user code. They grant only the shared or split-child capability and the stated source dependency. A raw pointer alone grants neither capability, and these compiler-known internal declarations cannot be replaced by user declarations or reached from user source.
+The `splitFirst` bodies are ordinary Kimigayo. They lend an element by borrowing its raw Place, `@ref` for a shared remainder and `@uniq` for an exclusive one, and return it under `during state.source` (§5.2.2, §15.6.3); the Dictionary forms borrow the raw Places that `keyAt` and `valueAt` address. Before an exclusive element is published, the body removes exactly that element from the untaken remainder and never lends it again. The range, non-overlap and initialization guarantees are unsafe obligations (§5.2.1) that the Kimi library bears. `InlineStorage<A>` places `A` at offset 0, so `storage@follow@raw@raw/E` addresses the first element of a fixed-array owning remainder. The compiler-known internal operations that remain are `borrowStorage`, `ownStorage`, `dictionaryStorage`, `keyAt`, `valueAt` and `placeEntry`, because the Array and Dictionary representations are compiler-managed; they cannot be replaced by user declarations or reached from user source.
 
-The Kimigayo implementation of `tryGetPairUniq` (§4.6.10) consumes an exclusive contiguous remainder. It validates and orders the two logical positions, relinquishes skipped prefixes, and splits each selected element once before discarding the remainder. It uses the same `split` primitive; field updates only restrict the original authority and never grant access outside it. Returning the two children in argument order does not change their source dependencies or non-overlap.
+The Kimigayo implementation of `tryGetPairUniq` (§4.6.10) consumes an exclusive contiguous remainder. It validates and orders the two logical positions, relinquishes skipped prefixes, and splits each selected element once before discarding the remainder. It splits with the same raw Place borrow; field updates only restrict the original authority and never grant access outside it. Returning the two children in argument order does not change their source dependencies or non-overlap.
 
 The following also hold for empty and zero-sized Storage:
 
@@ -242,7 +244,7 @@ The following also hold for empty and zero-sized Storage:
 3. an `OwnedRemainder` remains a complete handle over the unreturned part; it publishes neither a reference to the whole `S` with holes nor Take through a borrow;
 4. destroying a `RefRemainder` or `UniqRemainder` ends only the capabilities it holds; destroying an `OwnedRemainder` destroys the unreturned part once in the ordinary cleanup order and frees the region, ending no returned Loan or responsibility and publishing the external effects of that destruction.
 
-The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and a count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check. Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". This built-in boundary guarantees Storage validity, dynamic non-overlap and initialization state. Everything else an Iterator does, including user delegation, is checked ordinarily, and no user Storage can register with the boundary.
+The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and a count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check. Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". The Kimi library guarantees Storage validity, dynamic non-overlap and initialization state as unsafe obligations. Everything else an Iterator does, including user delegation, is checked ordinarily.
 
 **Published effects.** Result anchors, parent Loans, remainder non-overlap and the effects on statics, captures and cleanup enter the public summary of each operation (§15.6.4). Generic, separately compiled and indirect calls compose those summaries without reanalyzing private bodies and treat unknown effects conservatively. They never erase an existing Loan because a conversion or erasure dropped a guarantee. An Unsafe designation grants neither independence nor a longer Origin. The effect bound of an Iterator's `next` (§22.1.2.4) is checked at each use, separately from the whole-value destruction summary; element-dependent cleanup uses the symbolic summaries of §4.7.5. No runtime tag is added; the only effect declarations are the bounds of §8.4.10.
 
@@ -356,17 +358,30 @@ Shared code reaches a key through a supplied initialize-and-address operation (�
 
 ### 22.3.1. Declaration and call contract
 
-`#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independent of the source function name. §20.8.2 validates the actual supply, kind and member closure; that validation does not replace the source and ABI obligations below.
+`#LibraryImport("library", "symbol")` on a bodyless func, safe or unsafe, selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independent of the source function name. §20.8.2 validates the actual supply, kind and member closure; that validation does not replace the source and ABI obligations below.
 
-Imports are allowed only directly in a group or rootgroup, or as receiverless struct type functions. Receivers, generic or Origin parameters, parameter defaults, varargs, specializations and executable bodies are rejected. Ordinary parameter-name rules apply, including the `!` boundary and external/internal renaming; name contracts change source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+Imports are allowed only directly in a group or rootgroup, or as receiverless struct type functions. Receivers, generic parameters, Origin parameters inherited from an enclosing Container, parameter defaults, varargs, specializations and executable bodies are rejected; borrow annotations introduce signature Origins as usual (§22.3.2). Ordinary parameter-name rules apply, including the `!` boundary and external/internal renaming; name contracts change source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; imported functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+
+**Declaration promise.** An import declaration promises that, for every call satisfying its signature and its `- safety:` conditions, the foreign implementation behaves as a Kimigayo function with the same signature would:
+
+- it accesses only what its arguments permit: reads through `ref`, and exclusive access through `uniq` for the duration of the call;
+- when it writes a borrowed Field of a received value, the new value satisfies that Field's Type, Origin and authority;
+- it retains no borrow beyond the Origins of its result;
+- it returns a valid value of its result Type;
+- it keeps the unwinding restrictions below.
+
+A false promise is undefined behavior, and the author of the declaration is responsible for it. An import is an `unsafe func` only when its callers have obligations that its Types cannot express, which its `- safety:` item states (§7.5). The effects of a call are the accesses its signature permits through its arguments and an environment effect (§8.4.10.2); no declaration form states other effects.
 
 ```kimi
 group Native
     #LibraryImport("observer", "observe_record")
-    public unsafe func observe(record: unsafe/NativeRecord) -> ()
+    public func observe(record: uniq/NativeRecord) -> ()
+
+    #LibraryImport("observer", "observe_raw")
+    public unsafe func observeRaw(record: raw/NativeRecord) -> ()
 ```
 
-NativeRecord can be the C-layout example in §21.1.3; the corresponding C declaration is `void observe_record(NativeRecord *record);`. The raw pointer is not read-only. Layout, validity, lifetime, writes, retention, ownership, and active Loans remain the caller's contract; this example supplies no new pointer-acquisition or raw-storage construction API.
+NativeRecord can be the C-layout example in §21.1.3; the corresponding C declarations are `void observe_record(NativeRecord *record);` and `void observe_raw(NativeRecord *record);`. `observe` is safe: the exclusive borrow states that the record is written only during the call and not retained. `observeRaw` is unsafe because a raw pointer states nothing; its `- safety:` item must give the layout, validity, lifetime, write, retention and ownership conditions, and the absence of conflicting Loans.
 
 Arguments are acquired once, from left to right, and then passed under the selected ABI. No automatic marshalling, retention, allocation, freeing or ownership acquisition occurs. Normal return resumes ordinary cleanup. C++ exceptions, SEH unwind, longjmp, callbacks and reentry must not cross Kimigayo frames; control handled entirely inside the foreign code is allowed. Violations carry no result or cleanup guarantee. The FP boundary contract of §21.5.4 applies, and §21.5.5 governs `nounwind` and `landingpad` generation.
 
@@ -383,7 +398,10 @@ The physical signature is computed once and shared between declaration and call:
 | i32 / u32 | int32_t / uint32_t | i32 |
 | i64 / u64 | int64_t / uint64_t | i64 |
 | f32 / f64 | float / double | float / double |
-| unsafe/T | Corresponding data pointer | ptr, address space 0 |
+| raw/T | Corresponding data pointer | ptr, address space 0 |
+| ref/T | `const T *`, non-null | ptr, address space 0 |
+| uniq/T | `T *`, non-null | ptr, address space 0 |
+| Option<ref/T>, Option<uniq/T> | Pointer that may be null | ptr, address space 0 |
 | Unit, result only | void | void |
 
 These entries use ccc with no signext, zeroext, inreg, byval or sret. i8 and i16 are not widened to i32, and vararg default promotions are not applied. Other numeric conversions are separate language operations. LLVM handles registers, stack arguments beyond the fourth, shadow space and stack alignment; unused upper bits are not meaningful. Additional optimization attributes need independent proof.
@@ -393,7 +411,9 @@ declare dllimport i8 @native_i8(i8)
 declare dllimport i16 @native_u16(i16)
 ```
 
-All other parameter and result Types are excluded, including bool, char, string, borrows, object handles, aggregates (even C-exchangeable structs and arrays), function and Closure values, i128/u128 and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs a separate argument and result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
+In the borrow rows, `T` is C-exchangeable storage (impl §21.1.6). A borrow annotation introduces signature Origins as usual (§15.3.4), and result Origins follow §15.4; Origin parameters inherited from an enclosing Container remain rejected. An argument passes the address of its referent: the Scalar by-value optimization of `ref` parameters (impl §21.5.5) does not apply. An Option uses the one-word nonnull representation (impl §21.1.5), with None as the null pointer.
+
+All other parameter and result Types are excluded, including bool, char, string, object handles and borrows of other Types, aggregates (even C-exchangeable structs and arrays), function and Closure values, i128/u128 and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs a separate argument and result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
 
 ## 22.4. Minimal console output
 
@@ -621,15 +641,21 @@ The public group `Kimi.Windows` exposes Windows-specific APIs through ordinary �
 ```kimi
 public group Windows
     #LibraryImport("kernel32", "QueryPerformanceCounter")
-    public unsafe func queryPerformanceCounter(value: unsafe/i64) -> i32
+    public func queryPerformanceCounter(value: uniq/i64) -> i32
 
     #LibraryImport("kernel32", "QueryPerformanceFrequency")
-    public unsafe func queryPerformanceFrequency(value: unsafe/i64) -> i32
+    public func queryPerformanceFrequency(value: uniq/i64) -> i32
 ```
 
-They preserve the native success flag: nonzero is success and zero is failure. Counter output is a count; frequency output is counts per second. The caller supplies live, writable, eight-byte-aligned i64 storage and prevents conflicting access during the call. Neither function retains the pointer. These functions do not allocate or convert errors into Abort themselves. They belong to the Windows x64 profile, not a cross-platform native ABI.
+They preserve the native success flag: nonzero is success and zero is failure. Counter output is a count; frequency output is counts per second. The exclusive borrow supplies live, writable, aligned i64 storage without conflicting access for the call; neither function retains it, so both declarations are safe (§22.3.1). These functions do not allocate or convert errors into Abort themselves. They belong to the Windows x64 profile, not a cross-platform native ABI.
 
-The confined internal primitive `Storage.addressOfI64(value: uniq/i64) -> unsafe/i64` is unsafe and returns the address of the original initialized referent, without copying or allocation. It neither extends its lifetime nor transfers ownership. Its library caller must restrict pointer use to that live exclusive borrow, prevent conflicting access and prevent the pointer from escaping. The Time adapter obtains the pointer inside an unsafe block and uses it only for the synchronous native output call. This primitive is not a public safe-reference-to-pointer API (§5.6).
+```kimi
+func readCounter() -> i64
+    var value: i64 = 0
+    require Windows.queryPerformanceCounter(value@uniq) != 0 else
+        $abort("Performance counter query failed")
+    return value
+```
 
 ### 22.7.2. Duration
 

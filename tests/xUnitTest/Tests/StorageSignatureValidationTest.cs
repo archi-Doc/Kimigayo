@@ -34,9 +34,6 @@ public class StorageSignatureValidationTest
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
-    [InlineData(KimiDeclarationId.StorageLend)]
-    [InlineData(KimiDeclarationId.StorageSplit)]
-    [InlineData(KimiDeclarationId.StorageRelease)]
     public void EveryOperationRequiresItsOwnElementParameter(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();
@@ -54,8 +51,6 @@ public class StorageSignatureValidationTest
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
-    [InlineData(KimiDeclarationId.StorageLend)]
-    [InlineData(KimiDeclarationId.StorageSplit)]
     public void ResultsRetainTheCompleteElementType(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();
@@ -70,8 +65,6 @@ public class StorageSignatureValidationTest
     [Theory]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
-    [InlineData(KimiDeclarationId.StorageLend)]
-    [InlineData(KimiDeclarationId.StorageSplit)]
     public void ResultsCannotClaimStaticStorage(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();

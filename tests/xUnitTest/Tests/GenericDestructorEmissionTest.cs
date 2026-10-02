@@ -25,8 +25,8 @@ public class GenericDestructorEmissionTest
 
     [Theory]
     [InlineData("T", "ref/T", true)]
-    [InlineData("unsafe/T", "unsafe/T", true)]
-    [InlineData("unsafe/T", "unsafe/u8", false)]
+    [InlineData("raw/T", "raw/T", true)]
+    [InlineData("raw/T", "raw/u8", false)]
     public void DestructorFieldsUseCompleteGenericSelf(string fieldType, string localType, bool accepted)
     {
         var c = MinimalEmissionTest.Analyze($$"""
@@ -127,7 +127,7 @@ public class GenericDestructorEmissionTest
                 let value: T
                 public init(value: T) => self.value = value@move
                 drop
-                    let local = Local<unsafe/T>.init(null, 7)
+                    let local = Local<raw/T>.init(null, 7)
                     Console.writeLine("box")
             let value = Box<i32>.init(1)
             """;
@@ -200,11 +200,11 @@ public class GenericDestructorEmissionTest
     }
 
     [Theory]
-    [InlineData("unsafe/T")]
+    [InlineData("raw/T")]
     [InlineData("(T, T)")]
     public void GrowingDestructorContextsAreResourceDiagnosed(string argument)
     {
-        var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: unsafe/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
+        var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    let pointer: raw/T\n    public init() => self.pointer = null\n    drop\n        let next = Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out var error));

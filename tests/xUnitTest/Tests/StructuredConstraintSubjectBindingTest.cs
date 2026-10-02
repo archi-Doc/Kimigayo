@@ -20,7 +20,7 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("Box<[2 of i32]> is Copy")]
     [InlineData("Box<[(8 / 2) of i32]> is Copy")]
     [InlineData("([2 of i32], Box<i32>) is Copy")]
-    [InlineData("unsafe/i32 is Copy")]
+    [InlineData("raw/i32 is Copy")]
     [InlineData("() is ()")]
     [InlineData("[2 of string] is not Copy")]
     public void StructuredClosedSubjectsReachTheirProof(string clause)

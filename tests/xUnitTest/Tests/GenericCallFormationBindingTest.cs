@@ -13,7 +13,7 @@ public class GenericCallFormationBindingTest
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("() -> Box<string>")]
     public void InvalidExplicitArgumentCannotPublishCall(string argument)
     {
@@ -42,7 +42,7 @@ public class GenericCallFormationBindingTest
     [InlineData("Box<i32>")]
     [InlineData("(i32, Box<i32>)")]
     [InlineData("[2 of Box<i32>]")]
-    [InlineData("unsafe/Box<i32>")]
+    [InlineData("raw/Box<i32>")]
     [InlineData("() -> Box<i32>")]
     public void ValidExplicitArgumentsRemainApplicable(string argument)
     {

@@ -130,6 +130,8 @@ internal sealed partial class BodyLowering
                 (operation.Kind != OwnershipOperationKind.Produce ||
                 (value.Constant == OwnershipValue.PositionConversion
                     ? !IsPositionConversion(operation.Source, ValueType(body, Input(body, id, 0)), ValueType(body, id))
+                    : value.Constant == OwnershipValue.RawPlaceBorrow
+                    ? !ReferenceTypes.IsPointer(ValueType(body, Input(body, id, 0))) || !ReferenceTypes.IsReference(ValueType(body, id))
                     : operation.Source is not Parsing.ConversionKoto conversion ||
                         !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
                         !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, OperandType(conversion))) ||
@@ -276,12 +278,15 @@ internal sealed partial class BodyLowering
         => ReferenceEquals(target, BoundType.ISize) && ScalarTypes.Width(input) != 0 && !ReferenceEquals(input, BoundType.ISize) &&
         (source.Parent is Parsing.RangeKoto or Parsing.FromEndIndexKoto || (source.Parent is Parsing.IndexKoto index && ReferenceEquals(index.Right, source)));
 
-    // SPEC 13.5.2: an operand read through its reference layers supplies the read Type to its conversion.
+    // SPEC 13.5.2: an operand read through its reference layers supplies the read Type to its conversion; an address converts
+    // the borrow of its operand (SPEC 5.4).
     private static BoundType? OperandType(Parsing.ConversionKoto conversion)
-        => conversion.CodeContext.Compilation.Binding.TryGetAdaptation(conversion.Left, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead ? read.Type : conversion.Left.BoundType;
+        => conversion.ConversionBinding == ConversionBinding.Address ? conversion.Right.BoundType :
+            conversion.CodeContext.Compilation.Binding.TryGetAdaptation(conversion.Left, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead ? read.Type : conversion.Left.BoundType;
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :
+            binding == ConversionBinding.Address ? ReferenceTypes.IsReference(source) && ReferenceTypes.IsPointer(target) :
             binding is ConversionBinding.Integer or ConversionBinding.Wrap ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
             binding == ConversionBinding.Bits ? FloatingTypes.Supports(source) != FloatingTypes.Supports(target) &&
                 (FloatingTypes.Supports(source) ? ScalarTypes.Width(target) : ScalarTypes.Width(source)) == (ReferenceEquals(FloatingTypes.Supports(source) ? source : target, BoundType.F32) ? 32 : 64) :

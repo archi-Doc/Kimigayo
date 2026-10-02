@@ -141,7 +141,7 @@ public static partial class Parser
         if (type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } target)
         {
             target.SetBorrowOrigin(expression, span);
-            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Unsafe)
+            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Raw)
             {
                 reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginSemantics_Kd);
             }

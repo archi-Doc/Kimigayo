@@ -85,6 +85,9 @@ public sealed partial class Binding
             ((OriginNameList)names).Spans.Clear();
         }
 
+        this.absentSlotProjections?.Clear();
+        this.absentSlotFunctions?.Clear();
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
@@ -123,38 +126,21 @@ public sealed partial class Binding
                 continue;
             }
 
-            // A stored field contributes directly written scalar names to its containing
-            // Type. Nested function Types are a binding boundary, never implicit binders.
+            // Only a callable signature introduces a name by writing it (SPEC 15.3.4); a Type's own slots are declared in its
+            // header alone, so storage names never become slots (SPEC 15.3.2). Nested function Types are a binding boundary.
             var nested = false;
             for (var parent = annotation.Parent; parent is not null && !ReferenceEquals(parent, owner); parent = parent.Parent)
             {
                 nested |= parent is FunctionTypeKoto;
             }
 
-            if (nested)
-            {
-                continue;
-            }
-
-            var binder = owner;
-            if (owner is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var } || owner.Akind == KotoKind.EnumCase)
-            {
-                if (owner is PropertyKoto storage && !IsWithin(annotation, storage.TypeKoto))
-                {
-                    continue;
-                }
-
-                binder = owner.Parent!;
-            }
-
             // SPEC 8.8.2: a specialization's written binder names are preliminary; CompleteSpecializationOrigins maps them to the original's.
-            if ((binder is FunctionKoto function && (function.IsAnonymous || !IsSignature(annotation, function))) ||
-                binder is not (FunctionKoto or PropertyAccessorKoto or StructKoto or EnumKoto))
+            if (nested || (owner is FunctionKoto function && (function.IsAnonymous || !IsSignature(annotation, function))) || owner is not (FunctionKoto or PropertyAccessorKoto))
             {
                 continue;
             }
 
-            Discover(expression, binder);
+            Discover(expression, owner);
         }
 
         static bool IsSignature(Koto node, FunctionKoto function)
@@ -172,19 +158,6 @@ public sealed partial class Binding
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 if (ReferenceEquals(node, function.Parameters[i].Type))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        static bool IsWithin(Koto node, Koto? root)
-        {
-            for (var current = node; current is not null; current = current.Parent)
-            {
-                if (ReferenceEquals(current, root))
                 {
                     return true;
                 }
@@ -226,11 +199,10 @@ public sealed partial class Binding
             return written;
         }
 
-        var closed = owner is DeclarationContainerKoto { HasOriginHeader: true };
+        // A name already visible names that Origin; only the remaining names are introduced by the signature (SPEC 15.3.4).
         for (var i = names.Count - 1; i >= 0; i--)
         {
             var name = names[i];
-            var existing = false;
             for (var current = scope; current is not null; current = current.Parent)
             {
                 if (current.Origins?.ContainsKey(name) == true ||
@@ -238,37 +210,11 @@ public sealed partial class Binding
                         (value.Kind != BindingSymbolKind.Local || value.Declaration.Span.Start <= owner.Span.Start)) ||
                     this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.ContainsKey(name) == true)
                 {
-                    existing = true;
+                    names.RemoveAt(i);
+                    ((OriginNameList)names).Spans.RemoveAt(i);
                     break;
                 }
             }
-
-            if (closed)
-            {
-                if (!written.Contains(name) && !existing)
-                {
-                    this.Fail(owner, BindingFailure.InvalidOrigin);
-                }
-
-                names.RemoveAt(i);
-                ((OriginNameList)names).Spans.RemoveAt(i);
-            }
-            else if (existing)
-            {
-                // Headerless stored names cannot accidentally capture an inherited slot.
-                if (owner is StructKoto or EnumKoto)
-                {
-                    this.Fail(owner, BindingFailure.InvalidOrigin);
-                }
-
-                names.RemoveAt(i);
-                ((OriginNameList)names).Spans.RemoveAt(i);
-            }
-        }
-
-        if (owner is StructKoto or EnumKoto && !closed && names.Count > 1)
-        {
-            this.Fail(owner, BindingFailure.InvalidOrigin);
         }
 
         if (owner is FunctionKoto function)
@@ -279,12 +225,8 @@ public sealed partial class Binding
         {
             accessor.Origins = names;
         }
-        else if (owner is DeclarationContainerKoto container && !closed)
-        {
-            container.SetImplicitOrigins(names);
-        }
 
-        return closed ? written : names;
+        return names;
     }
 
     private OriginDeclaration? BeginOriginDeclaration(Koto owner, BindingScope scope)

@@ -118,7 +118,8 @@ windows-x64-v1 is little endian, uses address space 0, and has 64-bit pointers. 
 | `f32` / `f64` | `float` / `double` | `float` / `double` | 4 / 4 / 4; 8 / 8 / 8 |
 | `bool` | `i8` | `i1` | 1 / 1 / 1 |
 | `char` | `i32` | `i32` | 4 / 4 / 4 |
-| `unsafe/T` | `ptr` | `ptr` | 8 / 8 / 8 |
+| `raw/T` | `ptr` | `ptr` | 8 / 8 / 8 |
+| `Kimi.Loan<T>` | Omitted | No ordinary value | 0 / 1 / 0 |
 | Unit | May be omitted | No ordinary value | 0 / 1 / 0 |
 
 The only valid stored `bool` bytes are 0 and 1. Under that validity premise, a load reads `i8` and truncates to `i1`, and a store zero-extends `i1` to `i8`; this does not sanitize invalid bytes. Windows `BOOL` is `i32` and converts by comparison with zero. `char` stores an unsigned Unicode scalar value; surrogates and values above U+10FFFF are invalid. Neither representation establishes compatibility with C `char` or `WCHAR`.
@@ -153,11 +154,11 @@ These layouts are verified when nested in structs and arrays, as is the nonnull 
 
 ### 21.1.6. C exchange eligibility
 
-C layout and C-exchangeable storage are different judgments. Initially, the eligible Types are owned `i8`/`u8` through `i64`/`u64`, owned `f32`/`f64`, raw `unsafe/T` pointers, positive-length fixed arrays of eligible elements, and owned C-layout structs whose Fields are recursively eligible.
+C layout and C-exchangeable storage are different judgments. Initially, the eligible Types are owned `i8`/`u8` through `i64`/`u64`, owned `f32`/`f64`, raw `raw/T` pointers, `ref/T` and `uniq/T` over an eligible referent `T` and their `Option`, positive-length fixed arrays of eligible elements, and owned C-layout structs whose Fields are recursively eligible, including such borrow Fields.
 
-Kimigayo-layout structs, Tuples, enums, `string`, dynamic collections, `bool`, `char`, `i128`/`u128`, `isize`/`usize`, safe borrows, object handles, and function and Closure values are excluded until their C correspondence is specified. A C-layout struct may contain a `string` if layout succeeds, but it is then not C-exchangeable. For example, C-layout `Pair<i32>` and `Pair<u64>` have different layouts, `Pair<()>` violates the zero-sized Field restriction, and `Pair<string>` gains no marshalling.
+Kimigayo-layout structs, Tuples, enums, `string`, dynamic collections, `bool`, `char`, `i128`/`u128`, `isize`/`usize`, safe borrows of ineligible referents, object handles, and function and Closure values are excluded until their C correspondence is specified. A C-layout struct may contain a `string` if layout succeeds, but it is then not C-exchangeable. For example, C-layout `Pair<i32>` and `Pair<u64>` have different layouts, `Pair<()>` violates the zero-sized Field restriction, and `Pair<string>` gains no marshalling.
 
-A pointer guarantees only its value representation; its pointee may remain opaque. Foreign reads and writes require a separate pointee-layout and validity contract. Foreign construction or overwriting of values received by Kimigayo initially also requires no user `drop`, recursively. Constructors, lifetimes, ownership transfer, active Loans and accessor bypass still require the unsafe contract. No automatic Copy capability, raw-storage initialization API or safe-to-raw conversion follows.
+A pointer guarantees only its value representation; its pointee may remain opaque. Foreign reads and writes require a separate pointee-layout and validity contract. Foreign construction or overwriting of values received by Kimigayo initially also requires no user `drop`, recursively. Constructors, lifetimes, ownership transfer, active Loans and accessor bypass still require the declaration promise of SPEC §22.3.1 or an unsafe contract. No automatic Copy capability follows; raw storage is initialized only by `Raw.initialize` (SPEC §5.6).
 
 For ABI comparison, the target ABI, recursively eligible Field Types, merged order and content, and layout options are kept. Aggregate arguments and results remain excluded from LibraryImport (§22.3), even when the storage is C-exchangeable. Packed and transparent layouts, explicit alignment and offsets, unions, bit-fields, flexible array members, external enum representations and public layout queries remain extensions.
 
@@ -906,6 +907,8 @@ All constants are exact in the source format, and the ordered comparisons reject
 
 **Raw pointer operations.** Allowed pointer-Type casts use the same address-space-0 `ptr`; same-Type equality and null tests use `icmp eq`/`ne`; `usize` conversions use `ptrtoint` to `i64` and `inttoptr` from `i64`. `p + n` uses a storage-Type GEP with an `i64` index, and `p - n` uses `sub i64 0, n`; the initial form has no `inbounds` or `nsw`/`nuw`. GEP spacing is checked against the positive `stride(T)`. Zero displacement preserves null as well as other pointers. Arithmetic alone proves neither alignment nor initialization. These operations keep the unsafe allocation, provenance, mathematical-displacement and no-wrap conditions of Chapter 5, and violations need not Abort. Integer reconstruction creates no extra dereference permission, and typed access still needs a valid range, alignment, permissions, initialization and replacement legality. Runtime buffer arithmetic has its own checked contract (§22.5.3).
 
+**Addresses, raw Place borrows and raw storage.** `P@raw` yields the address that a borrow of `P` would use, with no load and no runtime Loan state; a raw Place borrow (SPEC §5.2.2) yields the computed raw Place address as an ordinary borrow pointer, and a raw Place take (SPEC §5.2.3) loads and transfers the value without changing any state. `Raw.allocate` computes `count * stride(T)` with the checked multiplication above and calls Runtime.Alloc (SPEC §22.5.2) with the alignment of `T`; an alignment above 16 is diagnosed at compile time. A zero-byte request returns, without allocating, the address of one static 16-byte-aligned zero-sized substitute (§21.2.4), which serves every `T`; `Raw.release` ignores null and that address before calling Runtime.Free, so a converted pointer to it is recognized too. `Raw.initialize` stores the value without loading or destroying the old contents. `Raw.slice` builds the Slice handle from the pointer and length without accessing the elements. `Loan<T>` occupies no storage and generates no code.
+
 For proven complete payload targets, the ordinary value-borrow address and load/store/transfer rules apply. Same-concrete-Type tests may be folded only while preserving operand evaluation, acquisition, Loans and Origins. Content destruction does not end the containing allocation's lifetime, and raw pointer optimization cannot erase required dependency checks (§15.7.3).
 
 ### 21.5.4. Floating-point environment
@@ -936,7 +939,9 @@ These guarantees cover the immediate `V` storage only. Targets reached through l
 
 A `ref/Key` argument whose referent is a Scalar may be passed physically by value only when the compiler proves that no address is observed, escaped or compared, that dependencies and evaluation order are preserved, and that direct and indirect calls, entries and adapters keep one common ABI; a result that does not depend on the key is not sufficient, and Unsafe address observation is not made unspecified.
 
-Unsafe and FFI implementations receiving these borrows must satisfy the same promises: raw pointers derived from `ref` cannot write its inline storage, and `uniq` permits no conflicting independent access during the call. Missing Loan or effect verification is diagnosed before emission. Future interior mutability or concurrency requires revisiting the shared proof.
+Raw access and foreign implementations receiving these borrows are bound by the same promises, as cases of the access conditions of SPEC §5.2.1 and the declaration promise of SPEC §22.3.1: raw pointers derived from `ref` cannot write its inline storage, and `uniq` permits no conflicting independent access during the call. The Scalar by-value form of a `ref` parameter above does not apply to foreign imports, which receive the referent address (SPEC §22.3.2).
+
+**Address-observed locals.** A local variable whose address is taken with `@raw` (SPEC §5.4) is address-observed: it keeps one storage slot, which is neither promoted to SSA nor reused, until its scope ends or its value is Moved, whichever comes first (SPEC §5.2.1). Missing Loan or effect verification is diagnosed before emission. Future interior mutability or concurrency requires revisiting the shared proof.
 
 For other optimization attributes, defined bits and absence of `poison` are proven separately for `noundef`, including padding in coercions; the full GEP conditions for `inbounds`; and the absence of signed or unsigned overflow for `nsw`/`nuw`. `mustprogress`, `willreturn` and `loop.mustprogress` are not applied uniformly to ordinary functions or loops.
 

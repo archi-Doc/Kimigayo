@@ -28,12 +28,6 @@ internal static partial class LlvmModuleWriter
                     WriteDictionaryInsertion(output, helper);
                     output.Write("  ret void\n");
                     break;
-                case DictionaryHelperKind.PlaceValue:
-                    // Typed placement into a live slot whose value was moved out; no destruction, growth or user code.
-                    DictionaryAddress(output, "%stored_value", "%slot", helper.ValueOffset);
-                    WriteStoredArgument(output, helper.Value, helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0, "%value", "%stored_value", "%value_placed");
-                    output.Write("  ret void\n");
-                    break;
                 case DictionaryHelperKind.Find:
                     WriteDictionaryFind(output, helper, module.DictionaryFind!);
                     break;

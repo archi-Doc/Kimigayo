@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 5.2: the canonical raw pointer Type of a projected pointee subplace; raw pointers carry no Origin.
-    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Unsafe, [referent]);
+    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent]);
 
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
@@ -693,6 +693,13 @@ public sealed partial class Binding
             // SPEC 3.1.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
             // declaration's only Constraint, so no container reference or obligation is formed.
             return Complete(generic, own);
+        }
+
+        // SPEC 15.3.5: Loan<T> is formed only over a complete ref, uniq, objref or objuniq borrow Type.
+        if (definition.LibraryDeclaration == KimiDeclarationId.Loan && own is { Components: [var borrowed] } &&
+            borrowed is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
         var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));

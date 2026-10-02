@@ -1,53 +1,58 @@
 // SPEC 22.1.2.5: the standard storage boundary. These Types and operations split standard collection Storage into
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
-// The compiler supplies construction and the unsafe capability primitives; ordinary Field operations grant no capability.
+// The compiler supplies construction; elements are lent and split by borrowing raw Places, whose range, non-overlap and
+// initialization are this group's unsafe obligations (SPEC 5.2.2).
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
+        internal let loan: Loan<ref/E during source>
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
     internal struct UniqRemainder<E> {source}
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
+        internal let loan: Loan<uniq/E during source>
 
     /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
     internal struct OwnedRemainder<E>
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
         internal var capacity: isize
 
         drop
-            let storage: unsafe/E = self.storage
+            let storage: raw/E = self.storage
             while self.count > 0
                 self.count -= 1
-                unsafe => _ = storage[self.position + self.count]
-            unsafe => release(storage)
+                unsafe => _ = storage[self.position + self.count]@move
+            unsafe => Raw.release(storage)
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
     internal struct DictionaryRefRemainder<K, V> {source}
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var count: isize
+        internal let loan: Loan<ref/(K, V) during source>
 
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
     internal struct DictionaryUniqRemainder<K, V> {source}
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var count: isize
+        internal let loan: Loan<uniq/(K, V) during source>
 
     /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
     /// are the last `count` live entries ending at `tail`.
     internal struct DictionaryOwnedRemainder<K, V>
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var tail: isize
@@ -55,22 +60,22 @@ internal group Storage
 
         // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
         drop
-            let storage: unsafe/u8 = self.storage
+            let storage: raw/u8 = self.storage
             unsafe
                 destroyDictionaryEntries<K, V>(storage, self.stride, self.tail, self.count)
-                release(storage)
+                Raw.release(storage)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
-    internal unsafe func destroyDictionaryEntries<K, V>(storage: unsafe/u8, stride: isize, tail: isize, count: isize)
+    internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
         var link = tail
         var remaining = count
         while remaining > 0
             remaining -= 1
             unsafe
                 let slot = storage + (link - 1) * stride
-                link = (slot@unsafe/isize)[0]
-                _ = *valueAt<K, V>(slot)
-                _ = *keyAt<K, V>(slot)
+                link = (slot@raw/isize)[0]
+                _ = (*valueAt<K, V>(slot))@move
+                _ = (*keyAt<K, V>(slot))@move
 
     /// Returns the matching live link, or zero; comparison uses stored.equals(search), with no entry acquisition.
     internal func findDictionaryLink<K, V>(state: uniq/DictionaryRefRemainder<K, V>, key: ref/K) -> isize
@@ -88,7 +93,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe => return .Some(state.storage[position])
+        unsafe => return .Some(state.storage[position]@move)
 
     /// Lends the first untaken element and advances the shared remainder without allocating or invoking user code.
     internal func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
@@ -96,9 +101,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe
-            let element = state.storage + position
-            return .Some(lend(state, element))
+        unsafe => return .Some(state.storage[position]@ref)
 
     /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
     internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
@@ -106,9 +109,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe
-            let element = state.storage + position
-            return .Some(split(state, element))
+        unsafe => return .Some(state.storage[position]@uniq)
 
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
@@ -117,8 +118,8 @@ internal group Storage
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
             // Each slot starts with its previous and next links.
-            state.link = (slot@unsafe/isize)[1]
-            return .Some((lendKey(state, slot), lendValue(state, slot)))
+            state.link = (slot@raw/isize)[1]
+            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@ref))
 
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
     internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
@@ -126,8 +127,8 @@ internal group Storage
         state.count -= 1
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
-            state.link = (slot@unsafe/isize)[1]
-            return .Some((lendKey(state, slot), splitValue(state, slot)))
+            state.link = (slot@raw/isize)[1]
+            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
@@ -135,10 +136,10 @@ internal group Storage
         state.count -= 1
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
-            state.link = (slot@unsafe/isize)[1]
-            return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))
+            state.link = (slot@raw/isize)[1]
+            return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
-    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, whose contents the compiler never destroys
+    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, placed at offset 0 and never destroyed by the compiler
     /// (PLAN G33): its owner destroys what remains of `value` through unsafe element addressing. It takes the stored Type,
     /// not `<E, length N>`, because only functions have length slots (SPEC 4.4).
     internal struct InlineStorage<A>
@@ -153,11 +154,10 @@ internal group Storage
 
         // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
         drop
-            var elements: unsafe/E = null
-            unsafe => elements = inlineBase<E, A>(self.storage@uniq)
+            let elements = self.storage@raw@raw/E
             while self.count > 0
                 self.count -= 1
-                unsafe => _ = elements[self.position + self.count]
+                unsafe => _ = elements[self.position + self.count]@move
 
     /// Transfers the first unreturned element out of a fixed array's inline storage and advances the owning remainder.
     internal func takeFirst<E, A>(state: uniq/FixedOwnedRemainder<E, A>) -> Option<E>
@@ -165,7 +165,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position])
+        unsafe => return .Some((state.storage@raw@raw/E)[position]@move)
 
     /// Consumes a contiguous exclusive remainder and splits two distinct positions, preserving argument order.
     internal func tryGetPairUniq<E, P, Q>(
@@ -191,10 +191,10 @@ internal group Storage
             // Logical positions, not pointer equality, prove disjointness even when E has zero size.
             state.position = start + low + 1
             state.count = count - low - 1
-            let lower = split(state@uniq, state.storage + start + low)
+            let lower = state.storage[start + low]@uniq
             state.position = start + high + 1
             state.count = count - high - 1
-            let upper = split(state@uniq, state.storage + start + high)
+            let upper = state.storage[start + high]@uniq
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 

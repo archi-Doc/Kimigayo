@@ -243,6 +243,9 @@ public enum SyntaxForm : ushort
     /// <summary>The bound of an effect item: confined or preserves results.</summary>
     EffectBound,
 
+    /// <summary>A slot Name in a struct or enum Origin header, which names at least one slot.</summary>
+    OriginSlotName,
+
     /// <summary>'&amp;&amp;', recognized but no operator (SPEC 2.4, 13.8); logical conjunction is 'and'.</summary>
     AmpersandAmpersand,
 

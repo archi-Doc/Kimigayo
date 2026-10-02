@@ -51,7 +51,7 @@ public class PatternBindingTest
     [InlineData("func f(x: (i32, i32)) => match x\n    (let n,) => ()")]
     [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(1) => ()\n    _ => ()")]
     [InlineData("func f(x: i32) => match x\n    true => ()")]
-    [InlineData("func f(x: unsafe/i32) => match x\n    0 => ()\n    _ => ()")]
+    [InlineData("func f(x: raw/i32) => match x\n    0 => ()\n    _ => ()")]
     [InlineData("struct Data\nfunc f(x: obj/Data) => match x\n    () => ()\n    _ => ()")]
     public void InvalidPatternsSuppressCoverageCascades(string source)
     {
@@ -309,7 +309,7 @@ public class PatternBindingTest
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.IsType<FunctionKoto>(Assert.Single(flow.Targets, t => t.Key is ReturnKoto).Value);
         Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
-        var unsafeGuard = Parse("func f(x: bool, p: unsafe/bool) => match x\n    _ if *p => ()");
+        var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
         var syntaxFlow = unsafeGuard.AnalyzeControlFlow();
         Assert.Contains(syntaxFlow.Issues, i => i.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(syntaxFlow.Issues, i => i.Message.Contains("exhaustive", StringComparison.Ordinal));

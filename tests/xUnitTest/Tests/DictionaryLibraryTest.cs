@@ -163,13 +163,13 @@ public class DictionaryLibraryTest
     public void PointerReturningCallbacksUseOrdinaryCallAbi()
     {
         const string Source = """
-            func invoke(f: (isize) -> unsafe/u8) -> unsafe/u8 => f(0)
+            func invoke(f: (isize) -> raw/u8) -> raw/u8 => f(0)
             unsafe
                 let address: usize = 4096
-                let expected = address@unsafe/u8
-                let concrete = func [address] (offset: isize) -> unsafe/u8
-                    unsafe => return address@unsafe/u8
-                let erased: (isize) -> unsafe/u8 = concrete
+                let expected = address@raw/u8
+                let concrete = func [address] (offset: isize) -> raw/u8
+                    unsafe => return address@raw/u8
+                let erased: (isize) -> raw/u8 = concrete
                 require concrete(0) == expected and erased(0) == expected else => $abort("pointer result")
                 require invoke(erased@move) == expected else => $abort("forwarded result")
             """;
@@ -200,7 +200,6 @@ public class DictionaryLibraryTest
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
     [InlineData("unsafe => Kimi.Storage.placeEntry<i32, i32>(null, 1, 2)")]
-    [InlineData("unsafe => Kimi.Storage.placeValue<i32, i32>(null, 2)")]
     [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.reserveEntries(entries@uniq, 4)")]
     [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.shrinkEntries(entries@uniq)")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)

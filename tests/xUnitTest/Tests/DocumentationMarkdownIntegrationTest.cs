@@ -30,7 +30,7 @@ public class DocumentationMarkdownIntegrationTest
     }
 
     [Theory]
-    [InlineData("struct S {}", "self", true)]
+    [InlineData("struct S", "self", true)]
     [InlineData("group G", "self: i32", false)]
     public void ReceiverExclusionUsesBindingRole(string container, string parameter, bool receiver)
     {
@@ -65,9 +65,9 @@ public class DocumentationMarkdownIntegrationTest
         compilation.CollectDocumentation = true;
         var tree = compilation.Kotonoha;
         var context = tree.CreateCodeContext();
-        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", Comment("# note\n\nLast") + "public struct S {}"));
-        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", Comment("```kimi\n- return: code") + "public struct S {}"));
-        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", Comment("- return: generated") + "public struct S {}"), "mod", 2);
+        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", Comment("# note\n\nLast") + "public struct S"));
+        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", Comment("```kimi\n- return: code") + "public struct S"));
+        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", Comment("- return: generated") + "public struct S"), "mod", 2);
         Assert.True(compilation.Bind().IsComplete);
         var declaration = tree.DocumentationSources.First().Comments[0].Declaration!;
         var comments = compilation.Binding.GetDocumentation(declaration, true);
@@ -123,7 +123,7 @@ public class DocumentationMarkdownIntegrationTest
     [Fact]
     public void PublicationAccessAndSpecializationAreAppliedBeforeMarkdownParsing()
     {
-        var tree = DocumentationCommentTest.Parse(Comment("**original**") + "public func weight<T>(value: ref/T) -> i32 => 1\n" + Comment("**implementation**") + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden {}\n" + Comment("**private**", "    ") + "    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse(Comment("**original**") + "public func weight<T>(value: ref/T) -> i32 => 1\n" + Comment("**implementation**") + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n" + Comment("**private**", "    ") + "    public func f() => ()");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
         var binding = tree.Compilation.Binding;
