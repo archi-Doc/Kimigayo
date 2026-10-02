@@ -227,6 +227,31 @@ public class IndexableContractTest
         ScalarEmissionTest.EmitFixture("IndexableRequirementRangeArgument", Source, "ok\n");
     }
 
+    private const string ConditionalUniq =
+        "struct Box<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var value: T\n    public init(value: T) => self.value = value@move\n" +
+        "    public func index(self, key: ref/isize) -> place ref/T during self => self.value\n\n" +
+        "    Self is UniqIndexable<isize> when T is Copy\n        public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.value\n\n";
+
+    [Fact]
+    public void AReadDoesNotNeedAConditionalUniqConformance()
+    {
+        // SPEC 4.6.9, 8.4.8.2: a read selects index; the refuted UniqIndexable condition of Box<string> supplies nothing and
+        // is not judged at the read, while Box<i32> keeps indexUniq for its update.
+        const string Use = "var names = Box<string>.init(\"a\")\nConsole.writeLine(names[0])\nvar counts = Box<i32>.init(1)\ncounts[0] = 2\nrequire counts[0] == 2 else => $abort(\"update\")\nConsole.writeLine(\"done\")";
+        ScalarEmissionTest.EmitFixture("IndexableConditionalUniqRead", ConditionalUniq + Use, "a\ndone\n");
+    }
+
+    [Theory]
+    [InlineData(ConditionalUniq, "Box<string> conforms to UniqIndexable only under a condition that does not hold here")]
+    [InlineData("struct Box<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var value: T\n    public init(value: T) => self.value = value@move\n    public func index(self, key: ref/isize) -> place ref/T during self => self.value\n", "Box<string> has no UniqIndexable conformance")]
+    public void AnUpdateWithoutIndexUniqExplainsTheMissingConformance(string declarations, string note)
+    {
+        var result = DiagnosticCorpus.Check(declarations + "public func main()\n    var names = Box<string>.init(\"a\")\n    names[0] = \"b\"\n");
+        var record = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), record.Code);
+        Assert.StartsWith(note, record.Note);
+    }
+
     [Fact]
     public void BoundContractReferencesKeepDistinctIdentities()
     {

@@ -76,17 +76,17 @@ public sealed partial class Binding
                 // SPEC 4.6.9: several Key conformances are distinct; the key's own Type selects one, and the call then selects
                 // that conformance's index by the same key. An unfitted literal key could fit several and stays ambiguous.
                 this.BindNode(source.Right, scope);
-                if (!this.IndexableForKey(owner, indexable, source.Right))
+                if (this.ConformanceForKey(owner, indexable, source.Right) is null)
                 {
                     result = this.Fail(source, BindingFailure.Ambiguous);
                     return true;
                 }
 
-                exclusiveAvailable = this.Library.UniqIndexable is { } uniqByKey && this.IndexableForKey(owner, uniqByKey, source.Right);
+                exclusiveAvailable = this.Library.UniqIndexable is { } uniqByKey && this.ConformsHere(core, this.ConformanceForKey(owner, uniqByKey, source.Right), scope);
             }
             else
             {
-                exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformanceByDeclaration(owner, uniqIndexable, out _) is not null;
+                exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.ConformsHere(core, this.ConformanceByDeclaration(owner, uniqIndexable, out _), scope);
             }
         }
         else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
@@ -124,14 +124,14 @@ public sealed partial class Binding
         return true;
     }
 
-    // Whether exactly one conformance of the owner to a bound reference of the Contract declaration takes the key's Type.
-    private bool IndexableForKey(BindingSymbol owner, BindingSymbol contract, Koto keyNode)
+    // The one conformance of the owner to a bound reference of the Contract declaration that takes the key's Type, or null.
+    private BoundConformance? ConformanceForKey(BindingSymbol owner, BindingSymbol contract, Koto keyNode)
     {
         var key = KotoHelper.UnwrapParentheses(keyNode);
         if (key is NumberLiteralKoto or NullLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
             key.BoundType is not { } type || !this.conformancesByType.TryGetValue(owner, out var identities))
         {
-            return false;
+            return null;
         }
 
         while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
@@ -139,19 +139,29 @@ public sealed partial class Binding
             type = type.Components[0]; // The key parameter is ref/Key; a borrowed key names its referent.
         }
 
-        var found = 0;
+        BoundConformance? found = null;
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
             if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 &&
                 identity.Contract.Type is { Components: [var argument] } && ReferenceEquals(argument, type))
             {
-                found++;
+                if (found is not null)
+                {
+                    return null;
+                }
+
+                found = identity;
             }
         }
 
-        return found == 1;
+        return found;
     }
+
+    // SPEC 8.4.8.2: a registered conformance supplies its requirements to this instance only when its conditions hold here;
+    // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
+    private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
+        => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
 
     // SPEC 8.4.2, 8.7: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
     private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)

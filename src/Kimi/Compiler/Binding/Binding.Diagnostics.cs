@@ -464,7 +464,7 @@ public sealed partial class Binding
     {
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
-            node.Report(requirement, code, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            node.Report(requirement, code, note: code == DiagnosticCode.SharedPathAccess_Kd ? this.SharedIndexNote(target) : null, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;
         }
 
@@ -483,6 +483,35 @@ public sealed partial class Binding
             at: target,
             evidence: [target.ToString()],
             advice: immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null);
+    }
+
+    // SPEC 4.6.9, 8.4.8.2: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
+    // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
+    private string? SharedIndexNote(Koto target)
+    {
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.exclusiveIndexers.Contains(index) || !ElementAccess.IsUserIndex(index) ||
+            this.Library.UniqIndexable is not { } uniqIndexable)
+        {
+            return null;
+        }
+
+        var core = index.Left.BoundType;
+        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            core = core.Components[0];
+        }
+
+        if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
+        {
+            // Several Key conformances are distinct; the key's own Type selects one (SPEC 4.6.9).
+            var name = DiagnosticTypeName(core);
+            var registered = this.ConformanceByDeclaration(owner, uniqIndexable, out var byKey) ?? (byKey ? this.ConformanceForKey(owner, uniqIndexable, index.Right) : null);
+            return registered is not null ? $"{name} conforms to UniqIndexable only under a condition that does not hold here, so its element is published by index alone, which grants Read only" :
+                byKey ? $"{name} has no UniqIndexable conformance for this key, so its element is published by index alone, which grants Read only" :
+                $"{name} has no UniqIndexable conformance, so its element is published by index alone, which grants Read only";
+        }
+
+        return core is { Kind: BoundTypeKind.Parameter } ? $"{DiagnosticTypeName(core)} is not required to be UniqIndexable here, so its element is published by index alone, which grants Read only" : null;
     }
 
     // SPEC 11.2: an accessor receiver has the shape of its operation. The report is located at the written receiver Type and
