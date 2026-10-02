@@ -398,6 +398,11 @@
     Phrase="'||'"
     Advice="If '||' is meant as logical disjunction, write 'or'; Kimigayo defines no '||' operator (SPEC 13.8)."
 
+  + Name="Syntax.MatchArms"
+    Description="the match arm list follows its header"
+    Phrase="match arm list"
+    Advice="Write the arms on indented lines after the match header, each a Pattern followed by its body; a match has no '=>' body (SPEC 14.8)."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 
