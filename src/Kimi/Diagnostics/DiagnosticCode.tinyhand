@@ -595,7 +595,7 @@
 
   + Name="TransferRequired_Kd"
     Category="Language"
-    Message="A bare Place is never moved; write @move to transfer it, or borrow it with @ref or @uniq"
+    Message="A bare Place is never moved; @move is the only spelling that transfers it"
     Evidence="target:Text"
     Label="{0} cannot be read as a Copy value"
 
@@ -607,6 +607,8 @@
   + Name="ExclusiveBorrowRequired_Kd"
     Category="Language"
     Message="An owned Place is not lent exclusively without @uniq or @objuniq, except as the receiver of a call"
+    Evidence="place:Text"
+    Label="{0} is lent exclusively only with an explicit spelling"
 
   + Name="SharedBindingAssignment_Kd"
     Category="Language"

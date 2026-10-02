@@ -55,6 +55,10 @@ public sealed partial class Binding
     // The candidates a failed overload selection considered, recorded only when it fails.
     private Dictionary<Koto, RejectedCandidate[]>? rejectedCandidates;
 
+    // SPEC 15.1.5, 23.3.6.9: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
+    // object handle, recorded only when the check fails.
+    private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
+
     // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
     private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
 
@@ -355,8 +359,78 @@ public sealed partial class Binding
         return this.Fail(node, AccessFailure(target));
     }
 
+    // SPEC 3.5, 15.1.5, 23.3.6.9: the Advice of a bare Place that needs @move states what the Transfer candidate cannot: the borrow
+    // alternative where a reference may be meant, or, for a Place without Take, the alternatives that remain.
+    internal const string NoTakeAdvice = "This Place offers no Take and cannot be transferred; borrow it with @ref or @uniq instead";
+    internal const string BorrowAlternativeAdvice = "Borrow it with @ref or @uniq instead when a reference is meant";
+
+    /// <summary>Gets the Advice of a Place that needs @move: nothing for a call argument, whose position acquires by value for every candidate (SPEC 7.3.1).</summary>
+    /// <param name="place">The Place.</param>
+    /// <param name="judgment">The Take judgment.</param>
+    /// <returns>The Advice, or <see langword="null"/>.</returns>
+    internal static string? TransferAdvice(Koto place, AcquisitionJudgment judgment)
+        => judgment == AcquisitionJudgment.Refuted ? NoTakeAdvice : Destination(place) is InvocationKoto call && !ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) ? null : BorrowAlternativeAdvice;
+
+    /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.3.6.9): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
+    /// <param name="node">The reporting node, in the Place's document.</param>
+    /// <param name="place">The Place.</param>
+    /// <param name="judgment">The Take judgment; never refuted.</param>
+    /// <returns>The candidate.</returns>
+    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
+    {
+        DiagnosticEditFact[] edits = place is DereferenceKoto
+            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
+            : [node.Edit(new(place.Span.End, 0), "@move")];
+        var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
+        var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
+        return [new(RepairKind.Transfer, [place.ToString(), TransferTarget(place)], edits, verified, required)];
+    }
+
+    // The destination a Place is acquired for, as the Transfer title names it.
+    internal static string TransferTarget(Koto place)
+        => Destination(place) switch
+        {
+            InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
+            InvocationKoto call => call.Method is MemberAccessKoto member ? member.Right.ToString() : call.Method.ToString(),
+            VariableKoto variable => $"the binding {variable.NameKoto.IdentifierName}",
+            ReturnKoto => "the result",
+            ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
+            _ => "its destination",
+        };
+
+    private static Koto? Destination(Koto place)
+    {
+        var parent = place.Parent;
+        while (parent is ParenthesizedKoto)
+        {
+            parent = parent.Parent;
+        }
+
+        return parent;
+    }
+
+    private void NoteAcquisition(Koto node, Koto place, bool @object = false)
+        => (this.acquisitionPlaces ??= new(ReferenceEqualityComparer.Instance))[node] = (place, @object);
+
+    // SPEC 3.5, 15.1.5, 23.3.6.9: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it:
+    // an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer has Take judged from the Place's path.
+    private void ReportAcquisition(Koto node, Koto place, bool @object, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var text = place.ToString();
+        if (code == DiagnosticCode.ExclusiveBorrowRequired_Kd)
+        {
+            var spelling = @object ? "@objuniq" : "@uniq";
+            node.Report(requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [node.Edit(new(place.Span.End, 0), spelling)], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)]);
+            return;
+        }
+
+        var judgment = TakeJudgment(place);
+        node.Report(requirement, code, note: this.BorrowOriginHint(node), at: place, evidence: [text], advice: TransferAdvice(place, judgment), repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+    }
+
     // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
-    // located at the entry and names the initialization it stands for.
+    // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
+    // and the borrow as candidates (SPEC 23.3.6.9), so no Advice repeats them.
     private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var name = capture.Name;
@@ -366,7 +440,17 @@ public sealed partial class Binding
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
                 break;
             case DiagnosticCode.TransferRequired_Kd:
-                node.Report(requirement, code, note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference", evidence: [name], advice: $"Write {name}@move to transfer it, or {name}@ref to borrow it", span: capture.Span);
+                node.Report(
+                    requirement,
+                    code,
+                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference",
+                    evidence: [name],
+                    span: capture.Span,
+                    repairs:
+                    [
+                        new(RepairKind.Transfer, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
+                        new(RepairKind.Borrow, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@ref")], RepairConditionSet.None, RepairConditionSet.UsageLegality),
+                    ]);
                 break;
             default:
                 node.Report(requirement, code, span: capture.Span);
@@ -426,6 +510,7 @@ public sealed partial class Binding
         this.writeTargets?.Clear();
         this.captureFailures?.Clear();
         this.rejectedCandidates?.Clear();
+        this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();
         this.prerequisites.Clear();

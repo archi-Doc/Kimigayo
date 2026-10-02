@@ -622,6 +622,10 @@ public sealed partial class Binding
 
                     (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
                 }
+                else if (failure != BindingFailure.NoApplicableCandidate && this.acquisitionPlace is { } place)
+                {
+                    this.NoteAcquisition(call, place, this.acquisitionObject);
+                }
 
                 return this.Fail(call, failure, true);
             }

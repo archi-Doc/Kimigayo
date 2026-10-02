@@ -322,7 +322,13 @@ public sealed partial class Binding
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
                         // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
-                        return this.Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
+                        var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch;
+                        if (failure != BindingFailure.TypeMismatch)
+                        {
+                            this.NoteAcquisition(use, source, this.acquisitionObject);
+                        }
+
+                        return this.Fail(use, failure);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
@@ -443,6 +449,7 @@ public sealed partial class Binding
                 {
                     // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
                     plan.IsValid = false;
+                    this.NoteAcquisition(payloadSource, payloadSource);
                     this.Fail(payloadSource, BindingFailure.TransferRequired);
                 }
 

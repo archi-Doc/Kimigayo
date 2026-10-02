@@ -177,15 +177,19 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body.
+            // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body. A bare
+            // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.3.6.9).
+            var transfer = issue.Failure == OwnershipFailure.TransferRequired;
+            var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
                 note: AcquisitionNote(issue),
-                evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
-                advice: issue.Failure == OwnershipFailure.TransferRequired && issue.Source is DereferenceKoto ? $"Write ({issue.Source})@move to take the value; without the parentheses, @move applies to the pointer" : null,
+                evidence: transfer ? [issue.Source.ToString()] : null,
+                advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
                 related: RelatedLocations(issue),
-                span: SignatureSpan(issue.Source));
+                span: SignatureSpan(issue.Source),
+                repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
         }
 
         // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first

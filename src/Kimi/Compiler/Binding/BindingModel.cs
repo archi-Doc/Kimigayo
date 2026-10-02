@@ -491,6 +491,19 @@ internal sealed class BindingScope(Koto owner)
 }
 
 /// <summary>A final unresolved or invalid node, retaining its original source context.</summary>
+/// <summary>How a check judged a repair condition from its own facts (SPEC 23.3.6.9); a refuted condition withholds the candidate.</summary>
+public enum AcquisitionJudgment : byte
+{
+    /// <summary>The condition is established.</summary>
+    Verified,
+
+    /// <summary>The condition cannot be decided without analyzing the edited input.</summary>
+    Required,
+
+    /// <summary>The condition does not hold.</summary>
+    Refuted,
+}
+
 public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
 {
     /// <summary>Gets the failure that the code reports; its requirement identifies the problem.</summary>

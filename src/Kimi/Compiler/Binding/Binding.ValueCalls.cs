@@ -176,6 +176,7 @@ public sealed partial class Binding
             // SPEC 7.6.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
             if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
             {
+                this.NoteAcquisition(call, call.Method);
                 return this.Fail(call, BindingFailure.TransferRequired);
             }
         }

@@ -108,6 +108,49 @@ public sealed partial class Binding
 
     internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
 
+    // SPEC 15.1.5, 23.3.6.9: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
+    // for a repair candidate: an owned path from a local, parameter or capture root is verified; a borrowed, published or shared
+    // path, a Property's storage, a Pattern candidate and an element outside a static Move Path (SPEC 15.1.4) are refuted; a raw
+    // referent takes with (*p)@move (SPEC 5.2.3); any other path is left to the check of the edited input.
+    internal static AcquisitionJudgment TakeJudgment(Koto place)
+    {
+        place = KotoHelper.UnwrapParentheses(place);
+        if (place is DereferenceKoto || (place is IndexKoto raw && ReferenceTypes.IsPointer(raw.Left.BoundType)))
+        {
+            return AcquisitionJudgment.Verified;
+        }
+
+        if (!OffersTake(place))
+        {
+            return AcquisitionJudgment.Refuted;
+        }
+
+        for (var depth = 0; depth < 64; depth++)
+        {
+            switch (place)
+            {
+                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture }:
+                    return AcquisitionJudgment.Verified;
+                case IdentifierNameKoto:
+                    return AcquisitionJudgment.Refuted;
+                case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && KotoHelper.UnwrapParentheses(index.Right) is NumberLiteralKoto:
+                    place = KotoHelper.UnwrapParentheses(index.Left);
+                    break;
+                case IndexKoto or InvocationKoto:
+                    return AcquisitionJudgment.Refuted;
+                case MemberAccessKoto { BoundSymbol.Property.Getter.IsStandard: false }:
+                    return AcquisitionJudgment.Refuted;
+                case MemberAccessKoto member:
+                    place = KotoHelper.UnwrapParentheses(member.Left);
+                    break;
+                default:
+                    return AcquisitionJudgment.Required;
+            }
+        }
+
+        return AcquisitionJudgment.Required;
+    }
+
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
 
@@ -302,9 +345,12 @@ public sealed partial class Binding
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
-    // so a call without applicable candidates names the required spelling (SPEC 15.1.5).
+    // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
+    // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.3.6.9).
     private bool transferRequired;
     private bool lendingRequired;
+    private Koto? acquisitionPlace;
+    private bool acquisitionObject;
 
     // SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
@@ -712,6 +758,7 @@ public sealed partial class Binding
                 if (this.ProveCopy(actual, source) != ConstraintProof.Proven)
                 {
                     this.transferRequired = true;
+                    this.acquisitionPlace = source;
                     return false;
                 }
             }
@@ -815,6 +862,8 @@ public sealed partial class Binding
                 if (exclusive && !explicitBorrow && !receiver)
                 {
                     this.lendingRequired = true;
+                    this.acquisitionPlace = source;
+                    this.acquisitionObject = false;
                     return false;
                 }
             }
@@ -884,6 +933,8 @@ public sealed partial class Binding
             {
                 // SPEC 15.1.5 lending rule: an owned handle is lent exclusively by @objuniq except as a receiver (SPEC 7.3).
                 this.lendingRequired = true;
+                this.acquisitionPlace = source;
+                this.acquisitionObject = true;
                 return false;
             }
 

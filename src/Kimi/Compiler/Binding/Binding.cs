@@ -409,6 +409,10 @@ public sealed partial class Binding
             {
                 // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
             }
+            else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
+            {
+                this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
+            }
             else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
             {
                 this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
