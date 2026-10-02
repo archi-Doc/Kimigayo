@@ -1299,7 +1299,9 @@ public sealed partial class Binding
             // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
             var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
             // SPEC 13.3: a left operand without the operator is the problem, so the right operand is bound without its Type.
+            // SPEC 3.1.5, 13.4: a non-completing left operand fits the right operand's Type, so it expects nothing of it.
             var expectedRight = logical ? BoundType.Boolean
+                : !assignment && ReferenceEquals(left, BoundType.Never) ? null
                 : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
                 : arithmetic && left is not null && (NonNumericOperand(left) || (integerOnly && NonIntegerOperand(left))) ? null
                 : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
@@ -1320,6 +1322,11 @@ public sealed partial class Binding
         if (left is null || right is null)
         {
             return Complete(binary, null);
+        }
+
+        if (arithmetic && !assignment && ReferenceEquals(left, BoundType.Never))
+        {
+            left = right; // The operation is checked at the Type the non-completing operand fits (SPEC 3.1.5, 13.3).
         }
 
         if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
@@ -1411,11 +1418,12 @@ public sealed partial class Binding
 
             left = ComparisonReferent(left);
             right = ComparisonReferent(right);
-            if (ReferenceEquals(left, BoundType.Never))
-            {
-                // The other operand still supplies and must prove the user comparison capability.
-                left = right;
-            }
+        }
+
+        if (comparison && ReferenceEquals(left, BoundType.Never))
+        {
+            // The other operand still supplies and must prove the user comparison capability.
+            left = right;
         }
 
         if (!Compatible(right, left))
