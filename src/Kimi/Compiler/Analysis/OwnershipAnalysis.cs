@@ -915,7 +915,7 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.ConversionValue(conversion);
-            case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
+            case BinaryKoto element when ElementAccess.IsSyntax(element) && ElementAccess.IsRawPlace(element):
                 return this.ReadPointer(element, use, acquisition);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))) ||
@@ -1042,7 +1042,7 @@ public sealed partial class OwnershipAnalysis
                 return this.WritePlaceCall(binary, exclusiveIndexer); // SPEC 4.6.9: an update selects indexUniq.
             }
 
-            if (IsPointerPlace(target))
+            if (ElementAccess.IsRawPlace(target))
             {
                 return this.WritePointer(binary, target);
             }

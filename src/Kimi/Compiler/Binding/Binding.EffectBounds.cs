@@ -536,6 +536,8 @@ public sealed partial class Binding
                     this.Queue(binding.PropertyCall(update.Operand, PropertyAccessorKind.Get));
                     this.PlaceAccess(update.Operand, LoanRequirement.Uniq, node);
                     break;
+                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow when ElementAccess.IsRawPlace(borrow.Left):
+                    break; // SPEC 5.2.2: a fresh anchor, compared with no Place it does not derive from.
                 case ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow:
                     this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
                     this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
@@ -928,7 +930,7 @@ public sealed partial class Binding
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
-                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit or
+                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
                 CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
                 >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary => true,
             _ => false,

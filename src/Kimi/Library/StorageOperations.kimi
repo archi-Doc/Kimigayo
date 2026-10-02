@@ -3,17 +3,11 @@
 // its exclusive overload.
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
-internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: raw/E) -> ref/E during state.source
-internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: raw/E) -> uniq/E during state.source
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
 internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
     K is Equatable
-internal unsafe func lendKey<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: raw/u8) -> ref/K during state.source
-internal unsafe func lendValue<K, V>(state: ref/DictionaryRefRemainder<K, V>, slot: raw/u8) -> ref/V during state.source
 internal func borrowStorage<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
     K is Equatable
-internal unsafe func lendKey<K, V>(state: ref/DictionaryUniqRemainder<K, V>, slot: raw/u8) -> ref/K during state.source
-internal unsafe func splitValue<K, V>(state: uniq/DictionaryUniqRemainder<K, V>, slot: raw/u8) -> uniq/V during state.source
 internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
     K is Equatable
 internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K

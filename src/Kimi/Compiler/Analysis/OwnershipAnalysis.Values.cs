@@ -178,7 +178,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
-            IsPointerPlace(KotoHelper.UnwrapParentheses(unary.Operand)))
+            ElementAccess.IsRawPlace(KotoHelper.UnwrapParentheses(unary.Operand)))
         {
             return this.UpdatePointer(unary, KotoHelper.UnwrapParentheses(unary.Operand));
         }

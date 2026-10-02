@@ -13,8 +13,6 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageBorrowShared, KimiDeclarationId.Array, SemanticsKind.Ref, KimiDeclarationId.RefRemainder),
         new(KimiDeclarationId.StorageBorrowExclusive, KimiDeclarationId.Array, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
-        new(KimiDeclarationId.StorageLend, KimiDeclarationId.RefRemainder, SemanticsKind.Ref, Capability: true),
-        new(KimiDeclarationId.StorageSplit, KimiDeclarationId.UniqRemainder, SemanticsKind.Uniq, Capability: true),
         new(KimiDeclarationId.StorageRelease, null, SemanticsKind.Raw),
     ];
 
@@ -88,7 +86,7 @@ public sealed partial class KimiLibrary
             return this.ValidBoundFixedStorage(symbol, id == KimiDeclarationId.StorageBorrowFixedExclusive);
         }
 
-        if (id is >= KimiDeclarationId.DictionaryRefRemainder and <= KimiDeclarationId.StorageLendValue or >= KimiDeclarationId.DictionaryUniqRemainder and <= KimiDeclarationId.StorageValueAt)
+        if (id is >= KimiDeclarationId.DictionaryRefRemainder and <= KimiDeclarationId.StorageValueAt)
         {
             return this.ValidBoundDictionaryStorage(symbol, id);
         }
@@ -113,7 +111,7 @@ public sealed partial class KimiLibrary
     {
         if (symbol.Declaration is not FunctionKoto { GenericArguments.Count: 1 } function ||
             function.GenericArguments[0].BoundType is not { Kind: BoundTypeKind.Parameter } element ||
-            function.Parameters.Count != (signature.Capability ? 2 : 1) || symbol.Type is not { } result ||
+            function.Parameters.Count != 1 || symbol.Type is not { } result ||
             function.Parameters[0].Type.BoundType is not { } input)
         {
             return false;
@@ -136,19 +134,9 @@ public sealed partial class KimiLibrary
             storage = input.Components[0];
         }
 
-        if (!this.BoundStorageContainer(storage, parameterId, element, signature.Capability ? 1 : 0))
+        if (!this.BoundStorageContainer(storage, parameterId, element, 0))
         {
             return false;
-        }
-
-        if (signature.Capability)
-        {
-            return StorageInputOrigin(input.Origin, function) && StorageInputOrigin(storage.OriginArguments[0], function) &&
-                !ReferenceEquals(input.Origin, storage.OriginArguments[0]) &&
-                BoundStoragePointer(function.Parameters[1].Type.BoundType, element) &&
-                result.Kind == BoundTypeKind.Semantics && result.Semantics == signature.Semantics && result.Symbol is null &&
-                result.Components is [var referent] && ReferenceEquals(referent, element) && result.OriginArguments.Count == 0 &&
-                ReferenceEquals(result.Origin, storage.OriginArguments[0]);
         }
 
         var borrowing = signature.Semantics != SemanticsKind.Owner;
@@ -192,24 +180,15 @@ public sealed partial class KimiLibrary
         if (symbol.Declaration is not FunctionKoto { GenericArguments: [var keyParameter, var valueParameter] } function ||
             keyParameter.BoundType is not { Kind: BoundTypeKind.Parameter } key || valueParameter.BoundType is not { Kind: BoundTypeKind.Parameter } value ||
             symbol.Type is not { } result || function.Parameters[0].Type.BoundType is not { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var source] } input ||
-            input.Semantics != (id is KimiDeclarationId.StorageBorrowDictionaryExclusive or KimiDeclarationId.StorageSplitValue ? SemanticsKind.Uniq : SemanticsKind.Ref))
+            input.Semantics != (id == KimiDeclarationId.StorageBorrowDictionaryExclusive ? SemanticsKind.Uniq : SemanticsKind.Ref))
         {
             return false;
         }
 
-        if (id is KimiDeclarationId.StorageBorrowDictionary or KimiDeclarationId.StorageBorrowDictionaryExclusive)
-        {
-            return source is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var storedKey, var storedValue] } &&
-                ReferenceEquals(source.Symbol, this.GetSymbol(KimiDeclarationId.Dictionary)) && ReferenceEquals(storedKey, key) && ReferenceEquals(storedValue, value) &&
-                input.Origin is { Kind: OriginKind.Parameter, Slot: 0 } origin && ReferenceEquals(origin.Binder, function) &&
-                this.DictionaryRemainder(result, remainderId, key, value) && ReferenceEquals(result.OriginArguments[0], origin);
-        }
-
-        var split = id == KimiDeclarationId.StorageSplitValue;
-        return this.DictionaryRemainder(source, remainderId, key, value) && StorageInputOrigin(input.Origin, function) && StorageInputOrigin(source.OriginArguments[0], function) &&
-            !ReferenceEquals(input.Origin, source.OriginArguments[0]) && BoundStoragePointer(function.Parameters[1].Type.BoundType, u8) &&
-            result is { Kind: BoundTypeKind.Semantics, Symbol: null, OriginArguments.Count: 0, Components: [var lent] } && result.Semantics == (split ? SemanticsKind.Uniq : SemanticsKind.Ref) &&
-            ReferenceEquals(lent, id is KimiDeclarationId.StorageLendKey or KimiDeclarationId.StorageLendUniqKey ? key : value) && ReferenceEquals(result.Origin, source.OriginArguments[0]);
+        return source is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var storedKey, var storedValue] } &&
+            ReferenceEquals(source.Symbol, this.GetSymbol(KimiDeclarationId.Dictionary)) && ReferenceEquals(storedKey, key) && ReferenceEquals(storedValue, value) &&
+            input.Origin is { Kind: OriginKind.Parameter, Slot: 0 } origin && ReferenceEquals(origin.Binder, function) &&
+            this.DictionaryRemainder(result, remainderId, key, value) && ReferenceEquals(result.OriginArguments[0], origin);
     }
 
     // ownStorage takes the Dictionary by value; keyAt and valueAt address one slot's key or value with no Loan.
@@ -254,5 +233,5 @@ public sealed partial class KimiLibrary
             type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == origins &&
             ReferenceEquals(type.Symbol, this.GetSymbol(id)) && type.Components is [var argument] && ReferenceEquals(argument, element);
 
-    private readonly record struct StorageSignature(KimiDeclarationId Id, KimiDeclarationId? Parameter, SemanticsKind Semantics, KimiDeclarationId? Result = null, bool Capability = false);
+    private readonly record struct StorageSignature(KimiDeclarationId Id, KimiDeclarationId? Parameter, SemanticsKind Semantics, KimiDeclarationId? Result = null);
 }

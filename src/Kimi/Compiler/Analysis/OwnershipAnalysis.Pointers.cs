@@ -6,29 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private static bool IsPointerPlace(Koto source)
-    {
-        // SPEC 5.2, 12: stored fields, Tuple elements and integer-indexed fixed-array elements
-        // of *p or p[n] are raw Places too. Range and from-end forms keep their existing handling.
-        for (var depth = 0; depth < 64; depth++)
-        {
-            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
-            {
-                return true;
-            }
-
-            if (source is not BinaryKoto element || !ElementAccess.IsSyntax(element) ||
-                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || element.Right.BoundType is not { IsInteger: true })))
-            {
-                return false;
-            }
-
-            source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        return false;
-    }
-
     private bool SupportsPointerValue(Koto source, bool abstractRead = false)
     {
         var type = this.Concrete(source.BoundType);
@@ -235,6 +212,22 @@ public sealed partial class OwnershipAnalysis
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
             type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+
+    // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
+    // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.
+    private int BorrowRawPlace(Koto source, Koto place, BoundType type)
+    {
+        var pointer = this.PointerAddress(place);
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        var reference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        this.Emit(OwnershipOperationKind.Produce, source, reference);
+        this.SetValue(this.Value(reference), OwnershipValueKind.Convert, [pointer], constant: OwnershipValue.RawPlaceBorrow);
+        return this.RegisterTemporary(reference);
+    }
 
     private int LoadPointer(Koto source, int pointer)
     {

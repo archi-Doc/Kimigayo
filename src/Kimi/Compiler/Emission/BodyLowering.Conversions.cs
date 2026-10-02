@@ -110,6 +110,7 @@ internal sealed partial class BodyLowering
             var plan = kind != OwnershipValueKind.Convert ? default
                 : body.Values[id].Constant == OwnershipValue.WrapConversion ? PlanWrap(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth)
                 : body.Values[id].Constant == OwnershipValue.BitConversion ? new("bitcast", null, null, 0, 0) // SPEC 13.5.4.4: the same bits, no check.
+                : body.Values[id].Constant == OwnershipValue.RawPlaceBorrow ? default // SPEC 5.2.2: the address itself.
                 : PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth);
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && plan.Operator is null)
             {

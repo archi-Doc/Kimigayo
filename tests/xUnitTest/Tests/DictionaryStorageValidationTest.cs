@@ -37,23 +37,9 @@ public class DictionaryStorageValidationTest
     [InlineData(KimiDeclarationId.StorageBorrowDictionary, "input-key")]
     [InlineData(KimiDeclarationId.StorageBorrowDictionary, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageBorrowDictionary, "result-static")]
-    [InlineData(KimiDeclarationId.StorageLendKey, "result-swapped")]
-    [InlineData(KimiDeclarationId.StorageLendKey, "result-state")]
-    [InlineData(KimiDeclarationId.StorageLendKey, "result-static")]
-    [InlineData(KimiDeclarationId.StorageLendKey, "pointer")]
-    [InlineData(KimiDeclarationId.StorageLendValue, "result-swapped")]
-    [InlineData(KimiDeclarationId.StorageLendValue, "result-state")]
-    [InlineData(KimiDeclarationId.StorageLendValue, "input-mode")]
     [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "input-mode")]
     [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageBorrowDictionaryExclusive, "result-static")]
-    [InlineData(KimiDeclarationId.StorageLendUniqKey, "result-swapped")]
-    [InlineData(KimiDeclarationId.StorageLendUniqKey, "result-state")]
-    [InlineData(KimiDeclarationId.StorageLendUniqKey, "input-mode")]
-    [InlineData(KimiDeclarationId.StorageSplitValue, "result-swapped")]
-    [InlineData(KimiDeclarationId.StorageSplitValue, "result-state")]
-    [InlineData(KimiDeclarationId.StorageSplitValue, "result-mode")]
-    [InlineData(KimiDeclarationId.StorageSplitValue, "pointer")]
     [InlineData(KimiDeclarationId.StorageOwnDictionary, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageKeyAt, "result-swapped")]
     [InlineData(KimiDeclarationId.StorageKeyAt, "result-mode")]
@@ -89,12 +75,6 @@ public class DictionaryStorageValidationTest
                 break;
             case "result-static":
                 symbol.Type = result.Kind == BoundTypeKind.Semantics ? Copy(result, origin: BoundOrigin.Static) : Copy(result, origins: [BoundOrigin.Static]);
-                break;
-            case "result-state":
-                symbol.Type = Copy(result, origin: original.Origin);
-                break;
-            case "pointer":
-                function.Parameters[1].Type.BoundType = Copy(function.Parameters[1].Type.BoundType!, components: [BoundType.Primitives["i32"]]);
                 break;
         }
 
@@ -143,7 +123,7 @@ public class DictionaryStorageValidationTest
 
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
-    [InlineData("unsafe => _ = Kimi.Storage.lendKey(map@ref, null@raw/u8)")]
+    [InlineData("unsafe => _ = Kimi.Storage.keyAt<i32, i32>(null@raw/u8)")]
     [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
     [InlineData("Kimi.Storage.missingDictionaryKey()")]
     [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]

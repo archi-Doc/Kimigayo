@@ -64,4 +64,26 @@ public class RawPlaceAccessTest
             """;
         ScalarEmissionTest.EmitFixture("RawPlaceTake", source, "drop\ntaken\ndrop\ndone\n");
     }
+
+    // SPEC 5.2.2: @ref and @uniq borrow a raw Place, a Field or an element of one. The referent is a fresh anchor, so the result
+    // Origin is fitted to the expected Type, result or storage destination, and other Places are not compared with it.
+    [Theory]
+    [InlineData("func get(pointer: raw/Resource, owner: ref/Resource) -> ref/Resource during owner\n    unsafe => return (*pointer)@ref\n")]
+    [InlineData("func get(pointer: raw/Resource, owner: uniq/Resource) -> uniq/i32 during owner\n    unsafe => return pointer[1].value@uniq\n")]
+    [InlineData("func get(pointer: raw/Resource) -> ref/Resource\n    unsafe => return pointer[0]@ref/Resource\n")]
+    [InlineData("struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\nfunc view(pointer: raw/Resource, owner: ref/Resource) -> View during owner\n    unsafe => return View.init((*pointer)@ref)\n")]
+    public void ARawPlaceBorrowFitsItsDestination(string function)
+    {
+        var c = MinimalEmissionTest.Analyze(Resource + function + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // Two borrows of raw Places are not compared: their non-overlap is the unsafe obligation.
+    [Fact]
+    public void FreshAnchorsAreNotCompared()
+    {
+        var source = Resource + "func run(pointer: raw/Resource)\n    unsafe\n        let first = (*pointer)@uniq\n        let second = pointer[1]@uniq\n        first.value = 1\n        second.value = 2\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
 }

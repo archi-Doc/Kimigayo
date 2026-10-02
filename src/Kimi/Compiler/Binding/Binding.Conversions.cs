@@ -351,6 +351,16 @@ public sealed partial class Binding
         return ReferenceEquals(this.ResultEvidence(source, scope), BoundType.Never);
     }
 
+    // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
+    // upper bound and is fitted to the expected Type, result or storage destination; static fits each of them.
+    private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
+    {
+        var borrowed = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: BoundOrigin.Static);
+        Complete(conversion.Right, borrowed);
+        conversion.ConversionBinding = ConversionBinding.Borrow;
+        return Complete(conversion, borrowed);
+    }
+
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
@@ -458,6 +468,11 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawPlace(conversion.Left))
+            {
+                return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
+            }
+
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
@@ -544,6 +559,11 @@ public sealed partial class Binding
                 Complete(conversion.Right, adapted);
                 conversion.ConversionBinding = ConversionBinding.Borrow;
                 return Complete(conversion, adapted);
+            }
+
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawPlace(conversion.Left))
+            {
+                return this.BorrowRawPlace(conversion, semantics, operandType);
             }
 
             if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && BorrowsWrittenSlot(operandType))

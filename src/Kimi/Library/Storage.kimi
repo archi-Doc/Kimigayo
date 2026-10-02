@@ -1,6 +1,7 @@
 // SPEC 22.1.2.5: the standard storage boundary. These Types and operations split standard collection Storage into
 // non-overlapping regions; they are internal to the Kimi Kotonoha, and public Iterators keep them in private Fields.
-// The compiler supplies construction and the unsafe capability primitives; ordinary Field operations grant no capability.
+// The compiler supplies construction; elements are lent and split by borrowing raw Places, whose range, non-overlap and
+// initialization are this group's unsafe obligations (SPEC 5.2.2).
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
@@ -96,9 +97,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe
-            let element = state.storage + position
-            return .Some(lend(state, element))
+        unsafe => return .Some(state.storage[position]@ref)
 
     /// Splits the first untaken element off as a child Loan and advances the exclusive remainder.
     internal func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>
@@ -106,9 +105,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe
-            let element = state.storage + position
-            return .Some(split(state, element))
+        unsafe => return .Some(state.storage[position]@uniq)
 
     /// Lends the key and value of the first untaken entry for shared access and advances along the insertion order.
     internal func splitFirst<K, V>(state: uniq/DictionaryRefRemainder<K, V>) -> Option<(ref/K during state.source, ref/V during state.source)>
@@ -118,7 +115,7 @@ internal group Storage
             let slot = state.storage + (state.link - 1) * state.stride
             // Each slot starts with its previous and next links.
             state.link = (slot@raw/isize)[1]
-            return .Some((lendKey(state, slot), lendValue(state, slot)))
+            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@ref))
 
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
     internal func splitFirst<K, V>(state: uniq/DictionaryUniqRemainder<K, V>) -> Option<(ref/K during state.source, uniq/V during state.source)>
@@ -127,7 +124,7 @@ internal group Storage
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
             state.link = (slot@raw/isize)[1]
-            return .Some((lendKey(state, slot), splitValue(state, slot)))
+            return .Some(((*keyAt<K, V>(slot))@ref, (*valueAt<K, V>(slot))@uniq))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
     internal func takeFirst<K, V>(state: uniq/DictionaryOwnedRemainder<K, V>) -> Option<(K, V)>
@@ -191,10 +188,10 @@ internal group Storage
             // Logical positions, not pointer equality, prove disjointness even when E has zero size.
             state.position = start + low + 1
             state.count = count - low - 1
-            let lower = split(state@uniq, state.storage + start + low)
+            let lower = state.storage[start + low]@uniq
             state.position = start + high + 1
             state.count = count - high - 1
-            let upper = split(state@uniq, state.storage + start + high)
+            let upper = state.storage[start + high]@uniq
             if firstPosition < secondPosition => return .Some((lower@move, upper@move))
             return .Some((upper@move, lower@move))
 

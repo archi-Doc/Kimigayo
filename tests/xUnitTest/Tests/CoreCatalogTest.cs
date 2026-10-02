@@ -159,10 +159,10 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        // Dictionary's two source Indexable entries and six private storage primitives are catalog identities too, as is
+        // Dictionary's two source Indexable entries and the private storage primitives are catalog identities too, as is
         // the Wrapping<T> stub (SPEC 3.1.1.1) and the private i64 address primitive.
-        Assert.Equal(122, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(130, c.Library.Declarations.Length);
+        Assert.Equal(116, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(124, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

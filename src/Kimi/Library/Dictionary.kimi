@@ -76,7 +76,7 @@ public struct Dictionary<K, V>
         require link != 0 else => return .None
         unsafe
             let slot = state.storage + (link - 1) * state.stride
-            return .Some(Storage.lendValue(state, slot))
+            return .Some((*Storage.valueAt<K, V>(slot))@ref)
 
     /// Starts a shared enumeration of the entries in insertion order.
     public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source

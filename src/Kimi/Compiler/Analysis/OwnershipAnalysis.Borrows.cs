@@ -45,6 +45,11 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
+        if (ElementAccess.IsRawPlace(unwrapped))
+        {
+            return this.BorrowRawPlace(source, unwrapped, type);
+        }
+
         if (this.ImplicitlyFollowsReference(unwrapped, type))
         {
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation); // SPEC 7.3: a receiver through a pair layer.

@@ -55,8 +55,7 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
                         >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageRelease => this.ValidStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder => this.ValidDictionaryRemainder(symbol, entry.Id),
-                        >= KimiDeclarationId.StorageBorrowDictionary and <= KimiDeclarationId.StorageLendValue or
-                            >= KimiDeclarationId.StorageBorrowDictionaryExclusive and <= KimiDeclarationId.StorageSplitValue or
+                        KimiDeclarationId.StorageBorrowDictionary or KimiDeclarationId.StorageBorrowDictionaryExclusive or
                             >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt => this.ValidDictionaryStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive => this.ValidFixedStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
@@ -615,22 +614,17 @@ public sealed partial class KimiLibrary
     }
 
     // SPEC 22.1.2.5: bodiless internal operations over Dictionary<K, V> that the compiler implements: borrowStorage takes
-    // the shared or exclusive Loan; the unsafe primitives lend a slot's key, or lend or split its value, for the source.
+    // the shared or exclusive Loan, ownStorage the Dictionary, and keyAt and valueAt address one slot's key or value.
     private bool ValidDictionaryStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var (name, semantics, source, result, lent) = id switch
         {
             KimiDeclarationId.StorageBorrowDictionary => ("borrowStorage", SemanticsKind.Ref, "Dictionary", "DictionaryRefRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageBorrowDictionaryExclusive => ("borrowStorage", SemanticsKind.Uniq, "Dictionary", "DictionaryUniqRemainder", SemanticsKind.Owner),
-            KimiDeclarationId.StorageLendKey => ("lendKey", SemanticsKind.Ref, "DictionaryRefRemainder", "K", SemanticsKind.Ref),
-            KimiDeclarationId.StorageLendValue => ("lendValue", SemanticsKind.Ref, "DictionaryRefRemainder", "V", SemanticsKind.Ref),
-            KimiDeclarationId.StorageLendUniqKey => ("lendKey", SemanticsKind.Ref, "DictionaryUniqRemainder", "K", SemanticsKind.Ref),
-            KimiDeclarationId.StorageSplitValue => ("splitValue", SemanticsKind.Uniq, "DictionaryUniqRemainder", "V", SemanticsKind.Uniq),
             KimiDeclarationId.StorageOwnDictionary => ("ownStorage", SemanticsKind.Owner, "Dictionary", "DictionaryOwnedRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageKeyAt => ("keyAt", SemanticsKind.Raw, "u8", "K", SemanticsKind.Raw),
             _ => ("valueAt", SemanticsKind.Raw, "u8", "V", SemanticsKind.Raw),
         };
-        var borrow = lent == SemanticsKind.Owner;
         var owning = semantics == SemanticsKind.Owner;
         if (semantics == SemanticsKind.Raw)
         {
@@ -645,30 +639,22 @@ public sealed partial class KimiLibrary
 
         if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) || function.Name != name ||
-            function.Modifier != (borrow ? ModifierKind.Internal : ModifierKind.Internal | ModifierKind.Unsafe) || function.AttributeChain is not null ||
+            function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] ||
-            function.Parameters.Count != (borrow ? 1 : 2) || function.ReturnType is null ||
+            function.Parameters.Count != 1 || function.ReturnType is null ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
             function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter ||
             (owning ? BareType(parameter.Type) : parameter.Type is TypeSemanticsKoto reference && reference.SemanticsKind == semantics ? reference.Type : null) is not GenericsKoto { TypeArguments: [var first, var second] } input ||
-            parameter.InternalName != (borrow ? "value" : "state") || parameter.ExternalName != parameter.InternalName ||
+            parameter.InternalName != "value" || parameter.ExternalName != parameter.InternalName ||
             !BareName(input.Identifier, source) || !BareName(first, "K") || !BareName(second, "V"))
         {
             return false;
         }
 
-        if (borrow)
-        {
-            // Dictionary<K, V> is formed only under its Equatable key requirement.
-            return function.TypeConstraints is [IsKoto { IsNegated: false } key] && BareName(key.Left, "K") && BareName(key.Right, "Equatable") &&
+        // Dictionary<K, V> is formed only under its Equatable key requirement.
+        return function.TypeConstraints is [IsKoto { IsNegated: false } key] && BareName(key.Left, "K") && BareName(key.Right, "Equatable") &&
                 (!owning && function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, OriginName: "a", Type: { } during } ? during : BareType(function.ReturnType)) is GenericsKoto { TypeArguments: [var resultKey, var resultValue] } remainder &&
-                BareName(remainder.Identifier, result) && BareName(resultKey, "K") && BareName(resultValue, "V");
-        }
-
-        return function.TypeConstraints.Count == 0 &&
-            function.Parameters[1] is { InternalName: "slot", ExternalName: "slot", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } pointer } && BareName(pointer.Type, "u8") &&
-            BareType(function.ReturnType) is TypeSemanticsKoto element && element.SemanticsKind == lent && BareName(element.Type, result) &&
-            (lent == SemanticsKind.Raw ? element.OriginExpression is null : element.OriginExpression is MemberAccessKoto origin && BareName(origin.Left, "state") && BareName(origin.Right, "source"));
+            BareName(remainder.Identifier, result) && BareName(resultKey, "K") && BareName(resultValue, "V");
     }
 
     // SPEC 22.1.2.5: borrowStorage over ref/[N of E] or uniq/[N of E] during a returns the contiguous RefRemainder<E> or
@@ -719,31 +705,21 @@ public sealed partial class KimiLibrary
     private bool ValidStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
-        var capability = id is KimiDeclarationId.StorageLend or KimiDeclarationId.StorageSplit;
         var release = id == KimiDeclarationId.StorageRelease;
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
             KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
-            KimiDeclarationId.StorageLend => ("lend", "state", SemanticsKind.Ref, "RefRemainder"),
-            KimiDeclarationId.StorageSplit => ("split", "state", SemanticsKind.Uniq, "UniqRemainder"),
             KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
             _ => ("release", "storage", SemanticsKind.Raw, "E"),
         };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
-            function.Name != name || function.Modifier != (capability || release ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
+            function.Name != name || function.Modifier != (release ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
-            function.Parameters.Count != (capability ? 2 : 1) || function.TypeConstraints.Count != 0 || (release ? function.ReturnType is not null : function.ReturnType is null) ||
+            function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || (release ? function.ReturnType is not null : function.ReturnType is null) ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
             function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != parameterName || parameter.ExternalName != parameter.InternalName)
-        {
-            return false;
-        }
-
-        if (capability && (function.Parameters[1] is not { InternalName: "element", ExternalName: "element", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } pointer } || !BareName(pointer.Type, "E") ||
-            BareType(function.ReturnType) is not TypeSemanticsKoto result || result.SemanticsKind != semantics || !BareName(result.Type, "E") ||
-            result.OriginExpression is not MemberAccessKoto origin || !BareName(origin.Left, "state") || !BareName(origin.Right, "source")))
         {
             return false;
         }

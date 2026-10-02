@@ -52,8 +52,8 @@ embedded, validated and implemented.
   without an ordinary `#LibraryImport` declaration. Ordinary
   helpers in these containers use the normal compilation pipeline; this is not
   public syntax for declaring a user intrinsic or omitting a function body.
-- `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal
-  unsafe `lend`/`split` capabilities, and owning `takeFirst` through typed raw reads.
+- `Storage.kimi` implements contiguous shared/exclusive `splitFirst` by borrowing raw element
+  Places (SPEC 5.2.2), and owning `takeFirst` by taking them with `@move`.
   Array and fixed-array `tryGetPairUniq` share its ordinary Kimigayo position resolution
   and disjoint pair splitting, using logical positions even for zero-sized elements.
   Its owning remainder destroys unreturned elements in reverse order in a concrete

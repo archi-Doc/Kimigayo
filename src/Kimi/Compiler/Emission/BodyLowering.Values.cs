@@ -130,6 +130,8 @@ internal sealed partial class BodyLowering
                 (operation.Kind != OwnershipOperationKind.Produce ||
                 (value.Constant == OwnershipValue.PositionConversion
                     ? !IsPositionConversion(operation.Source, ValueType(body, Input(body, id, 0)), ValueType(body, id))
+                    : value.Constant == OwnershipValue.RawPlaceBorrow
+                    ? !ReferenceTypes.IsPointer(ValueType(body, Input(body, id, 0))) || !ReferenceTypes.IsReference(ValueType(body, id))
                     : operation.Source is not Parsing.ConversionKoto conversion ||
                         !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
                         !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, OperandType(conversion))) ||

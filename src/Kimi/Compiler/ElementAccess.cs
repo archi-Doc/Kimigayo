@@ -151,6 +151,30 @@ internal static class ElementAccess
         return Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
     }
 
+    // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw
+    // Places. Range and from-end forms keep their existing handling.
+    internal static bool IsRawPlace(Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
+            {
+                return true;
+            }
+
+            if (source is not BinaryKoto element || !IsSyntax(element) ||
+                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || element.Right.BoundType is not { IsInteger: true })))
+            {
+                return false;
+            }
+
+            source = KotoHelper.UnwrapParentheses(element.Left);
+        }
+
+        return false;
+    }
+
     // SPEC 5.2, 12: an inline stored field/Tuple/fixed-array path rooted at *p or p[n].
     // Binding mutability does not decide its write permission.
     internal static bool IsPointerPath(Koto source)
