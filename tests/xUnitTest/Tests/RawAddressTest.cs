@@ -21,6 +21,10 @@ public class RawAddressTest
     [InlineData("var number: i32 = 1\n    let r = number@ref\n    let address = r@raw\n", "raw/ref/i32")]
     [InlineData("var point = Point.init(1, 2)\n    let address = point.y@raw\n", "raw/i32")]
     [InlineData("var point = Point.init(1, 2)\n    let address = point@raw\n", "raw/Point")]
+    [InlineData("var point = Point.init(1, 2)\n    let p = point@raw\n    unsafe\n        let address = (*p).y@raw\n", "raw/i32")]
+    [InlineData("var point = Point.init(1, 2)\n    let p = point@raw\n    unsafe\n        let address = p[0].x@raw\n", "raw/i32")]
+    [InlineData("var point = Point.init(1, 2)\n    let p = point@raw\n    unsafe\n        let address = (*p)@raw\n", "raw/Point")]
+    [InlineData("var values: [3 of i32] = [1, 2, 3]\n    let p = values@raw\n    unsafe\n        let address = (*p)[1]@raw\n", "raw/i32")]
     public void TheAddressHasTheStoredTypeOfTheWrittenSlot(string body, string type)
     {
         var source = Point + "public func main()\n    " + body;
@@ -54,6 +58,7 @@ public class RawAddressTest
     // SPEC 5.4, 8.4.10.2: in an effect summary the address is an access to its Place, an environment effect only on a mutable static.
     [Theory]
     [InlineData("    let slot = self.count@raw\n", true)]
+    [InlineData("    let p = self@raw\n        var slot = p@raw/i32\n        unsafe => slot = (*p).count@raw\n", true)]
     [InlineData("    let slot = Metrics.puts@raw\n", false)]
     public void TheAddressIsAnAccessToItsPlace(string body, bool valid)
     {
@@ -110,6 +115,31 @@ public class RawAddressTest
             Console.writeLine("addressed")
             """;
         ScalarEmissionTest.EmitFixture("RawAddressWrite", source, "addressed\n");
+    }
+
+    // SPEC 5.4, 5.2.2: the address of a raw Place part is displaced from the pointer; nothing is read.
+    [Fact]
+    public void WritesThroughARawPlacePartAddressReachThePart()
+    {
+        var source = Point + """
+            func bump(pointer: raw/i32)
+                unsafe => *pointer += 1
+            var point = Point.init(1, 2)
+            let p = point@raw
+            unsafe
+                bump((*p).y@raw)
+                bump(p[0].x@raw)
+            require point.x == 2 and point.y == 3 else => $abort("field")
+            var values: [3 of i32] = [1, 2, 3]
+            let q = values@raw
+            var i: isize = 2
+            unsafe
+                bump((*q)[i]@raw)
+                bump((*q)[0]@raw)
+            require values[0] == 2 and values[1] == 2 and values[2] == 4 else => $abort("element")
+            Console.writeLine("parts")
+            """;
+        ScalarEmissionTest.EmitFixture("RawAddressPart", source, "parts\n");
     }
 
     private static string Text(BoundType type)

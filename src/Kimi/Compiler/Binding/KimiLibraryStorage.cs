@@ -15,10 +15,15 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
     ];
 
-    // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit.
+    // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit, and slice returns the
+    // Slice<T> of its own result-only Origin.
     private static bool ValidBoundRawOperation(BindingSymbol symbol, KimiDeclarationId id)
         => symbol.Declaration is FunctionKoto { GenericArguments: [var parameter] } function && parameter.BoundType is { Kind: BoundTypeKind.Parameter } element &&
-            (id == KimiDeclarationId.RawAllocate
+            (id == KimiDeclarationId.RawSlice
+                ? BoundStoragePointer(function.Parameters[0].Type.BoundType, element) && ReferenceEquals(function.Parameters[1].Type.BoundType, BoundType.ISize) &&
+                    symbol.Type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner, Origin: { Kind: OriginKind.Parameter } source, OriginArguments.Count: 0, Components: [var stored] } &&
+                    ReferenceEquals(stored, element) && ReferenceEquals(source.Binder, function)
+                : id == KimiDeclarationId.RawAllocate
                 ? ReferenceEquals(function.Parameters[0].Type.BoundType, BoundType.ISize) && BoundStoragePointer(symbol.Type, element)
                 : BoundStoragePointer(function.Parameters[0].Type.BoundType, element) && ReferenceEquals(symbol.Type, BoundType.Unit) &&
                     (id == KimiDeclarationId.RawRelease || ReferenceEquals(function.Parameters[1].Type.BoundType, element)));
@@ -50,19 +55,28 @@ public sealed partial class KimiLibrary
             }
         }
 
+        return id == KimiDeclarationId.OwnedRemainder ||
+            (BoundLoanField(declaration, count, id == KimiDeclarationId.UniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, symbol, out var lent) && ReferenceEquals(lent, element));
+    }
+
+    // SPEC 15.3.5: the trailing Loan Field keeps the record's source Loan, in the record's mode, over the stored Type it returns.
+    private static bool BoundLoanField(StructKoto declaration, int index, SemanticsKind semantics, BindingSymbol symbol, out BoundType? lent)
+    {
+        lent = null;
+        if (StorageField(declaration, index) is not { BoundSymbol.Type: { } type } field || !ReferenceEquals(field.TypeKoto?.BoundType, type) || StorageField(declaration, index + 1) is not null ||
+            type is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [{ Kind: BoundTypeKind.Semantics, Components: [var stored] } borrowed] } ||
+            type.Symbol?.LibraryDeclaration != KimiDeclarationId.Loan || borrowed.Semantics != semantics ||
+            symbol.Schema is not { Origins: [var source] } || !ReferenceEquals(borrowed.Origin, source.Origin))
+        {
+            return false;
+        }
+
+        lent = stored;
         return true;
     }
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id == KimiDeclarationId.StorageAddressOfI64)
-        {
-            return symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var result] } &&
-                ReferenceEquals(result, BoundType.Primitives["i64"]) && symbol.Declaration is FunctionKoto function &&
-                function.Parameters[0].Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var input] } &&
-                ReferenceEquals(input, result);
-        }
-
         if (id == KimiDeclarationId.StorageMissingDictionaryKey)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
@@ -78,7 +92,7 @@ public sealed partial class KimiLibrary
             return ValidBoundDictionaryPlacement(symbol);
         }
 
-        if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawInitialize)
+        if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice)
         {
             return ValidBoundRawOperation(symbol, id);
         }
@@ -162,8 +176,9 @@ public sealed partial class KimiLibrary
             id >= KimiDeclarationId.DictionaryUniqRemainder ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder;
         if (id is KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder)
         {
-            var fields = id == KimiDeclarationId.DictionaryOwnedRemainder ? 5 : 4;
-            if (symbol.Declaration is not StructKoto declaration || StorageField(declaration, fields) is not null)
+            var owned = id == KimiDeclarationId.DictionaryOwnedRemainder;
+            var fields = owned ? 5 : 4;
+            if (symbol.Declaration is not StructKoto declaration || StorageField(declaration, owned ? fields : fields + 1) is not null)
             {
                 return false;
             }
@@ -177,7 +192,10 @@ public sealed partial class KimiLibrary
                 }
             }
 
-            return true;
+            // The borrowing remainders keep their source Loan over the entry Tuple (K, V).
+            return owned || (BoundLoanField(declaration, fields, id == KimiDeclarationId.DictionaryUniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, symbol, out var entry) &&
+                entry is { Kind: BoundTypeKind.Tuple, Components: [var entryKey, var entryValue] } && declaration.GenericParameterNodes is [var keyNode, var valueNode] &&
+                ReferenceEquals(entryKey, keyNode.BoundType) && ReferenceEquals(entryValue, valueNode.BoundType));
         }
 
         if (id is >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt)

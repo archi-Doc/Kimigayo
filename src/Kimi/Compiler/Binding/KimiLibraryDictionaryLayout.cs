@@ -66,11 +66,12 @@ public sealed partial class KimiLibrary
         {
             KimiDeclarationId.RawAllocate => ("allocate", ModifierKind.Public, 1),
             KimiDeclarationId.RawRelease => ("release", ModifierKind.Public | ModifierKind.Unsafe, 1),
-            _ => ("initialize", ModifierKind.Public | ModifierKind.Unsafe, 2),
+            KimiDeclarationId.RawInitialize => ("initialize", ModifierKind.Public | ModifierKind.Unsafe, 2),
+            _ => ("slice", ModifierKind.Public | ModifierKind.Unsafe, 2),
         };
         if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function ||
-            symbol.Declaration is not FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, TypeConstraints.Count: 0 } function ||
-            !ReferenceEquals(function.Parent, this.RawScope.Owner) || function.Name != name || function.Modifier != modifier ||
+            symbol.Declaration is not FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0 } function ||
+            function.Origins.Count > (id == KimiDeclarationId.RawSlice ? 1 : 0) || !ReferenceEquals(function.Parent, this.RawScope.Owner) || function.Name != name || function.Modifier != modifier ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null }] ||
             function.Parameters.Count != parameters)
         {
@@ -82,6 +83,14 @@ public sealed partial class KimiLibrary
         {
             return PlacementInput(first, "count") && BareName(first.Type, "isize") &&
                 function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null } result && BareName(result.Type, "T");
+        }
+
+        if (id == KimiDeclarationId.RawSlice)
+        {
+            // The result-only Origin s is universal; the caller's expected Type fixes it.
+            return PlacementInput(first, "storage") && first.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null } input && BareName(input.Type, "T") &&
+                PlacementInput(function.Parameters[1], "length") && BareName(function.Parameters[1].Type, "isize") &&
+                function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, OriginName: "s", Type: GenericsKoto { TypeArguments: [var element] } slice } && BareName(slice.Identifier, "Slice") && BareName(element, "T");
         }
 
         return function.ReturnType is null && PlacementInput(first, "storage") &&

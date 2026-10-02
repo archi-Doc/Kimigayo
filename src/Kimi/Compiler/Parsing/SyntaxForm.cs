@@ -245,4 +245,13 @@ public enum SyntaxForm : ushort
 
     /// <summary>A slot Name in a struct or enum Origin header, which names at least one slot.</summary>
     OriginSlotName,
+
+    /// <summary>'&amp;&amp;', recognized but no operator (SPEC 2.4, 13.8); logical conjunction is 'and'.</summary>
+    AmpersandAmpersand,
+
+    /// <summary>'||', recognized but no operator (SPEC 2.4, 13.8); logical disjunction is 'or'.</summary>
+    BarBar,
+
+    /// <summary>The indented arm list of a match, which is not an executable body (SPEC 14.2, 14.8).</summary>
+    MatchArms,
 }

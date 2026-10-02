@@ -79,6 +79,11 @@ public class RawPlaceAccessTest
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
+    // A returned borrow takes the declared result's Origin, in concrete and generic functions.
+    [Fact]
+    public void AReturnedRawPlaceBorrowTakesTheResultOrigin()
+        => ScalarEmissionTest.EmitFixture("RawPlaceBorrowResult", "func get(p: raw/i32, owner: ref/i32) -> ref/i32 during owner\n    unsafe => return (*p)@ref\nfunc generic<T>(p: raw/T, owner: ref/T) -> ref/T during owner\n    unsafe => return (*p)@ref\nvar number: i32 = 5\nlet r = get(number@raw, number@ref)\nlet g = generic(number@raw, number@ref)\nrequire r == 5 and g == 5 else => $abort(\"value\")\nConsole.writeLine(\"returned\")", "returned\n");
+
     // Two borrows of raw Places are not compared: their non-overlap is the unsafe obligation.
     [Fact]
     public void FreshAnchorsAreNotCompared()

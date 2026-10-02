@@ -536,8 +536,8 @@ public sealed partial class Binding
                     this.Queue(binding.PropertyCall(update.Operand, PropertyAccessorKind.Get));
                     this.PlaceAccess(update.Operand, LoanRequirement.Uniq, node);
                     break;
-                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow when ElementAccess.IsRawPlace(borrow.Left):
-                    break; // SPEC 5.2.2: a fresh anchor, compared with no Place it does not derive from.
+                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address } borrow when ElementAccess.IsRawPlace(borrow.Left):
+                    break; // SPEC 5.2.2, 5.4: a fresh anchor, compared with no Place it does not derive from.
                 case ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow:
                     this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
                     this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
@@ -933,7 +933,7 @@ public sealed partial class Binding
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
                 CompilerFunctionKind.StorageOwn or
                 >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary or
-                >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawInitialize => true, // SPEC 5.6: an allocation and raw accesses.
+                >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice => true, // SPEC 5.6: an allocation and raw accesses.
             _ => false,
         };
 

@@ -695,6 +695,13 @@ public sealed partial class Binding
             return Complete(generic, own);
         }
 
+        // SPEC 15.3.5: Loan<T> is formed only over a complete ref, uniq, objref or objuniq borrow Type.
+        if (definition.LibraryDeclaration == KimiDeclarationId.Loan && own is { Components: [var borrowed] } &&
+            borrowed is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
+        }
+
         var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
         if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
         {

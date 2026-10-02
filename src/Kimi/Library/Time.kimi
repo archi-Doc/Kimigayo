@@ -4,19 +4,13 @@ public group Time
 
     func readCounter() -> i64
         var value: i64 = 0
-        unsafe
-            let output = Storage.addressOfI64(value@uniq)
-            require Windows.queryPerformanceCounter(output) != 0 else
-                $abort("Performance counter query failed")
+        require Windows.queryPerformanceCounter(value@uniq) != 0 else => $abort("Performance counter query failed")
         require value >= 0 else => $abort("Negative performance counter")
         return value
 
     func readCounterFrequency() -> i64
         var value: i64 = 0
-        unsafe
-            let output = Storage.addressOfI64(value@uniq)
-            require Windows.queryPerformanceFrequency(output) != 0 else
-                $abort("Performance counter frequency query failed")
+        require Windows.queryPerformanceFrequency(value@uniq) != 0 else => $abort("Performance counter frequency query failed")
         require value > 0 else => $abort("Invalid performance counter frequency")
         return value
 

@@ -115,7 +115,6 @@ public class LibraryImportTargetBindingTest
     [InlineData("#LibraryImport(name: \"codec\", \"symbol\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(codec, \"symbol\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32 => 1")]
-    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"memcpy\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"__chkstk\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"_fltused\")\n    public unsafe func imported() -> i32")]
@@ -162,6 +161,12 @@ public class LibraryImportTargetBindingTest
     [InlineData("(value: ())", "i32", true)]
     [InlineData("()", "bool", true)]
     [InlineData("()", "u128", true)]
+    [InlineData("(value: uniq/i64)", "i32", false)]
+    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", false)]
+    [InlineData("(value: ref/string)", "()", true)]
+    [InlineData("(value: uniq/(i32, i32))", "()", true)]
+    [InlineData("(value: ref/bool)", "()", true)]
+    [InlineData("(value: Option<ref/i32 during a>)", "()", true)]
     public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, bool unsupported)
     {
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");

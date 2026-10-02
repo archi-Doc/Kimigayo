@@ -6,16 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
-    // SPEC UTF-8 formatting 1.1: the runtime accesses these fields directly, and
-    // the adapters' fixed Origin metadata carries authority absent from raw pointers.
+    // SPEC UTF-8 formatting 1.1: the runtime accesses these fields directly; the adapters keep the Loan their raw pointers
+    // cannot state in a trailing zero-sized Loan Field (SPEC 15.3.5).
     private static readonly FormattingLayout[] FormattingLayouts =
     [
         new(KimiDeclarationId.BufferFull, [], LoanRequirement.None),
         new(KimiDeclarationId.InvalidUtf8, [], LoanRequirement.None),
-        new(KimiDeclarationId.FixedBuffer, [FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Size], LoanRequirement.Uniq),
+        new(KimiDeclarationId.FixedBuffer, [FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Loan], LoanRequirement.Uniq),
         new(KimiDeclarationId.HeapBuffer, [FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Size], LoanRequirement.None),
-        new(KimiDeclarationId.WriteWindow, [FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Size], LoanRequirement.Uniq),
-        new(KimiDeclarationId.Utf8Writer, [FormattingFieldType.Pointer, FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Boolean, FormattingFieldType.Size, FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size], LoanRequirement.Uniq),
+        new(KimiDeclarationId.WriteWindow, [FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Loan], LoanRequirement.Uniq),
+        new(KimiDeclarationId.Utf8Writer, [FormattingFieldType.Pointer, FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Boolean, FormattingFieldType.Size, FormattingFieldType.Pointer, FormattingFieldType.Size, FormattingFieldType.Size, FormattingFieldType.Loan], LoanRequirement.Uniq),
         new(KimiDeclarationId.Utf8Slice, [FormattingFieldType.ByteSlice], LoanRequirement.Ref),
     ];
 
@@ -25,6 +25,7 @@ public sealed partial class KimiLibrary
         Size,
         Boolean,
         ByteSlice,
+        Loan,
     }
 
     private bool ValidBoundFormattingLayout(BindingSymbol symbol, KimiDeclarationId id)
@@ -77,6 +78,8 @@ public sealed partial class KimiLibrary
             FormattingFieldType.Boolean => ReferenceEquals(type, BoundType.Boolean),
             FormattingFieldType.ByteSlice => type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner, OriginArguments.Count: 0, Components: [var element] } &&
                 ReferenceEquals(type.Symbol, this.Slice) && ReferenceEquals(element, BoundType.Primitives["u8"]) && source is not null && ReferenceEquals(type.Origin, source),
+            FormattingFieldType.Loan => type is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var target] } lent] } &&
+                type.Symbol?.LibraryDeclaration == KimiDeclarationId.Loan && ReferenceEquals(target, BoundType.Primitives["u8"]) && source is not null && ReferenceEquals(lent.Origin, source),
             _ => false,
         };
 

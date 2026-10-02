@@ -169,8 +169,9 @@ public sealed partial class Binding
         // generic/Origin parameters, specializations or argument defaults.
         static bool IsImportShape(FunctionKoto function)
         {
-            if ((function.Modifier & ModifierKind.Unsafe) == 0 || function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
-                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 || function.Origins.Count != 0 ||
+            // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.3.1).
+            if (function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
+                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 ||
                 function.IsSpecialization || function.IsConstructor || function.IsDestructor || function.IsAnonymous || function.IsRequirement)
             {
                 return false;
@@ -264,7 +265,7 @@ public sealed partial class Binding
         {
             codes[0] = 'v';
         }
-        else if ((codes[0] = PhysicalCode(result)) == '\0')
+        else if ((codes[0] = this.PhysicalCode(result)) == '\0')
         {
             return false;
         }
@@ -275,7 +276,7 @@ public sealed partial class Binding
             {
                 complete = false;
             }
-            else if ((codes[p] = PhysicalCode(type)) == '\0')
+            else if ((codes[p] = this.PhysicalCode(type)) == '\0')
             {
                 return false;
             }
@@ -289,20 +290,64 @@ public sealed partial class Binding
 
         this.importSignatures[ordinal] = signature;
         return true;
+    }
 
-        static char PhysicalCode(BoundType type)
-            => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
-                type.Kind != BoundTypeKind.Primitive ? '\0' :
-                type.Underlying.Name switch
-                {
-                    "i8" or "u8" => '1',
-                    "i16" or "u16" => '2',
-                    "i32" or "u32" => '4',
-                    "i64" or "u64" => '8',
-                    "f32" => 'f',
-                    "f64" => 'd',
-                    _ => '\0',
-                };
+    // SPEC 22.3.2: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width.
+    private char PhysicalCode(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ||
+            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0)) ? 'p' :
+            type.Kind != BoundTypeKind.Primitive ? '\0' :
+            type.Underlying.Name switch
+            {
+                "i8" or "u8" => '1',
+                "i16" or "u16" => '2',
+                "i32" or "u32" => '4',
+                "i64" or "u64" => '8',
+                "f32" => 'f',
+                "f64" => 'd',
+                _ => '\0',
+            };
+
+    // IMPL 21.1.6: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
+    // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.
+    // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
+    private bool CExchangeable(BoundType type, int depth)
+    {
+        if (depth > 32)
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.Primitive)
+        {
+            return type.Underlying.Name is "i8" or "u8" or "i16" or "u16" or "i32" or "u32" or "i64" or "u64" or "f32" or "f64";
+        }
+
+        if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] })
+        {
+            return type.Semantics == SemanticsKind.Raw || (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.CExchangeable(referent, depth + 1));
+        }
+
+        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Length: > 0, Components: [var element] })
+        {
+            return this.CExchangeable(element, depth + 1);
+        }
+
+        if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Declaration is not StructKoto structure || !HasCLayout(structure) ||
+            !this.storageShapes.TryGetValue(structure, out var shape) || shape.Types.Count == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.Types.Count; i++)
+        {
+            if (this.StoredType(shape.Types[i], type) is not { } field || !this.CExchangeable(field, depth + 1))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage

@@ -11,6 +11,9 @@ public sealed partial class OwnershipBody
     // A reserved input whose own preparation meets a retained Loan, held until activation is decided (SPEC 15.6.7).
     private List<(int Reservation, OwnershipIssue Issue)>? preparedLoanConflicts;
 
+    // Each call whose activation meets a retained Loan, with the Loan's holder, also where one record states several Loans.
+    private List<(Koto Call, Koto? Loan)>? activatedLoans;
+
     // Pairs of reservations whose overlap a preparation record states, and the activation records that pair would repeat.
     private List<(int First, int Second)>? reservationOverlaps;
     private List<(int Reservation, int Other, OwnershipIssue Issue)>? overlapActivations;
@@ -162,9 +165,27 @@ public sealed partial class OwnershipBody
         held.Clear();
     }
 
+    // SPEC 15.6.7: the target is evaluated and located once. An unreserved Read of the Place that the reserved Borrow at the
+    // same lending point directly follows is that location, so its conflicts are the reserved input's own.
+    private int LocatedReservation(int op)
+        => op + 1 < this.Operations.Count && this.Operations[op] is { Kind: OwnershipOperationKind.Read, Reservation: < 0 } read &&
+            this.Operations[op + 1] is { Kind: OwnershipOperationKind.Borrow, Reservation: >= 0 } borrow && borrow.Place == read.Place &&
+            ReferenceEquals(KotoHelper.UnwrapParentheses(read.Source), KotoHelper.UnwrapParentheses(borrow.Source)) ? borrow.Reservation : -1;
+
+    // SPEC 15.6.7: a reservation protects its target, not the Loans an owned target retains on other roots. A reserved input's
+    // Place that depends on such a root only through its referent's Type carries the target's retained Loan.
+    private int RetainingTarget(int reservation, int root, int count)
+    {
+        var borrow = this.CallReservations[reservation].Borrow;
+        var target = borrow >= 0 ? this.Operations[borrow].Place : -1;
+        return target >= 0 && target != root && !ReferenceTypes.IsBorrow(this.Places[target].Type) && !ReferenceTypes.IsString(this.Places[target].Type) &&
+            this.borrowDependencies[(target * count) + root] != LoanRequirement.None ? target : -1;
+    }
+
     // SPEC 15.6.7: a reserved input that meets a retained Loan conflicts with that Loan, not with a call reservation. When the
-    // Loan still conflicts at the call's activation, the activation record states the problem; otherwise the Loan ended during
-    // preparation and this record stands alone. Matching by source decides every deferred expansion of one call alike.
+    // Loan still conflicts at the call's activation, the activation record states the problem, also when it relates another
+    // Loan that conflicts there; otherwise the Loan ended during preparation and this record stands alone. Matching by source
+    // decides every deferred expansion of one call alike.
     private void ReportPreparedLoanConflicts()
     {
         if (this.preparedLoanConflicts is not { Count: > 0 } conflicts)
@@ -177,10 +198,9 @@ public sealed partial class OwnershipBody
             var (reservation, issue) = conflicts[i];
             var call = this.CallReservations[reservation].Call;
             var activated = false;
-            for (var j = 0; j < this.IssueStorage.Count && !activated; j++)
+            for (var j = 0; this.activatedLoans is { } loans && j < loans.Count && !activated; j++)
             {
-                var other = this.IssueStorage[j];
-                activated = other.Activation && ReferenceEquals(other.Source, call) && ReferenceEquals(other.LoanSource, issue.LoanSource);
+                activated = ReferenceEquals(loans[j].Call, call) && ReferenceEquals(loans[j].Loan, issue.LoanSource);
             }
 
             if (!activated)

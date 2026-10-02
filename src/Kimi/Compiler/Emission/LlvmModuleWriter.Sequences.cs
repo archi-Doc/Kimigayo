@@ -39,6 +39,26 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        if (instruction.ScalarOperator == "RawSlice")
+        {
+            // SPEC 5.6: Raw.slice writes the Slice record {buffer, length} into its result slot.
+            var record = function.GetOperands(instruction);
+            output.Write("  store ptr ");
+            WriteOperand(output, record[0]);
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n  %rslen");
+            WriteNumber(output, instruction.Operation);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", i64 8\n  store i64 ");
+            WriteOperand(output, record[1]);
+            output.Write(", ptr %rslen");
+            WriteNumber(output, instruction.Operation);
+            output.Write(", align 8\n");
+            return;
+        }
+
         var operands = function.GetOperands(instruction);
         var addressOperand = operands[0];
         var id = instruction.Operation;
