@@ -173,7 +173,7 @@ defer => exit () // Valid: end the deferred body with Unit.
 defer => return  // Error: cannot return from the outer function.
 ```
 
-`unsafe/T` remains Type Semantics syntax and `unsafe func` a modifier. In statement position, `unsafe` introduces a Body, not a colon-delimited label. Declaration and lexical role rules remain in force.
+`unsafe func` is a modifier. In statement position, `unsafe` introduces a Body, not a colon-delimited label. Declaration and lexical role rules remain in force.
 
 ### 14.3.2. Do expressions
 
@@ -199,13 +199,20 @@ let block = readBlock() // Ordinary identifier; no keyword interpretation.
 
 An **Unsafe Block** is an `unsafe` statement with a Body. It executes immediately with lexical permission for unsafe operations and has no transfer target or lookup barrier. To supply a value outward, use `return`, `yield` or a named `exit` inside the body; `let x = unsafe => readRaw(pointer)` is invalid because `unsafe` is a statement.
 
-The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5).
+The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5). Only the operations of §5 that may cause undefined behavior require the permission.
 
 ```kimi
 unsafe => releaseRaw(pointer)
 unsafe
     releaseRaw(pointer)
     updateState()
+```
+
+An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the Advice suggests removing `unsafe` and keeping the statements only when the Body declares no Name and registers no `defer`; otherwise it states that removal would change the scope of a Name or the time of a destruction or `defer` and does not recommend it. A structured repair (§23.5.3) is offered only when it is proven to preserve scopes, destruction order and control transfers.
+
+```kimi
+unsafe
+    let address = pointer@usize   // Warning: the conversion needs no unsafe context.
 ```
 
 ## 14.4. Labels

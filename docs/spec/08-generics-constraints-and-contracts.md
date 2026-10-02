@@ -32,7 +32,7 @@ Before projection, transparent aliases, resolved associated-Type projections, gr
 | `ref`, `uniq` | Complete Referent Type; `uniq` also requires exclusive acquisition and Loans at use | Required |
 | `obj`, `rc`, `arc` | Object Target (§8.4.7.2) | None |
 | `objref`, `objuniq` | Object Target (§8.4.7.2); borrowing requirements are preserved | Required |
-| `unsafe` | Complete pointee Type; adds no safe-borrow lifetime guarantee | None |
+| `raw` | Complete pointee Type; adds no safe-borrow lifetime guarantee | None |
 
 These rows do not extend the current runtime-Contract or callable restrictions. The absence of an outer Origin does not erase payload dependencies: in `ref/(View<i32>{v}) during b`, `v.source` belongs to the inner Type and `b` to the outer borrow.
 
@@ -422,7 +422,7 @@ func readPayload<T>(source: objref/T) -> ref/T during source
 
 **Object Target.** A Type `X` is an Object Target when `X is ObjectPayload` is Proven, when `X` is a valid runtime Contract View Target (§8.5), or when `X` is the target `T` of a pair `<s/T>` whose admitted Semantics set is contained in the object family (pair evidence, §8.1.1: the caller's valid `s/T` already establishes the target). Forming `obj/X`, `rc/X`, `arc/X`, `objref/X` or `objuniq/X` anywhere requires `X` to be an Object Target: in signatures, Fields, locals, Type arguments, upcast and checked-cast results, `Weak<rc/X>`, and the object form implied by a runtime `is` test (§13.6.1). Pair evidence and View Targets do not prove ObjectPayload. Creating a new object from a value (§13.5.8, and any future value-to-View erasure, §8.5) requires ObjectPayload itself. Operations on an existing handle, such as borrows, view changes and casts, re-prove nothing; they are checked by result-Type formation and their own conditions, such as `Supports` for upcasts, Owned for the first erasure and the Loan rules.
 
-An opted-out Core is never an Object Target. Every object form over it is rejected, including object receivers and Fields inside its own declaration, creation, upcasts, casts, `is` tests and Weak handles, and it cannot conform to a Contract whose environment proves `Self is ObjectPayload`. Nothing else is affected: values, `ref`/`uniq`/`unsafe`, storage as a Field, payload, Tuple or element of another Type, objects over such containing Types (`obj/Box<X>`), Closure captures, common Function Types, static storage, and the Copy, Owned and Sealed judgments. The opt-out prevents direct object creation; it does not guarantee that a value never reaches the heap. Because generic bodies are verified once (§8.10), instantiation never discovers an opt-out; callers meet the declared `T is ObjectPayload` requirement instead.
+An opted-out Core is never an Object Target. Every object form over it is rejected, including object receivers and Fields inside its own declaration, creation, upcasts, casts, `is` tests and Weak handles, and it cannot conform to a Contract whose environment proves `Self is ObjectPayload`. Nothing else is affected: values, `ref`/`uniq`/`raw`, storage as a Field, payload, Tuple or element of another Type, objects over such containing Types (`obj/Box<X>`), Closure captures, common Function Types, static storage, and the Copy, Owned and Sealed judgments. The opt-out prevents direct object creation; it does not guarantee that a value never reaches the heap. Because generic bodies are verified once (§8.10), instantiation never discovers an opt-out; callers meet the declared `T is ObjectPayload` requirement instead.
 
 **Contracts.** Inside a Contract, `Self is ObjectPayload` and `Self is not ObjectPayload` are Self-dependent implementation requirements (§6.1.3.1) and change no opt-out. A Contract whose requirement signatures form object forms over `Self` must have `Self is ObjectPayload` Proven in its Constraint environment, declared directly or inherited by refinement (§8.4.2); a user deriving `T is C` obtains `T is ObjectPayload` by Contract refinement without restating it. A positive and a negative form in one environment are contradictory evidence (§8.7). An opted-out derived Type fails the inherited-conformance path of such a Contract (§8.4.4); the base's own conformance stays valid.
 
@@ -600,7 +600,7 @@ A refinement path that revisits a Contract declaration, even with different argu
 
 ### 8.4.10. Requirement effect bounds
 
-A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. A bound only obliges implementations, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity. An unsafe context exempts an implementation from neither bound: being inside an Unsafe Block is no evidence that a bound holds, and the classification of §8.4.10.2 is the same for safe and unsafe code.
+A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. A bound only obliges implementations, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity. An unsafe context exempts an implementation from neither bound (§5): being inside an Unsafe Block is no evidence that a bound holds, and the classification of §8.4.10.2 is the same for safe and unsafe code.
 
 #### 8.4.10.1. Declarations
 
@@ -663,15 +663,19 @@ An environment effect is an operation that obtains authority over mutable state 
 | Operation | Classification |
 | --- | --- |
 | Obtaining a reference or pointer by following references or pointers from an input (the receiver and each argument), including the input itself | Not an environment effect. Ordinary Loan checking applies even when the referent has static storage. |
-| Obtaining it from Storage created within the call, including an allocation | Not an environment effect. |
+| Obtaining it from Storage created within the call, including an allocation such as `Raw.allocate` (§5.6) | Not an environment effect. |
+| Taking the address of a Place with `@raw` (§5.4) | An access to that Place, classified like the Place's other accesses: an environment effect exactly when the Place is a mutable static Field. |
+| Converting between raw pointer Types, or from a raw pointer to `usize` (§5.4) | Not an environment effect. |
+| A raw access, including a raw Place borrow and the pointer arguments of `Raw.release`, `Raw.initialize` and `Raw.slice` | Not an environment effect. It is compared with held Loans under the anchor rule of §5.2.2. |
 | Reading an immutable static whose value contains no raw pointer | Not an environment effect. The initializer enters the summary. |
 | Accessing a mutable static Field: a read, borrow, write, replacement, destruction or first-access initialization | Environment effect. |
 | A standard operation that accesses state outside the program, such as Console output | Environment effect. |
+| A call of a foreign function (§22.3.1) | Environment effect, together with the accesses its signature permits through its arguments. |
 | Reading from an immutable static a value that contains a raw pointer, at any depth | Environment effect. Immutability does not protect the pointee, so the read obtains authority over mutable state from the environment. |
-| Converting an integer to a pointer | Environment effect. The pointer has no provenance, and an access through it relies on a target-environment guarantee (§5.5). |
-| A call whose environment effects are unknown, including a call of a foreign function without a body | An effect that cannot be classified, a conflict under either bound (§8.4.5). |
+| Converting an integer to a pointer | Environment effect, although it needs no unsafe context. The pointer has no provenance, and an access through it relies on a target-environment guarantee (§5.5). |
+| A call whose environment effects are unknown | An effect that cannot be classified, a conflict under either bound (§8.4.5). |
 
-Allocation and Abort are permitted. The classification is the same in safe and unsafe code. An access through a raw pointer is classified where the pointer was obtained, so the access itself is no environment effect; avoiding conflicts with held Loans and meeting the provenance conditions remain the obligations of §5. The two rows that obtain a raw pointer from the environment apply even when the pointer is never used. No declaration form states the effects of a foreign function (Appendix D).
+Allocation and Abort are permitted. The classification is the same in safe and unsafe code. An access through a raw pointer is classified where the pointer was obtained, so the access itself is no environment effect; avoiding conflicts with held Loans and meeting the provenance conditions remain the obligations of §5.2.1. The two rows that obtain a raw pointer from the environment apply even when the pointer is never used. A foreign function cannot be called from a `confined` implementation; a `preserves results` implementation may call one when its argument accesses do not conflict with the Loans of earlier results. No declaration form states the effects of a foreign function (Appendix D).
 
 ```kimi
 contract Sink
@@ -705,9 +709,8 @@ struct Forward<W>
 struct DeviceSink
     Self is Sink
     public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
-        unsafe
-            let register = 0x40000000@unsafe/i32   // Error: a pointer made from an integer obtains environment authority.
-            *register = value
+        let register = 0x40000000@raw/i32       // Error: a pointer made from an integer obtains environment authority.
+        unsafe => *register = value
         return .Ok(())
 ```
 

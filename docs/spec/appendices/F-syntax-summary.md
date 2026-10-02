@@ -117,7 +117,7 @@ PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128
                       | "u8" | "u16" | "u32" | "u64" | "u128"
                       | "f32" | "f64" | "bool" | "char" | "string"
 Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
-                      | "objref" | "objuniq" | "unsafe" | Name
+                      | "objref" | "objuniq" | "raw" | Name
 OriginHeader         := "{" TrailingList<Name>? "}" // struct/enum only, closed schema.
 OriginBindingSet     := "{" Name ","? "}" // Introduces a fresh set name.
 BorrowOrigin         := "during" OriginAtom
@@ -311,6 +311,7 @@ Adapted              := Prefix ("@" OperationTarget PostfixSuffix*)*
 OperationTarget      := "move" | "copy" | "wrap" TypeArguments | "bits" TypeArguments
                       | Semantics | AdaptationType
 // "@" "follow" is a PostfixSuffix (level 1), never an OperationTarget.
+// A bare "raw" OperationTarget takes an address (§5.4); it is not Semantics shorthand.
 // "wrap" and "bits" take exactly one Type argument adjacent to the Name (§13.5.4).
 AdaptationType       := AdaptationCore ("?")*
 AdaptationCore       := Semantics "/" AdaptationCore | AdaptationAtom
