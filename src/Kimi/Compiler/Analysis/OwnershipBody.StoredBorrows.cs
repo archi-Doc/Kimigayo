@@ -12,148 +12,118 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipBody
 {
     private const int StoredEverywhere = -2;
-    private Dictionary<(int Place, int Root), int>? storedBorrowKeys;
-    private List<int>? storedBorrowHeads;
-    private List<(int Operation, int Next)>? storedBorrowLinks;
-    private List<(int Source, int Operation, int Destination, bool Applied)>? storedBorrowTransfers;
-    private List<int>? storedBorrowPlaces;
-    private ulong[] storedBorrowActive = [];
-    private int[] storedBorrowQueue = [];
-    private int storedBorrowWords;
 
-    private void ClearStoredBorrows()
-    {
-        this.storedBorrowKeys?.Clear();
-        this.storedBorrowHeads?.Clear();
-        this.storedBorrowLinks?.Clear();
-        this.storedBorrowTransfers?.Clear();
-        this.storedBorrowPlaces?.Clear();
-    }
+    // Created by the first body that stores a dependency and reused by the next analyses of this body.
+    private StoredBorrowTable? storedBorrows;
+
+    private void ClearStoredBorrows() => this.storedBorrows?.Clear();
 
     private bool HasStoredBorrowRecord(int place, int root)
-        => this.storedBorrowKeys is { } keys && keys.ContainsKey((place, root));
+        => this.storedBorrows is { } table && table.Keys.ContainsKey((place, root));
 
     // Whether the holder depends on root only after some store, not everywhere.
     private bool IsStoredBorrow(int place, int root)
-        => this.storedBorrowKeys is { } keys && keys.TryGetValue((place, root), out var key) && this.storedBorrowHeads![key] != StoredEverywhere;
+        => this.storedBorrows is { } table && table.Keys.TryGetValue((place, root), out var key) && table.Heads[key] != StoredEverywhere;
 
     // Records a store after which the holder depends on root; returns whether the record changed.
     private bool AddStoredBorrowStart(int place, int root, int operation)
     {
-        var key = this.StoredBorrowKey(place, root);
-        var head = this.storedBorrowHeads![key];
+        var table = this.storedBorrows ??= new();
+        var key = table.Key(place, root);
+        var head = table.Heads[key];
         if (head == StoredEverywhere)
         {
             return false;
         }
 
-        for (var link = head; link >= 0; link = this.storedBorrowLinks![link].Next)
+        for (var link = head; link >= 0; link = table.Links[link].Next)
         {
-            if (this.storedBorrowLinks![link].Operation == operation)
+            if (table.Links[link].Operation == operation)
             {
                 return false;
             }
         }
 
-        (this.storedBorrowLinks ??= new()).Add((operation, head));
-        this.storedBorrowHeads[key] = this.storedBorrowLinks.Count - 1;
+        table.Links.Add((operation, head));
+        table.Heads[key] = table.Links.Count - 1;
         return true;
     }
 
     // Records that the destination takes the source's stored dependency on root at the operation; returns whether it is new.
     private bool AddStoredBorrowTransfer(int source, int destination, int root, int operation)
     {
-        var from = this.StoredBorrowKey(source, root);
-        var to = this.StoredBorrowKey(destination, root);
-        if (this.storedBorrowHeads![to] == StoredEverywhere)
+        var table = this.storedBorrows ??= new();
+        var from = table.Key(source, root);
+        var to = table.Key(destination, root);
+        if (table.Heads[to] == StoredEverywhere)
         {
             return false;
         }
 
-        var transfers = this.storedBorrowTransfers ??= new();
-        for (var i = 0; i < transfers.Count; i++)
+        for (var i = 0; i < table.Transfers.Count; i++)
         {
-            if (transfers[i] is var transfer && transfer.Source == from && transfer.Operation == operation && transfer.Destination == to)
+            if (table.Transfers[i] is var transfer && transfer.Source == from && transfer.Operation == operation && transfer.Destination == to)
             {
                 return false;
             }
         }
 
-        transfers.Add((from, operation, to, false));
+        table.Transfers.Add((from, operation, to, false));
         return true;
     }
 
     // A recorded dependency that also arrives from a holder depending on root everywhere exists everywhere.
     private bool SetStoredBorrowEverywhere(int place, int root)
     {
-        var key = this.StoredBorrowKey(place, root);
-        if (this.storedBorrowHeads![key] == StoredEverywhere)
+        var table = this.storedBorrows ??= new();
+        var key = table.Key(place, root);
+        if (table.Heads[key] == StoredEverywhere)
         {
             return false;
         }
 
-        this.storedBorrowHeads[key] = StoredEverywhere;
+        table.Heads[key] = StoredEverywhere;
         return true;
-    }
-
-    private int StoredBorrowKey(int place, int root)
-    {
-        var keys = this.storedBorrowKeys ??= new();
-        var heads = this.storedBorrowHeads ??= new();
-        if (!keys.TryGetValue((place, root), out var key))
-        {
-            key = heads.Count;
-            keys.Add((place, root), key);
-            heads.Add(-1);
-            (this.storedBorrowPlaces ??= new()).Add(place);
-        }
-
-        return key;
     }
 
     // Whether a recorded dependency exists before the operation; true when the dependency has no record.
     private bool StoredBorrowActive(int place, int root, int operation)
-        => this.storedBorrowKeys is not { } keys || !keys.TryGetValue((place, root), out var key) || this.StoredBorrowActive(key, operation);
-
-    private bool StoredBorrowActive(int key, int operation)
-        => this.storedBorrowHeads![key] == StoredEverywhere ||
-            (this.storedBorrowActive[(key * this.storedBorrowWords) + (operation >> 6)] & (1UL << operation)) != 0;
+        => this.storedBorrows is not { } table || !table.Keys.TryGetValue((place, root), out var key) || table.Active(key, operation);
 
     // Spreads each record from its stores up to a redefinition of the holder, then, until nothing changes, from each transfer
     // whose source is active there. A store or transfer is itself active only when a later execution reaches it again.
     private void PrepareStoredBorrowActivity()
     {
-        var keys = this.storedBorrowHeads?.Count ?? 0;
-        if (keys == 0)
+        if (this.storedBorrows is not { Heads.Count: > 0 } table)
         {
             return;
         }
 
+        var keys = table.Heads.Count;
         var operations = this.Operations.Count;
-        var words = this.storedBorrowWords = (operations + 63) >> 6;
-        Grow(ref this.storedBorrowActive, OwnershipStorage.Cells(keys, words, 64, "stored borrow activity"));
-        this.storedBorrowActive.AsSpan(0, keys * words).Clear();
-        Grow(ref this.storedBorrowQueue, operations);
+        var words = table.Words = (operations + 63) >> 6;
+        Grow(ref table.Activity, OwnershipStorage.Cells(keys, words, 64, "stored borrow activity"));
+        table.Activity.AsSpan(0, keys * words).Clear();
+        Grow(ref table.Queue, operations);
         for (var key = 0; key < keys; key++)
         {
-            for (var link = this.storedBorrowHeads![key]; link >= 0; link = this.storedBorrowLinks![link].Next)
+            for (var link = table.Heads[key]; link >= 0; link = table.Links[link].Next)
             {
-                this.SpreadStoredBorrow(key, this.storedBorrowLinks![link].Operation, this.storedBorrowPlaces![key]);
+                this.SpreadStoredBorrow(table, key, table.Links[link].Operation, table.Places[key]);
             }
         }
 
-        var transfers = this.storedBorrowTransfers;
         bool changed;
         do
         {
             changed = false;
-            for (var i = 0; transfers is not null && i < transfers.Count; i++)
+            for (var i = 0; i < table.Transfers.Count; i++)
             {
-                var (source, operation, destination, applied) = transfers[i];
-                if (!applied && (this.StoredBorrowActive(source, operation) || this.StoredBorrowEstablishedAt(source, operation)))
+                var (source, operation, destination, applied) = table.Transfers[i];
+                if (!applied && (table.Active(source, operation) || table.EstablishedAt(source, operation)))
                 {
-                    transfers[i] = (source, operation, destination, true);
-                    this.SpreadStoredBorrow(destination, operation, -1);
+                    table.Transfers[i] = (source, operation, destination, true);
+                    this.SpreadStoredBorrow(table, destination, operation, -1);
                     changed = true;
                 }
             }
@@ -161,71 +131,119 @@ public sealed partial class OwnershipBody
         while (changed);
     }
 
-    // Whether a store or an applied transfer at the operation itself establishes the record, as when one call retains a referent
-    // in an argument and returns a value depending on it.
-    private bool StoredBorrowEstablishedAt(int key, int operation)
+    // Marks the operations after start in the record's row, stopping at a redefinition of the holder, if any.
+    private void SpreadStoredBorrow(StoredBorrowTable table, int key, int start, int holder)
     {
-        for (var link = this.storedBorrowHeads![key]; link >= 0; link = this.storedBorrowLinks![link].Next)
+        if (table.Heads[key] == StoredEverywhere)
         {
-            if (this.storedBorrowLinks![link].Operation == operation)
-            {
-                return true;
-            }
+            return;
         }
 
-        for (var i = 0; this.storedBorrowTransfers is { } transfers && i < transfers.Count; i++)
-        {
-            if (transfers[i] is { Applied: true } transfer && transfer.Destination == key && transfer.Operation == operation)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // Marks the operations after start in the row, stopping at a redefinition of the holder, if any.
-    private void SpreadStoredBorrow(int row, int start, int holder)
-    {
-        var active = this.storedBorrowActive.AsSpan(row * this.storedBorrowWords, this.storedBorrowWords);
-        var queued = this.QueueStoredBorrowSuccessors(start, active, 0);
+        var active = table.Activity.AsSpan(key * table.Words, table.Words);
+        var queued = this.QueueStoredBorrowSuccessors(table, start, active, 0);
         while (queued > 0)
         {
-            var operation = this.storedBorrowQueue[--queued];
+            var operation = table.Queue[--queued];
             if (holder < 0 || !DefinesBorrowHolder(this.Operations[operation], holder))
             {
-                queued = this.QueueStoredBorrowSuccessors(operation, active, queued);
+                queued = this.QueueStoredBorrowSuccessors(table, operation, active, queued);
             }
         }
     }
 
-    private int QueueStoredBorrowSuccessors(int operation, Span<ulong> active, int queued)
+    private int QueueStoredBorrowSuccessors(StoredBorrowTable table, int operation, Span<ulong> active, int queued)
     {
         for (var e = this.EdgeHeads[operation]; e >= 0; e = this.Edges[e].Next)
         {
             if (this.Edges[e].Kind != OwnershipEdgeKind.Abort)
             {
-                queued = this.QueueStoredBorrow(this.Edges[e].To, active, queued);
+                queued = table.Enqueue(this.Edges[e].To, active, queued);
             }
         }
 
         for (var e = this.checkingBorrowHeads[operation]; e >= 0; e = this.checkingBorrowEdges[e].Next)
         {
-            queued = this.QueueStoredBorrow(this.checkingBorrowEdges[e].To, active, queued);
+            queued = table.Enqueue(this.checkingBorrowEdges[e].To, active, queued);
         }
 
         return queued;
     }
 
-    private int QueueStoredBorrow(int target, Span<ulong> active, int queued)
+    private sealed class StoredBorrowTable
     {
-        ref var word = ref active[target >> 6];
-        if ((word & (1UL << target)) == 0)
+#pragma warning disable SA1401 // The owning body fills the storage directly.
+        internal readonly Dictionary<(int Place, int Root), int> Keys = new();
+
+        // Per record: its holder, and the first of its stores (or StoredEverywhere) linked through Links.
+        internal readonly List<int> Places = new();
+        internal readonly List<int> Heads = new();
+        internal readonly List<(int Operation, int Next)> Links = new();
+        internal readonly List<(int Source, int Operation, int Destination, bool Applied)> Transfers = new();
+
+        // Per record, one bit per operation where it is active.
+        internal ulong[] Activity = [];
+        internal int[] Queue = [];
+        internal int Words;
+#pragma warning restore SA1401
+
+        internal void Clear()
         {
-            word |= 1UL << target;
-            this.storedBorrowQueue[queued++] = target;
+            this.Keys.Clear();
+            this.Places.Clear();
+            this.Heads.Clear();
+            this.Links.Clear();
+            this.Transfers.Clear();
         }
 
-        return queued;
+        internal int Key(int place, int root)
+        {
+            if (!this.Keys.TryGetValue((place, root), out var key))
+            {
+                key = this.Heads.Count;
+                this.Keys.Add((place, root), key);
+                this.Places.Add(place);
+                this.Heads.Add(-1);
+            }
+
+            return key;
+        }
+
+        internal bool Active(int key, int operation)
+            => this.Heads[key] == StoredEverywhere || (this.Activity[(key * this.Words) + (operation >> 6)] & (1UL << operation)) != 0;
+
+        // Whether a store or an applied transfer at the operation itself establishes the record, as when one call retains a
+        // referent in an argument and returns a value depending on it.
+        internal bool EstablishedAt(int key, int operation)
+        {
+            for (var link = this.Heads[key]; link >= 0; link = this.Links[link].Next)
+            {
+                if (this.Links[link].Operation == operation)
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < this.Transfers.Count; i++)
+            {
+                if (this.Transfers[i] is { Applied: true } transfer && transfer.Destination == key && transfer.Operation == operation)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal int Enqueue(int target, Span<ulong> active, int queued)
+        {
+            ref var word = ref active[target >> 6];
+            if ((word & (1UL << target)) == 0)
+            {
+                word |= 1UL << target;
+                this.Queue[queued++] = target;
+            }
+
+            return queued;
+        }
     }
 }
