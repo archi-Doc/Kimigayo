@@ -16,6 +16,9 @@ public class CallReservationTest(ITestOutputHelper output)
     private const string Both = "func both(c: uniq/Cell, other: uniq/Cell) => ()\n";
     private const string Change = "func change(c: uniq/Cell) -> i32\n    c.value = 2\n    return 3\n";
     private const string Counter = "struct Counter\n    public var value: i32 = 1\n    public func add(self: uniq/Self, n: i32) => self.value += n\n    public func take(self: uniq/Self) -> i32\n        let n = self.value\n        self.value = 0\n        return n\n";
+    private const string Drain = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\nstruct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n";
+    private const string Keeper = "struct Store\n    public var value: i32 = 1\n    public func lend(self: uniq/Self during source) -> Lent during source => Lent.init(self)\nstruct Lent {source}\n    var store: uniq/Store during source\n    public init(store: uniq/Store during source) => self.store = store\nstruct Keeper {source}\n    var inner: Lent during source\n    public init(inner: Lent during source) => self.inner = inner@move\n    public func reset(self: uniq/Self, fresh: Lent during source) => self.inner = fresh@move\n    public func peek(self: ref/Self) -> i32 => 1\n";
+    private const string ActivationConflict = "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live";
     private const string ReservationConflict = "This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation";
     private const string RetainedLoanLabel = "value retaining the conflicting loan";
     private const string ReservationLabel = "conflicting exclusive call reservation";
@@ -183,7 +186,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("var x: i32 = 1\nlet target = x@uniq\nlet second: uniq/i32 = target\nKimi.Intrinsics.replace(target, with: 3)\nKimi.Intrinsics.replace(second, with: 2)", "Kimi.Intrinsics.replace(target, with: 3)", "`target` implicitly reborrowed exclusively for parameter `target` of `replace`")]
     [InlineData("func run(flag: bool)\n    var c = Cell.init()\n    let target = c@uniq\n    let second: uniq/Cell = target\n    defer => second.set(2)\n    defer => target.set(3)\n    if flag => return\nrun(true)", "target.set(3)", "`target` implicitly reborrowed exclusively as the receiver of `set`")]
     public void ALiveReborrowConflictsOnceAtActivation(string body, string call, string note)
-        => this.AssertOneConflict(Cell + body, "CallActivationConflict_Kd", call, "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live", note);
+        => this.AssertOneConflict(Cell + body, "CallActivationConflict_Kd", call, ActivationConflict, note);
 
     // SPEC 15.6.7: when the Reborrow's last use is a later argument, the reserved input meets the active Loan during preparation
     // and the Loan has ended at activation. The input conflicts with that Loan, not with a call reservation.
@@ -204,6 +207,53 @@ public class CallReservationTest(ITestOutputHelper output)
     public void AReborrowEndingBeforeTheCallIsAccepted(string body)
         => AssertAccepted(Cell + body);
 
+    // SPEC 15.6.7: an implicit receiver's target is located once at its lending point, also where its Place is read before
+    // the Borrow (an Array or a Dictionary), and a reservation does not reserve the Loans its target retains: in
+    // `drain.reset(values.iterateUniq())`, `values` meets the Loan `drain` keeps, not the reservation of `drain`. A Loan still
+    // live at activation is one conflict, which the activation states once with the value retaining the Loan.
+    [Theory]
+    [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(4)\nlet n = it.next()", "values.append(4)", null, "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
+    [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\n(values).append(4)\nlet n = it.next()", "(values).append(4)", null, "var it", "`(values)` implicitly borrowed exclusively as the receiver of `append`")]
+    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.clear()\nlet n = it.next()", "table.clear()", null, "var it", "`table` implicitly borrowed exclusively as the receiver of `clear`")]
+    [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()", "values.iterateUniq()", "values.iterateUniq())\n    let second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
+    [InlineData(Drain + "var values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
+    [InlineData(Drain + "func replace<J>(drain: uniq/Drain<J>, fresh: J)\n    J is Iterator\n    drain.reset(fresh@move)\nvar values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\nreplace(drain@uniq, values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
+    [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet n = keeper.peek()", "s.lend()", "s.lend())\nlet n", "var keeper", "`s` implicitly borrowed exclusively as the receiver of `lend`")]
+    [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nkeeper.reset(s.lend())\nlet z = 1", "s.lend()", "s.lend())\nlet z", "var keeper", "`s` implicitly borrowed exclusively as the receiver of `lend`")]
+    public void AnImplicitReceiverMeetingARetainedLoanConflictsOnceAtActivation(string body, string call, string? at, string holder, string note)
+        => this.AssertOneConflict(Cell + body, "CallActivationConflict_Kd", call, ActivationConflict, note, related: holder, at: at);
+
+    // SPEC 15.6.7: when the Loan's last use is a later argument, the receiver meets it during preparation only; the record at the
+    // input keeps the Note naming the implicit acquisition.
+    [Theory]
+    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(consume(it@move))", "values", "values.append", "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
+    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "var it", "`table` implicitly borrowed exclusively as the receiver of `insertOrReplace`")]
+    public void AnImplicitReceiverMeetingALoanEndingDuringPreparationConflictsAtTheInput(string body, string input, string at, string holder, string note)
+        => this.AssertOneConflict(Cell + body, "ComparisonLoanConflict_Kd", input, "This operation conflicts with an active loan", note, related: holder, at: at);
+
+    // The valid counterparts: every holder of the Loan is last used before the receiver is acquired again.
+    [Theory]
+    [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nlet n = it.next()\nvalues.append(4)")]
+    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\nlet n = it.next()\ntable.clear()")]
+    [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n    var again = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let second = again.take()")]
+    [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nlet n = keeper.peek()\nvar again = Keeper.init(s.lend())\nlet m = again.peek()")]
+    public void AReceiverLoanEndingBeforeTheCallIsAccepted(string body)
+        => AssertAccepted(Cell + body);
+
+    // Independent conflicts at implicit receivers keep one record each.
+    [Fact]
+    public void IndependentReceiverConflictsKeepTheirOwnRecords()
+    {
+        var source = Cell + Drain + "var values = [1, 2, 3]\nvar other = [4, 5]\nvar it = other.iterateUniq()\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nother.append(6)\nlet n = it.next()\nlet m = drain.take()";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        c.Ownership.ReportDiagnostics();
+        var errors = TestDiagnostics.Of(c);
+        Assert.Equal(2, errors.Length);
+        Assert.All(errors, static x => Assert.Equal("CallActivationConflict_Kd", x.Code));
+        Assert.Equal([source.IndexOf("values.iterateUniq())\nother", StringComparison.Ordinal), source.IndexOf("other.append(6)", StringComparison.Ordinal)], errors.Select(static x => x.Span.Start).Order());
+    }
+
     // SPEC 15.6.7: two overlapping exclusive inputs are one problem. The later input conflicts with the earlier reservation during
     // preparation, so its record shows both lending points; the activation that the overlap prevents is not reported again. An
     // implicit acquisition is named in the Note (both when two implicit acquisitions overlap).
@@ -213,6 +263,8 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData(Change + "var c = Cell.init()\nset(c@uniq, change(c@uniq))", "c@uniq))", "c", "c@uniq, ", null)]
     [InlineData(Change + "var c = Cell.init()\nc.set(change(c@uniq))", "c@uniq))", "c", "c.set", "`c` implicitly borrowed exclusively as the receiver of `set`")]
     [InlineData(Counter + "var k = Counter.init()\nk.add(k.take())", "k.take", "k", "k.add", "`k` implicitly borrowed exclusively as the receiver of `take`; `k` implicitly borrowed exclusively as the receiver of `add`")]
+    [InlineData("var values = [1, 2, 3]\nvalues.append(values.remove(0))", "values.remove", "values", "values.append", "`values` implicitly borrowed exclusively as the receiver of `remove`; `values` implicitly borrowed exclusively as the receiver of `append`")]
+    [InlineData("struct Holder\n    public var items: Array<i32>\n    public init() => self.items = [1, 2, 3]\nvar holder = Holder.init()\nholder.items.append(holder.items.remove(0))", "holder.items.remove", "holder.items", "holder.items.append", "`holder.items` implicitly borrowed exclusively as the receiver of `remove`; `holder.items` implicitly borrowed exclusively as the receiver of `append`")]
     [InlineData(Both + "var c = Cell.init()\nlet u = c@uniq\nboth(u, u)", "u)", "u", "u, u)", "`u` implicitly reborrowed exclusively for parameter `other` of `both`; `u` implicitly reborrowed exclusively for parameter `c` of `both`")]
     [InlineData("let n: i32 = 0\nvar f = func [var n] (x: i32) => ++n + x\nlet r = f(f(1))", "f(1)", "f", "f(f", "`f` implicitly borrowed exclusively as the receiver of its call")]
     [InlineData(Both + "func run(flag: bool)\n    var c = Cell.init()\n    defer => both(c@uniq, c@uniq)\n    if flag => return\nrun(true)", "c@uniq)", "c", "c@uniq, ", null)]
