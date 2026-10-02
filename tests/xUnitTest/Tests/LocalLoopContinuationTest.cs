@@ -32,6 +32,20 @@ public class LocalLoopContinuationTest
     public void EmitsLoopsWhoseEffectsStayLocal(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverLocalLoop" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
 
+    // A Subject that never completes leaves its arms as dead source, checked from the state that reached the Subject. After a
+    // divergent loop with enclosing effects no such state exists, so the arms are guarded like any later use instead of being
+    // checked from the dead region's original seed, which would restore the earlier Move.
+    [Theory]
+    [InlineData("return", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("loop => work()", OwnershipFailure.Unsupported)]
+    public void AbandonedArmsNeverRestoreAnEarlierMove(string subject, OwnershipFailure failure)
+    {
+        var c = MinimalEmissionTest.Analyze("func work() => ()\nfunc f(s: string)\n    return\n    let t = s@move\n    match (" + subject + ")\n        _ => Console.writeLine(s)\nf(\"s\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+    }
+
     [Theory]
     [InlineData("var x = 1\nloop\n    x = 2\nlet y = x")]
     [InlineData("var x = 1\nloop\n    x++\nlet y = x")]

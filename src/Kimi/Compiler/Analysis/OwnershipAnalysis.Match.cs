@@ -426,8 +426,9 @@ public sealed partial class OwnershipAnalysis
     {
         // There is no Subject value. Retain each arm's checking continuation so
         // an abrupt Subject cannot hide unsupported operations or invalid uses.
+        // A region whose own operations already ran has no seed state here: its original seed would restore their Moves.
         var region = this.checkingRegion;
-        var seed = this.current >= 0 ? this.current : region > 0 ? this.body.CheckingRegions[region].Seed : -1;
+        var seed = this.CheckingSeed();
         var temps = this.temporaries.Count;
         var locals = this.locals.Count;
         var output = this.ResultPlace(syntax);
