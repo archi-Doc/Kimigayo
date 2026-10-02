@@ -913,7 +913,7 @@ Exit:
 
             if (reader.CurrentTokenKind == TokenKind.EndBlock)
             {
-                var blockEnd = reader.CurrentTokenRange.End;
+                var blockEnd = reader.PreviousSyntaxEnd;
                 reader.Advance();
                 property.CompleteSpan(blockEnd);
                 return unavailableAccessor;
@@ -1920,7 +1920,7 @@ CloseParameters:
         items.AddRange(temporary.TypeConstraints);
         items.AddRange(temporary.Members);
         items.AddRange(temporary.NestedDeclarationContainers);
-        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, reader.CurrentTokenRange.Start), items)
+        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)), items)
         {
             DeclarationContext = declarationContext.TokenKind,
         };
@@ -2265,7 +2265,9 @@ CloseParameters:
                     reader.Expect(SyntaxForm.Body);
                 }
 
-                var end = reader.CurrentTokenRange.End;
+                // The block ends at its last written token. The EndBlock stands at the next dedented line, after the
+                // blank and comment lines and that line's indentation, none of which belongs to the block.
+                var end = reader.PreviousSyntaxEnd;
                 reader.Advance();
                 return end;
             }
@@ -2312,7 +2314,7 @@ CloseParameters:
         }
 
         // The tokenizer closes every block at the end of the source; the loop ends here only after the block's EndBlock.
-        return reader.CurrentTokenRange.End;
+        return reader.PreviousSyntaxEnd;
     }
 
     private static void ParseExecutableDirectiveOrItem(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
@@ -2923,7 +2925,8 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.EndBlock)
             {
-                end = reader.CurrentTokenRange.End;
+                // Like a block, the arm list ends at its last written token, not at the dedented line.
+                end = reader.PreviousSyntaxEnd;
                 reader.Advance();
                 return new MatchKoto(
                     ref reader,

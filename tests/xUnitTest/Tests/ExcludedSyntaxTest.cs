@@ -92,6 +92,18 @@ public class ExcludedSyntaxTest
         Assert.Equal(reported ? [nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd)] : [], codes);
     }
 
+    // The Case Group ends at its last written token, not at the dedented line after the blank and comment lines that follow it.
+    [Theory]
+    [InlineData("#switch\n    #case linux\n        let a = 1\n\n// after the switch\n\nlet b = 2")]
+    [InlineData("func f()\n    #switch\n        #case linux\n            let a = 1\n\n    // after the switch\n    let b = 2\n")]
+    [InlineData("func f()\r\n    #switch\r\n        #case linux\r\n            let a = 1\r\n\r\n    // after the switch\r\n\r\n")]
+    public void ANonExhaustiveCaseGroupEndsAtItsLastWrittenToken(string source)
+    {
+        var record = Assert.Single(TestDiagnostics.Of(Parse(source, Windows)));
+        Assert.Equal(nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd), record.Code);
+        Assert.Equal(SourceSpan.FromBounds(source.IndexOf("#switch", StringComparison.Ordinal), source.IndexOf("= 1", StringComparison.Ordinal) + 3), record.Span);
+    }
+
     [Fact]
     public void AnInvalidConditionStillParsesItsTarget()
     {

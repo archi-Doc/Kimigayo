@@ -27,6 +27,54 @@ public class DiagnosticRelationTest
         }
     }
 
+    // Blank and comment lines after a body change positions only: a body ends at its last written item, so the lines before the
+    // next declaration never join the range of a record located at the body or at the syntax it ends.
+    [Theory]
+    [MemberData(nameof(MutationNames))]
+    public void BlankAndCommentLinesAfterABodyChangePositionsOnly(string name)
+    {
+        const string Inserted = "\n    // after the body\n\n";
+        var source = DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(name));
+        var points = new List<int>();
+        var lastIndented = false;
+        for (var start = 0; start < source.Length;)
+        {
+            var end = source.IndexOf('\n', start) is var lineFeed and >= 0 ? lineFeed + 1 : source.Length;
+            var line = source.AsSpan(start, end - start).TrimEnd("\r\n");
+            if (!line.IsWhiteSpace())
+            {
+                // A line at column 0 after an indented one starts the next item once a body has ended.
+                if (line[0] != ' ' && lastIndented)
+                {
+                    points.Add(start);
+                }
+
+                lastIndented = line[0] == ' ';
+            }
+
+            start = end;
+        }
+
+        var inserted = source;
+        for (var i = points.Count - 1; i >= 0; i--)
+        {
+            inserted = inserted.Insert(points[i], Inserted);
+        }
+
+        var before = Publish(source);
+        var after = Publish(inserted);
+        Assert.NotEmpty(points);
+        Assert.NotEmpty(before);
+        Assert.Equal(before.Length, after.Length);
+        for (var i = 0; i < before.Length; i++)
+        {
+            var span = before[i].Span;
+            var start = span.Start + (Inserted.Length * points.Count(x => x <= span.Start));
+            var end = span.End + (Inserted.Length * points.Count(x => x < span.End));
+            Assert.Equal(before[i] with { Span = SourceSpan.FromBounds(start, end) }, after[i]);
+        }
+    }
+
     // For the same check, input and prerequisites, an unrelated problem leaves the existing records and explanations
     // unchanged. Ownership analysis requires complete Binding, so a base with ownership records gets an unrelated
     // ownership problem, which keeps that prerequisite.

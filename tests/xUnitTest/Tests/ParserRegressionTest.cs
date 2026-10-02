@@ -727,6 +727,32 @@ public class ParserRegressionTest
         Assert.Equal("target.method", Source.AsSpan(member.Span.Start, member.Span.Length).ToString());
     }
 
+    // A block, a match arm list, a property accessor block and a conditional conformance body end at their last written token:
+    // the blank and comment lines and the indentation before the dedented line belong to none of them (DIAGNOSTICS.md §4.4).
+    [Fact]
+    public void BodiesEndAtTheirLastWrittenToken()
+    {
+        const string Source = "struct S<T>\n    Self is C when T is Copy\n        public func f() => ()\n\n    // after the conformance\n" +
+            "    public computed w: i32\n        get(self: ref/Self) -> i32\n            return 1\n\n    // after the accessor block\n" +
+            "    public var v: i32 = 0\nfunc g(a: i32) -> i32\n    let k = match a\n        1 => 10\n        _ => 20\n\n    // after the match\n" +
+            "    let h = func () -> i32\n        return 2\n\n    // after the closure\n    return k\n\n// after the function\n\n";
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+        var nodes = KotoTree.Walk(root).ToArray();
+        Assert.Equal("Self is C when T is Copy\n        public func f() => ()", Text(nodes.OfType<SyntaxFormKoto>().Single(x => x.Akind == KotoKind.ConditionalConformance && x.Parent is DeclarationContainerKoto)));
+        Assert.EndsWith("i32\n        get(self: ref/Self) -> i32\n            return 1", Text(nodes.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == "w")));
+        Assert.Equal("match a\n        1 => 10\n        _ => 20", Text(nodes.OfType<MatchKoto>().Single()));
+        Assert.Equal("func () -> i32\n        return 2", Text(nodes.OfType<FunctionKoto>().Single(x => x.IsAnonymous)));
+        var function = nodes.OfType<FunctionKoto>().Single(x => x.Name == "g");
+        Assert.EndsWith("    return k", Text(function));
+        Assert.StartsWith("let k = match a", Text(function.Body!));
+        Assert.EndsWith("    return k", Text(function.Body!));
+
+        static string Text(Koto node) => Source.AsSpan(node.Span.Start, node.Span.Length).ToString();
+    }
+
     [Fact]
     public void DiagnosesAndRecoversChainedAttributePostfixExpressions()
     {

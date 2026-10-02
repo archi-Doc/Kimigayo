@@ -136,6 +136,44 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         }
     }
 
+    // A body, a require failure body and a match end at their last written item (DIAGNOSTICS.md §4.4): the console underlines no
+    // blank or comment line after them, and the language server's range ends at the end of that item's line.
+    [Theory]
+    [InlineData("fallthrough-before-blank-lines")]
+    [InlineData("fallthrough-before-crlf-blank-lines")]
+    [InlineData("fallthrough-before-indented-comment")]
+    [InlineData("fallthrough-at-source-end")]
+    [InlineData("require-fallthrough-before-blank-line")]
+    [InlineData("accessor-fallthrough-before-blank-lines")]
+    [InlineData("match-before-indented-comment")]
+    public void CliAndLspEndARecordAtTheLastWrittenItem(string name)
+    {
+        var source = DiagnosticCorpus.Syntax(name).Source;
+        var check = DiagnosticCorpus.Check(source);
+        Assert.NotEmpty(check.Diagnostics);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new DiagnosticResult(check.Diagnostics, check.Sources), string.Empty);
+        output.WriteLine(console.Text);
+        var lines = source.ReplaceLineEndings("\n").Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            // An excerpt line starts with its line number and a bar; no record of these cases is located at a blank or comment line.
+            if (lines[i].TrimStart() is "" or ['/', '/', ..])
+            {
+                Assert.DoesNotMatch($@"(?m)^\s*{i + 1} \|", console.Text);
+            }
+        }
+
+        var identity = SourceIdentity.FromPath(check.Sources[check.Diagnostics[0].Source].Path!);
+        foreach (var related in new[] { false, true })
+        {
+            foreach (var sent in WorkspaceCheck.Place(check, [identity], identity, related)[identity])
+            {
+                Assert.Equal(lines[sent.Range.End.Line].TrimEnd().Length, sent.Range.End.Character);
+            }
+        }
+    }
+
     private static string Describe(CheckDiagnostic diagnostic)
         => $"{diagnostic.Code} {diagnostic.Span}: {diagnostic.Message}" + (diagnostic.Reason is null ? string.Empty : " [" + string.Join(", ", diagnostic.Reason.Select(static x => $"{x.Name}={x.Value}")) + "]");
 }
