@@ -41,7 +41,7 @@ internal sealed class TestOptions
             var flag = name is "--list" or "--allow-empty" or "--no-parallel" or "--locked";
             if (!flag && name is not ("--filter" or "--case" or "--jobs" or "--timeout" or "--recovery-grace" or "--format" or "--results-dir" or
                 "--case-diagnostic-count" or "--case-diagnostic-bytes" or "--case-log-bytes" or "--run-diagnostic-count" or "--run-diagnostic-bytes" or "--run-log-bytes" or
-                "--Target" or "--Debug" or "--LlvmBin" or "--ToolchainRoot" or "--AllowUnpinnedToolchain"))
+                "--Target" or "--Debug" or "--LlvmBin" or "--ToolchainRoot"))
             {
                 throw new InvalidDataException("Unknown test option: " + name);
             }
@@ -71,7 +71,6 @@ internal sealed class TestOptions
         result.Compiler.Locked = result.Get("--locked") is not null;
         result.Compiler.LlvmBin = result.Get("--LlvmBin");
         result.Compiler.ToolchainRoot = result.Get("--ToolchainRoot");
-        result.Compiler.AllowUnpinnedToolchain = Boolean("--AllowUnpinnedToolchain");
         _ = result.Settings(new());
         return result;
 

@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class ComparisonCompilationCostTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]

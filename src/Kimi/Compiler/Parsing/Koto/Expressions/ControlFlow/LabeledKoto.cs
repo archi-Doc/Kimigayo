@@ -33,6 +33,7 @@ public sealed class LabeledKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        builder.Append("label ");
         builder.Append(this.Label);
         builder.Append(':');
         builder.AppendSpace();

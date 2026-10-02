@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryOperationsTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void MilestonePrefixPreservesInputAndStoredEntryDestructionOrder()
     {
@@ -17,6 +18,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsMilestonePrefix", source[..end], 1, 1, 128, Output);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void InsertRejectReplaceLookupRemoveAndClearPreserveTheirResults()
     {
@@ -49,6 +51,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsScalar", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FullCapacityChurnReusesSlotsWithoutAllocations()
     {
@@ -76,6 +79,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsChurn", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SearchUsesStoredKeyAndReplacementRetainsIt()
     {
@@ -93,6 +97,12 @@ public class DictionaryOperationsTest
             var entries: Dictionary<Key, i32> = [:]
             _ = entries.tryInsert(Key.init(7, 1), 20)
             _ = entries.insertOrReplace(Key.init(7, 9), 22)
+            match entries.tryGet(Key.init(7, 0))
+                .Some(let value) => require value == 22 else => $abort("lookup")
+                .None => $abort("missing lookup")
+            match entries.tryGet(Key.init(8, 0))
+                .None => ()
+                .Some(_) => $abort("absent lookup")
             match entries.remove(Key.init(7, 0))@move
                 .Some((let key, let value)) => require key.tag == 1 and value == 22 else => $abort("stored key")
                 .None => $abort("missing")
@@ -100,6 +110,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsDirection", Source, 1, 1, 128);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RemovalReinsertionAndClearKeepReverseInsertionCleanup()
     {
@@ -107,7 +118,7 @@ public class DictionaryOperationsTest
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<i32, Item> = [:]
             entries.reserve(3)
             _ = entries.tryInsert(1, Item.init("first"))
@@ -130,6 +141,7 @@ public class DictionaryOperationsTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void TupleKeyEqualityUsesTheContractIncludingNaNs()
     {
@@ -148,6 +160,7 @@ public class DictionaryOperationsTest
         NativeAllocationAudit.WriteFixture("DictionaryOperationsTupleNaN", Source, 1, 1, 160);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void StringKeyTemporariesDoNotLimitTheReturnedValueBorrow()
     {

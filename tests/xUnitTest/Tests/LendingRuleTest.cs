@@ -9,7 +9,7 @@ namespace XunitTest;
 /// <summary>SPEC 3.5, 13.5.3 and 15.1.5: a bare Place is never Moved or lent exclusively; transfers and exclusive borrows are spelled.</summary>
 public class LendingRuleTest
 {
-    private const string Token = "struct Token\n    var id: i32 = 0\n    deinit => Console.writeLine(\"destroy\")\n";
+    private const string Token = "struct Token\n    var id: i32 = 0\n    drop => Console.writeLine(\"destroy\")\n";
 
     [Fact]
     public void TryTransfersItsExtractedPayloads()
@@ -36,7 +36,7 @@ public class LendingRuleTest
     [Fact]
     public void MovingALentRootIsReportedOnce()
     {
-        var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 3\n    deinit => ()\nfunc borrow(item: ref/Item) -> ref/Item during item => item\nfunc take(item: Item) => ()\nvar item = Item.init()\nlet view = borrow(item@ref)\ntake(item@move)\nlet a = view.value\nlet b = view.value\nlet c = view.value\nrequire a + b + c == 9 else => $abort(\"sum\")");
+        var c = MinimalEmissionTest.Analyze("struct Item\n    public var value: i32 = 3\n    drop => ()\nfunc borrow(item: ref/Item) -> ref/Item during item => item\nfunc take(item: Item) => ()\nvar item = Item.init()\nlet view = borrow(item@ref)\ntake(item@move)\nlet a = view.value\nlet b = view.value\nlet c = view.value\nrequire a + b + c == 9 else => $abort(\"sum\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var issue = Assert.Single(c.Ownership.Issues);
         Assert.Equal(OwnershipFailure.ComparisonLoanConflict, issue.Failure);

@@ -6,6 +6,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 22.3.1: whether a function carries the import Attribute; its validity is checked separately.
+    internal static bool IsLibraryImport(FunctionKoto function)
+    {
+        for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "LibraryImport" })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {
         var target = attribute.Parent;
@@ -40,10 +54,10 @@ public sealed partial class Binding
 
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
-            Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
             if (target is not null)
             {
-                Fail(target, BindingFailure.InvalidTypeFormation);
+                this.Fail(target, BindingFailure.InvalidTypeFormation);
             }
         }
         else
@@ -57,7 +71,9 @@ public sealed partial class Binding
     private void ValidateLibraryImports()
     {
         string? target = null;
-        Dictionary<string, (string Signature, string? Kind)>? symbols = null;
+        var symbols = this.importSymbols;
+        symbols.Clear();
+        var ordinal = 0;
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "LibraryImport" } } attribute ||
@@ -70,7 +86,7 @@ public sealed partial class Binding
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
-                Fail(attribute, BindingFailure.InvalidLibraryImport);
+                this.Fail(attribute, BindingFailure.InvalidLibraryImport);
                 continue;
             }
 
@@ -83,7 +99,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(Kernel32Imports.Symbols, symbol) < 0)
                 {
                     // SPEC 20.8.2.4: the reserved supply exports only the reviewed project-owned definition.
-                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
             else if (name is WindowsProfile.BackendLibrary)
@@ -92,7 +108,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
                 {
                     // SPEC 21.5.7: the backend archive supplies only its catalog, whose names are reserved above.
-                    Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
                 }
             }
             else
@@ -103,7 +119,7 @@ public sealed partial class Binding
                 var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 if (requirement is null && supply is null)
                 {
-                    Fail(attribute, BindingFailure.MissingNativeRequirement);
+                    this.Fail(attribute, BindingFailure.MissingNativeRequirement);
                 }
                 else
                 {
@@ -111,9 +127,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.TryGetImportAbi(function, out var signature))
+            if (!this.TryGetImportAbi(function, ordinal++, out var signature))
             {
-                Fail(attribute, BindingFailure.UnsupportedImportSignature);
+                this.Fail(attribute, BindingFailure.UnsupportedImportSignature);
             }
             else if (signature is not null)
             {
@@ -122,22 +138,21 @@ public sealed partial class Binding
                 // physical Type, and never a declaration carrying an inexpressible ABI attribute.
                 if (IsRuntimeDeclaration(symbol, out var declared) && (name != Kernel32Imports.LibraryName || declared != signature))
                 {
-                    Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
+                    this.Fail(attribute, BindingFailure.ConflictingRuntimeSymbol);
                 }
 
                 // SPEC 21.5.2: one final symbol table; same-named declarations share only an equal physical
                 // Type and dllimport setting. An unresolved kind already has its own diagnostic.
-                symbols ??= new(StringComparer.Ordinal);
                 if (!symbols.TryAdd(symbol, (signature, kind)))
                 {
                     var previous = symbols[symbol];
                     if (previous.Signature != signature)
                     {
-                        Fail(attribute, BindingFailure.ConflictingImportSignature);
+                        this.Fail(attribute, BindingFailure.ConflictingImportSignature);
                     }
                     else if (kind is not null && previous.Kind is not null && previous.Kind != kind)
                     {
-                        Fail(attribute, BindingFailure.ConflictingImportSupply);
+                        this.Fail(attribute, BindingFailure.ConflictingImportSupply);
                     }
                 }
             }
@@ -154,16 +169,17 @@ public sealed partial class Binding
         // generic/Origin parameters, specializations or argument defaults.
         static bool IsImportShape(FunctionKoto function)
         {
-            if ((function.Modifier & ModifierKind.Unsafe) == 0 || function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
-                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 || function.Origins.Count != 0 ||
+            // Safe or unsafe; borrow annotations introduce the import's own signature Origins (SPEC 22.3.1).
+            if (function.BoundSymbol is not { ReceiverIndex: < 0 } symbol ||
+                symbol.Scope.Owner is not (GroupKoto or StructKoto) || function.GenericArguments.Count != 0 ||
                 function.IsSpecialization || function.IsConstructor || function.IsDestructor || function.IsAnonymous || function.IsRequirement)
             {
                 return false;
             }
 
-            foreach (var parameter in function.Parameters)
+            for (var p = 0; p < function.Parameters.Count; p++)
             {
-                if (parameter.DefaultValue is not null)
+                if (function.Parameters[p].DefaultValue is not null)
                 {
                     return false;
                 }
@@ -227,11 +243,16 @@ public sealed partial class Binding
 
     // SPEC 22.3.2: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
     // pointers, with Unit only as a result. The signature is one physical code per result and
-    // parameter (i8/u8 share i8, every unsafe/T is ptr); it is null when a Type failed to bind,
+    // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
     // since that Type already has its own diagnostic.
-    private bool TryGetImportAbi(FunctionKoto function, out string? signature)
+    private bool TryGetImportAbi(FunctionKoto function, int ordinal, out string? signature)
     {
         signature = null;
+        if (ordinal == this.importSignatures.Count)
+        {
+            this.importSignatures.Add(null);
+        }
+
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
@@ -244,7 +265,7 @@ public sealed partial class Binding
         {
             codes[0] = 'v';
         }
-        else if ((codes[0] = PhysicalCode(result)) == '\0')
+        else if ((codes[0] = this.PhysicalCode(result)) == '\0')
         {
             return false;
         }
@@ -255,28 +276,78 @@ public sealed partial class Binding
             {
                 complete = false;
             }
-            else if ((codes[p] = PhysicalCode(type)) == '\0')
+            else if ((codes[p] = this.PhysicalCode(type)) == '\0')
             {
                 return false;
             }
         }
 
-        signature = complete ? new string(codes) : null;
-        return true;
+        if (complete)
+        {
+            var cached = this.importSignatures[ordinal];
+            signature = codes.SequenceEqual(cached.AsSpan()) ? cached : new string(codes);
+        }
 
-        static char PhysicalCode(BoundType type)
-            => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } ? 'p' :
-                type.Kind != BoundTypeKind.Primitive ? '\0' :
-                type.Name switch
-                {
-                    "i8" or "u8" => '1',
-                    "i16" or "u16" => '2',
-                    "i32" or "u32" => '4',
-                    "i64" or "u64" => '8',
-                    "f32" => 'f',
-                    "f64" => 'd',
-                    _ => '\0',
-                };
+        this.importSignatures[ordinal] = signature;
+        return true;
+    }
+
+    // SPEC 22.3.2: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width.
+    private char PhysicalCode(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ||
+            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0)) ? 'p' :
+            type.Kind != BoundTypeKind.Primitive ? '\0' :
+            type.Underlying.Name switch
+            {
+                "i8" or "u8" => '1',
+                "i16" or "u16" => '2',
+                "i32" or "u32" => '4',
+                "i64" or "u64" => '8',
+                "f32" => 'f',
+                "f64" => 'd',
+                _ => '\0',
+            };
+
+    // IMPL 21.1.6: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
+    // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.
+    // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
+    private bool CExchangeable(BoundType type, int depth)
+    {
+        if (depth > 32)
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.Primitive)
+        {
+            return type.Underlying.Name is "i8" or "u8" or "i16" or "u16" or "i32" or "u32" or "i64" or "u64" or "f32" or "f64";
+        }
+
+        if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] })
+        {
+            return type.Semantics == SemanticsKind.Raw || (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.CExchangeable(referent, depth + 1));
+        }
+
+        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Length: > 0, Components: [var element] })
+        {
+            return this.CExchangeable(element, depth + 1);
+        }
+
+        if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Declaration is not StructKoto structure || !HasCLayout(structure) ||
+            !this.storageShapes.TryGetValue(structure, out var shape) || shape.Types.Count == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < shape.Types.Count; i++)
+        {
+            if (this.StoredType(shape.Types[i], type) is not { } field || !this.CExchangeable(field, depth + 1))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
@@ -290,8 +361,8 @@ public sealed partial class Binding
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
                     field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
                 {
-                    Fail(field, BindingFailure.InvalidCLayout);
-                    Fail(container, BindingFailure.InvalidTypeFormation);
+                    this.Fail(field, BindingFailure.InvalidCLayout);
+                    this.Fail(container, BindingFailure.InvalidTypeFormation);
                 }
             }
         }
@@ -319,7 +390,7 @@ public sealed partial class Binding
             {
                 if (this.StoredType(field, type) is { } stored && this.HasZeroStride(stored))
                 {
-                    Fail(syntax, BindingFailure.InvalidCLayout);
+                    this.Fail(syntax, BindingFailure.InvalidCLayout);
                     return;
                 }
             }
@@ -349,7 +420,7 @@ public sealed partial class Binding
 
                 if (previousFragment == attribute.FragmentOrdinal)
                 {
-                    Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+                    this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
                 }
 
                 valid &= attribute.BindingState != BindingState.Invalid;
@@ -359,7 +430,7 @@ public sealed partial class Binding
                 {
                     if (mode is not null && mode != explicitMode)
                     {
-                        Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
                         valid = false;
                     }
                     else if (mode is null)
@@ -378,7 +449,7 @@ public sealed partial class Binding
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
-                        Fail(field, BindingFailure.SplitCLayoutStorage);
+                        this.Fail(field, BindingFailure.SplitCLayoutStorage);
                         valid = false;
                     }
 
@@ -390,7 +461,7 @@ public sealed partial class Binding
             // SPEC 21.1: C layout rejects open, derived and empty structs.
             if (mode == "C" && ((container.Modifier & ModifierKind.Open) != 0 || container.Bases.Count != 0 || instanceFields == 0))
             {
-                Fail(latestSpecification!, BindingFailure.InvalidCLayout);
+                this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
                 valid = false;
             }
             else if (mode == "C" && valid)
@@ -400,7 +471,7 @@ public sealed partial class Binding
 
             if (!valid)
             {
-                Fail(container, BindingFailure.InvalidTypeFormation);
+                this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
     }

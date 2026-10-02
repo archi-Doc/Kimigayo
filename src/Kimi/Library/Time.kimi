@@ -1,0 +1,132 @@
+/// Monotonic elapsed-time measurement; independent of civil time and time zones.
+public group Time
+    let counterFrequency: i64 = readCounterFrequency()
+
+    func readCounter() -> i64
+        var value: i64 = 0
+        require Windows.queryPerformanceCounter(value@uniq) != 0 else => $abort("Performance counter query failed")
+        require value >= 0 else => $abort("Negative performance counter")
+        return value
+
+    func readCounterFrequency() -> i64
+        var value: i64 = 0
+        require Windows.queryPerformanceFrequency(value@uniq) != 0 else => $abort("Performance counter frequency query failed")
+        require value > 0 else => $abort("Invalid performance counter frequency")
+        return value
+
+    func intervalMicroseconds(start: i64, end: i64) -> u64
+        require end >= start else => $abort("Performance counter moved backwards")
+        return counterMicroseconds((end - start)@u64, counterFrequency@u64)
+
+    // The adapter supplies 0 < frequency <= i64.MaxValue. All arithmetic stays within 64 bits.
+    func counterMicroseconds(ticks: u64, frequency: u64) -> u64
+        let whole = (ticks / frequency) * 1000000
+        let remainder = ticks % frequency
+        if remainder <= 18446744073709
+            return whole + remainder * 1000000 / frequency
+        return whole + fractionalMicroseconds(remainder, frequency)
+
+    // Exact multiply/divide for unusually large frequencies: each sum is below 2 * frequency.
+    func fractionalMicroseconds(remainder: u64, frequency: u64) -> u64
+        var multiplier: u64 = 1000000
+        var part = remainder
+        var partWhole: u64 = 0
+        var sum: u64 = 0
+        var result: u64 = 0
+        while multiplier != 0
+            if multiplier % 2 != 0
+                result += partWhole
+                sum += part
+                if sum >= frequency
+                    sum -= frequency
+                    result += 1
+            multiplier /= 2
+            if multiplier != 0
+                partWhole *= 2
+                part *= 2
+                if part >= frequency
+                    part -= frequency
+                    partWhole += 1
+        return result
+
+    /// A nonnegative duration stored as an exact whole number of microseconds.
+    public struct Duration
+        Self is Copy
+
+        /// The exact integer representation, without floating-point rounding.
+        public let rawMicroseconds: u64
+
+        /// The duration in seconds, rounded to f64.
+        public computed seconds: f64
+            get() -> f64 => self.rawMicroseconds@f64 / 1000000.0
+
+        /// The duration in milliseconds, rounded to f64.
+        public computed milliseconds: f64
+            get() -> f64 => self.rawMicroseconds@f64 / 1000.0
+
+        /// The duration in microseconds, rounded to f64.
+        public computed microseconds: f64
+            get() -> f64 => self.rawMicroseconds@f64
+
+        /// Creates a duration from an exact whole number of microseconds.
+        public init(! microseconds: u64) => self.rawMicroseconds = microseconds
+
+    /// Accumulates running intervals in whole microseconds, without heap allocation.
+    /// Each stopped interval truncates its sub-microsecond fraction. The state is Non-Copy.
+    public struct Stopwatch
+        var accumulated: u64
+        var startedAt: Option<i64>
+
+        /// Whether an interval is currently being measured.
+        public computed isRunning: bool
+            get() -> bool
+                match self.startedAt
+                    .Some(_) => return true
+                    .None => return false
+
+        /// Creates a stopped stopwatch with zero accumulated time; reads no clock.
+        public init()
+            self.accumulated = 0
+            self.startedAt = .None
+
+        /// Starts or resumes measurement; does nothing while already running.
+        /// - abort: The platform clock is unavailable or returns an invalid value.
+        public func start(self: uniq/Self)
+            if self.isRunning
+                return
+            _ = counterFrequency
+            let now = readCounter()
+            self.startedAt = .Some(now)
+
+        /// Accumulates the current interval and stops; does nothing while already stopped.
+        /// - abort: The clock fails or reverses, or the accumulated microseconds exceed u64.
+        public func stop(self: uniq/Self)
+            match self.startedAt
+                .Some(let start)
+                    let interval = intervalMicroseconds(start, readCounter())
+                    let total = self.accumulated + interval
+                    self.accumulated = total
+                    self.startedAt = .None
+                .None => return
+
+        /// Stops measurement and discards accumulated time; reads no clock.
+        public func reset(self: uniq/Self)
+            self.accumulated = 0
+            self.startedAt = .None
+
+        /// Discards accumulated time and starts one new interval.
+        /// - abort: The platform clock is unavailable or returns an invalid value.
+        public func restart(self: uniq/Self)
+            _ = counterFrequency
+            let now = readCounter()
+            self.accumulated = 0
+            self.startedAt = .Some(now)
+
+        /// Takes a duration snapshot without changing state; truncates the running interval's fraction.
+        /// - abort: The clock fails or reverses, or the total microseconds exceed u64.
+        public func elapsed(self) -> Duration
+            var microseconds = self.accumulated
+            match self.startedAt
+                .Some(let start) => microseconds += intervalMicroseconds(start, readCounter())
+                .None => ()
+            return Duration.init(microseconds: microseconds)

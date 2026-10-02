@@ -20,7 +20,7 @@ public class DynamicArrayReplacementTest
     public void DestroysOldElementBeforeInstallingTheNewOne()
         => ScalarEmissionTest.EmitFixture(
             "DynamicArrayReplaceDestruction",
-            "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"old\")\n        else => Console.writeLine(\"new\")\nfunc make() -> Task\n    Console.writeLine(\"value\")\n    return Task.init(2)\nfunc index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nvar tasks: Array<Task> = [Task.init(1)]\ntasks[index()] = make()\nrequire tasks[0].id == 2 else => $abort(\"replace\")\nConsole.writeLine(\"done\")",
+            "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"old\")\n        else => Console.writeLine(\"new\")\nfunc make() -> Task\n    Console.writeLine(\"value\")\n    return Task.init(2)\nfunc index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nvar tasks: Array<Task> = [Task.init(1)]\ntasks[index()] = make()\nrequire tasks[0].id == 2 else => $abort(\"replace\")\nConsole.writeLine(\"done\")",
             "value\nindex\nold\ndone\nnew\n");
 
     [Theory]
@@ -39,7 +39,7 @@ public class DynamicArrayReplacementTest
     [InlineData("var values: Array<i32> = [1]\nlet borrow = values@ref\nvalues[0] = 2\nlet n = borrow[0]")]
     [InlineData("var values: Array<i32> = [1]\nlet moved = values@move\nvalues[0] = 2")]
     [InlineData("var values: Array<i32> = [1]\nlet handle = values@ref\nvalues[0] += 2\nlet n = handle.length")]
-    [InlineData("var values: Array<i32> = [1]\nvalues[(work: do\n    values@uniq.clear()\n    exit to work: 0)] = 2")]
+    [InlineData("var values: Array<i32> = [1]\nvalues[(label work: do\n    values@uniq.clear()\n    exit to work 0)] = 2")]
     [InlineData("let name = \"owned\"\nvar names: Array<string> = [\"old\"]\nnames[0] = name")]
     public void RejectsInvalidWrites(string source)
     {

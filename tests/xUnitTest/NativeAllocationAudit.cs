@@ -7,7 +7,7 @@ namespace XunitTest;
 
 internal static class NativeAllocationAudit
 {
-    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1)
+    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
@@ -18,10 +18,16 @@ internal static class NativeAllocationAudit
             .Replace("call void @__kimi_exit(", "call void @__kimi_audit_exit(", StringComparison.Ordinal);
         if (maxTransferredBytes >= 0)
         {
-            // The common Array/Dictionary grow routine copies high-water storage once.
+            // Array growth and the Dictionary source's transfer callback each copy high-water storage once.
             const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
             Assert.Equal(2, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
             ir = ir.Replace(CopyAnchor, CopyAnchor + "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %used\n  store i64 %after_copy, ptr @audit_transferred\n", StringComparison.Ordinal);
+            const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
+            if (ir.Contains("define internal void @__kimi_dictionary_transfer(", StringComparison.Ordinal))
+            {
+                Assert.Equal(2, ir.Split(TransferAnchor, StringSplitOptions.None).Length);
+                ir = ir.Replace(TransferAnchor, "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %size\n  store i64 %after_copy, ptr @audit_transferred\n" + TransferAnchor, StringComparison.Ordinal);
+            }
         }
 
         // Keep the real startup and cleanup path, including explicitly declared main.
@@ -37,9 +43,11 @@ internal static class NativeAllocationAudit
               %b = icmp eq i64 %free, {{frees}}
               %c = icmp eq i64 %size, {{bytes}}
               %d = icmp ule i64 %transferred, {{maxTransferredBytes}}
+              %minimum = icmp uge i64 %transferred, {{minTransferredBytes}}
               %ab = and i1 %a, %b
               %cd = and i1 %c, %d
-              %ok = and i1 %ab, %cd
+              %upper = and i1 %ab, %cd
+              %ok = and i1 %upper, %minimum
               br i1 %ok, label %passed, label %failed
             passed:
               call void @__kimi_exit(i32 %exit)

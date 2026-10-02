@@ -50,7 +50,7 @@ public sealed partial class Binding
         {
             if (type.Symbol?.Schema is not { Origins.Count: > 0 })
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             annotation!.OriginExpression!.BindingState = BindingState.Resolved;
@@ -59,20 +59,20 @@ public sealed partial class Binding
 
         if (written && type.Kind == BoundTypeKind.Parameter && annotation?.SemanticsParameter is null)
         {
-            return Fail(use, BindingFailure.InvalidOrigin);
+            return this.Fail(use, BindingFailure.InvalidOrigin);
         }
 
         if (IsBorrow(type.Semantics) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.SemanticsApplication || (type.Kind == BoundTypeKind.Parameter && written))
         {
             if (annotation?.OriginArguments is not null)
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             var origin = written ? annotation!.OriginExpression is { } expression ? this.BindOrigin(expression, scope) : this.BindOriginName(annotation.OriginName!, use, scope) : type.Origin;
             if (written && type.Origin is not null && !ReferenceEquals(type.Origin, origin) && annotation?.SemanticsParameter is null)
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (written && type.Kind == BoundTypeKind.Parameter)
@@ -90,7 +90,7 @@ public sealed partial class Binding
 
                 var condition = type.Kind == BoundTypeKind.SemanticsApplication ? type.Symbol : null;
                 var mayBeExclusive = IsExclusive(type.Semantics) || (condition?.WholeType is { } whole &&
-                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe, scope));
+                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Raw, scope));
                 origin = this.OmittedOrigin(use, scope, type.Kind == BoundTypeKind.Slice ? context with { Direct = false } : context, mayBeExclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, type.Kind == BoundTypeKind.Slice ? 0 : -1, condition);
                 if (type.Kind == BoundTypeKind.SemanticsApplication && origin?.Kind == OriginKind.Input && context.Direct)
                 {
@@ -105,7 +105,7 @@ public sealed partial class Binding
 
             if (origin?.Kind == OriginKind.Static && IsExclusive(type.Semantics))
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (!ReferenceEquals(origin, type.Origin))
@@ -135,7 +135,7 @@ public sealed partial class Binding
             if (written && (objectLayer || count != 1 || annotation!.OriginArguments is not null ||
                 (target.OriginArguments.Count == 1 && target.OriginArguments[0] is not null)))
             {
-                return Fail(use, BindingFailure.InvalidOrigin);
+                return this.Fail(use, BindingFailure.InvalidOrigin);
             }
 
             if (count != 0 && (written || (!context.SuppressOuter && (target.OriginArguments.Count != count || target.OriginArguments.Contains(null!)))))
@@ -284,7 +284,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;
@@ -352,7 +352,7 @@ public sealed partial class Binding
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
-                        Fail(node, BindingFailure.InvalidOrigin);
+                        this.Fail(node, BindingFailure.InvalidOrigin);
                     }
                 }
             }
@@ -368,7 +368,7 @@ public sealed partial class Binding
                 this.borrowVisiting.Clear();
                 if (this.RetainsBorrow(type, this.borrowVisiting))
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
             }
         }
@@ -381,7 +381,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Semantics == SemanticsKind.Unsafe || type.Kind == BoundTypeKind.Function)
+        if (type.Semantics == SemanticsKind.Raw || type.Kind == BoundTypeKind.Function)
         {
             return false;
         }

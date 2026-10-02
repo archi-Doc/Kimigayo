@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ConditionOperandContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
@@ -86,22 +85,6 @@ public class ConditionOperandContinuationTest
         Assert.False(c.Emission.Validate(out _));
     }
 
-    [Fact]
-    public void ReloadAndWarmMissingConditionChecksAllocateNothing()
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1", "x = 2", "let y = x"));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static string Source(string declaration, string yes, string no, string tail)
         => Stop + "func f()\n    " + declaration + "\n    if stop()\n        " + yes + "\n    else\n        " + no + "\n    " + tail + "\nf()";
 
@@ -110,4 +93,25 @@ public class ConditionOperandContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void ReloadAndWarmMissingConditionChecksAllocateNothing()
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1", "x = 2", "let y = x"));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

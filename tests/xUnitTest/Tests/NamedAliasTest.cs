@@ -58,7 +58,7 @@ public class NamedAliasTest
     {
         var c = Parse(source);
         var result = c.Bind();
-        Assert.True(c.Kimigayo.GetOrAddDiagnosticCollection("Aliases.kimi").GetArray().Any(x => x.Entry.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error) || !result.IsComplete, source);
+        Assert.True(TestDiagnostics.Of(c, "Aliases.kimi").Any(x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error) || !result.IsComplete, source);
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class NamedAliasTest
         var c = Parse(source);
         c.Bind();
         c.Binding.ReportDiagnostics();
-        Assert.Equal(warns, c.Kimigayo.GetOrAddDiagnosticCollection("Aliases.kimi").GetArray().Any(x => x.Entry.Name == nameof(DiagnosticCode.HiddenNamedAlias_Kd)));
+        Assert.Equal(warns, TestDiagnostics.Of(c, "Aliases.kimi").Any(x => x.Code == nameof(DiagnosticCode.HiddenNamedAlias_Kd)));
     }
 
     [Fact]
@@ -152,6 +152,7 @@ public class NamedAliasTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAliasResolutionAllocatesNothing()
     {
@@ -201,7 +202,7 @@ public class NamedAliasTest
                 var c = Compilation.CreateForTest();
                 Assert.True(c.Prepare(WindowsProfile.Target));
                 c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, File.ReadAllText(path));
-                Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, path + ": " + string.Join("; ", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.Message)));
+                Assert.True(TestDiagnostics.Of(c).Length == 0, path + ": " + string.Join("; ", TestDiagnostics.Of(c).Select(x => x.Message)));
                 count++;
             }
 

@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class PartialLogicalReplayTest
 {
     [Theory]
@@ -91,27 +90,6 @@ public class PartialLogicalReplayTest
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }
 
-    [Theory]
-    [InlineData("and", false)]
-    [InlineData("or", false)]
-    [InlineData("and", true)]
-    [InlineData("or", true)]
-    public void ReloadedPartialLogicalJoinsAllocateNothingWhenWarm(string op, bool terminalLeft)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", (terminalLeft ? "truth(stop()) " : "c ") + op + " (if c => return else => counter.value == 0)", "()", "let n = r.value") + Counter + Truth);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static void Emit(string name, string source, bool condition = true)
         => ScalarEmissionTest.EmitFixture("NeverPartialLogical" + Configuration + name, source + "\nConsole.writeLine(\"done\")", condition ? "done\n" : string.Empty, condition ? 0 : 1, condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
@@ -127,4 +105,30 @@ public class PartialLogicalReplayTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("and", false)]
+        [InlineData("or", false)]
+        [InlineData("and", true)]
+        [InlineData("or", true)]
+        public void ReloadedPartialLogicalJoinsAllocateNothingWhenWarm(string op, bool terminalLeft)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", (terminalLeft ? "truth(stop()) " : "c ") + op + " (if c => return else => counter.value == 0)", "()", "let n = r.value") + Counter + Truth);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

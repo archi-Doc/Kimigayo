@@ -63,7 +63,7 @@ public class NamedArgumentBoundaryTest
     [InlineData("func f(a: i32 = do\n    1 ! b: i32) => ()")]
     [InlineData("func f(a: () -> i32 = func ()\n    return 1 ! b: i32) => ()")]
     public void RejectsInvalidBoundarySyntax(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Theory]
     [InlineData("(a: i32 ! b: i32, c: i32)", "f(1, b: 2, c: 3)", true)]
@@ -169,7 +169,7 @@ public class NamedArgumentBoundaryTest
 
     [Fact]
     public void AcquiresInSourceOrderAndCleansUpInParameterOrder()
-        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    deinit\n        if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
+        => ScalarEmissionTest.EmitFixture("NameBoundaryCleanup", "struct Item\n    let id: i32\n    public init(id: i32)\n        self.id = id\n    drop\n        if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\nfunc make(id: i32) -> Item\n    if id == 1 => Console.writeLine(\"first\") else => Console.writeLine(\"second\")\n    return Item.init(id)\nfunc f(first: Item ! second: Item) => Console.writeLine(\"body\")\nf(second: make(2), first: make(1))", "second\nfirst\nbody\nsecond\nfirst\n");
 
     [Fact]
     public void ConstructorBaseArgumentsUseCallSyntaxWithoutABoundary()
@@ -180,6 +180,7 @@ public class NamedArgumentBoundaryTest
         Assert.Equal("x", derived.BaseInitializer!.GetArgumentLabel(0));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(2)]
     [InlineData(16)]
@@ -213,7 +214,7 @@ public class NamedArgumentBoundaryTest
             typeof(Kotonoha).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(tree, value);
             var destination = Compilation.CreateForTest();
             tree.OnDeserialized(destination);
-            Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+            Assert.NotEmpty(TestDiagnostics.Of(tree));
             Assert.Empty(tree.RootKoto.ChildNodes);
             Assert.Null(tree.GeneratedFunction);
         }
@@ -230,7 +231,7 @@ public class NamedArgumentBoundaryTest
         TinyhandSerializer.DeserializeObject(bytes, ref tree);
         Assert.NotNull(tree);
         tree.OnDeserialized(c);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.Empty(tree.RootKoto.ChildNodes);
         Assert.Null(tree.GeneratedFunction);
     }

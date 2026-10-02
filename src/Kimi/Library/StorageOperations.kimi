@@ -3,7 +3,30 @@
 // its exclusive overload.
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
-internal unsafe func lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source
-internal unsafe func split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
-internal unsafe func release<E>(storage: unsafe/E)
+internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
+    K is Equatable
+internal func borrowStorage<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
+    K is Equatable
+internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
+    K is Equatable
+internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K
+internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
+internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
+internal func borrowStorage<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
+internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
+// Private physical projection: mutable handle address and entry stride. No entry is acquired.
+internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
+    K is Equatable
+// Fails with the caller location carried by the standard operation's private ABI.
+internal func missingDictionaryKey() -> Never
+// Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
+// no equal key is stored; growth failure Aborts at the standard operation's caller location.
+internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)
+// Capacity bridges carrying the standard operation's caller location: the Kimigayo decisions of DictionaryStorage.kimi
+// run over compiler-supplied allocation, release and byte-transfer callbacks.
+internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
+    K is Equatable
+internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
+    K is Equatable
+

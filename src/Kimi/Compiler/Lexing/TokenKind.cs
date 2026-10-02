@@ -63,7 +63,7 @@ public enum TokenKind : byte
     Defer,
     Self,
     Init,
-    Deinit,
+    Drop,
     Base,
     Do,
     Switch, // compile-time #switch only

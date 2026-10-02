@@ -204,10 +204,41 @@ done:
   ret ptr %memory
 }
 
+; SPEC 5.6: a negative count (as for Array capacity) or an unrepresentable byte size Aborts; zero bytes return the nonnull substitute 4096, which
+; is aligned for every supported element and which __kimi_free ignores.
+define internal ptr @__kimi_raw_allocate(i64 %count, i64 %stride, ptr %location, i64 %location_length) #0 {
+entry:
+  %negative = icmp slt i64 %count, 0
+  br i1 %negative, label %argument_failure, label %measure
+measure:
+  %empty_stride = icmp eq i64 %stride, 0
+  %empty_count = icmp eq i64 %count, 0
+  %empty = or i1 %empty_stride, %empty_count
+  br i1 %empty, label %substitute, label %bound
+bound:
+  %limit = udiv i64 9223372036854775807, %stride
+  %overflow = icmp ugt i64 %count, %limit
+  br i1 %overflow, label %size_failure, label %heap
+heap:
+  %size = mul i64 %count, %stride
+  %memory = call ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length)
+  ret ptr %memory
+substitute:
+  ret ptr inttoptr (i64 4096 to ptr)
+size_failure:
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+argument_failure:
+  call void @__kimi_abort(i32 {{reason_argument}}, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+}
+
 define internal void @__kimi_free(ptr %memory, ptr %location, i64 %location_length) #0 {
 entry:
-  %null = icmp eq ptr %memory, null
-  br i1 %null, label %done, label %heap
+  ; Null and the zero-sized-element buffer substitute lie in the low 64 KiB, which Windows never maps for heap blocks.
+  %address = ptrtoint ptr %memory to i64
+  %reserved = icmp ult i64 %address, 65536
+  br i1 %reserved, label %done, label %heap
 heap:
   %process_heap = call ptr @GetProcessHeap()
   %no_heap = icmp eq ptr %process_heap, null

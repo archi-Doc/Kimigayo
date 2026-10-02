@@ -16,6 +16,7 @@ internal enum KimiLibraryContainer : byte
     WriteWindow,
     Utf8Writer,
     Storage,
+    Raw,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -31,9 +32,11 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
         new(KimiDeclarationId.Array, "Array"),
-        new(KimiDeclarationId.Index, "Index"),
-        new(KimiDeclarationId.Range, "Range"),
+        new(KimiDeclarationId.FromEnd, "FromEnd"),
+        new(KimiDeclarationId.Wrapping, "Wrapping"),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange"),
+        new(KimiDeclarationId.Range, "Range"),
+        new(KimiDeclarationId.ClosedRange, "ClosedRange"),
         new(KimiDeclarationId.Slice, "Slice"),
         new(KimiDeclarationId.Dictionary, "Dictionary"),
         new(KimiDeclarationId.Equatable, "Equatable"),
@@ -45,6 +48,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.IntoIterable, "IntoIterable"),
         new(KimiDeclarationId.Sealed, "Sealed", Intrinsic: IntrinsicKind.Sealed),
         new(KimiDeclarationId.ObjectPayload, "ObjectPayload", Intrinsic: IntrinsicKind.ObjectPayload),
+        new(KimiDeclarationId.PrimitiveInteger, "PrimitiveInteger", Intrinsic: IntrinsicKind.PrimitiveInteger),
         new(KimiDeclarationId.Replace, "replace", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Replace),
         new(KimiDeclarationId.Exchange, "exchange", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Exchange),
         new(KimiDeclarationId.Swap, "swap", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Swap),
@@ -60,14 +64,12 @@ internal static class KimiLibraryCatalog
         // SPEC 4.7.2, 4.7.4: compiler-implemented Array mutation operations declared inside the Array struct.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayReserve),
         new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend),
-        new(KimiDeclarationId.ArrayInsert, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert, Overload: 0),
+        new(KimiDeclarationId.ArrayInsert, "insertAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsert),
         new(KimiDeclarationId.ArrayPop, "pop", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayPop),
-        new(KimiDeclarationId.ArrayRemove, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove, Overload: 0),
+        new(KimiDeclarationId.ArrayRemove, "removeAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemove),
         new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear),
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
-        new(KimiDeclarationId.ArrayInsertIndex, "insert", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayInsertIndex, Overload: 1),
-        new(KimiDeclarationId.ArrayRemoveIndex, "remove", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayRemoveIndex, Overload: 1),
-        new(KimiDeclarationId.ArraySwap, "swap", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
+        new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
         new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayWithCapacity),
         new(KimiDeclarationId.Utf8Format, "Utf8Format"),
         new(KimiDeclarationId.BufferWriter, "BufferWriter"),
@@ -105,13 +107,13 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.WriterWrite, "write", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterWrite),
         new(KimiDeclarationId.WriterStatus, "status", KimiLibraryContainer.Utf8Writer, Function: CompilerFunctionKind.WriterStatus),
         new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, Function: CompilerFunctionKind.WriteLineUtf8, Overload: 1),
-        new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryReserve),
-        new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryInsert),
-        new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryInsertOrReplace),
-        new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryRemove),
-        new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryTryGet),
-        new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryClear),
-        new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, Function: CompilerFunctionKind.DictionaryShrinkToFit),
+        new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.DictionaryTryInsert, "tryInsert", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.DictionaryInsertOrReplace, "insertOrReplace", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.DictionaryRemove, "remove", KimiLibraryContainer.Dictionary, SourceFunction: true),
+        new(KimiDeclarationId.DictionaryTryGet, "tryGet", KimiLibraryContainer.Dictionary, SourceFunction: true),
+        new(KimiDeclarationId.DictionaryClear, "clear", KimiLibraryContainer.Dictionary, SourceFunction: true),
+        new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.Indexable, "Indexable"),
         new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
         // SPEC 22.1.2.5: the standard storage boundary; the shared overload of each operation precedes the exclusive one.
@@ -120,10 +122,40 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.OwnedRemainder, "OwnedRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
         new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
-        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn),
-        new(KimiDeclarationId.StorageLend, "lend", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageLend),
-        new(KimiDeclarationId.StorageSplit, "split", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSplit),
-        new(KimiDeclarationId.StorageRelease, "release", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageRelease),
+        new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn, Overload: 0),
+        // SPEC 22.1.2.5: the distinct Dictionary family traverses live entries in insertion order.
+        new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
+        new(KimiDeclarationId.DictionaryUniqRemainder, "DictionaryUniqRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 3),
+        new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 1),
+        new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
+        new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
+        // SPEC 22.1.2.5: the fixed-array overloads of the contiguous borrowing remainders.
+        new(KimiDeclarationId.StorageBorrowFixedShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedShared, Overload: 4),
+        new(KimiDeclarationId.StorageBorrowFixedExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedExclusive, Overload: 5),
+        // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
+        new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
+        new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),
+        new(KimiDeclarationId.Position, "Position"),
+        new(KimiDeclarationId.PositionRange, "PositionRange"),
+        new(KimiDeclarationId.Start, "Start"),
+        new(KimiDeclarationId.End, "End"),
+        new(KimiDeclarationId.StorageDictionaryLayout, "dictionaryStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDictionaryLayout),
+        new(KimiDeclarationId.DictionaryIndex, "index", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.DictionaryIndexUniq, "indexUniq", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageMissingDictionaryKey, "missingDictionaryKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageMissingDictionaryKey),
+        new(KimiDeclarationId.StoragePlaceDictionaryEntry, "placeEntry", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryEntry),
+        new(KimiDeclarationId.StorageReserveDictionary, "reserveEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageReserveDictionary),
+        new(KimiDeclarationId.StorageShrinkDictionary, "shrinkEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageShrinkDictionary),
+        // SPEC 5.6: the public raw storage operations.
+        new(KimiDeclarationId.RawAllocate, "allocate", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawAllocate),
+        new(KimiDeclarationId.RawRelease, "release", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawRelease),
+        new(KimiDeclarationId.RawInitialize, "initialize", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawInitialize),
+        new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice),
+        // SPEC 15.3.5: the zero-sized dependency Field Core.
+        new(KimiDeclarationId.Loan, "Loan"),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -132,11 +164,31 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
-    internal static bool IsDictionaryOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.DictionaryReserve and <= CompilerFunctionKind.DictionaryShrinkToFit;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageShrinkDictionary;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageRelease;
+    internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
+
+    internal static bool RequiresCallerLocation(BindingSymbol? symbol)
+        => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].CallerLocation;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
+
+    /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
+    /// <param name="container">The container the name was looked up in.</param>
+    /// <param name="name">The name.</param>
+    /// <returns><see langword="true"/> when a lookup that misses the name meets an implementation limit, not a missing name.</returns>
+    internal static bool IsUnsourced(KimiLibraryContainer container, string name)
+    {
+        foreach (ref readonly var entry in Entries)
+        {
+            if (!entry.SourceExpected && entry.Container == container && entry.Name == name)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static int[] CreateIndices()
     {
@@ -156,8 +208,8 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false)
     {
-        internal bool IsFunction => this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
+        internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
     }
 }

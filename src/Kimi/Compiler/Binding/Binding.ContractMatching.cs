@@ -194,8 +194,8 @@ public sealed partial class Binding
                 {
                     if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause && !ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
                     {
-                        Fail(clause, BindingFailure.Access);
-                        Fail(premises.Parent!, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(premises.Parent!, BindingFailure.Access);
                         return Invalid(BindingFailure.Access);
                     }
                 }
@@ -299,7 +299,8 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!) &&
+                    SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -423,7 +424,7 @@ public sealed partial class Binding
         ConstraintProof Invalid(BindingFailure failure)
         {
             conformance.Invalid = true;
-            Fail(conformance.Use, failure);
+            this.Fail(conformance.Use, failure);
             return ConstraintProof.Error;
         }
     }

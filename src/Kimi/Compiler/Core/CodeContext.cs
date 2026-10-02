@@ -17,6 +17,10 @@ namespace Kimi.Compiler;
 /// </remarks>
 public sealed class CodeContext
 {
+    // DIAGNOSTICS.md §4.3: synthesized syntax that parser recovery kept in place of a rejected form, with the key of the
+    // syntax error it stands for. It lives with the nodes it maps and exists only after a recovery.
+    private Dictionary<Koto, DiagnosticKey>? recoveries;
+
     /// <summary>
     /// Gets the diagnostic destination for this context.
     /// </summary>
@@ -51,7 +55,8 @@ public sealed class CodeContext
         ArgumentNullException.ThrowIfNull(kotonoha);
 
         this.Kotonoha = kotonoha;
-        this.DiagnosticCollection = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
+        var diagnostics = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
+        this.DiagnosticCollection = sourceDocument is null ? diagnostics : diagnostics.For(sourceDocument);
         this.SourceDocument = sourceDocument;
     }
 
@@ -119,23 +124,44 @@ public sealed class CodeContext
         }
 
         this.Compilation.BeginSourceParsing();
-        var errorVersion = this.DiagnosticCollection.ErrorVersion;
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
+        var diagnostics = this.DiagnosticCollection.For(sourceDocument);
+        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
         try
         {
             tokenizer.ReadAll();
             // Nodes retain this immutable snapshot context; the source-less entry point can be reused.
-            var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument) { Documentation = tokenizer.Documentation };
+            var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
             sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);
-            sourceContext.Documentation?.Finish(this.DiagnosticCollection.ErrorVersion != errorVersion);
+            sourceContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.Kotonoha.RecordDocumentation(sourceContext.Documentation);
-            this.Kotonoha.RecordSourceErrors(this.DiagnosticCollection, errorVersion);
         }
         finally
         {
             tokenizer.Dispose();
         }
     }
+
+    /// <summary>Gets the syntax error that a recovered node stands for; a check that depends on the node's guessed form rests on it.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The key of the syntax error, or <see langword="null"/> when the node is not a recovery.</returns>
+    internal DiagnosticKey? RecoveryCause(Koto node)
+        => this.recoveries is { } map && map.TryGetValue(node, out var cause) ? cause : null;
+
+    /// <summary>Gets a value indicating whether the parser recorded a recovery in this source; valid source records none.</summary>
+    internal bool HasRecoveries => this.recoveries is not null;
+
+    /// <summary>Records excluded syntax, so its diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
+    /// <param name="range">The excluded syntax.</param>
+    /// <param name="directive">The innermost excluding directive.</param>
+    internal void RecordExcludedRange(SourceSpan range, SourceSpan directive)
+        => this.DiagnosticCollection.RecordExcludedRange(range, directive);
+
+    /// <summary>Records that synthesized syntax stands for a syntax error.</summary>
+    /// <param name="node">The synthesized node.</param>
+    /// <param name="cause">The key of the syntax error.</param>
+    internal void RecordRecovery(Koto node, DiagnosticKey cause)
+        => (this.recoveries ??= new(ReferenceEqualityComparer.Instance))[node] = cause;
 }

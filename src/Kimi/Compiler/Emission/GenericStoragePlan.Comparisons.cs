@@ -14,21 +14,22 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi> ComparisonHelpers => this.comparisonHelpers;
 
-    private bool PrepareDictionaryProjections(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
+    private bool PrepareDictionaryConstructions(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? context, out string? failure, int depth = 0)
     {
         failure = null;
-        foreach (var projection in body.Projections)
+        for (var i = 0; i < body.Constructions.Count; i++)
         {
-            if (body.Operations[projection.Operation].Source is not IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } index)
+            var construction = body.Constructions[i];
+            if (body.Places[construction.Place] is not { Type.Kind: BoundTypeKind.Dictionary, Source: DictionaryLiteralKoto { Entries.Count: > 0 } } place)
             {
                 continue;
             }
 
-            var dictionary = context is null ? index.Left.BoundType : compilation.Binding.InstantiateStorageType(index.Left.BoundType, context);
+            var dictionary = context is null ? place.Type : compilation.Binding.InstantiateStorageType(place.Type, context);
             if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
                 !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
             {
-                return Fail(failure ?? "Dictionary indexing requires a finalized equality witness.", out failure);
+                return Fail(failure ?? "Dictionary construction requires a finalized equality witness.", out failure);
             }
         }
 
@@ -38,8 +39,8 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
     {
         failure = null;
-        if ((!Binding.HasDictionarySearch(site) && (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
-            !ComparisonTypes.IsComposite(site.ConformingType))) || this.comparisonCalls.ContainsKey(site))
+        if (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
+            !ComparisonTypes.IsComposite(site.ConformingType) || this.comparisonCalls.ContainsKey(site))
         {
             return true;
         }

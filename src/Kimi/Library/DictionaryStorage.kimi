@@ -4,7 +4,7 @@ group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Layout("C")
     struct Handle
-        public var buffer: unsafe/u8
+        public var buffer: raw/u8
         public var used: isize
         public var capacity: isize
         public var length: isize
@@ -17,7 +17,97 @@ group DictionaryStorage
         public var previous: isize
         public var next: isize
 
-    unsafe func shrinkToFit(handle: unsafe/Handle, stride: isize, allocate: (isize) -> unsafe/u8, release: (unsafe/u8) -> (), transfer: (unsafe/u8, unsafe/u8, isize) -> ())
+    // Private callback ABI codes; the platform adapter supplies the original operation's location and Abort code.
+    group CapacityFailure
+        public let argument: i32 = 0
+        public let countOverflow: i32 = 1
+        public let sizeLimit: i32 = 2
+
+    internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            let handle = layout.0@raw/Handle
+            Storage.destroyDictionaryEntries<K, V>((*handle).buffer, layout.1, (*handle).tail, (*handle).length)
+            clearLinks(handle)
+
+    internal func removeEntry<K, V>(value: uniq/Dictionary<K, V>, key: ref/K) -> Option<(K, V)>
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            var state = Storage.borrowStorage(value@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            require link != 0 else => return .None
+            let slot = state.storage + (link - 1) * state.stride
+            unlink(layout.0@raw/Handle, layout.1, link)
+            return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
+
+    unsafe func reserve(
+        handle: raw/Handle, stride: isize, additional: isize, maximumSize: isize,
+        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
+        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
+    ) -> isize
+        unsafe
+            if additional < 0
+                fail(CapacityFailure.argument)
+                return 0
+            let length = (*handle).length
+            if additional > maximumSize - length
+                fail(CapacityFailure.countOverflow)
+                return 0
+            let minimum = length + additional
+            grow(handle, stride, minimum, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            return minimum
+
+    unsafe func grow(
+        handle: raw/Handle, stride: isize, minimum: isize, maximumSize: isize,
+        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
+        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
+    )
+        unsafe
+            let capacity = (*handle).capacity
+            if capacity >= minimum
+                return
+            // Every entry has links, even when K and V have zero size: stride is positive.
+            let maximum = maximumSize / stride
+            if minimum > maximum
+                fail(CapacityFailure.sizeLimit)
+                return
+            // Optional geometric rounding must never reject a representable minimum.
+            var target = maximum
+            if capacity <= maximum / 2
+                target = capacity * 2
+            if target < 4
+                target = 4
+            if target < minimum
+                target = minimum
+            if target > maximum
+                target = maximum
+            let memory = allocate(target * stride)
+            let buffer = (*handle).buffer
+            let used = (*handle).used
+            if used != 0
+                transfer(memory, buffer, used * stride)
+            release(buffer)
+            (*handle).buffer = memory
+            (*handle).capacity = target
+
+    unsafe func append(
+        handle: raw/Handle, stride: isize, maximumSize: isize,
+        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
+        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
+    ) -> raw/u8
+        unsafe
+            let needed = reserve(handle, stride, 1, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            return appendSlot(handle, stride, needed)
+
+    // Literal construction checks before evaluating the corresponding value.
+    // The backend supplies the failure callback solely to retain the key's source location.
+    func requireAbsent(link: isize, duplicate: () -> ())
+        if link != 0
+            duplicate()
+
+    unsafe func shrinkToFit(handle: raw/Handle, stride: isize, allocate: (isize) -> raw/u8, release: (raw/u8) -> (), transfer: (raw/u8, raw/u8, isize) -> ())
         unsafe
             let length = (*handle).length
             if (*handle).capacity <= length
@@ -35,7 +125,7 @@ group DictionaryStorage
 
     // The caller allocates memory before calling; failure leaves the old handle
     // intact. Transfer does not acquire or destroy entries or call user code.
-    unsafe func compact(handle: unsafe/Handle, memory: unsafe/u8, stride: isize, transfer: (unsafe/u8, unsafe/u8, isize) -> ()) -> unsafe/u8
+    unsafe func compact(handle: raw/Handle, memory: raw/u8, stride: isize, transfer: (raw/u8, raw/u8, isize) -> ()) -> raw/u8
         unsafe
             let buffer = (*handle).buffer
             let length = (*handle).length
@@ -43,10 +133,10 @@ group DictionaryStorage
             var position: isize = 0
             while link != 0
                 let slot = buffer + (link - 1) * stride
-                let next = (*(slot@unsafe/Links)).next
+                let next = (*(slot@raw/Links)).next
                 let destination = memory + position * stride
                 transfer(destination, slot, stride)
-                let links = destination@unsafe/Links
+                let links = destination@raw/Links
                 (*links).previous = position
                 position += 1
                 if position == length
@@ -65,18 +155,18 @@ group DictionaryStorage
             (*handle).free = 0
             return buffer
 
-    unsafe func clear(handle: unsafe/Handle, stride: isize, keyOffset: isize, valueOffset: isize, destroyEntry: (unsafe/u8, unsafe/u8) -> ())
+    unsafe func clear(handle: raw/Handle, stride: isize, keyOffset: isize, valueOffset: isize, destroyEntry: (raw/u8, raw/u8) -> ())
         unsafe
             let buffer = (*handle).buffer
             var link = (*handle).tail
             while link != 0
                 let slot = buffer + (link - 1) * stride
-                let previous = (*(slot@unsafe/Links)).previous
+                let previous = (*(slot@raw/Links)).previous
                 destroyEntry(slot + keyOffset, slot + valueOffset)
                 link = previous
             clearLinks(handle)
 
-    unsafe func find(handle: unsafe/Handle, stride: isize, keyOffset: isize, key: unsafe/u8, equals: (unsafe/u8, unsafe/u8) -> bool) -> isize
+    unsafe func find(handle: raw/Handle, stride: isize, keyOffset: isize, key: raw/u8, equals: (raw/u8, raw/u8) -> bool) -> isize
         unsafe
             let buffer = (*handle).buffer
             var link = (*handle).head
@@ -84,12 +174,12 @@ group DictionaryStorage
                 let slot = buffer + (link - 1) * stride
                 if equals(slot + keyOffset, key)
                     return link
-                link = (*(slot@unsafe/Links)).next
+                link = (*(slot@raw/Links)).next
             return 0
 
     // Links are slot index + 1; zero denotes no slot. The caller has already
     // secured capacity for needed entries before appendSlot changes any links.
-    unsafe func appendSlot(handle: unsafe/Handle, stride: isize, needed: isize) -> unsafe/u8
+    unsafe func appendSlot(handle: raw/Handle, stride: isize, needed: isize) -> raw/u8
         unsafe
             let buffer = (*handle).buffer
             let free = (*handle).free
@@ -99,24 +189,24 @@ group DictionaryStorage
                 (*handle).used = index + 1
             else
                 index = free - 1
-                let recycled = (buffer + index * stride)@unsafe/Links
+                let recycled = (buffer + index * stride)@raw/Links
                 (*handle).free = (*recycled).next
             let link = index + 1
             let slot = buffer + index * stride
-            let links = slot@unsafe/Links
+            let links = slot@raw/Links
             let tail = (*handle).tail
             (*links).previous = tail
             (*links).next = 0
             if tail == 0
                 (*handle).head = link
             else
-                let previous = (buffer + (tail - 1) * stride)@unsafe/Links
+                let previous = (buffer + (tail - 1) * stride)@raw/Links
                 (*previous).next = link
             (*handle).tail = link
             (*handle).length = needed
             return slot
 
-    unsafe func clearLinks(handle: unsafe/Handle)
+    unsafe func clearLinks(handle: raw/Handle)
         unsafe
             (*handle).used = 0
             (*handle).length = 0
@@ -124,27 +214,27 @@ group DictionaryStorage
             (*handle).tail = 0
             (*handle).free = 0
 
-    unsafe func initialize(handle: unsafe/Handle)
+    unsafe func initialize(handle: raw/Handle)
         unsafe
             (*handle).buffer = null
             (*handle).capacity = 0
             clearLinks(handle)
 
-    unsafe func unlink(handle: unsafe/Handle, stride: isize, link: isize)
+    unsafe func unlink(handle: raw/Handle, stride: isize, link: isize)
         unsafe
             let buffer = (*handle).buffer
-            let slot = (buffer + (link - 1) * stride)@unsafe/Links
+            let slot = (buffer + (link - 1) * stride)@raw/Links
             let previous = (*slot).previous
             let next = (*slot).next
             if previous == 0
                 (*handle).head = next
             else
-                let left = (buffer + (previous - 1) * stride)@unsafe/Links
+                let left = (buffer + (previous - 1) * stride)@raw/Links
                 (*left).next = next
             if next == 0
                 (*handle).tail = previous
             else
-                let right = (buffer + (next - 1) * stride)@unsafe/Links
+                let right = (buffer + (next - 1) * stride)@raw/Links
                 (*right).previous = previous
             (*slot).next = (*handle).free
             (*handle).free = link

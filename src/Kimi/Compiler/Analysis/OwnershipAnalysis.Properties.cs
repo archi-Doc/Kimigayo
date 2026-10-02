@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private readonly Dictionary<Koto, int> propertyReceivers = new(ReferenceEqualityComparer.Instance);
-
     private int UpdateProperty(Koto source, Koto target, MemberAccessKoto storage)
     {
         var binding = this.compilation.Binding;
@@ -19,11 +17,6 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (KotoHelper.UnwrapParentheses(operation.Source) is IdentifierNameKoto name && name.BoundType?.Semantics == SemanticsKind.Owner)
-        {
-            return this.UpdatePropertyPlace(source, target, storage, operation, getter, setter, name);
-        }
-
         // SPEC 13.7.2: secure the RHS, then keep the one located receiver across the read and write. Getter
         // and setter keep their independent call boundaries and never borrow hidden storage.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
@@ -32,13 +25,19 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
+        if (KotoHelper.UnwrapParentheses(operation.Source) is IdentifierNameKoto name && name.BoundType?.Semantics == SemanticsKind.Owner)
+        {
+            return this.UpdatePropertyPlace(source, target, operation, getter, setter, name, right);
+        }
+
         var receiver = this.BorrowStruct(operation.Source, operation.ParameterType);
         if (receiver < 0)
         {
             return -1;
         }
 
-        this.propertyReceivers[storage.Left] = receiver;
+        var located = ((EvaluatedKoto)storage.Left).Source;
+        this.evaluatedOperands[located] = (receiver, -1);
         try
         {
             var previous = getter is null ? this.Value(this.ReadBorrowedField(storage))
@@ -68,7 +67,7 @@ public sealed partial class OwnershipAnalysis
         }
         finally
         {
-            this.propertyReceivers.Remove(storage.Left);
+            this.evaluatedOperands.Remove(located);
         }
     }
 
@@ -82,10 +81,10 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
-    private int UpdatePropertyPlace(Koto source, Koto target, MemberAccessKoto storage, BoundArgumentOperation operation, InvocationKoto? getter, InvocationKoto? setter, IdentifierNameKoto receiver)
+    private int UpdatePropertyPlace(Koto source, Koto target, BoundArgumentOperation operation, InvocationKoto? getter, InvocationKoto? setter, IdentifierNameKoto receiver, int right)
     {
         // A named owned Place retains its location without lending it for the entire
-        // update. Each accessor borrows only at its own call; RHS may inspect the owner.
+        // update. Each accessor borrows only at its own call, after securing the RHS.
         var place = this.Local(receiver);
         if (place < 0)
         {
@@ -94,7 +93,11 @@ public sealed partial class OwnershipAnalysis
 
         var previous = getter is null ? this.Value(this.Expression(target, PlaceUseKind.Read))
             : this.Value(this.Call(getter, preparedReceiver: this.BorrowPropertyPlace(receiver, place, getter.BoundCall!.ArgumentOperations[0].ParameterType!)));
-        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : this.IncrementOne(source);
+        if (source is not BinaryKoto)
+        {
+            right = this.IncrementOne(source);
+        }
+
         if (previous < 0 || right < 0 || !this.flow!.Nodes[source].CanCompleteNormally)
         {
             return -1;

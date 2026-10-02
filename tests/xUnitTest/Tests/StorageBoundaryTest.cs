@@ -32,7 +32,7 @@ public class StorageBoundaryTest
     [Fact]
     public void AbortInRemainderCleanupStopsRemainingCleanup()
     {
-        var source = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 2 => $abort(\"stop\")\n        Console.writeLine(\"drop\")\nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nvar iterator = (values@move).intoIterator()\n_ = iterator.next()\nConsole.writeLine(\"stop\")";
+        var source = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 2 => $abort(\"stop\")\n        Console.writeLine(\"drop\")\nvar values: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nvar iterator = (values@move).intoIterator()\n_ = iterator.next()\nConsole.writeLine(\"stop\")";
         ScalarEmissionTest.EmitFixture("StorageBoundaryOwnedAbort", source, "drop\nstop\ndrop\n", 1, "Hello.kimi:5:28: abort KIMI_E_ABORT: stop\n");
     }
 
@@ -148,7 +148,7 @@ public class StorageBoundaryTest
     [Fact]
     public void OwningIteratorDestroysUnreturnedElements()
     {
-        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped \\(self.id)\")\n" +
+        const string Source = "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped \\(self.id)\")\n" +
             "public func main()\n    var items: Array<Tracked> = [Tracked.init(1), Tracked.init(2), Tracked.init(3), Tracked.init(4)]\n    var it = (items@move).intoIterator()\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 1 else => $abort(\"first\")\n        .None => $abort(\"empty\")\n" +
             "    match it.next()\n        .Some(let t) => require t.id == 2 else => $abort(\"second\")\n        .None => $abort(\"empty\")\n    Console.writeLine(\"Stop.\")";
@@ -160,9 +160,6 @@ public class StorageBoundaryTest
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]
     [InlineData("let r = Storage.borrowStorage(values@ref)")]
-    [InlineData("let r = Kimi.Storage.lend(values@ref, null)")]
-    [InlineData("let r = Kimi.Storage.split(values@uniq, null)")]
-    [InlineData("unsafe => Kimi.Storage.release(null@unsafe/i32)")]
     [InlineData("func f(r: Kimi.Storage.RefRemainder<Array<i32>>) => ()")]
     public void UserSourceCannotReachTheBoundary(string use)
     {
@@ -182,58 +179,30 @@ public class StorageBoundaryTest
         Assert.True(c.Library.ValidateBoundDeclarations(), "bound: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
     }
 
-    [Theory]
-    [InlineData(KimiDeclarationId.StorageLend, false)]
-    [InlineData(KimiDeclarationId.StorageSplit, false)]
-    [InlineData(KimiDeclarationId.StorageLend, true)]
-    [InlineData(KimiDeclarationId.StorageSplit, true)]
-    public void CapabilityPrimitivesRejectChangedPointersAndOrigins(KimiDeclarationId id, bool changeOrigin)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var function = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(id)!.Declaration);
-        if (changeOrigin)
-        {
-            var result = Assert.IsType<TypeSemanticsKoto>(function.ReturnType);
-            result.SetOrigin(null, null, result.Span.End);
-            result.SetOrigin("static", result.Span.End);
-        }
-        else
-        {
-            function.Parameters[1].Type = function.Parameters[0].Type;
-        }
-
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd && ReferenceEquals(x.Node, function));
-    }
-
+    // SPEC 5.2.2, 22.1.2.5: a library helper lends a remainder element by borrowing its raw Place.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void CapabilityArgumentsFollowTheirNames(bool exclusive)
+    public void RemainderElementsAreLentByBorrowingRawPlaces(bool exclusive)
     {
         var semantics = exclusive ? "uniq" : "ref";
-        var primitive = exclusive ? "split" : "lend";
         var c = CompilationTestHelper.ParseSuccess($$"""
             var values: Array<i32> = [7, 9]
             require Kimi.StorageProbe.first(values@{{semantics}}) == 7 else => $abort("first")
-            Console.writeLine("named")
+            Console.writeLine("borrowed")
             """);
         var helper = $$"""
             public group StorageProbe
                 public func first(values: {{semantics}}/Array<i32>) -> i32
                     var state = Storage.borrowStorage(values)
-                    let element = state.storage
-                    state.position += 1
-                    state.count -= 1
                     unsafe
-                        let item = Storage.{{primitive}}(element: element, state: state@{{semantics}})
+                        let item = state.storage[0]@{{semantics}}
                         return item
             """;
         c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, helper);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        ScalarEmissionTest.WriteFixture("StorageBoundaryNamed" + primitive, CompilationTestHelper.WriteIr(c), "named\n");
+        ScalarEmissionTest.WriteFixture("StorageBoundaryRawBorrow" + (exclusive ? "Uniq" : "Ref"), CompilationTestHelper.WriteIr(c), "borrowed\n");
     }
 }

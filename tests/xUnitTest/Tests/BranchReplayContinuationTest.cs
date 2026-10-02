@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class BranchReplayContinuationTest
 {
     [Theory]
@@ -90,25 +89,6 @@ public class BranchReplayContinuationTest
         Assert.False(c.Emission.Validate(out _));
     }
 
-    [Theory]
-    [InlineData("if c\n                let n = counter.value\n            else => ()\n            return")]
-    [InlineData("while c\n                let n = counter.value\n            return")]
-    public void ReloadAndWarmBranchReplayPreserveLoansWithoutAllocating(string dead)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", "return", dead, "()", "let n = r.value") + Counter);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static string Source(string declaration, string early, string dead, string tail, string use, bool condition = true)
         => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        loop\n            if c\n                " + early + "\n            else => exit\n            " + dead + "\n        " + tail + "\n        stop()\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
@@ -119,4 +99,28 @@ public class BranchReplayContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("if c\n                let n = counter.value\n            else => ()\n            return")]
+        [InlineData("while c\n                let n = counter.value\n            return")]
+        public void ReloadAndWarmBranchReplayPreserveLoansWithoutAllocating(string dead)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", "return", dead, "()", "let n = r.value") + Counter);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

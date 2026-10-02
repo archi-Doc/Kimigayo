@@ -47,6 +47,7 @@ public class AggregateArgumentInferenceTest
     [InlineData("func use(value: ref/(i32, bool)) => ()\nuse((1, true))")]
     [InlineData("func use<T>(value: ref/T) => ()\nuse((1, true))")]
     [InlineData("func use(value: ()) => ()\nuse(())")]
+    [InlineData("func use(value: (u8, bool)) => ()\nuse((1 + 2, true))")] // SPEC 12.3.1: a literal-only element fits u8.
     public void PreservesIndependentTupleInferenceAndTemporaryBorrows(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -56,7 +57,6 @@ public class AggregateArgumentInferenceTest
     [Theory]
     [InlineData("func use(value: (u8, bool)) => ()\nuse((256, true))")]
     [InlineData("func use(value: (u8, bool)) => ()\nuse((-1, true))")]
-    [InlineData("func use(value: (u8, bool)) => ()\nuse((1 + 2, true))")]
     [InlineData("func use(value: (u8, bool)) => ()\nlet n: i32 = 1\nuse((n, true))")]
     [InlineData("func use(value: ([1 of u8], bool)) => ()\nuse(([1, 2], true))")]
     [InlineData("func use<length N>(value: ([N of i32], [N of i32])) => ()\nuse(([1], [1, 2]))")]
@@ -93,6 +93,7 @@ public class AggregateArgumentInferenceTest
         StringEmissionTest.WriteAuditedFixture("AggregateArgumentCleanup", Source, ir, string.Empty, "owned=1", order: [0]);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAggregateCandidateInferenceAllocatesNothing()
     {

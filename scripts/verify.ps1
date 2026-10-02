@@ -1,6 +1,6 @@
 # Kimigayo verification entry point. Evidence goes to artifacts/verify/<timestamp>-<mode>[-<name>]/.
 #
-# Unit mode (per implementation unit): Debug build with warnings as errors, the selected xUnit
+# Unit mode (per implementation unit): Kimi + tests Release build with warnings as errors, the selected xUnit
 # classes/methods, then native O0/O2 execution of the fixtures those tests regenerated and the
 # selected milestone harnesses.
 #   ./scripts/verify.ps1 -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
@@ -8,12 +8,24 @@
 #   ./scripts/verify.ps1 -Method XunitTest.ForeignEmissionTest.PointerSubplacesAccessOnlyTheirStoredParts
 #   ./scripts/verify.ps1 -Milestone 18
 #
-# Session mode (once at the end of a session): Debug and Release builds and full suites, then
-# the selected native fixtures and milestone harnesses with the Release compiler.
+# Diagnostic snapshot (docs/dev/DIAGNOSTICS.md §9.1): checks the corpus through the check entry, writes
+# diagnostic-snapshot.json and, with a baseline, fails on differences of kinds not listed as allowed.
+#   ./scripts/verify.ps1 -DiagnosticSnapshot
+#   ./scripts/verify.ps1 -Class XunitTest.CheckServiceTest -DiagnosticSnapshot -DiagnosticBaseline artifacts/verify/<run>/diagnostic-snapshot.json -DiagnosticAllowed order,attribution
+#
+# Session mode (once at the end of a session): whole-solution Release build and full suite, then
+# the selected native fixtures and milestone harnesses with the same compiler configuration.
 #   ./scripts/verify.ps1 -Mode Session -Fixtures 'ForeignPointer*.ll' -Milestone 1,15,18
+#
+# Both modes use one compiler configuration. Select Debug explicitly when needed:
+#   ./scripts/verify.ps1 -Configuration Debug -Class XunitTest.ForeignEmissionTest -Fixtures 'ForeignPointer*.ll'
+#   ./scripts/verify.ps1 -Mode Session -Configuration Debug
+# Native O0/O2 coverage is independent of the compiler configuration and is unchanged.
 #
 # Tests run up to -TestParallel collections at a time (default up to 4), respecting disabled
 # parallelization on test classes. Use -TestParallel 1 for serial execution.
+# Unit -TestPurpose Functional/Allocation narrows a focused check; Session always runs both.
+# Native fixtures run up to -NativeParallel at a time (default up to 4), with individual logs.
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
 #
@@ -21,18 +33,30 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string[]] $Class = @(),
     [string[]] $Method = @(),
+    [ValidateSet('All', 'Functional', 'Allocation')] [string] $TestPurpose = 'All',
     # One or more fixture patterns; each runs as its own native step over the same fixture directory.
     [string[]] $Fixtures = @(),
     [int[]] $Milestone = @(),
+    [switch] $DiagnosticSnapshot,
+    [string] $DiagnosticBaseline = '',
+    [string[]] $DiagnosticAllowed = @(),
     [string] $Name = '',
+    [switch] $VerifyToolchain,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
+    [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
     [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(4, [Environment]::ProcessorCount)
 )
 $ErrorActionPreference = 'Stop'
+if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
+. (Join-Path $PSScriptRoot 'verification-selection.ps1')
+$Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
+$Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
 $repo = Split-Path -Parent $PSScriptRoot
+$buildTarget = if ($Mode -eq 'Session') { 'Kimigayo.slnx' } else { 'tests/xUnitTest/xUnitTest.csproj' }
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss-fff')
 $label = if ($Name) { "$stamp-$($Mode.ToLowerInvariant())-$Name" } else { "$stamp-$($Mode.ToLowerInvariant())" }
 $evidence = Join-Path $repo "artifacts/verify/$label"
@@ -63,7 +87,7 @@ function Invoke-Build([string] $configuration) {
     $timer = Start-Step "build $configuration"
     $log = Join-Path $evidence "build-$configuration.log"
     # --no-incremental recompiles every project, so analyzers (StyleCop) report on sources another build left up to date.
-    & dotnet build (Join-Path $repo 'Kimigayo.slnx') --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
+    & dotnet build (Join-Path $repo $buildTarget) --no-restore --no-incremental -c $configuration --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -v quiet *> $log
     $ok = $LASTEXITCODE -eq 0
     Add-Step "build $configuration" $ok $log $timer.Elapsed.TotalSeconds
     return $ok
@@ -116,13 +140,39 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     Add-Step "tests $configuration $tag" ($code -eq 0 -and $total -gt 0) "$(if ($summary) { $summary.Line.Trim() } else { 'no summary' }); $log" $timer.Elapsed.TotalSeconds
 }
 
+function Test-Selection([string] $configuration, [string[]] $filters) {
+    $timer = Start-Step 'test selection'
+    $dll = Join-Path $repo "tests/xUnitTest/bin/$configuration/net10.0/xUnitTest.dll"
+    $catalog = Join-Path $evidence 'discovered-methods.json'
+    $selected = Join-Path $evidence 'selected-methods.json'
+    try {
+        & dotnet $dll -noLogo -list methods/json > $catalog
+        if ($LASTEXITCODE -ne 0) { throw "Test discovery failed; see $catalog" }
+        $methods = @(Get-Content -LiteralPath $catalog -Raw | ConvertFrom-Json)
+        Assert-KimiTestSelections $Class $Method $methods
+        # The runner applies the actual class/method intersection and trait rules.
+        & dotnet $dll -noLogo -list methods/json @filters > $selected
+        if ($LASTEXITCODE -ne 0) { throw "Selected test discovery failed; see $selected" }
+        $count = @(Get-Content -LiteralPath $selected -Raw | ConvertFrom-Json).Count
+        if ($count -eq 0) { throw 'No test methods match the combined class, method and purpose filters.' }
+        Add-Step 'test selection' $true "$count selected methods; $selected" $timer.Elapsed.TotalSeconds
+    }
+    catch { Add-Step 'test selection' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
+}
+
 $head = (& git -C $repo rev-parse --short HEAD).Trim()
 $dirty = [bool](& git -C $repo status --porcelain --untracked-files=no)
-$configurations = if ($Mode -eq 'Session') { @('Debug', 'Release') } else { @('Debug') }
 $filters = @()
-foreach ($c in $Class) { $filters += @('-class', $c) }
-foreach ($m in $Method) { $filters += @('-method', $m) }
+foreach ($c in $Class) {
+    foreach ($pattern in (Get-KimiTestAlternatives $c)) { $filters += @('-class', $pattern) }
+}
+foreach ($m in $Method) {
+    foreach ($pattern in (Get-KimiTestAlternatives $m -Method)) { $filters += @('-method', $pattern) }
+}
 if ($Mode -eq 'Session') { $filters = @() }
+$hasTestSelection = $filters.Count -gt 0
+if ($TestPurpose -eq 'Functional') { $filters += @('-trait-', 'Purpose=Allocation') }
+elseif ($TestPurpose -eq 'Allocation') { $filters += @('-trait', 'Purpose=Allocation') }
 
 # Check only selections that can include the implicit-source LSP fixtures. Method
 # filters use their declaring-class pattern; unqualified patterns may match any class.
@@ -130,21 +180,53 @@ $lspClasses = @('XunitTest.CheckSchedulerTest', 'XunitTest.LspProtocolTest', 'Xu
 $classPatterns = @($Class) + @($Method | ForEach-Object {
     if ($_.Contains('.')) { $_.Substring(0, $_.LastIndexOf('.')) } else { '*' }
 })
-$needsLspAccess = $Mode -eq 'Session'
+$needsLspAccess = $Mode -eq 'Session' -or (-not $hasTestSelection -and $TestPurpose -ne 'All')
 foreach ($pattern in $classPatterns) {
     foreach ($testClass in $lspClasses) {
         if ($testClass -like $pattern) { $needsLspAccess = $true }
     }
 }
-if ($needsLspAccess -and -not (Test-LspDiscoveryAccess)) { $configurations = @() }
+if ($needsLspAccess) { $null = Test-LspDiscoveryAccess }
 
-foreach ($configuration in $configurations) {
-    if (-not (Invoke-Build $configuration)) { continue }
-    if ($Mode -eq 'Session') { Invoke-Tests $configuration @() 'full' }
-    elseif ($filters.Count -gt 0) { Invoke-Tests $configuration $filters 'focused' }
+$toolchainVerification = 'not-performed'
+if (-not $failed -and (Invoke-Build $Configuration)) {
+    if ($VerifyToolchain) {
+        $timer = Start-Step 'toolchain verify'
+        $log = Join-Path $evidence 'toolchain.log'
+        & dotnet (Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll") toolchain verify --Report (Join-Path $evidence 'toolchain.json') *> $log
+        $ok = $LASTEXITCODE -eq 0
+        $toolchainVerification = if ($ok) { 'passed' } else { 'failed' }
+        Add-Step 'toolchain verify' $ok $log $timer.Elapsed.TotalSeconds
+    }
+}
+if (-not $failed -and $Mode -eq 'Unit' -and ($hasTestSelection -or $TestPurpose -ne 'All')) {
+    Test-Selection $Configuration $filters
+}
+if (-not $failed) {
+    if ($Mode -eq 'Session') { Invoke-Tests $Configuration @() 'full' }
+    elseif ($hasTestSelection -or $TestPurpose -ne 'All') { Invoke-Tests $Configuration $filters 'focused' }
 }
 
-$native = if ($Mode -eq 'Session') { 'Release' } else { 'Debug' }
+if (-not $failed -and $DiagnosticSnapshot) {
+    $timer = Start-Step "diagnostic snapshot $Configuration"
+    $log = Join-Path $evidence "diagnostic-snapshot-$Configuration.log"
+    $snapshot = Join-Path $evidence 'diagnostic-snapshot.json'
+    $dll = Join-Path $repo "tests/xUnitTest/bin/$Configuration/net10.0/xUnitTest.dll"
+    $saved = @($env:KIMI_DIAGNOSTIC_SNAPSHOT, $env:KIMI_DIAGNOSTIC_BASELINE, $env:KIMI_DIAGNOSTIC_ALLOWED)
+    try {
+        $env:KIMI_DIAGNOSTIC_SNAPSHOT = $snapshot
+        $env:KIMI_DIAGNOSTIC_BASELINE = if ($DiagnosticBaseline) { (Resolve-Path -LiteralPath $DiagnosticBaseline).Path } else { '' }
+        $env:KIMI_DIAGNOSTIC_ALLOWED = $DiagnosticAllowed -join ','
+        & dotnet $dll -method 'XunitTest.DiagnosticSnapshotTest.RequestedSnapshotMatchesTheBaseline' -failSkips *> $log
+        $code = $LASTEXITCODE
+    }
+    finally { $env:KIMI_DIAGNOSTIC_SNAPSHOT, $env:KIMI_DIAGNOSTIC_BASELINE, $env:KIMI_DIAGNOSTIC_ALLOWED = $saved }
+    $differences = [IO.Path]::ChangeExtension($snapshot, '.differences.txt')
+    $detail = if (Test-Path -LiteralPath $differences) { "$(@(Get-Content -LiteralPath $differences).Count) differences; $differences" } else { $snapshot }
+    Add-Step "diagnostic snapshot $Configuration" ($code -eq 0 -and (Test-Path -LiteralPath $snapshot)) "$detail; $log" $timer.Elapsed.TotalSeconds
+}
+
+$native = $Configuration
 if (-not $failed -and $Fixtures.Count -gt 0) {
     # Fixtures come from the tests run above; run them only when those tests passed.
     $fixtureDirectory = Join-Path $evidence "fixtures-$native"
@@ -154,7 +236,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $timer = Start-Step "native $pattern"
         $suffix = if ($Fixtures.Count -eq 1) { '' } else { "-$i" }
         $log = Join-Path $evidence "native$suffix.log"
-        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") } $log
+        $ok = Invoke-Script { & (Join-Path $repo 'src/backend/windows-x64/test-scalars.ps1') -FixturePattern $pattern -FixtureDirectory $fixtureDirectory -OutputDirectory (Join-Path $work "native$suffix") -LogDirectory (Join-Path $evidence "native$suffix-fixtures") -Parallel $NativeParallel } $log
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
         Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
@@ -192,7 +274,7 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; testParallel = $TestParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+[ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

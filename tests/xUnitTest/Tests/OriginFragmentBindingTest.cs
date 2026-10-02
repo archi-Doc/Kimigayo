@@ -9,16 +9,18 @@ namespace XunitTest;
 
 public class OriginFragmentBindingTest
 {
+    // SPEC 6.1.2, 15.3.2: fragments that repeat one header, or that all omit it and declare no own slots, share one schema.
     [Theory]
     [InlineData("")]
     [InlineData("a")]
     [InlineData("a, b")]
-    public void ClosedFragmentsShareSchemaAcrossSourcesAndReload(string origins)
+    public void FragmentsShareSchemaAcrossSourcesAndReload(string origins)
     {
+        var header = origins.Length == 0 ? string.Empty : $" {{{origins}}}";
         foreach (var reverse in new[] { false, true })
         {
             var c = Create();
-            AddFragments(c, $"struct S {{{origins}}}", $"struct S {{{origins}}}", reverse);
+            AddFragments(c, $"struct S{header}", $"struct S{header}", reverse);
             Verify(c);
             Verify(Reload(c));
             var builder = default(IndentedStringBuilder);
@@ -41,7 +43,7 @@ public class OriginFragmentBindingTest
             {
                 Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
                 var declaration = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-                Assert.True(declaration.HasOriginHeader);
+                Assert.Equal(origins.Length != 0, declaration.HasOriginHeader);
                 Assert.False(declaration.HasIncompatibleBindingHeader);
                 Assert.Equal(origins.Length == 0 ? 0 : origins.Split(',').Length, declaration.BoundSymbol!.Schema!.Origins.Count);
                 Assert.All(declaration.BoundSymbol.Schema.Origins, x => Assert.Same(declaration, x.Origin.Binder));
@@ -53,9 +55,7 @@ public class OriginFragmentBindingTest
     [InlineData("struct S {a, b}", "struct S {b, a}")]
     [InlineData("struct S {a, b}", "struct S {a, c}")]
     [InlineData("struct S {a, b}", "struct S {a}")]
-    [InlineData("struct S {}", "struct S {a}")]
-    [InlineData("struct S", "struct S {}")]
-    [InlineData("struct S", "struct S")]
+    [InlineData("struct S", "struct S {a}")]
     public void IncompatibleOrOpenFragmentsAreRejectedInEitherOrder(string first, string second)
     {
         foreach (var reverse in new[] { false, true })
@@ -69,12 +69,13 @@ public class OriginFragmentBindingTest
     }
 
     [Theory]
+    [InlineData("")]
     [InlineData("a : static")]
     [InlineData("a : b, b")]
     [InlineData("static")]
     [InlineData("a.source")]
     public void HeaderBoundsAndExpressionsAreRejected(string header)
-        => Assert.NotEmpty(ParseTestHelper.Parse($"struct S {{{header}}}").DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse($"struct S {{{header}}}")));
 
     [Theory]
     [InlineData(true)]
@@ -86,7 +87,7 @@ public class OriginFragmentBindingTest
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(Reload(c).Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("third.kimi", "struct S {a, b}\n    origin a outlives b"));
-        Assert.True(c.Kotonoha.HasSourceErrors);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
     }
 
     [Fact]
@@ -100,6 +101,7 @@ public class OriginFragmentBindingTest
         Assert.NotSame(declarations[0].BoundSymbol!.Schema!.Origins[0].Origin, declarations[1].BoundSymbol!.Schema!.Origins[0].Origin);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFragmentBindingAllocatesNothing()
     {
@@ -121,7 +123,7 @@ public class OriginFragmentBindingTest
         var right = new SourceDocument("right.kimi", second);
         c.Kotonoha.AddSource(reverse ? right : left);
         c.Kotonoha.AddSource(reverse ? left : right);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     private static Compilation Create()

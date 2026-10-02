@@ -32,4 +32,16 @@ if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain
     (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) {
     throw 'Toolchain setup did not produce the adopted backend. Review the candidate report.'
 }
+# The backend builder publishes the already-tested shared imports and generation conditions.
+$identities = [ordered]@{}
+foreach ($name in $names) {
+    $identities[$name] = (Get-FileHash -LiteralPath (Join-Path $ToolchainRoot "$name.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($identities[$name] -cne $candidate.tools.$name.sha256) { throw "Tool changed during setup: $name" }
+}
+$dlls = [ordered]@{}
+foreach ($dll in Get-ChildItem -LiteralPath $ToolchainRoot -Filter '*.dll' -File) {
+    $dlls[$dll.Name] = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; supportingDlls = $dlls } |
+    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $ToolchainRoot 'installation.json') -Encoding utf8
 Write-Output "Toolchain ready: $ToolchainRoot"

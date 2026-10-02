@@ -51,7 +51,7 @@ public class KotoHierarchyTest
             root,
             "rootgroup A.B\n    var value = 1");
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         var groupA = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("A", TokenKind.Group, default, default));
         var groupB = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("A.B", TokenKind.Group, default, default));
         Assert.Same(root, groupA.Parent);
@@ -107,7 +107,7 @@ public class KotoHierarchyTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         Assert.Empty(kotonoha.RootKoto.Members);
         var generatedFunction = Assert.IsType<FunctionKoto>(kotonoha.GeneratedFunction);
         var body = Assert.IsType<CodeBlockKoto>(generatedFunction.Body);
@@ -145,7 +145,7 @@ public class KotoHierarchyTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct Value");
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         Assert.Null(kotonoha.GeneratedFunction);
         Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers);
     }
@@ -233,11 +233,10 @@ public class KotoHierarchyTest
         Assert.Empty(root.Members);
         var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
         Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
-        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
-        Assert.Equal(4, diagnostics.Length);
-        Assert.All(
-            diagnostics,
-            diagnostic => Assert.Contains(diagnostic.Entry.Name, new[] { nameof(DiagnosticCode.UnexpectedToken_Kd), nameof(DiagnosticCode.IncompleteSyntax_Kd) }));
+        // The Properties in the enum and the Contract and the extension declaration are misplaced; an enum without cases is Binding's check.
+        var diagnostics = TestDiagnostics.Of(compilation);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, diagnostic => Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code));
     }
 
     [Fact]
@@ -249,7 +248,7 @@ public class KotoHierarchyTest
             root,
             "contract C\n    associate A is Comparable");
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         var contract = Assert.IsType<ContractKoto>(GetDeclarationContainer(root, "C"));
         var constraint = Assert.Single(contract.TypeConstraints);
         Assert.Equal("A", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);

@@ -15,7 +15,7 @@ public static partial class Parser
         var end = reader.CurrentTokenRange.End;
         if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
         {
-            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Separator or TokenKind.EndBlock))
@@ -28,7 +28,7 @@ public static partial class Parser
 
             if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
             }
         }
 
@@ -49,11 +49,13 @@ public static partial class Parser
 
         if (head is OriginApplicationKoto application)
         {
-            foreach (var parameter in application.ArgumentNodes)
+            for (var i = 0; i < application.ArgumentNodes.Count; i++)
             {
-                if (parameter is not IdentifierNameKoto { IdentifierName: not ("_" or "static") })
+                var parameter = application.ArgumentNodes[i];
+                if (parameter is not IdentifierNameKoto { IdentifierName: not ("_" or "static") } && parameter.Expected(SyntaxForm.Name) is { } cause)
                 {
-                    reader.Diagnostic.Add(parameter.Span, DiagnosticCode.IdentifierExpected_Kd);
+                    // The application keeps a recovery parameter, so Binding's own check of its Origins rests on the Error.
+                    application.ReplaceArgument(i, new ErrorKoto(ref reader, parameter.Span) { Cause = cause });
                 }
             }
         }

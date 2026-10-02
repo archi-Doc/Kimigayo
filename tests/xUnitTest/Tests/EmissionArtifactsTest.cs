@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -181,6 +182,48 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Fact]
+    public async Task ReplaceWaitsOutATransientHoldOnTheDestination()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows rename semantics test.");
+        var destination = Path.Combine(this.directory, "Hello.link.build.json");
+        var source = destination + ".tmp";
+        File.WriteAllText(destination, "old");
+        File.WriteAllText(source, "new");
+
+        // A scanner's handle on a just-published record denies an immediate replacement (verify native parallel runs).
+        var hold = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        Assert.Throws<UnauthorizedAccessException>(() => File.Move(source, destination, true));
+        var release = Task.Run(
+            async () =>
+            {
+                await Task.Delay(30, TestContext.Current.CancellationToken);
+                hold.Dispose();
+            },
+            TestContext.Current.CancellationToken);
+        ArtifactFiles.Replace(source, destination);
+        await release;
+        Assert.Equal("new", File.ReadAllText(destination));
+        Assert.False(File.Exists(source));
+    }
+
+    [Fact]
+    public void ReplaceReportsAPersistentHoldAndKeepsBothFiles()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows rename semantics test.");
+        var destination = Path.Combine(this.directory, "Hello.link.build.json");
+        var source = destination + ".tmp";
+        File.WriteAllText(destination, "old");
+        File.WriteAllText(source, "new");
+        using (new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            Assert.Throws<UnauthorizedAccessException>(() => ArtifactFiles.Replace(source, destination));
+        }
+
+        Assert.Equal("old", File.ReadAllText(destination));
+        Assert.Equal("new", File.ReadAllText(source));
+    }
+
+    [Fact]
     public void FailedSemanticGatePreservesOldOutputsWithoutClaimingThem()
     {
         var c = this.Create();
@@ -228,16 +271,25 @@ public sealed class EmissionArtifactsTest : IDisposable
     }
 
     [Fact]
-    public void DiagnosticErrorStateTracksRemovalAndClear()
+    public void DiagnosticErrorStateFollowsPartitionsNotDisplay()
     {
-        var diagnostics = Compilation.CreateForTest().Kotonoha.DiagnosticCollection;
+        var c = Compilation.CreateForTest();
+        var diagnostics = c.Diagnostics;
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Add(default, DiagnosticCode.GenerationFailed_Kd, "test");
-        Assert.True(diagnostics.HasErrors);
-        Assert.True(diagnostics.Remove(0));
+        diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.GenerationFailed_Kd, null, note: "test");
+        Assert.True(diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        Assert.False(diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership));
+        diagnostics.Invalidate(DiagnosticPartition.Emission);
         Assert.False(diagnostics.HasErrors);
-        diagnostics.Add(default, DiagnosticCode.GenerationFailed_Kd, "test");
-        diagnostics.ClearDiagnostic();
+
+        // SPEC 23.3.6.4: two problems at one offset are both published, and a repeated report of one merges.
+        var document = new SourceDocument("main.kimi", "x");
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: document);
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
+        c.Kotonoha.DiagnosticCollection.Add(new(0, 1), DiagnosticCode.InvalidCharacter_Kd, "x", sourceDocument: document);
+        Assert.Equal(["InvalidCharacter_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
+        Assert.True(diagnostics.HasSyntaxErrors(c.Kotonoha));
+        diagnostics.InvalidateSyntax(c.Kotonoha);
         Assert.False(diagnostics.HasErrors);
     }
 

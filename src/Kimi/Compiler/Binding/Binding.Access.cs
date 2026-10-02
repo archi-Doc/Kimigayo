@@ -47,8 +47,15 @@ public sealed partial class Binding
         return null;
     }
 
+    // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32); the integer Position
+    // witness receives an integer Type parameter (SPEC 4.6.2).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
-        => type is not null && SameType(EffectiveCore(type), this.SelfType(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+        => type is not null && type.Semantics is not (SemanticsKind.Raw or SemanticsKind.Parameter) &&
+            (ReferenceEquals(owner.Declaration, this.Library.FixedArrayMembers)
+                ? EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
+                : ReferenceEquals(owner.Declaration, this.Library.IntegerPositionMembers)
+                ? type is { Kind: BoundTypeKind.Parameter, Semantics: SemanticsKind.Owner } or { IsInteger: true, Semantics: SemanticsKind.Owner }
+                : SameType(EffectiveCore(type), this.DeclarationSelf(owner)));
 
     private void ValidateConstraintProjectionAccess()
     {
@@ -77,9 +84,9 @@ public sealed partial class Binding
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        Fail(clause, BindingFailure.Access);
-                        Fail(conditional, BindingFailure.Access);
-                        Fail(path.Use, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(conditional, BindingFailure.Access);
+                        this.Fail(path.Use, BindingFailure.Access);
                     }
                 }
 
@@ -90,7 +97,7 @@ public sealed partial class Binding
                         var member = block.Items[m];
                         if (member is FunctionKoto or PropertyKoto && member.BoundSymbol is { } memberDomain && !ProjectionAccessCovers(use.Use, use.Type, use.Contract, memberDomain))
                         {
-                            Fail(member, BindingFailure.Access);
+                            this.Fail(member, BindingFailure.Access);
                         }
                     }
                 }
@@ -116,8 +123,8 @@ public sealed partial class Binding
                     {
                         path.Invalid = true;
                         path.IsVerified = false;
-                        Fail(clause, BindingFailure.Access);
-                        Fail(path.Use, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(path.Use, BindingFailure.Access);
                     }
                 }
 
@@ -153,8 +160,8 @@ public sealed partial class Binding
                 {
                     if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
                     {
-                        Fail(clause, BindingFailure.Access);
-                        Fail(owner, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(owner, BindingFailure.Access);
                     }
 
                     break;
@@ -190,8 +197,8 @@ public sealed partial class Binding
                     }
                     else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, structure.BoundSymbol!))
                     {
-                        Fail(node, BindingFailure.Access);
-                        Fail(structure, BindingFailure.Access);
+                        this.Fail(node, BindingFailure.Access);
+                        this.Fail(structure, BindingFailure.Access);
                     }
 
                     break;
@@ -221,8 +228,8 @@ public sealed partial class Binding
                 }
                 else if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, enumeration.BoundSymbol!))
                 {
-                    Fail(node, BindingFailure.Access);
-                    Fail(enumeration, BindingFailure.Access);
+                    this.Fail(node, BindingFailure.Access);
+                    this.Fail(enumeration, BindingFailure.Access);
                 }
             }
         }
@@ -236,7 +243,7 @@ public sealed partial class Binding
                 ReferenceEquals(groupMember.Declaration, this.nodes[i]) &&
                 DeclarationAccess(groupMember) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal)
             {
-                Fail(this.nodes[i], BindingFailure.Access);
+                this.Fail(this.nodes[i], BindingFailure.Access);
             }
 
             if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
@@ -246,7 +253,7 @@ public sealed partial class Binding
                 {
                     if (premises.Operands[p] is IsKoto { BoundConstraint: { } premise } && !ConstraintAccessCovers(premise, member))
                     {
-                        Fail(this.nodes[i], BindingFailure.Access);
+                        this.Fail(this.nodes[i], BindingFailure.Access);
                     }
                 }
             }
@@ -261,8 +268,8 @@ public sealed partial class Binding
                     if (!IsSelfConstraint(clause) && !clause.IsAssociatedConstraint &&
                         clause.BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, domain) || (clause.Left.BoundType is { } subject && !TypeAccessCovers(subject, domain, domain))))
                     {
-                        Fail(clause, BindingFailure.Access);
-                        Fail(container, BindingFailure.Access);
+                        this.Fail(clause, BindingFailure.Access);
+                        this.Fail(container, BindingFailure.Access);
                     }
                 }
             }
@@ -276,14 +283,14 @@ public sealed partial class Binding
             // Named functions retain their declared result (or the Unit default).
             if (symbol.Type is { } result && !TypeAccessCovers(result, symbol, symbol))
             {
-                Fail(function, BindingFailure.Access);
+                this.Fail(function, BindingFailure.Access);
             }
 
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 if (function.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, symbol, symbol))
                 {
-                    Fail(function, BindingFailure.Access);
+                    this.Fail(function, BindingFailure.Access);
                 }
             }
 
@@ -291,7 +298,7 @@ public sealed partial class Binding
             {
                 if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && !ConstraintAccessCovers(constraint, symbol))
                 {
-                    Fail(function, BindingFailure.Access);
+                    this.Fail(function, BindingFailure.Access);
                 }
             }
         }
@@ -309,7 +316,7 @@ public sealed partial class Binding
             var domain = function.IsRequirement ? symbol.Scope.Owner.BoundSymbol! : symbol;
             if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
             {
-                Fail(function, BindingFailure.Access);
+                this.Fail(function, BindingFailure.Access);
             }
 
             this.RequireConstraint(function, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
@@ -360,7 +367,8 @@ public sealed partial class Binding
 
         for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
         {
-            if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
+            // The fixed-array member group stands for the public built-in Type (PLAN G32): only a member's own modifier applies.
+            if (current.Declaration is DeclarationContainerKoto { IsRoot: true } || (!ReferenceEquals(current, symbol) && this.Library.IsBuiltinMemberGroup(current.Declaration)))
             {
                 break;
             }

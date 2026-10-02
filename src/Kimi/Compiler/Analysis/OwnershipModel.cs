@@ -14,6 +14,10 @@ public enum PlaceState : byte
     MayInit = 2,
     MayMoved = 4,
     MayAssigned = 8,
+
+    // The Place may hold a value it owns, not only a Copy remnant left by a Copy-or-Move acquisition (whose destruction has
+    // no effect). An effect bound counts a destruction only where this holds.
+    MayOwn = 16,
 }
 
 public enum OwnershipPlaceKind : byte
@@ -24,6 +28,14 @@ public enum OwnershipPlaceKind : byte
     Result,
     Payload,
     Subject,
+
+    // SPEC 8.4.10.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
+    // generic requirement calls access; no operation initializes or uses it.
+    EffectRegion,
+
+    // SPEC 5.2.2: the fresh anchor of a raw Place borrow, named by its Anchor Origin. Like the referent of a borrowed parameter it
+    // is external: it holds no value, and its Loans are checked only against Places derived from it. No operation uses it.
+    Anchor,
 }
 
 public enum PlaceUseKind : byte
@@ -80,6 +92,8 @@ public enum OwnershipOperationKind : byte
     TestAbort,
     ActivateCallBorrows,
     StorePointer,
+    CheckDictionaryKey,
+    StoreDictionaryEntry,
 }
 
 public enum PlacementKind : byte
@@ -138,6 +152,19 @@ public enum OwnershipFailure : byte
 
     // SPEC 15.4.4: an Origin obligation that neither Binding nor this analysis proves, such as an Origin nothing constrains.
     UnprovenOrigin,
+
+    // SPEC 8.4.5, 22.1.2.4: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
+    // published effect bound of its Contract.
+    EffectBound,
+
+    // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
+    // owned fixed array.
+    StaticMovePathRequired,
+
+    // SPEC 8.4.10.4, 8.4.10.6: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
+    CallEffectConflict,
+
+    StorageLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -179,7 +206,13 @@ public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
-public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false)
+/// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
+public readonly record struct OwnershipLending(Koto Input, InvocationKoto Call);
+
+// Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
+public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
+    string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -193,6 +226,10 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
         OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
+        OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
+        OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
+        OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
+        OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
 }
@@ -283,6 +320,18 @@ public sealed partial class OwnershipBody
 
     internal List<OwnershipIdentity>? Identities { get; set; }
 
+    /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
+    internal List<(int Place, int Root)>? ConditionalReborrows { get; set; }
+
+    /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.4.10.4).</summary>
+    internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
+
+    /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.4.10.4).</summary>
+    internal List<OwnershipRequirementResult>? RequirementResults { get; set; }
+
+    /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
+    internal List<int>? Anchors { get; set; }
+
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
     internal BoundCall? Instance { get; set; }
 
@@ -293,11 +342,13 @@ public sealed partial class OwnershipBody
     // A declared Type as this body's plan sees it; an instance plan sees its closed substitution.
     internal BoundType? Concrete(BoundType? type) => type is null || this.Instance is null ? type : this.InstanceBinding!.InstantiateStorageType(type, this.Instance);
 
-    internal void Reset(FunctionKoto function)
+    // An instance plan carries its substitution from the start, so every phase that reads a declared Type through Concrete,
+    // from building and solving to lowering, sees the closed Type.
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding)
     {
         this.Function = function;
-        this.Instance = null;
-        this.InstanceBinding = null;
+        this.Instance = instance;
+        this.InstanceBinding = instance is null ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
@@ -309,6 +360,10 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
+        this.ConditionalReborrows?.Clear();
+        this.RequirementEffects?.Clear();
+        this.RequirementResults?.Clear();
+        this.Anchors?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
         this.SlotResults.Clear();
@@ -337,6 +392,7 @@ public sealed partial class OwnershipBody
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
+        this.reservedElementWrites?.Clear();
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
         this.CheckingSeeds.Clear();
@@ -401,6 +457,7 @@ internal readonly record struct OwnershipCheckingReplay(int Entry, int End, int 
 internal enum OwnershipValueKind : byte
 {
     None,
+    StaticRead,
     Constant,
     Parameter,
     Call,
@@ -411,6 +468,7 @@ internal enum OwnershipValueKind : byte
     StringComparison,
     ContractComparison,
     RuntimeTypeTest,
+    DictionaryLiteral,
     Element,
     Borrow,
     Phi,
@@ -442,13 +500,6 @@ internal enum SequenceOperation : byte
 {
     FromEnd,
     Borrow,
-    ArrayRead,
-    ArrayIterator,
-    ArrayMoveRead,
-    DictionaryRead,
-    DictionaryMoveRead,
-    DictionaryNext,
-    DictionaryTakeNext,
     Indices,
     Length,
     Start,
@@ -459,12 +510,26 @@ internal enum SequenceOperation : byte
     Read,
 }
 
-internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1, int End = -1, int Element = -1);
+internal readonly record struct OwnershipSequence(int Operation, SequenceOperation Kind, int Receiver, int Projection = -1, int Index = -1, int End = -1);
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 // Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.
 // Put the small operator before the 16-byte payload to avoid tail padding in every CFG value.
-internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, KotoKind Operator = default, Int128 Constant = default);
+internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, KotoKind Operator = default, Int128 Constant = default)
+{
+    // SPEC 4.6.9: the Constant of a Convert value that makes an integer position an isize one; a value isize cannot hold
+    // becomes -1, which the position's one bounds check rejects.
+    internal const int PositionConversion = 1;
+
+    // SPEC 13.5.4.3: the Constant of a Convert value that wraps an integer to the target's width, without a check.
+    internal const int WrapConversion = 2;
+
+    // SPEC 13.5.4.4: the Constant of a Convert value that reinterprets bits between a floating-point and an integer Type.
+    internal const int BitConversion = 3;
+
+    // SPEC 5.2.2: the Constant of a Convert value that borrows a raw Place: the reference is the Place's address.
+    internal const int RawPlaceBorrow = 4;
+}
 
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
 internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);
@@ -491,6 +556,19 @@ internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int
 internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
+
+// The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
+// unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
+// the same root or a dependency between roots.
+internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
+
+// SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
+// (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
+// the same receiver.
+internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
+
+// SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
+internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 

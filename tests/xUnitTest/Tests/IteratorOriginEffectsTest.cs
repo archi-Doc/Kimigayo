@@ -123,6 +123,7 @@ public class IteratorOriginEffectsTest
     }
 
     // Warm rebinding reruns both effect bounds, through intersection items, generic callees and formatting, without allocating.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEffectBoundChecksDoNotAllocate()
     {
@@ -179,8 +180,408 @@ public class IteratorOriginEffectsTest
     public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
     {
         var c = MinimalEmissionTest.Analyze(wrapper);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // SPEC 22.1.2.4 (G28): matching an item of the stored Iterator by value destroys nothing when every arm either matches a
+    // Case without payload or binds the whole payload and transfers it at once, so a wrapper that inspects an item before
+    // returning it keeps the inner bound.
+    [Fact]
+    public void AWrapperMayInspectAnItemBeforeTransferringIt()
+    {
+        const string Retry = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n" +
+            "            .Some(let item) => return .Some(item@move)\n            .None\n                self.retries += 1\n                return self.inner.next()\n";
+        var source = Counter + Retry + "var retry = Retry<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match retry.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and retry.retries == 1 else => $abort(\"retry\")\nConsole.writeLine(\"retried\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorRetry", source, "retried\n");
+    }
+
+    // An immutable local holding the item is not destroyed when the very next statement transfers it, directly or as a match
+    // Subject whose arms transfer the payload.
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        match first@move\n            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        self.steps += 1\n        return first@move")] // G28: effects that cannot leave the block
+    [InlineData("var first = self.inner.next()\n        self.steps += 1\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        loop\n            i += 1\n            if i == 2 => exit\n        self.steps += i\n        match first@move\n" +
+        "            .Some(let item) => return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("match self.inner.next()\n            .Some(let item)\n                self.steps += 1\n                return .Some(item@move)\n            .None => return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        label outer: loop\n            loop\n                if self.steps > 5 => exit to outer\n                exit\n            exit\n        return first@move")] // A Label inside the gap
+    [InlineData("let first = self.inner.next()\n        let step: i32 = if self.steps > 0\n            self.steps -= 1\n            yield 1\n        else => 0\n        self.steps += step\n        return first@move")] // A yield inside the gap
+    [InlineData("let first = self.inner.next()\n        defer => self.steps += 1\n        return first@move")] // The destructions are the planned cleanups, so a defer,
+    [InlineData("let first = self.inner.next()\n        var i: i32 = 0\n        while i < 2 => i += 1\n        self.steps += i\n        return first@move")] // a while loop,
+    [InlineData("var first = self.inner.next()\n        while self.steps < 0\n            let skipped = first@move\n            self.steps += 1\n            return skipped@move\n        return first@move")] // or a transfer inside one is not a syntactic boundary.
+    public void AWrapperMayHoldAnItemInALocalBeforeTransferringIt(string body)
+    {
+        var wrapper = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
+        var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // G28: an item held across effects executes, and the effects run once per step.
+    [Fact]
+    public void AnItemHeldAcrossEffectsIsTransferredAtRunTime()
+    {
+        const string Hold = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var first = self.inner.next()\n" +
+            "        self.steps += 1\n        return first@move\n";
+        var source = Counter + Hold + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and hold.steps == 4 else => $abort(\"hold\")\nConsole.writeLine(\"held across\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorHoldAcross", source, "held across\n");
+    }
+
+    // G28: a returned Case construction or Tuple that stores the item, with parts that neither name it nor may leave the
+    // block, transfers it at once, so an Iterator may number the values it hands out.
+    private const string NumberedOnce = "struct NumberedOnce<T>\n    Self is Iterator\n    associate Iterator.Item is (isize, T)\n    var value: Option<T>\n    public var index: isize = 0\n" +
+        "    public init(value: T) => self.value = .Some(value@move)\n    public func next(self: uniq/Self) -> Option<(isize, T)>\n" +
+        "        match Kimi.Intrinsics.exchange(self.value@uniq, with: .None)\n            ";
+
+    [Fact]
+    public void AnItemStoredInAReturnedTupleIsTransferred()
+    {
+        var source = NumberedOnce + ".Some(let value)\n                self.index += 1\n                return .Some((self.index, value@move))\n            .None => return .None\n" +
+            "var once = NumberedOnce<i32>.init(5)\nvar positions: isize = 0\nvar sum: i32 = 0\nloop\n    match once.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            sum += pair.1\n        .None => exit\nrequire positions == 1 and sum == 5 and once.index == 1 else => $abort(\"numbered\")\nConsole.writeLine(\"numbered\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorNumberedOnce", source, "numbered\n");
+    }
+
+    // G28, SPEC 14.8.3: a guard Moves no payload and a false guard preserves the Subject, so guarded arms that transfer the
+    // payload consume it; here the guard is false and the next arm transfers the value.
+    [Fact]
+    public void AGuardedArmThatTransfersThePayloadIsAccepted()
+    {
+        var source = NumberedOnce + ".Some(let value) if self.index > 0 => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
+            "            .None => return .None\nvar once = NumberedOnce<i32>.init(5)\nvar positions: isize = 0\nvar sum: i32 = 0\nloop\n    match once.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            sum += pair.1\n        .None => exit\nrequire positions == 2 and sum == 5 else => $abort(\"guarded\")\nConsole.writeLine(\"guarded\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorGuardedTransfer", source, "guarded\n");
+    }
+
+    // A guard that may leave the block, here by an ordinary return (SPEC 14.8.3), destroys the Subject on that path.
+    [Fact]
+    public void AGuardThatMayLeaveTheBlockIsRejected()
+    {
+        var source = NumberedOnce + ".Some(let value) if self.index > 0 or (return .None) => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
+            "            .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+        Assert.All(c.Binding.Issues.Select(x => x.Code).Concat(c.Ownership.Issues.Select(x => x.Code)), code => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, code));
+    }
+
+    // G28: a nested pattern destroys only its untransferred parts: the isize position is Copy and the value is transferred,
+    // so a stored pair is handed out whole; the value is a string here, whose ownership reaches the caller.
+    private const string StoredPair = "struct StoredPair<T>\n    Self is Iterator\n    associate Iterator.Item is (isize, T)\n    var pending: Option<(isize, T)>\n" +
+        "    public init(value: T) => self.pending = .Some((41, value@move))\n    public func next(self: uniq/Self) -> Option<(isize, T)>\n" +
+        "        match Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)\n            ";
+
+    [Fact]
+    public void ANestedPatternThatTransfersItsValueIsAccepted()
+    {
+        var source = StoredPair + ".Some((let position, let value)) => return .Some((position + 1, value@move))\n            .None => return .None\n" +
+            "var stored = StoredPair<string>.init(\"Stored pair.\")\nvar positions: isize = 0\nloop\n    match stored.next()\n" +
+            "        .Some(let pair)\n            positions += pair.0\n            Console.writeLine(pair.1)\n        .None => exit\nrequire positions == 42 else => $abort(\"pair\")\nConsole.writeLine(\"nested\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorNestedTransfer", source, "Stored pair.\nnested\n");
+    }
+
+    // A nested wildcard or a binding left to its scope destroys that part of the item inside next.
+    [Theory]
+    [InlineData(".Some((let position, _)) => return .None")]
+    [InlineData(".Some((let position, let value)) => return .None")]
+    [InlineData(".Some((let position, let value))\n                let kept = value@move\n                return .None")]
+    public void ANestedPatternThatDropsAPartIsRejected(string arm)
+    {
+        var c = MinimalEmissionTest.Analyze(StoredPair + arm + "\n            .None => return .None\n");
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // An aggregate that stores the item but is not transferred on is destroyed inside next.
+    [Theory]
+    [InlineData(".Some(let value)\n                let pair = (self.index, value@move)\n                return .None")]
+    [InlineData(".Some(let value)\n                let pair: Option<(isize, T)> = .Some((self.index, value@move))\n                return .None")]
+    public void AnItemStoredInADroppedAggregateIsRejected(string arm)
+    {
+        var c = MinimalEmissionTest.Analyze(NumberedOnce + arm + "\n            .None => return .None\n");
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: assigning a `var` item local after a statement moved it out initializes it, and the new value is transferred
+    // later, so a retry may reuse the local; the intervening early return leaves nothing to destroy.
+    private const string Reuse = "struct Reuse<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n" +
+        "        match attempt@move\n            .Some(let item) => return .Some(item@move)\n            .None => self.retries += 1\n        if self.retries > 3 => return .None\n";
+
+    [Fact]
+    public void AMovedOutLocalMayBeReinitialized()
+    {
+        var source = Counter + Reuse + "        attempt = self.inner.next()\n        return attempt@move\n" +
+            "var reuse = Reuse<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match reuse.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and reuse.retries == 1 else => $abort(\"reuse\")\nConsole.writeLine(\"reused\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorReinitialized", source, "reused\n");
+    }
+
+    // G28, SPEC 14.4: in a `loop`, the value declared before it is moved at the top of the first iteration, and a value
+    // reinitialized at the end of the body is moved again at the top of the next one.
+    private const string LoopRetry = "struct LoopRetry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        loop\n" +
+        "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            if self.retries > 3 => return .None\n";
+
+    [Fact]
+    public void ALoopMayReinitializeItsItemLocal()
+    {
+        var source = Counter + LoopRetry + "            attempt = self.inner.next()\n" +
+            "var retry = LoopRetry<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match retry.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and retry.retries == 4 else => $abort(\"loop retry\")\nConsole.writeLine(\"loop retried\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorLoopRetry", source, "loop retried\n");
+    }
+
+    // A `continue` to the loop restarts its body, whose first use transfers the reinitialized value.
+    [Fact]
+    public void ALoopMayContinueWithItsReinitializedItem()
+    {
+        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A `continue` that leaves a match arm drops the payload bound there.
+    [Fact]
+    public void AContinueThatDropsAPayloadIsRejected()
+    {
+        const string Source = "struct Skip<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        loop\n            match self.inner.next()\n                .Some(let item)\n" +
+            "                    self.skipped += 1\n                    if self.skipped < 2 => continue\n                    return .Some(item@move)\n                .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // An exit after the reinitialization leaves the loop with the value, which the function then destroys.
+    [Fact]
+    public void ALoopThatMayLeaveWithItsItemIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 2 => exit\n        return .None\n");
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    [Fact]
+    public void AWhileLoopMayEndBeforeItsFirstMoveAndIsRejected()
+    {
+        const string Source = "struct WhileRetry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        while self.retries < 3\n" +
+            "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            attempt = self.inner.next()\n        return .None\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: each branch of an `if` transfers the item or falls through holding it, and a later statement transfers what the
+    // falling-through path holds.
+    private const string Branch = "struct Branch<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        if self.skipped > 0\n";
+
+    [Fact]
+    public void ABranchMayTransferTheItemBeforeALaterTransfer()
+    {
+        var source = Counter + Branch + "            return first@move\n        self.skipped += 1\n        return first@move\n" +
+            "var branch = Branch<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match branch.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and branch.skipped == 1 else => $abort(\"branch\")\nConsole.writeLine(\"branched\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorBranchTransfer", source, "branched\n");
+    }
+
+    [Fact]
+    public void BothBranchesMayTransferTheItem()
+    {
+        var c = MinimalEmissionTest.Analyze(Branch + "            return first@move\n        else\n            self.skipped += 1\n            return first@move\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A branch that leaves while holding the item, or a fall-through path left without a later transfer, destroys it.
+    [Theory]
+    [InlineData("            return .None\n        return first@move\n")]
+    [InlineData("            return first@move\n        self.skipped += 1\n        return .None\n")]
+    [InlineData("            return first@move\n        else\n            return .None\n")]
+    public void ABranchThatMayDestroyTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Branch + tail);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: an arm that yields or evaluates to a value storing the payload hands it to the match result, which the local
+    // then owns and returns.
+    private const string Pick = "struct Pick<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let result: Option<I.(Iterator).Item> = match self.inner.next()\n";
+
+    [Fact]
+    public void AnArmYieldingThePayloadIsAccepted()
+    {
+        var source = Counter + Pick + "            .Some(let item)\n                self.steps += 1\n                yield .Some(item@move)\n            .None => .None\n        return result@move\n" +
+            "var pick = Pick<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match pick.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and pick.steps == 3 else => $abort(\"pick\")\nConsole.writeLine(\"picked\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorYieldedPayload", source, "picked\n");
+    }
+
+    [Fact]
+    public void AnArmValueStoringThePayloadIsAccepted()
+    {
+        var c = MinimalEmissionTest.Analyze(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // An arm that yields another value, or a match result left to its scope, destroys the payload.
+    [Theory]
+    [InlineData("            .Some(let item)\n                yield .None\n            .None => .None\n        return result@move\n")]
+    [InlineData("            .Some(let item) => .Some(item@move)\n            .None => .None\n        return .None\n")]
+    public void AnArmThatDropsThePayloadIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Pick + tail);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: a value-producing `if` or `match` whose every branch delivers the item stores it in its result.
+    private const string Choose = "struct Choose<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 2\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n" +
+        "        let chosen: Option<I.(Iterator).Item> = ";
+
+    [Fact]
+    public void ASelectionDeliveringTheItemInEveryBranchIsAccepted()
+    {
+        var source = Counter + Choose + "if self.steps > 0\n            self.steps -= 1\n            yield first@move\n        else => first@move\n        return chosen@move\n" +
+            "var choose = Choose<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match choose.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and choose.steps == 0 else => $abort(\"choose\")\nConsole.writeLine(\"chosen\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorChosenValue", source, "chosen\n");
+    }
+
+    [Theory]
+    [InlineData("match self.steps\n            0 => first@move\n            _ => first@move\n        return chosen@move\n")]
+    [InlineData("match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n")]
+    public void AMatchDeliveringTheItemIsAccepted(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A branch that delivers another value leaves the item to its scope.
+    [Theory]
+    [InlineData("if self.steps > 0 => first@move\n        else => .None\n        return chosen@move\n")]
+    [InlineData("match self.steps\n            0 => first@move\n            _ => .None\n        return chosen@move\n")]
+    public void ASelectionThatMayDropTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: a match on another value is judged as an `if`: each arm transfers the item or falls through holding it.
+    private const string Select = "struct Select<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        match self.skipped\n";
+
+    [Fact]
+    public void AMatchArmMayTransferTheItemBeforeALaterTransfer()
+    {
+        var source = Counter + Select + "            0 => self.skipped += 1\n            _ => return first@move\n        return first@move\n" +
+            "var select = Select<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match select.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 and select.skipped == 1 else => $abort(\"select\")\nConsole.writeLine(\"selected\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorSelectTransfer", source, "selected\n");
+    }
+
+    // An arm that leaves while holding the item, or a later path left without a transfer, destroys it.
+    [Theory]
+    [InlineData("            0 => return .None\n            _ => ()\n        return first@move\n")]
+    [InlineData("            0 => return first@move\n            _ => ()\n        return .None\n")]
+    public void AMatchArmThatMayDestroyTheItemIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Select + tail);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: a constructor's first assignment of a field without a default initializes it, so an Iterator may build a
+    // struct item around a value it hands out.
+    private const string Entries = "struct Entries<T>\n    Self is Iterator\n    associate Iterator.Item is Entry<T>\n    var value: Option<T>\n" +
+        "    public init(value: T) => self.value = .Some(value@move)\n    public func next(self: uniq/Self) -> Option<Entry<T>>\n" +
+        "        match Kimi.Intrinsics.exchange(self.value@uniq, with: .None)\n            .Some(let value) => return .Some(Entry<T>.init(7, value@move))\n            .None => return .None\n";
+
+    [Fact]
+    public void AnItemBuiltByAConstructorIsAccepted()
+    {
+        const string Entry = "struct Entry<T>\n    public let position: isize\n    public let value: T\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = value@move\n";
+        var source = Entry + Entries + "var entries = Entries<string>.init(\"Entry value.\")\nvar positions: isize = 0\nloop\n    match entries.next()\n" +
+            "        .Some(let entry)\n            positions += entry.position\n            Console.writeLine(entry.value)\n        .None => exit\nrequire positions == 7 else => $abort(\"entry\")\nConsole.writeLine(\"constructed\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorConstructedItem", source, "Entry value.\nconstructed\n");
+    }
+
+    // A field with a default is initialized before the body, so assigning it replaces and destroys that value.
+    [Fact]
+    public void AConstructorReplacingADefaultFieldIsRejected()
+    {
+        const string Entry = "struct Entry<T>\n    public let position: isize\n    public var value: Option<T> = .None\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = .Some(value@move)\n";
+        var c = MinimalEmissionTest.Analyze(Entry + Entries);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // G28: an item passed by value to a helper is owned by the helper, whose parameter is not destroyed when its body
+    // transfers it at once.
+    private const string Helper = "struct Helper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+        "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n" +
+        "            .Some(let item) => return self.help(item@move)\n            .None => return .None\n";
+
+    [Fact]
+    public void AnItemPassedToAHelperThatTransfersItIsAccepted()
+    {
+        var source = Counter + Helper + "    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item>\n        let wrapped: Option<I.(Iterator).Item> = .Some(value@move)\n        return wrapped@move\n" +
+            "var helper = Helper<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match helper.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
+            "require sum == 6 else => $abort(\"helper\")\nConsole.writeLine(\"helped\")";
+        ScalarEmissionTest.EmitFixture("AssociatedIteratorHelper", source, "helped\n");
+    }
+
+    // A helper that drops its parameter, directly or through a local, destroys the item inside next.
+    [Theory]
+    [InlineData("    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item> => .None\n")]
+    [InlineData("    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item>\n        let kept = value@move\n        return .None\n")]
+    public void AnItemPassedToAHelperThatDropsItIsRejected(string help)
+    {
+        var c = MinimalEmissionTest.Analyze(Helper + help);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // A reinitialized value left to its scope, or an assignment that replaces a value no statement moved out, destroys it.
+    [Theory]
+    [InlineData("        attempt = self.inner.next()\n        return .None\n")]
+    [InlineData("        attempt = self.inner.next()\n        attempt = self.inner.next()\n        return attempt@move\n")]
+    public void AReinitializedLocalThatMayBeDestroyedIsRejected(string tail)
+    {
+        var c = MinimalEmissionTest.Analyze(Reuse + tail);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // A statement between the item's initialization and its transfer that names the item, or that may leave the block
+    // normally (a return, or an exit to an iteration outside it), may destroy it inside next.
+    [Theory]
+    [InlineData("let first = self.inner.next()\n        return self.inner.next()")]
+    [InlineData("let first = self.inner.next()\n        if self.steps == 3 => return .None\n        return first@move")]
+    [InlineData("let first = self.inner.next()\n        let copy = first@move\n        self.steps += 1\n        return .None")]
+    [InlineData("var first = self.inner.next()\n        first = self.inner.next()\n        return first@move")]
+    [InlineData("label outer: loop\n            let first = self.inner.next()\n            loop\n                if self.steps == 3 => exit to outer\n                exit\n            return first@move\n        return .None")]
+    [InlineData("loop\n            let first = self.inner.next()\n            if self.steps == 3 => exit\n            return first@move\n        return .None")]
+    [InlineData("match self.inner.next()\n            .Some(let item)\n                if self.steps == 3 => return .None\n                return .Some(item@move)\n            .None => return .None")]
+    public void ALocalItemThatMayBeDestroyedIsRejected(string body)
+    {
+        var source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
+    }
+
+    // A payload that is discarded, or bound and left to its scope, runs an unknown destructor inside next.
+    [Theory]
+    [InlineData(".Some(_) => return self.inner.next()")]
+    [InlineData(".Some(let item) => return self.inner.next()")]
+    [InlineData(".Some(let item)\n                let again = self.inner.next()\n                return .Some(item@move)")]
+    public void AnInspectedItemThatIsNotTransferredAtOnceIsRejected(string arm)
+    {
+        var source = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
+            "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n            " + arm + "\n            .None => return .None\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
     // A call without a published effect bound, such as a requirement of a Type parameter, cannot certify next.
@@ -190,6 +591,6 @@ public class IteratorOriginEffectsTest
         const string Source = "struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n" +
             "    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 }

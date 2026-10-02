@@ -5,139 +5,49 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Represents one arm of an invalid compile-time Case Group.</summary>
-public sealed class CompileTimeCaseArmKoto
-{
-    /// <summary>Gets the arm condition, or <see langword="null"/> for <c>#case _</c>.</summary>
-    public Koto? Condition { get; private set; }
-
-    /// <summary>Gets the syntax controlled by the arm.</summary>
-    public CodeBlockKoto Body { get; private set; }
-
-    /// <summary>Initializes a new instance of the <see cref="CompileTimeCaseArmKoto"/> class.</summary>
-    /// <param name="condition">The condition, or <see langword="null"/> for the fallback arm.</param>
-    /// <param name="body">The controlled body.</param>
-    public CompileTimeCaseArmKoto(Koto? condition, CodeBlockKoto body)
-    {
-        this.Condition = condition;
-        this.Body = body;
-    }
-
-    internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Condition == oldKoto)
-        {
-            this.Condition = newKoto;
-            return true;
-        }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto body)
-        {
-            this.Body = body;
-            return true;
-        }
-
-        return false;
-    }
-}
-
-/// <summary>Stores a compile-time <c>#switch</c> retained for error recovery after failed validation or selection.</summary>
+/// <summary>Marks a compile-time <c>#switch</c> that selected no arm, so later analyses explain no cascade (SPEC 19.3).</summary>
+/// <remarks>Its arms are excluded syntax: they were parsed and source-checked but are not retained (SPEC 19.5).</remarks>
 public sealed class CompileTimeSwitchKoto : ExpressionKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.CompileTimeSwitch;
-
-    private List<CompileTimeCaseArmKoto> arms;
-
-    /// <summary>Gets the arms in source order.</summary>
-    public IReadOnlyList<CompileTimeCaseArmKoto> Arms => this.arms;
-
     /// <summary>Initializes a new instance of the <see cref="CompileTimeSwitchKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete group span.</param>
-    /// <param name="arms">The parsed arms.</param>
-    public CompileTimeSwitchKoto(
-        ref TokenReader reader,
-        SourceSpan range,
-        List<CompileTimeCaseArmKoto> arms)
+    /// <param name="range">The complete Case Group span.</param>
+    public CompileTimeSwitchKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
-        this.arms = arms;
-        foreach (var arm in arms)
-        {
-            this.Adopt(arm.Condition);
-            this.Adopt(arm.Body);
-        }
     }
+
+    /// <inheritdoc/>
+    public override KotoKind Akind => KotoKind.CompileTimeSwitch;
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("#switch");
-        builder.AppendLine();
-        builder.IncrementIndent();
-        for (var i = 0; i < this.arms.Count; i++)
+        // Unparsing reproduces the original Case Group, whose arms exist only as source text.
+        var source = this.CodeContext.SourceDocument?.SourceText;
+        var span = this.Span;
+        if (source is null || span.Length == 0 || span.End > source.Length)
         {
-            if (i > 0)
+            builder.Append("#switch");
+            return;
+        }
+
+        var lineStart = span.Start == 0 ? 0 : source.LastIndexOf('\n', span.Start - 1) + 1;
+        var baseline = span.Start - lineStart;
+        var text = source.AsSpan(span.Start, span.Length).TrimEnd();
+        var first = true;
+        foreach (var range in text.Split('\n'))
+        {
+            var line = text[range].TrimEnd('\r');
+            if (!first)
             {
                 builder.AppendLine();
+                var indent = line.Length - line.TrimStart(' ').Length;
+                line = line[Math.Min(baseline, indent)..];
             }
 
-            builder.Append('#');
-            builder.Append(Constants.CaseKeyword);
-            builder.AppendSpace();
-            if (this.arms[i].Condition is { } condition)
-            {
-                condition.WriteTo(ref builder);
-            }
-            else
-            {
-                builder.Append('_');
-            }
-
-            this.arms[i].Body.WriteIndentedTo(ref builder);
+            builder.Append(line);
+            first = false;
         }
-
-        builder.DecrementIndent();
-    }
-
-    protected override void VisitChildrenCore(KotoVisitor visitor)
-    {
-        for (var armIndex = 0; armIndex < this.arms.Count; armIndex++)
-        {
-            var arm = this.arms[armIndex];
-            if (arm.Condition is not null)
-            {
-                visitor.Visit(arm.Condition);
-            }
-
-            visitor.Visit(arm.Body);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var arm in this.arms)
-        {
-            if (arm.Condition is not null)
-            {
-                yield return arm.Condition;
-            }
-
-            yield return arm.Body;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        foreach (var arm in this.arms)
-        {
-            if (arm.ReplaceChild(oldKoto, newKoto))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

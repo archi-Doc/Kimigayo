@@ -152,8 +152,8 @@ public sealed partial class Binding
                 if (!same)
                 {
                     identity.Invalid = true;
-                    Fail(a.Declaration, BindingFailure.IncompatibleImplementation);
-                    Fail(b.Declaration, BindingFailure.IncompatibleImplementation);
+                    this.Fail(a.Declaration, BindingFailure.IncompatibleImplementation);
+                    this.Fail(b.Declaration, BindingFailure.IncompatibleImplementation);
                     proof = ConstraintProof.Error;
                 }
             }
@@ -177,7 +177,7 @@ public sealed partial class Binding
 
             if (container is not (StructKoto or EnumKoto) || syntax.Operands.Length is not (2 or 3) || syntax.Operands[0] is not IsKoto target || syntax.Operands[1] is not SyntaxFormKoto premises)
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 continue;
             }
 
@@ -189,11 +189,15 @@ public sealed partial class Binding
                 this.BindConstraint(target, outer);
                 if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
                 {
-                    Fail(syntax, BindingFailure.InvalidConstraint);
+                    this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
                 }
 
-                if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
+                if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
+                {
+                    this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.4.7: the conforming Types of a closed Contract are fixed.
+                }
+                else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
                     if (IsRefinement(contract, this.Library.Copy))
@@ -204,7 +208,7 @@ public sealed partial class Binding
                 else
                 {
                     // SPEC 8.4.7.2: ObjectPayload is never granted, conditionally or otherwise.
-                    Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
+                    this.Fail(syntax, contract.Intrinsic == IntrinsicKind.ObjectPayload ? BindingFailure.InvalidSelfClause : BindingFailure.InvalidConstraint);
                 }
 
                 continue;
@@ -248,7 +252,7 @@ public sealed partial class Binding
             }
             else
             {
-                Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
                 (scope.Constraints ??= new()).Invalid = true;
             }
         }
@@ -281,6 +285,19 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false);
         }
 
+        // SPEC 4.6.2, 8.4.7: every integer Type conforms to the closed Contract Position through the Kimi integer witness.
+        if (this.contractHeadersReady && IsIntegerPosition(type, contract))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
+        // SPEC 22.1 (PLAN G32): the compiler records the fixed array's borrowing entry conformances; their witnesses are the
+        // members of the Kimi fixed-array group.
+        if (this.contractHeadersReady && IsFixedArrayEntry(type, contract))
+        {
+            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+
         // SPEC 8.7: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
         // conformances above; no declaration can add another (SPEC 8.4.8.4), so its fixed environment refutes the rest.
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&
@@ -290,7 +307,7 @@ public sealed partial class Binding
         }
 
         // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
-        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary) || type.Symbol is not { } symbol)
+        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) || type.Symbol is not { } symbol)
         {
             return ConstraintProof.Unknown;
         }

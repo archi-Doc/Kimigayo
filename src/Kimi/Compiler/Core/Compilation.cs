@@ -8,6 +8,7 @@ using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -30,11 +31,11 @@ public partial class Compilation
 
     #region FieldAndProperty
 
-    /// <summary>
-    /// Gets this compilation's diagnostic scope of the owning compiler service.
-    /// </summary>
-    /// <remarks>The scope shares the service's console and settings, and its diagnostic collections belong to this compilation alone.</remarks>
+    /// <summary>Gets the owning compiler service, which renders finalized diagnostics.</summary>
     public Kimigayo Kimigayo { get; }
+
+    /// <summary>Gets the diagnostic owner of this compilation's check request (SPEC 23.3.6).</summary>
+    public DiagnosticOwner Diagnostics { get; }
 
     /// <summary>
     /// Gets the project being compiled.
@@ -142,12 +143,14 @@ public partial class Compilation
     /// </summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     /// <param name="project">The project to compile.</param>
-    public Compilation(Kimigayo kimigayo, Project project)
+    /// <param name="diagnostics">The diagnostic owner of the check request, or <see langword="null"/> for a new one.</param>
+    public Compilation(Kimigayo kimigayo, Project project, DiagnosticOwner? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(kimigayo);
         ArgumentNullException.ThrowIfNull(project);
 
-        this.Kimigayo = kimigayo.CreateScope();
+        this.Kimigayo = kimigayo;
+        this.Diagnostics = diagnostics ?? new();
         this.Project = project;
         this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
@@ -191,20 +194,20 @@ public partial class Compilation
         this.BuildMetadata = null;
         if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
         {
-            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, dependencyFailure);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, this.Project.FilePath, note: dependencyFailure);
             return false;
         }
 
         if (this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
         {
-            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.UnresolvedDependencyGraph_Kd);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnresolvedDependencyGraph_Kd, this.Project.FilePath);
             return false;
         }
 
         var languageVersion = this.Project.ProjectFile.LangVersion ?? this.Project.SolutionLanguageVersion ?? CurrentLanguageVersion;
         if (languageVersion != CurrentLanguageVersion)
         {
-            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.UnsupportedLanguageVersion_Kd, languageVersion, CurrentLanguageVersion);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedLanguageVersion_Kd, this.Project.FilePath, languageVersion, CurrentLanguageVersion);
             return false;
         }
 
@@ -217,6 +220,7 @@ public partial class Compilation
         {
             this.TargetTriple = TargetTriple.Invalid;
             this.IrTarget = IrTarget.Invalid;
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.UnsupportedTarget_Kd, this.Project.FilePath, target);
             return false;
         }
 
@@ -244,7 +248,7 @@ public partial class Compilation
             if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
                 variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
             {
-                this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.InvalidCompileTimeSetting_Kd, name);
+                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, this.Project.FilePath, name);
                 return false;
             }
 
@@ -303,6 +307,7 @@ public partial class Compilation
 
     internal void InvalidateSourceAnalysis()
     {
+        this.Diagnostics.InvalidateSemantics();
         this.binding?.Invalidate();
         this.InvalidateOwnership();
     }

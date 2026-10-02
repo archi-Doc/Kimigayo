@@ -114,7 +114,7 @@ public class SharedSubjectTest
     // an owned Subject is destroyed after the match while a bare Place Subject is only borrowed.
     private const string WholeSubjectSource =
         "struct R\n    public let id: i32\n    public let name: string\n    public init(id: i32, name: string)\n        self.id = id\n        self.name = name@move\n" +
-        "    deinit => Console.writeLine(\"drop\")\nfunc make(id: i32) -> R => R.init(id, \"made\")\n" +
+        "    drop => Console.writeLine(\"drop\")\nfunc make(id: i32) -> R => R.init(id, \"made\")\n" +
         "match make(1)\n    let r if r.id == 1 => Console.writeLine(r.name)\n    _ => ()\nmatch make(2)\n    let r if r.id == 1 => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"other\")\n" +
         "let kept = make(3)\nmatch kept\n    let r if r.id == 3 => Console.writeLine(\"borrowed\")\n    _ => ()\n" +
         "match (5, \"x\")\n    let q if q.0 == 5 and q.1 == \"x\" => Console.writeLine(q.1)\n    _ => ()\nConsole.writeLine(\"ok\")";
@@ -202,21 +202,24 @@ public class SharedSubjectTest
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
 
+    // SPEC 14.6.2: a borrowed Slice selects its entry at the referent through the reference; the handle is not read first.
     [Fact]
-    public void BorrowedSlicesAreReadAsTheirCopyValue()
+    public void BorrowedSlicesSelectTheirEntryThroughTheReference()
     {
         var c = MinimalEmissionTest.Analyze("func total(values: ref/Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values\n        sum += v\n    return sum");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Binding.ReadsReferent(FindIterable(c)));
+        Assert.False(c.Binding.ReadsReferent(FindIterable(c)));
+        Assert.True(c.Ownership.Result.IsVerified);
     }
 
     [Fact]
-    public void UnsupportedIterablesReportOnlyTheBoundary()
+    public void NonIterableSubjectReportsOnlyItsConformance()
     {
         var c = MinimalEmissionTest.Analyze("struct Box\n    var id: i32 = 0\nlet box = Box.init()\nvar sum: i32 = 0\nfor v in box\n    sum += v");
         Assert.False(c.Binding.Result.IsComplete);
         var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, issue.Code);
+        Assert.Equal(DiagnosticCode.UnsatisfiedConstraint_Kd, issue.Code);
+        Assert.Same(FindIterable(c), issue.Node);
     }
 
     private static Koto FindIterable(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single().Iterable;

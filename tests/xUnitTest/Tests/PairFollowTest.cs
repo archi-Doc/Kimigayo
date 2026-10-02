@@ -260,6 +260,7 @@ public class PairFollowTest
     }
 
     // PLAN P39, G25: warm rebinding, per-instance ownership analysis and emission of the Program 39 shape allocate nothing.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPairLayerCompilationAllocatesNothing()
     {
@@ -273,22 +274,16 @@ public class PairFollowTest
         }
 
         var success = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Bind().IsComplete;
-        }
-
-        var bindingBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bindingBytes = AllocationMeasurement.Measure(() => success &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         c.Binding.CheckStartup(Kimi.Compiler.OutputKind.Application);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bytes = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);

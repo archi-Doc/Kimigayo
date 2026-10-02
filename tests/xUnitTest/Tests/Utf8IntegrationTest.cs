@@ -31,6 +31,7 @@ public class Utf8IntegrationTest
         ScalarEmissionTest.EmitFixture("Utf8IntegrationAbort", Source, "format once\n", 1, "Hello.kimi:9:19: abort KIMI_E_FORMAT: Formatting failed\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericFixedFormattingForwardsTypeLengthAndSourceOrigin()
     {

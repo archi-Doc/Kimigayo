@@ -9,15 +9,16 @@ internal static class MatchTypes
 {
     // Called after finite storage/layout and destructor preparation. Tuple/Case
     // decomposition transfers complete array/struct payloads; it never splits a
-    // struct with a user destructor. Reference-bearing payloads need Loan plans.
+    // struct with a user destructor. Complete payload Types retain the Loans verified by ownership analysis.
     internal static bool SupportsOwnedPatternValue(BoundType type, Dictionary<BoundType, bool> cache)
     {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String))
+        if (ScalarTypes.Supports(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
+            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Slice)
         {
             return true;
         }
 
-        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null || type.OriginArguments.Count != 0)
+        if (type.Semantics != SemanticsKind.Owner)
         {
             return false;
         }
@@ -30,7 +31,7 @@ internal static class MatchTypes
         // Repeated payload Types share one proof. A pending entry also rejects
         // a cycle defensively, even if called with unprepared storage.
         cache[type] = false;
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
             for (var i = 0; i < type.Components.Count; i++)
             {

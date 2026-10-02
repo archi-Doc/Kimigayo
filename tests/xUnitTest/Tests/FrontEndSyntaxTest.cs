@@ -23,7 +23,7 @@ public class FrontEndSyntaxTest
     [InlineData("virtual open func f() => ()", "virtual")]
     [InlineData("abstract specialize func f<i32>() => ()", "abstract")]
     [InlineData("struct S\n    virtual init() => ()", "virtual")]
-    [InlineData("struct S\n    override public deinit => ()", "override")]
+    [InlineData("struct S\n    override public drop => ()", "override")]
     [InlineData("struct S\n    virtual public let value: i32", "virtual")]
     [InlineData("struct S\n    override var value: i32", "override")]
     [InlineData("struct S\n    abstract computed value: i32\n        get(self: ref/Self) -> i32 => 1", "abstract")]
@@ -42,8 +42,8 @@ public class FrontEndSyntaxTest
     public void UnavailableModifiersReportOneCauseAndRecover(string source, string modifier)
     {
         var tree = Parse(source + "\nstruct Following\n");
-        var diagnostic = Assert.Single(tree.DiagnosticCollection.GetArray());
-        Assert.Equal("UnavailableFeature_Kd", diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(tree));
+        Assert.Equal("UnavailableFeature_Kd", diagnostic.Code);
         Assert.Equal(source.IndexOf(modifier, StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(modifier.Length, diagnostic.Span.Length);
         Assert.Contains(modifier, diagnostic.Message);
@@ -61,16 +61,20 @@ public class FrontEndSyntaxTest
     [InlineData("abstract /* comment */\nstruct Next")]
     [InlineData("abstract\r\nfunc next() => ()")]
     [InlineData("let abstract = func() => ()\nabstract()")]
-    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
-    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
     public void UnavailableModifierSpellingsRemainOrdinaryNames(string source)
         => AssertValid(Parse(source));
+
+    [Theory]
+    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
+    [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
+    public void ExcludedSyntaxReportsUnavailableModifiers(string source)
+        => Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(Parse(source))).Code);
 
     [Fact]
     public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
     {
         var tree = Parse("struct S\n    virtual func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
-        Assert.Equal("UnavailableFeature_Kd", Assert.Single(tree.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(tree)).Code);
         var structure = tree.RootKoto.NestedContainers.Single(x => x.Name == "S");
         Assert.Equal("retained", Assert.IsType<FunctionKoto>(Assert.Single(structure.Members)).Name);
         Assert.Contains(tree.RootKoto.NestedContainers, x => x.Name == "Following");
@@ -107,13 +111,14 @@ public class FrontEndSyntaxTest
     [InlineData("let a = func(x) => x")]
     [InlineData("let a = func[](x: i32) -> i32 => x")]
     [InlineData("let a = func[source@ref, var count, value@uniq](x) => x")]
+    [InlineData("let a = func[var source@ref, var count@uniq, var value@move](x) => x")]
     [InlineData("func f()\n    require valid else => return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
     [InlineData("enum E {a}\n    A\n    B(ref/T during a)\n    func f() => ()")]
     [InlineData("let a = match value\n    .Some(let x) if x > 0 => x\n    .None => 0\n    _ => -1")]
     [InlineData("let a = match value\n    Option<i32>.Some(var x) => x\n    (let a, (var b, _)) => b\n    (1,) => 1\n    () => 0")]
-    [InlineData("open struct Base\nstruct Derived : Base\n    init(value: i32) : base(value)\n        return\n    deinit\n        return")]
+    [InlineData("open struct Base\nstruct Derived : Base\n    init(value: i32) : base(value)\n        return\n    drop\n        return")]
     [InlineData("contract Sequence : Base, Other\n    associate Element\n    func next(self: ref/Self) -> Element\n    func use<T>(value: T)\n        T is Comparable\n    property size: i32 has get")]
     [InlineData("struct S\n    Self is Sequence\n    associate Sequence.Element is i32")]
     [InlineData("func f<T>(x: T)\n    T.Element is Comparable\n    return")]
@@ -177,7 +182,6 @@ public class FrontEndSyntaxTest
     [InlineData("let a: [N + 1 of T] = values")]
     [InlineData("let a: [4 T] = values")]
     [InlineData("struct S<length N>")]
-    [InlineData("let a = func[var x@ref]() => x")]
     [InlineData("let a = func[x@T]() => x")]
     [InlineData("let a = func(x?: T) => x")]
     [InlineData("let a = match x\n    Name => 1")]
@@ -200,13 +204,13 @@ public class FrontEndSyntaxTest
     [InlineData("let a = 0o___")]
     [InlineData("let a = 0x_ + 1")]
     public void RejectsInvalidSyntax(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("#if false\nstatic func f() => ()\nlet a = 1")]
     [InlineData("#if false\nopen group G\nlet a = 1")]
-    public void ExcludedDeclarationsDoNotReportModifierPlacement(string source)
-        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
+    public void ExcludedDeclarationsReportModifierPlacement(string source)
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()

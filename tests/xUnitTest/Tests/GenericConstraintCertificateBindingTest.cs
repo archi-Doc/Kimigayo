@@ -13,12 +13,12 @@ public class GenericConstraintCertificateBindingTest
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("() -> Box<string>")]
     public void InvalidGenericPropertyTypeCannotCertify(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct S\n    var value: " + type);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var property = Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.Single());
@@ -40,7 +40,7 @@ public class GenericConstraintCertificateBindingTest
         var valid = MinimalEmissionTest.Analyze(source.Replace("Box<string>", "Box<i32>", StringComparison.Ordinal));
         Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid, null));
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
@@ -56,7 +56,7 @@ public class GenericConstraintCertificateBindingTest
     public void MissingMandatoryGetterIsRejectedWithoutCrashing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.IncompleteSyntax_Kd));
+        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single()).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);
@@ -90,6 +90,7 @@ public class GenericConstraintCertificateBindingTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericCertificateChecksAllocateNothing()
     {

@@ -16,7 +16,7 @@ public class ConstraintProjectionCertificateBindingTest
     public void LateInvalidProjectionCannotSupplyDeclarationConstraint(int form)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + Consumer(form));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         AssertCertificate(c, form, false);
         Assert.False(c.Bind().IsComplete);
@@ -49,7 +49,7 @@ public class ConstraintProjectionCertificateBindingTest
     public void ForwardProjectionDependenciesCannotCertify(int form)
     {
         var c = MinimalEmissionTest.Analyze(Consumer(form) + "\n" + Prefix("internal"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         AssertCertificate(c, form, false);
     }
@@ -84,6 +84,7 @@ public class ConstraintProjectionCertificateBindingTest
         AssertCertificate(c, 1, true);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

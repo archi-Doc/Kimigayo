@@ -40,7 +40,9 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
     $stdout = $process.StandardOutput.ReadToEndAsync()
     $stderr = $process.StandardError.ReadToEndAsync()
     if (-not $process.WaitForExit(60000)) { $process.Kill($true); $process.WaitForExit(); throw 'CLI timed out' }
-    $output = $stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()
+    $script:childStdout = $stdout.GetAwaiter().GetResult()
+    $script:childStderr = $stderr.GetAwaiter().GetResult()
+    $output = $script:childStdout + $script:childStderr
     $actual = $process.ExitCode
     $process.Dispose()
     if ($actual -ne $ExitCode) { throw "CLI exit $actual, expected $ExitCode`: $($Arguments -join ' ')`n$output" }
@@ -52,19 +54,11 @@ Write-Project 'O2' ''
 $output = Invoke-Kimi @('run', $project)
 if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', (Join-Path $work 'missing toolchain')) 1
-if (-not $output.Contains('Cannot obtain LLVM version')) { throw 'Explicit toolchain root must override the environment' }
-$missingRoot = Join-Path $work 'missing backend'
+if (-not $output.Contains('Toolchain file not found')) { throw 'Explicit toolchain root must override the environment' }
+$missingRoot = Join-Path $work 'missing libraries'
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $missingRoot, '--LlvmBin', $LlvmBin) 1
-if (-not $output.Contains('Backend archive not found')) { throw 'Missing backend must not fall back to the installed library' }
-$badDirectory = Join-Path $missingRoot 'windows_x64'
-New-Item -ItemType Directory -Path $badDirectory -Force | Out-Null
-$badArchive = Join-Path $badDirectory 'kimi_backend_windows_x64_v1.lib'
-'not the adopted backend' | Set-Content -LiteralPath $badArchive
-$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $missingRoot, '--LlvmBin', $LlvmBin) 1
-if (-not $output.Contains('backend SHA-256 mismatch')) { throw 'A substituted automatic backend must fail its hash check' }
-Remove-Item -LiteralPath $badArchive -Force
-Remove-Item -LiteralPath $badDirectory -Force
-Remove-Item -LiteralPath $missingRoot -Force
+if (-not $output.Contains('kernel32.lib') -or -not $output.Contains('setup.ps1')) { throw 'Missing shared kernel32 must request setup' }
+if (Test-Path $missingRoot) { throw 'Build implicitly generated toolchain artifacts' }
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
 Write-Project 'O2' 'missing LLVM directory'
 '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
@@ -80,9 +74,9 @@ foreach ($level in @('O0', 'O2')) {
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-    if ($record.status -cne 'linked' -or -not $record.reportedVersionsMatched -or $record.unverifiedToolchain) { throw 'Invalid successful build record' }
-    if ($record.kernel32.generator -cne 'llvm-dlltool' -or -not $record.tools.'llvm-dlltool'.hashMatched -or
-        $record.kernel32.sha256 -cne (Get-FileHash (Join-Path (Split-Path $ir) "Hello.$level.kernel32.lib")).Hash.ToLowerInvariant()) { throw 'Missing generated import identity' }
+    if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Invalid successful build record' }
+    if ($record.kernel32.generator -cne 'llvm-dlltool' -or $record.tools.'llvm-dlltool' -or $record.tools.opt.sha256 -or
+        (Test-Path (Join-Path (Split-Path $ir) "Hello.$level.kernel32.lib"))) { throw 'Ordinary build must reuse shared imports without identity probes' }
     $exe = Join-Path (Split-Path $ir) "Hello.$level.exe"
     $before = (Get-Item $recordPath).LastWriteTimeUtc
     $output = Invoke-Kimi @('run', $project, '--no-build')
@@ -104,29 +98,23 @@ foreach ($level in @('O0', 'O2')) {
     '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 }
 if ($MismatchedLlvmBin) {
-    $output = Invoke-Kimi @('build', $project, '--LlvmBin', $MismatchedLlvmBin) 1
-    if (-not $output.Contains('LLVM version mismatch')) { throw 'Missing mismatch diagnostic' }
-    $output = Invoke-Kimi @('build', $project, '--LlvmBin', $MismatchedLlvmBin, '--AllowUnpinnedToolchain', 'true')
-    $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-    if (-not $record.unverifiedToolchain -or -not $output.Contains('unverified toolchain')) { throw 'Exploratory mode must warn and record actual versions' }
+    $output = Invoke-Kimi @('toolchain', 'verify', '--LlvmBin', $MismatchedLlvmBin) 1
+    if (-not $output.Contains('mismatch')) { throw 'Explicit verification must reject a changed toolchain' }
 }
-# A separate tiny executable verifies that run forwards the child's nonzero exit code.
-# Missing/hash-mismatched dlltool must invalidate success and must never reuse a stale import library.
-$incompleteTools = Join-Path $work 'incomplete tools'
+# Building must not need a generator or invoke --version. Use a tool directory without dlltool.
+$incompleteTools = Join-Path $work 'build tools'
 New-Item -ItemType Directory -Path $incompleteTools | Out-Null
 foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj')) {
     Copy-Item -LiteralPath (Join-Path $LlvmBin "$name.exe") -Destination (Join-Path $incompleteTools "$name.exe")
 }
+foreach ($dll in Get-ChildItem -LiteralPath $LlvmBin -Filter '*.dll' -File) { Copy-Item -LiteralPath $dll.FullName -Destination $incompleteTools }
+$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools)
+$output = Invoke-Kimi @('run', $project, '--no-build')
+if (-not $output.Contains('Hello, world!')) { throw 'Build without dlltool failed' }
+Remove-Item -LiteralPath (Join-Path $incompleteTools 'opt.exe')
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
-$output = Invoke-Kimi @('run', $project, '--no-build') 1
-Copy-Item -LiteralPath (Join-Path $LlvmBin 'llvm-readobj.exe') -Destination (Join-Path $incompleteTools 'llvm-dlltool.exe')
-$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
-if (-not $output.Contains('SHA-256 mismatch')) { throw "Missing dlltool identity diagnostic: $output" }
-$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools, '--AllowUnpinnedToolchain', 'true') 1
 $output = Invoke-Kimi @('run', $project, '--no-build') 1
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
-foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-dlltool')) { Remove-Item -LiteralPath (Join-Path $incompleteTools "$name.exe") -Force }
-Remove-Item -LiteralPath $incompleteTools -Force
 $exitIr = Join-Path $work 'exit.ll'
 @'
 target triple = "x86_64-pc-windows-msvc"
@@ -138,7 +126,7 @@ define void @entry() noreturn {
 '@ | Set-Content -LiteralPath $exitIr -Encoding utf8
 & (Join-Path $LlvmBin 'llc.exe') -filetype=obj $exitIr -o "$exitIr.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture object generation failed' }
-$kernel32 = Join-Path (Split-Path $ir) 'Hello.O2.kernel32.lib'
+$kernel32 = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
 & (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
@@ -152,7 +140,7 @@ $output = Invoke-Kimi @('emit-llvm', $project) 1
 $projectStem = [IO.Path]::ChangeExtension($project, $null)
 $output = Invoke-Kimi @('emit', $projectStem)
 $output = Invoke-Kimi @('build', $projectStem, '--LlvmBin', $LlvmBin)
-$output = Invoke-Kimi @('run', $projectStem, '--LlvmBin', $LlvmBin)
+$output = Invoke-Kimi @('run', $projectStem, '--no-build')
 if (-not $output.Contains('Hello, world!')) { throw 'Extensionless project lookup failed' }
 $singleDirectory = Join-Path $work 'single source'
 New-Item -ItemType Directory -Path $singleDirectory | Out-Null
@@ -190,7 +178,7 @@ foreach ($command in @('build', 'run', 'emit')) {
 # Explicit .kimi bypasses the invalid same-stem project and excludes its sibling source.
 $output = Invoke-Kimi @('emit', $singleSource)
 $output = Invoke-Kimi @('build', $singleSource)
-$output = Invoke-Kimi @('run', $singleSource)
+$output = Invoke-Kimi @('run', $singleSource, '--no-build')
 if (-not $output.Contains('Single source')) { throw 'Explicit source input was not honored' }
 Remove-Item -LiteralPath $singleProject
 New-Item -ItemType Directory -Path $singleStem | Out-Null
@@ -199,6 +187,19 @@ foreach ($command in @('build', 'run', 'emit')) {
 }
 Remove-Item -LiteralPath $singleStem
 
+# Abort forwards a normal stdout prefix, stderr and nonzero exit for source/project/exe.
+$abortDirectory = Join-Path $work 'abort'
+New-Item -ItemType Directory -Path $abortDirectory | Out-Null
+$abortSource = Join-Path $abortDirectory 'Abort.kimi'
+$abortProject = Join-Path $abortDirectory 'Abort.kimiproj'
+'::Kimi.Console.writeLine("before abort")', '$abort("cli abort")' | Set-Content -LiteralPath $abortSource -Encoding utf8
+"Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"" | Set-Content -LiteralPath $abortProject -Encoding utf8
+$output = Invoke-Kimi @('run', $abortSource) 1
+if (-not $childStdout.EndsWith("before abort`n") -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Source run lost child output/error: $output" }
+$output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
+if (-not $childStdout.EndsWith("before abort`n") -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Project run lost child output/error: $output" }
+$output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1
+if ($childStdout -cne "before abort`n" -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Executable run lost child output/error: $output" }
 # A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.8.2, 22.3).
 $foreignDirectory = Join-Path $work 'foreign supply'
 $foreignNative = Join-Path $foreignDirectory 'native'
@@ -253,7 +254,7 @@ public func main()
 foreach ($level in @('O0', 'O2')) {
     Write-ForeignProject $level $foreignSupply
     $output = Invoke-Kimi @('build', $foreignProject)
-    $output = Invoke-Kimi @('run', $foreignProject)
+    $output = Invoke-Kimi @('run', $foreignProject, '--no-build')
     if (-not $output.Contains('foreign ok')) { throw "Foreign static supply failed at $level`: $output" }
 }
 $foreignRecord = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.build.json') -Raw | ConvertFrom-Json

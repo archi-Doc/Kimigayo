@@ -26,9 +26,9 @@ func stops()
     Console.writeLine("must not run")
 #Test
 func nested()
-    $expect(false, message: (message: do
+    $expect(false, message: (label message: do
         $expect(false, message: "inner")
-        exit to message: "outer"
+        exit to message "outer"
     ))
 #Test
 func cleanup()

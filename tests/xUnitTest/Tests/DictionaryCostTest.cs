@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryCostTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(4, false)]
@@ -31,9 +32,10 @@ public class DictionaryCostTest
             bytes += capacity * 24L;
         }
 
-        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L);
+        NativeAllocationAudit.WriteFixture("DictionaryCostGrowth" + count + reserve, source, allocations, allocations, bytes, maxTransferredBytes: count * 48L, minTransferredBytes: (capacity - 4) * 24L);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedSearchAndSharedIterationAllocateNoEntryOrViewStorage()
     {
@@ -46,6 +48,8 @@ public class DictionaryCostTest
             while count < 1024
                 _ = entries.tryInsert(1, 30)
                 _ = entries.remove(3)
+                entries.indexUniq(2) = 20
+                require entries.index(2) == 20 else => $abort("indexed")
                 let found = entries.tryGet(2)
                 match found
                     .Some(let value) => require value == 20 else => $abort("lookup")
@@ -56,6 +60,7 @@ public class DictionaryCostTest
         NativeAllocationAudit.WriteFixture("DictionaryCostQueries", Source, 1, 1, 96, maxTransferredBytes: 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]
@@ -69,6 +74,9 @@ public class DictionaryCostTest
             var entries: Dictionary<(i32, i32), i32> = [:]
             _ = entries.tryInsert((1, 2), 3)
             entries[(1, 2)] = 4
+            entries.indexUniq((1, 2)) = 4
+            require entries.index((1, 2)) == 4 else => $abort("indexed")
+            _ = entries.remove((9, 9))
             let found = entries.tryGet((1, 2))
             match found
                 .Some(let value) => require value == 4 else => $abort("value")

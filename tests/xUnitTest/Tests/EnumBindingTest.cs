@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class EnumBindingTest
 {
     [Theory]
@@ -110,7 +109,7 @@ public class EnumBindingTest
     [InlineData("enum E\n    A\n    A(i32)")]
     [InlineData("enum E\n    A\n    func A() => ()")]
     [InlineData("enum E\n    func A() => ()\n    A")]
-    [InlineData("struct Hidden {}\npublic enum E\n    A(Hidden)")]
+    [InlineData("struct Hidden\npublic enum E\n    A(Hidden)")]
     [InlineData("enum E\n    A\nenum E\n    B")]
     [InlineData("enum E<T>\n    A(T)\nenum E<T>\n    B")]
     [InlineData("enum E<T>\n    T is Copy\n    A(T)\nlet x = E.A(\"text\")")]
@@ -182,22 +181,6 @@ public class EnumBindingTest
         Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Option));
     }
 
-    [Fact]
-    public void WarmEnumBindingReusesIdentitiesAndPlanStorage()
-    {
-        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Both(T, string)\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let v{i} = E<i32>.Both({i}, \"x\")")));
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
-        Assert.True(c.Binding.TryGetEnumConstruction(call, out var plan));
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-        Assert.True(c.Binding.TryGetEnumConstruction(call, out var rebound));
-        Assert.Same(plan, rebound);
-    }
-
     [Theory]
     [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
@@ -221,18 +204,6 @@ public class EnumBindingTest
     }
 
     [Fact]
-    public void WarmContextualConstructionPreservesBorrowOperations()
-    {
-        var c = CompilationTestHelper.ParseSuccess("func take(x: Option<ref/i32 during static>) => ()\nfunc f(x: ref/i32 during static)\n    take(.Some(x))");
-        for (var i = 0; i < 8; i++)
-        {
-            Assert.True(c.Bind().IsComplete, Describe(c));
-        }
-
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-    }
-
-    [Fact]
     public void BindingConstructionDoesNotCertifyOwnership()
     {
         var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
@@ -245,14 +216,47 @@ public class EnumBindingTest
     [InlineData("    let value: i32")]
     [InlineData("    property value: i32 { get }")]
     [InlineData("    init() => ()")]
-    [InlineData("    deinit() => ()")]
-    [InlineData("    struct Nested {}")]
+    [InlineData("    drop() => ()")]
+    [InlineData("    struct Nested")]
     public void ForbiddenEnumMembersCannotPassParsingAndBinding(string member)
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "enum E\n    A\n" + member);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node} ({x.Node.GetType().Name}, parent {x.Node.Parent?.GetType().Name})"));
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void WarmEnumBindingReusesIdentitiesAndPlanStorage()
+        {
+            var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Both(T, string)\n" + string.Join('\n', Enumerable.Range(0, 128).Select(i => $"let v{i} = E<i32>.Both({i}, \"x\")")));
+            for (var i = 0; i < 8; i++)
+            {
+                Assert.True(c.Bind().IsComplete, Describe(c));
+            }
+
+            var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
+            Assert.True(c.Binding.TryGetEnumConstruction(call, out var plan));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+            Assert.True(c.Binding.TryGetEnumConstruction(call, out var rebound));
+            Assert.Same(plan, rebound);
+        }
+
+        [Fact]
+        public void WarmContextualConstructionPreservesBorrowOperations()
+        {
+            var c = CompilationTestHelper.ParseSuccess("func take(x: Option<ref/i32 during static>) => ()\nfunc f(x: ref/i32 during static)\n    take(.Some(x))");
+            for (var i = 0; i < 8; i++)
+            {
+                Assert.True(c.Bind().IsComplete, Describe(c));
+            }
+
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
+        }
+    }
 }

@@ -65,6 +65,25 @@ public enum BoundTypeKind : byte
     Dictionary,
 }
 
+/// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.6.2).</summary>
+internal enum CaptureAcquisition : byte
+{
+    /// <summary>A bare entry of a proven-Copy binding.</summary>
+    Copy,
+
+    /// <summary><c>x@move</c>: the binding is transferred, even when Copy.</summary>
+    Move,
+
+    /// <summary>A bare entry of a binding storing <c>uniq/T</c> or <c>objuniq/T</c>: a Reborrow in the same Semantics.</summary>
+    Reborrow,
+
+    /// <summary><c>x@ref</c>: a shared borrow of the outer binding's slot.</summary>
+    SharedSlotBorrow,
+
+    /// <summary><c>x@uniq</c>: an exclusive borrow of the outer binding's slot.</summary>
+    ExclusiveSlotBorrow,
+}
+
 internal enum BindingFailure : byte
 {
     None,
@@ -129,9 +148,27 @@ internal enum BindingFailure : byte
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
+
+    // SPEC 13.5.4.3-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
+    // same-width integer Type and needs both Types fixed.
+    InvalidWrapConversion,
+    InvalidBitConversion,
+    GenericBitConversion,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,
+
+    // SPEC 8.4.7: the conforming Types of an intrinsic or closed Contract are fixed by the language.
+    ClosedContractConformance,
+
+    // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
+    NotIndexable,
+
+    // SPEC 10.2.2: candidates disagree on acquiring a bare Place argument by value or by a new shared borrow.
+    AcquisitionRequired,
+
+    // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
+    InvalidEffectBound,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -177,6 +214,12 @@ public sealed class BindingSymbol
 
     internal BoundType? WholeType { get; set; }
 
+    // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
+    internal BindingSymbol? SelfOf { get; set; }
+
+    // SPEC 8.4: the dedicated Self Type parameter of a Contract, created at its first use.
+    internal BoundType? ContractSelf { get; set; }
+
     internal BindingSymbol? Pair { get; set; }
 
     internal BindingScope Scope { get; set; }
@@ -196,8 +239,11 @@ public sealed class BindingSymbol
     /// <summary>Gets or sets a value indicating whether a Pattern or iteration binding is a reference because its path is shared or exclusive (SPEC 15.1.6).</summary>
     internal bool BindsReference { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
-    internal bool TransferCapture { get; set; }
+    /// <summary>Gets or sets how a capture entry initializes its environment binding (SPEC 7.6.2).</summary>
+    internal CaptureAcquisition CaptureAcquisition { get; set; }
+
+    /// <summary>Gets a value indicating whether a capture entry was written <c>x@move</c>: the binding is transferred even when Copy (SPEC 7.6.2).</summary>
+    internal bool TransferCapture => this.CaptureAcquisition == CaptureAcquisition.Move;
 
     /// <summary>Gets or sets the struct or enum that declared <c>Self is not ObjectPayload</c> for this Type: itself or an ancestor (SPEC 8.4.7.2), or null when the Type may be an object payload.</summary>
     internal BindingSymbol? ObjectPayloadOptOut { get; set; }
@@ -209,9 +255,13 @@ public sealed record BoundType : ControlFlowType
 {
     private readonly NumericCategory numeric;
 
+    // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1.1); the Type itself otherwise.
+    private readonly BoundType underlying;
+
     // Whole-subtree summaries, computed once at construction (see the constructor).
     private readonly bool carriesOrigin;
     private readonly bool carriesOriginOrSlot;
+    private readonly bool containsParameter;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
@@ -225,18 +275,35 @@ public sealed record BoundType : ControlFlowType
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+        this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
-        for (var i = 0; components is not null && i < components.Length && !(found && slot); i++)
+        var parameter = kind == BoundTypeKind.Parameter;
+        for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
             slot |= components[i].carriesOriginOrSlot;
+            parameter |= components[i].containsParameter;
         }
 
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
+        this.containsParameter = parameter;
+    }
+
+    // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
+    // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
+    private BoundType(string name, BoundType integer)
+        : base(name)
+    {
+        this.Kind = BoundTypeKind.Primitive;
+        this.Semantics = SemanticsKind.Owner;
+        this.Components = [];
+        this.OriginArguments = [];
+        this.numeric = integer.numeric;
+        this.underlying = integer;
     }
 
     private enum NumericCategory : byte
@@ -263,8 +330,18 @@ public sealed record BoundType : ControlFlowType
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
-    public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
+    /// <summary>Gets a value indicating whether this is one of the twelve integer Types (SPEC 3.1), which excludes the
+    /// wrapping integer Types; positions, lengths, shift counts and PrimitiveInteger need exactly these.</summary>
+    public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned && !this.IsWrappingInteger;
 
+    /// <summary>Gets a value indicating whether this is a wrapping integer Type <c>Wrapping&lt;T&gt;</c> (SPEC 3.1.1.1).</summary>
+    public bool IsWrappingInteger => !ReferenceEquals(this.underlying, this);
+
+    /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type: the Types with the integer
+    /// operators, integer literals and integer comparison (SPEC 13.3).</summary>
+    public bool HasIntegerArithmetic => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
+
+    /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
 
     public static new BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
@@ -290,6 +367,14 @@ public sealed record BoundType : ControlFlowType
 
     internal static readonly BoundType String = Primitives["string"];
 
+    /// <summary>The interned wrapping integer Scalar of each integer Type (SPEC 3.1.1.1), keyed by that integer Type.</summary>
+    internal static readonly Dictionary<BoundType, BoundType> WrappingScalars = CreateWrappingScalars();
+
+    /// <summary>Gets the wrapping integer Scalar over an integer Type.</summary>
+    /// <param name="integer">One of the twelve integer Types.</param>
+    /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
+    internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
+
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
 
@@ -307,7 +392,16 @@ public sealed record BoundType : ControlFlowType
     /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>
     internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
 
-    internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
+    /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
+    /// may substitute (SPEC 8.3).</summary>
+    internal bool ContainsParameter => this.containsParameter;
+
+    // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3).
+    internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
+
+    /// <summary>Gets the integer Type whose representation, signedness and width a wrapping integer Type shares, or this
+    /// Type itself. Every Scalar query about width, signedness, layout or formatting goes through it.</summary>
+    internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
 
@@ -336,6 +430,20 @@ public sealed record BoundType : ControlFlowType
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
         {
             result.Add(name, new(name, BoundTypeKind.Primitive));
+        }
+
+        return result;
+    }
+
+    private static Dictionary<BoundType, BoundType> CreateWrappingScalars()
+    {
+        var result = new Dictionary<BoundType, BoundType>(12);
+        foreach (var primitive in Primitives.Values)
+        {
+            if (primitive.IsInteger)
+            {
+                result.Add(primitive, new("Wrapping<" + primitive.Name + ">", primitive));
+            }
         }
 
         return result;
@@ -373,7 +481,11 @@ internal sealed class BindingScope(Koto owner)
 }
 
 /// <summary>A final unresolved or invalid node, retaining its original source context.</summary>
-public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code);
+public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
+{
+    /// <summary>Gets the failure that the code reports; its requirement identifies the problem.</summary>
+    internal BindingFailure Failure { get; init; }
+}
 
 /// <summary>Summarizes the current pass. Provisional completion never certifies a final program.</summary>
 public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount, int UnresolvedCount, int InvalidCount)

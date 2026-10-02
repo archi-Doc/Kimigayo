@@ -37,12 +37,11 @@ This evaluation and Syntax-processing sequence preserves the source selection an
 Parse a directive Condition
     -> resolve all Names and validate all operands against the prepared environment
         -> True #if: parse the controlled Syntax
-        -> False #if: scan only required token/layout/body/directive structure
-        -> #switch: validate all arm Conditions; parse every arm with nested #if rules
-        -> Error: report required diagnostics and recover structurally
+        -> False or Error #if: parse the target as excluded syntax into a detached owner
+        -> #switch: validate all arm headers and Conditions; parse the selected arm into the owner, others as excluded syntax
+        -> inside excluded syntax: validate every Condition, select nothing, report no selection error
     -> retain any implementation-internal validation work with its source-defined traversal
-    -> complete required nested Conditions even in unselected reached #switch arms
-    -> discard speculative grammar errors only where False #if rules require skipping grammar
+    -> judge source-order placement over selected and excluded items alike
     -> diagnose Names absent from the prepared environment; do not retry after generic Binding or instantiation
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
     -> require a final result and completed validation before finalization

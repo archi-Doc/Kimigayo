@@ -83,7 +83,7 @@ Slot immutability is not deep immutability: a stored reference or object handle 
 
 ### 11.1.2. Move paths and inherited fields
 
-A safe storage Move requires an owned struct Place, an eligible static Move Path, completed construction, an Initialized and complete target, and valid access, Origins, Loans and ancestor `deinit` conditions. Borrowed and object receivers and static storage cannot supply safe extraction. Raw-pointer operations keep their Unsafe rules.
+A safe storage Move requires an owned struct Place, an eligible static Move Path, completed construction, an Initialized and complete target, and valid access, Origins, Loans and ancestor `drop` conditions. Borrowed and object receivers and static storage cannot supply safe extraction. Raw-pointer operations keep their Unsafe rules.
 
 Inherited lookup selects a Field identity and a unique base path, substituting Type and Origin arguments. Following the path acquires no intermediate bases and implies no `ref/Derived`-to-`ref/Base` conversion. The original receiver category is preserved, and inheritance grants no private access. State and Loans are tracked by base path and Field identity. A base subobject itself cannot be independently Moved, replaced or reconstructed.
 
@@ -101,7 +101,7 @@ object.position = next      // OK: calls the setter.
 Standard access may use a complete remaining Place after a sibling Move. A custom accessor or computed call needs a complete receiver and keeps its declared function footprint; callers cannot infer disjointness from its body. Initial-construction restrictions still apply even when all slots are initialized (§11.3.1).
 
 ```kimi
-// Both fields have standard accessors; partial Move/deinit conditions hold.
+// Both fields have standard accessors; partial Move/drop conditions hold.
 let item = object.resource@move
 let count = object.count       // OK: complete remaining storage.
 let shown = object.displayCount // Error if this getter borrows incomplete object.
@@ -207,7 +207,7 @@ struct Holder
             return self.item@ref/Resource
     public computed result: Resource
         get(self: Self) -> Resource
-            return self.item@move // Only with valid partial Move/deinit conditions.
+            return self.item@move // Only with valid partial Move/drop conditions.
 ```
 
 Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter or setter consumes the complete receiver, so unless `Self` is Copy an owned Place receiver is written `holder@move.result` or `holder@move.item = value` (§7.3), and a later setter cannot reuse a consumed receiver. No hidden duplication, restoration or get/set round-trip equality is promised.
@@ -272,7 +272,7 @@ A setter may return without updating the storage. Unconsumed input is destroyed 
 
 A stored Type may be inferred only from its declaration initializer; otherwise an annotation is required. It is never inferred from accessors or later assignments. Storage explicitly binds the required Origins, including nested dependencies (§15.4); `self` does not create a self-borrowing storage contract.
 
-Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations (§15.3.4); there is no Origin list after `get` or `set`. Their attached `origin` clauses precede executable items, and a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. Explicit Contract requirement signatures follow the same rules.
+Explicit accessor signatures introduce per-call scalar Origins through their borrow annotations (§15.3.4); there is no Origin list after `get` or `set`. Their attached `origin` clauses precede executable items, judged in source order including excluded syntax (§19.5), and a Property's own clauses precede its accessor declarations. Inherited names cannot be redeclared. Explicit Contract requirement signatures follow the same rules.
 
 Complete an accessor from an existing storage contract before applying function elision. A stored custom value input or result inherits omitted Origins from the corresponding complete storage Type `T`; explicit bindings are checked, not overwritten. The receiver retains its independent per-call Origin. Verify complete Type correspondence and the body afterward. No new accessor parameter may narrow the calls required by storage.
 
@@ -285,7 +285,7 @@ struct View {source}
             storage = value
 ```
 
-Omitting `{source}` in the accessor Types above inherits the storage Origin. It does not default to `self` or introduce an independent setter input. The field itself still requires its explicit storage contract.
+Omitting `during source` from the accessor Types above inherits the storage Origin. It does not default to `self` or introduce an independent setter input. The field itself still requires its explicit storage contract.
 
 Computed and required accessors use the same function elision but no shared storage-Type comparison. A getter whose only direct borrowed input is `self` may elide its result Origin to `self`; setter input completion is independent. No Origins are created for absent accessors. Static getter and setter contracts use the ordinary receiverless rules. Copy reference and aggregate Types still undergo all lifetime and Loan checks.
 

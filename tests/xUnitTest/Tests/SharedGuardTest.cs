@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedGuardTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SelectedCopyBindingHasItsOwnStorageOrigin()
     {
@@ -26,6 +27,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardBodyStorageOrigin", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSharedGuardAnalysisAndEmissionAllocateNothing()
     {
@@ -46,6 +48,7 @@ public class SharedGuardTest
         }));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CompleteCopyCandidatesSupportFieldsAndBorrowedCalls()
     {
@@ -64,6 +67,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardCopyAggregate", Source, 0, 0, 0, "hello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AStoredReferenceCopyRetainsItsExternalOriginWhenReturnedFromAGuard()
     {
@@ -80,17 +84,18 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardStoredReference", Source, 0, 0, 0, "hello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CheckingReadsAfterATerminalGuardHaveFreshProtection()
     {
         const string Source = """
             func get(value: ref/(string, i32)) -> i32
                 match value
-                    (let text, _) if (check: do
+                    (let text, _) if (label check: do
                         return 42
                         Console.writeLine(text)
                         Console.writeLine(text)
-                        exit to check: true
+                        exit to check true
                     ) => ()
                     (_, _) => ()
                 return 0
@@ -100,6 +105,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardCheckingRead", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -108,9 +114,9 @@ public class SharedGuardTest
         const string Source = """
             let value = (Text.toString("hello"), 42)
             match value@move
-                (let text, let number) if (check: do
+                (let text, let number) if (label check: do
                     defer => Console.writeLine("cleanup")
-                    exit to check: text == "other" and number == 42
+                    exit to check text == "other" and number == 42
                 ) => $abort("false")
                 (let text, let number) if text == "hello" and number == 42
                     Console.writeLine(text)
@@ -121,6 +127,7 @@ public class SharedGuardTest
         NativeAllocationAudit.WriteFixture("SharedGuardComposite" + shared, source, 1, 1, 5, "cleanup\nhello\ndone\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WholeReferenceAndScalarLiteralCandidatesCanGuard()
     {
@@ -145,7 +152,7 @@ public class SharedGuardTest
     [InlineData("let saved", "Console.writeLine(saved)\n        text = \"new\"")]
     public void ProtectionLastsThroughGuardCleanupEvenAfterCandidateLastUse(string pattern, string mutation)
     {
-        var source = "var text = \"hello\"\nmatch text\n    " + pattern + " if (check: do\n        " + mutation + "\n        exit to check: false\n    ) => ()\n    _ => ()";
+        var source = "var text = \"hello\"\nmatch text\n    " + pattern + " if (label check: do\n        " + mutation + "\n        exit to check false\n    ) => ()\n    _ => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);

@@ -9,7 +9,7 @@ namespace XunitTest;
 
 public class DeferredEmissionTest
 {
-    private const string Snapshot = "var x = 1\nlet y = work: do\n    defer => x = 2\n    exit to work: x\nif y == 1 and x == 2 => Console.writeLine(\"ok\")";
+    private const string Snapshot = "var x = 1\nlet y = label work: do\n    defer => x = 2\n    exit to work x\nif y == 1 and x == 2 => Console.writeLine(\"ok\")";
 
     private const string Formatting = "func show(flag: bool)\n    let value = 7\n    defer => Console.writeLine(\"\\(value)\")\n    if flag => return\nshow(true)\nshow(false)";
 
@@ -29,17 +29,17 @@ public class DeferredEmissionTest
         { "DeferredInnerLoop", "defer\n    var x = 0\n    loop\n        x += 1\n        if x == 1 => continue\n        exit\n    if x == 2 => Console.writeLine(\"ok\")", "ok\n" },
         { "DeferredContinue", "var x = 0\nwhile x < 3\n    defer => Console.writeLine(\"iteration\")\n    x += 1\n    if x < 3 => continue\n    exit\nConsole.writeLine(\"end\")", "iteration\niteration\niteration\nend\n" },
         { "DeferredUnregistered", "loop\n    exit\n    defer => Console.writeLine(\"bad\")\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "DeferredYield", "var x = 1\nlet y = choice: if true\n    defer => x = 2\n    loop => yield to choice: x\nelse => 3\nif y == 1 and x == 2 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredYield", "var x = 1\nlet y = label choice: if true\n    defer => x = 2\n    loop => yield to choice x\nelse => 3\nif y == 1 and x == 2 => Console.writeLine(\"ok\")", "ok\n" },
         { "DeferredResultInside", "defer\n    var c = true\n    let x = if c => 1 + 2 else => 4\n    if x == 3 => Console.writeLine(\"ok\")", "ok\n" },
-        { "DeferredOperandTransfer", "let x = outer: do\n    defer => Console.writeLine(\"outer\")\n    let y = work: do\n        defer => Console.writeLine(\"work\")\n        exit to work: (if false => 1 else => exit to outer: 2)\n    exit to outer: y\nif x == 2 => Console.writeLine(\"ok\")", "work\nouter\nok\n" },
+        { "DeferredOperandTransfer", "let x = label outer: do\n    defer => Console.writeLine(\"outer\")\n    let y = label work: do\n        defer => Console.writeLine(\"work\")\n        exit to work (if false => 1 else => exit to outer 2)\n    exit to outer y\nif x == 2 => Console.writeLine(\"ok\")", "work\nouter\nok\n" },
         { "DeferredUnitExit", "defer => Console.writeLine(\"end\")\ndefer => exit ()", "end\n" },
         { "DeferredMillion", "var x = 0\nwhile x < 1000000\n    defer => x += 1\n    continue\nif x == 1000000 => Console.writeLine(\"ok\")", "ok\n" },
         { "DeferredPartialDelivery", "var c = true\nlet x = if c => 1 else\n    defer => loop => ()\n    yield 2\nif x == 1 => Console.writeLine(\"ok\")", "ok\n" },
         { "DeferredDirective", "var x = 0\n#if true\n    defer\n        if x == 1 => Console.writeLine(\"ok\")\nx = 1", "ok\n" },
         { "DeferredSwitch", "var x = 0\nloop\n    #switch\n        #case true\n            defer => x = 1\n            exit\n        #case _\n            defer => x = 2\n    Console.writeLine(\"bad\")\nif x == 1 => Console.writeLine(\"ok\")", "ok\n" },
         { "DeferredSelectedLocal", "#if true\n    var x = 0\n    defer\n        if x == 1 => Console.writeLine(\"ok\")\nx = 1", "ok\n" },
-        { "DeferredBooleanResult", "var c = true\nlet x = work: do\n    defer => c = false\n    exit to work: c\nif x and not c => Console.writeLine(\"ok\")", "ok\n" },
-        { "DeferredMultiExit", "var x = 0\nlet y = work: do\n    defer\n        defer => x += 10\n        if true => exit\n        if false => exit\n        x += 100\n    defer => x += 1\n    exit to work: x\nif y == 0 and x == 11 => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredBooleanResult", "var c = true\nlet x = label work: do\n    defer => c = false\n    exit to work c\nif x and not c => Console.writeLine(\"ok\")", "ok\n" },
+        { "DeferredMultiExit", "var x = 0\nlet y = label work: do\n    defer\n        defer => x += 10\n        if true => exit\n        if false => exit\n        x += 100\n    defer => x += 1\n    exit to work x\nif y == 0 and x == 11 => Console.writeLine(\"ok\")", "ok\n" },
     };
 
     [Theory]
@@ -48,7 +48,7 @@ public class DeferredEmissionTest
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     [Theory]
-    [InlineData("DeferredOperandOverflow", "var x = 2147483647\nlet y = work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work: x + 1\nConsole.writeLine(\"bad\")", "", 4, 19)]
+    [InlineData("DeferredOperandOverflow", "var x = 2147483647\nlet y = label work: do\n    defer => Console.writeLine(\"bad\")\n    exit to work x + 1\nConsole.writeLine(\"bad\")", "", 4, 18)]
     [InlineData("DeferredBodyOverflow", "var x = 2147483647\ndefer => Console.writeLine(\"bad\")\ndefer\n    Console.writeLine(\"begin\")\n    x += 1\n    Console.writeLine(\"bad\")", "begin\n", 5, 5)]
     public void OverflowStopsCleanupAndDelivery(string name, string source, string stdout, int line, int column)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
@@ -86,6 +86,7 @@ public class DeferredEmissionTest
         Assert.True(body.DeferredPlans.Count >= 2);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -147,7 +148,7 @@ public class DeferredEmissionTest
     [Fact]
     public void DivergentCleanupHasNoRuntimeDeliveryOrPhi()
     {
-        var c = MinimalEmissionTest.Analyze("let x = work: do\n    defer => loop => ()\n    exit to work: 1\nConsole.writeLine(\"bad\")");
+        var c = MinimalEmissionTest.Analyze("let x = label work: do\n    defer => loop => ()\n    exit to work 1\nConsole.writeLine(\"bad\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
         Assert.Contains(body.DeferredPlans, plan => body.IsReachable(plan.Entry) && !body.IsReachable(plan.Continuation));
@@ -205,6 +206,7 @@ public class DeferredEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
@@ -214,9 +216,6 @@ public class DeferredEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(ExpansionSource(depth));
         var body = c.Ownership.Bodies[0];
-        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/benchmarks/deferred-growth"));
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, $"depth-{depth}.txt"), $"depth={depth}; operations={body.Operations.Count}; places={body.Places.Count}; defers={body.DeferredPlans.Count}; locals={body.Places.Count(x => x.Kind == OwnershipPlaceKind.Local)}");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.Validate(out var error), error);
         Assert.InRange(body.Operations.Count, 1, OwnershipAnalysis.DeferredOperationLimit);
@@ -239,7 +238,7 @@ public class DeferredEmissionTest
 
         c.Ownership.ReportDiagnostics();
         var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ExpansionLimit);
-        Assert.Contains(issue.Source.DiagnosticCollection!.GetArray(), x => x.Message.Contains("8192", StringComparison.Ordinal));
+        Assert.Contains(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Message.Contains("8192", StringComparison.Ordinal));
     }
 
     [Fact]

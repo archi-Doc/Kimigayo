@@ -81,13 +81,26 @@ public class ForParseTest
             """;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.True(kotonoha.DiagnosticCollection.GetArray().Length >= 2);
+        Assert.True(TestDiagnostics.Of(kotonoha).Length >= 2);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(3, body.Items.Count);
         Assert.IsType<ForKoto>(body.Items[0]);
         Assert.IsType<ForKoto>(body.Items[1]);
         Assert.IsType<FieldKoto>(body.Items[2]);
+    }
+
+    [Fact]
+    public void ReportsTheBindingBeyondTheSixtyFourthAsAResourceLimit()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var slots = string.Join(", ", Enumerable.Range(0, 65).Select(static i => "var s" + i));
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "func f(values: Values)\n    for (" + slots + ") in values\n        ()\n");
+
+        var diagnostic = Assert.Single(TestDiagnostics.Of(kotonoha));
+        Assert.Equal(nameof(DiagnosticCode.ForBindingLimit_Kd), diagnostic.Code);
+        Assert.Equal("s64", diagnostic.Text);
     }
 
     [Fact]
@@ -103,7 +116,7 @@ public class ForParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -128,7 +141,7 @@ public class ForParseTest
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, unparsed);
-            Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(reparsed));
         }
         finally
         {

@@ -9,20 +9,25 @@ Use the repository's `scripts/verify.ps1` for implementation-unit and end-of-ses
 ```powershell
 ./scripts/verify.ps1 -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
 ./scripts/verify.ps1 -Mode Session -Fixtures 'StorageBoundary*.ll' -Milestone 27,28
+# Debug is opt-in in either mode:
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.StorageBoundaryTest -Fixtures 'StorageBoundary*.ll' -Milestone 28
+./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 
-Both modes keep non-incremental builds with warnings as errors. Unit mode runs the selected tests;
-Session mode runs the full Debug and Release suites. Test collections run up to four at a time,
+Both modes default to one Release compiler build and keep non-incremental builds with warnings as errors.
+Use `-Configuration Debug` explicitly for Debug verification. Unit mode runs the selected tests;
+Session mode runs the full suite once. Builds, tests, fixture selection and milestone harnesses all use
+the selected compiler configuration; native O0/O2 coverage is unchanged. Test collections run up to four at a time,
 respecting each test class's disabled-parallelization setting. Milestone harnesses run in separate
 processes, up to eight at a time; both defaults are capped by the logical processor count.
 Use `-TestParallel 1 -Parallel 1` for serial execution, or set either limit independently. Every
 stage announces its start and records its duration, along with the total duration and concurrency
-settings, in `artifacts/verify/<run>/summary.json`. Do not edit sources during verification.
+settings and selected compiler configuration, in `artifacts/verify/<run>/summary.json`. Do not edit sources during verification.
 
 For bounded local verification with separate stdout/stderr logs and a JSON result, run commands through `invoke-verification.ps1` from the repository root:
 
 ```powershell
-./src/backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'tests/xUnitTest/xUnitTest.csproj', '-c', 'Debug', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
+./src/backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'tests/xUnitTest/xUnitTest.csproj', '-c', 'Release', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
 ```
 
 Build the selected configuration first. The default command deadline is 900 seconds and output draining is bounded to five seconds. Optional `-InputPath` records SHA-256 hashes of exact input files and verifies that they remain unchanged. Records use unique directories under ignored `artifacts/verify/commands`. On Windows, a waiting worker is assigned to a [job with kill-on-close](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before receiving the target command. Closing the job removes descendants even after the target exits; no target process starts before containment. Other hosts use process-tree termination while the root remains alive.
@@ -37,7 +42,7 @@ Set up the checkout's `toolchain/` once from an existing matching LLVM directory
 
 Projects require neither LlvmBin nor a kimi_backend entry. Source-built compilers find this checkout's toolchain from their executable location; standalone distributions use toolchain beside Kimi.exe/Kimi.dll. `--ToolchainRoot` (scripts: `-ToolchainRoot`) or `KIMI_TOOLCHAIN_ROOT` selects another root. Legacy `--LlvmBin`/`-LlvmBin` only overrides LLVM tools. No PATH lookup occurs. See [SPEC §20.8.8](../../../docs/impl/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for storage, resolution, generation, installation and Application build details.
 
-No Windows SDK import library is required. kernel32.def is the shared source for the compiler and scripts. They run llvm-dlltool to generate an x64 import library, validate its DLL and twelve API exports, and link that output. The script does not download or install tools. llvm-dlltool is required and its approved executable SHA-256 is pinned in profile.json; it has no version banner. A different binary requires the explicit exploratory override, with a warning and unverified record. The expected LLVM release comes from `profile.json`, also embedded in the compiler. `build.ps1` and `manual-build.ps1` reject version mismatches by default. `-AllowUnpinnedToolchain` permits exploratory work only, warns for every mismatched tool, and records expected/actual versions and `unverifiedToolchain: true`; all other checks still apply. Missing tools and unreadable versions always fail. `test-emission.ps1` requires matching tools and matching candidate verification, with no override.
+No Windows SDK import library is required. Setup/update generates and validates kernel32 from the shared definition, then installs it under `toolchain/windows_x64` with its target, generator and content hashes. Normal compiler/manual builds and scalar fixtures reuse it without version probes or tool/backend identity checks. `kimi toolchain verify` rechecks installation identities and shared imports; `verify.ps1 -VerifyToolchain` invokes it once. The backend candidate builder alone retains `-AllowUnpinnedToolchain` for unverified, non-installable experiments. Profile adoption checks remain strict.
 
 Run `./src/backend/windows-x64/test-toolchain.ps1` for version-policy regression tests without an LLVM installation. Run `./src/backend/windows-x64/test-kernel32.ps1 -LlvmBin C:/App/llvm` for import generation, tool identity, failure, privacy and reproducibility tests.
 
@@ -77,6 +82,8 @@ For the one-line Application and compiler commands, see [the Hello example](../.
 
 `test-scalars.ps1 -LlvmBin C:/App/llvm` runs the fixtures generated by the C# emission tests through LLVM verification and O0/O2 execution. Use `-FixturePattern 'String*.ll'` for owned-string cases. These include original generated modules and runtime-only lifetime audits; the latter count destruction per Static handle and check expected totals at exit, preserving source-generated functions. Audit-control fixtures intentionally exit 120 when destruction counts disagree. They do not create Heap strings or replace the independent runtime allocation/free tests. Divergent fixtures use the shared timeout/process-tree-kill path.
 
-Use `-FixtureDirectory <archived-directory>` to execute an isolated, freshly generated fixture inventory instead of the shared `temp/scalar-fixtures` directory. Keep each `.ll` with its `.stdout`, `.stderr`, `.exit` and optional `.timeout` oracle, and record the generating compiler/test configuration and hashes. Scratch outputs default to `temp/scalar-native`; concurrent runs must use distinct `-OutputDirectory <directory>` paths, including their generated import libraries. The runner decodes stdout/stderr as strict UTF-8 independently of the parent console code page.
+Use `-FixtureDirectory <archived-directory>` to execute an isolated, freshly generated fixture inventory instead of the shared `temp/scalar-fixtures` directory. Keep each `.ll` with its `.stdout`, `.stderr`, `.exit` and optional `.timeout` oracle, and record the generating compiler/test configuration and hashes. Scratch outputs default to `temp/scalar-native`; concurrent runs must use distinct `-OutputDirectory <directory>` paths, while sharing the installed import library. The runner decodes stdout/stderr as strict UTF-8 independently of the parent console code page.
 
 Run `pwsh -File src/backend/windows-x64/test-testing.ps1` to verify the language test runner at O0/O2, including assertions, cleanup, temporary directories, budgets, timeout and solution aggregation. It uses the managed compiler and pinned native tools; it does not run NativeAOT.
+
+Milestone wrappers share `milestone-harness.ps1`: original source bytes and filenames, two builds and two direct executions (O0/O2), exact output/exit checks, source/compiler hashes and preparation/build/run timings. No source variants or rejection generation remain. Dedicated feature fixtures and CLI tests cover those contracts. `test-toolchain-verification.ps1` checks explicit verification and modified/missing installation artifacts.

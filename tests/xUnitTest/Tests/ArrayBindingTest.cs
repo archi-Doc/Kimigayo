@@ -9,12 +9,12 @@ namespace XunitTest;
 /// <summary>SPEC 4.3, 4.5 and 4.6.1: the compiler-managed Array Type binds; its operations are not generated yet (PLAN P29).</summary>
 public class ArrayBindingTest
 {
-    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => ()\n";
+    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n";
 
-    private static readonly string TaskOperations = Task.Replace("deinit => ()", "deinit\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            3 => Console.writeLine(\"Task 3 destroyed.\")\n            _ => Console.writeLine(\"Task 4 destroyed.\")", StringComparison.Ordinal) +
+    private static readonly string TaskOperations = Task.Replace("drop => ()", "drop\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            3 => Console.writeLine(\"Task 3 destroyed.\")\n            _ => Console.writeLine(\"Task 4 destroyed.\")", StringComparison.Ordinal) +
         "var tasks: Array<Task> = []\ntasks@uniq.reserve(additional: 2)\ntasks@uniq.append(Task.init(1))\ntasks@uniq.append(Task.init(3))\ntasks@uniq.insert(1, Task.init(2))\ntasks@uniq.append(Task.init(4))\nrequire tasks.length == 4 and tasks.capacity >= 4 else => $abort(\"growth\")\nlet last = tasks@uniq.remove(3)\nrequire last.id == 4 and tasks.length == 3 else => $abort(\"remove\")\nConsole.writeLine(\"Removed the last task.\")\nmatch tasks@uniq.pop()\n    .Some(let popped)\n        require popped.id == 3 else => $abort(\"pop\")\n        Console.writeLine(\"Popped a task.\")\n    .None => $abort(\"empty\")\ntasks@uniq.shrinkToFit()\nrequire tasks.capacity == 2 else => $abort(\"shrink\")\nConsole.writeLine(\"Clearing.\")\ntasks@uniq.clear()\nrequire tasks.length == 0 and tasks.capacity == 2 else => $abort(\"clear\")\ntasks@uniq.append(Task.init(2))\nConsole.writeLine(\"Done.\")";
 
-    private static readonly string TaskLiterals = Task.Replace("deinit => ()", "deinit\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            _ => Console.writeLine(\"Task 3 destroyed.\")", StringComparison.Ordinal) +
+    private static readonly string TaskLiterals = Task.Replace("drop => ()", "drop\n        match self.id\n            1 => Console.writeLine(\"Task 1 destroyed.\")\n            2 => Console.writeLine(\"Task 2 destroyed.\")\n            _ => Console.writeLine(\"Task 3 destroyed.\")", StringComparison.Ordinal) +
         "var tasks: Array<Task> = [Task.init(1), Task.init(2), Task.init(3)]\nrequire tasks.length == 3 and tasks.capacity >= 3 else => $abort(\"literal\")\nvar values: Array<i32> = [10, 20, 30]\nmatch values@uniq.pop()\n    .Some(let last) => require last == 30 else => $abort(\"pop\")\n    .None => $abort(\"empty\")\nlet names: Array<string> = [\"alpha\", \"beta\"]\nrequire names.length == 2 else => $abort(\"names\")\nlet flags: Array<bool> = [true, false, true]\nrequire flags.length == 3 else => $abort(\"flags\")\nlet dynamic = [1, 2, 3, 4]\nrequire dynamic.length == 4 and dynamic.capacity >= 4 else => $abort(\"dynamic\")\nlet x: u8 = 7\nvar mixed = [x, 1]\nmatch mixed@uniq.pop()\n    .Some(let one) => require one == 1 else => $abort(\"mixed\")\n    .None => $abort(\"mixed empty\")\nConsole.writeLine(\"Done.\")";
 
     // SPEC 4.6.1: a borrowed handle shares access for the metadata operation and is read through the reference.
@@ -33,20 +33,18 @@ public class ArrayBindingTest
             "func make() -> Array<i32> => []\nfunc take(values: Array<i32>) -> isize => values.length\nlet a = make()\nrequire a.length == 0 else => $abort(\"make\")\nlet b: Array<i32> = []\nrequire take(b@move) == 0 and take(make()) == 0 else => $abort(\"take\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // A Tuple or Dictionary field holding a handle would have to release it during its own destruction; struct Array
-    // fields are destroyed with the struct (ArrayMembersTest).
+    // SPEC 4.5, 16.3.2: a stored handle releases its contents with its containing aggregate.
     [Theory]
     [InlineData("let pair: (Array<i32>, i32) = ([], 1)")]
     [InlineData("struct Table\n    var entries: Dictionary<i32, i32> = [:]\nlet table = Table.init()")]
-    public void AggregatesHoldingHandlesAreNotGeneratedYet(string source)
+    public void AggregatesHoldingHandlesHaveRecursiveDestruction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out _));
-        Assert.Empty(output.ToString());
+        Assert.True(c.Emission.WriteIr(output, out var error), error);
+        Assert.NotEmpty(output.ToString());
     }
 
     // SPEC 4.5: Array is Non-Copy and its Owned classification follows the element Type.
@@ -94,14 +92,14 @@ public class ArrayBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
     }
 
-    // A nested independent literal is an Array of handles, which ownership analysis does not support yet (PLAN P29).
+    // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
-    public void NestedIndependentLiteralsAreRejectedByOwnershipAnalysis()
+    public void NestedIndependentLiteralsHaveRecursiveStorage()
     {
         var c = MinimalEmissionTest.Analyze("let nested = [[1], [2]]");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.Validate(out _));
     }
 
     // SPEC 4.7.4: the typed empty literal is a zeroed handle that allocates nothing; destruction releases the buffer.
@@ -164,10 +162,15 @@ public class ArrayBindingTest
             "var names: Array<string> = []\nnames@uniq.append(\"alpha\")\nnames@uniq.append(\"gamma\")\nnames@uniq.insert(1, \"beta\")\nlet second = names@uniq.remove(1)\nConsole.writeLine(second)\nmatch names@uniq.pop()\n    .Some(let last) => Console.writeLine(last)\n    .None => $abort(\"empty\")\nrequire names.length == 1 else => $abort(\"length\")\nnames@uniq.clear()\nnames@uniq.append(\"delta\")\nConsole.writeLine(\"ok\")",
             "beta\ngamma\nok\n");
 
-    // SPEC 4.7.1, 4.7.4: invalid positions and a negative reserve amount Abort before the collection changes.
+    // SPEC 4.7.1, 4.7.2: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
     [Theory]
-    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "Hello.kimi:4:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
-    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:15: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n")]
+    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
+    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(position)")]
+    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+
+    // SPEC 4.7.4: a negative reserve amount Aborts before the collection changes.
+    [Theory]
     [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
     public void MutationOperationsAbortOnInvalidPositionsAndAmounts(string name, string source, string stdout, string stderr)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, stderr);
@@ -190,7 +193,8 @@ public class ArrayBindingTest
     [InlineData("values@ref.append(1)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
-    [InlineData("let index: i32 = 0\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("values@uniq.insertAt(0, 1)", DiagnosticCode.UnresolvedBinding_Kd)]
     public void MutationOperationsRejectWrongReceiversAndArguments(string statement, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);

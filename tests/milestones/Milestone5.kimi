@@ -1,7 +1,7 @@
 // Milestone 5: exclusive/shared borrows, returned Origins, and Lifetime.
 struct Counter
     public var value: i32 = 0
-    deinit => Console.writeLine("Counter destroyed.")
+    drop => Console.writeLine("Counter destroyed.")
     // All fields have initializers, so a public init() is synthesized.
 
 struct CounterView {source}
@@ -12,7 +12,7 @@ struct CounterView {source}
 
     public func read(self: ref/Self) -> i32 => self.counter.value
 
-    deinit
+    drop
         // The referent must remain alive and unchanged through this use.
         if self.counter.value != 55
             $abort("Borrowed counter changed")
@@ -41,7 +41,7 @@ public func main()
         if view.read() != 55
             $abort("Unexpected sum")
         Console.writeLine("Borrowed sum is 55.")
-        // Mutating or moving counter here would conflict with view's deinit.
+        // Mutating or moving counter here would conflict with view's drop.
     // view is destroyed and its shared Loan has ended.
 
     add(counter@uniq, 1)

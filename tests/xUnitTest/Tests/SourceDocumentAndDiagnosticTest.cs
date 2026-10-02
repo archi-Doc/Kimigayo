@@ -110,9 +110,9 @@ public class SourceDocumentAndDiagnosticTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, sourceDocument);
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.NotEmpty(diagnostics);
-        Assert.All(diagnostics, x => Assert.Same(sourceDocument, x.SourceDocument));
+        Assert.All(diagnostics, x => Assert.Equal(sourceDocument.Path, x.Path));
     }
 
     [Fact]
@@ -121,14 +121,14 @@ public class SourceDocumentAndDiagnosticTest
         var console = new TestConsoleService();
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "let x = 1\r\nvar value = bad\n");
-        var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad token");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(1, 12), new(1, 15)));
-        var diagnostic = new Diagnostic(range, entry, sourceDocument);
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IndentationLevelMismatch_Kd);
 
-        kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);
+        kimigayo.Render(owner.Finalize(), string.Empty);
 
         Assert.Equal(
-            "Bad token : Test_Kd\n" +
+            "The indentation level does not match the expected level : IndentationLevelMismatch_Kd\n" +
             " --> test.kimi:2:13\n" +
             "  |\n" +
             "2 | var value = bad\n" +
@@ -144,15 +144,68 @@ public class SourceDocumentAndDiagnosticTest
         var console = new TestConsoleService();
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "abc\ndefg\nhij");
-        var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad range");
         var range = sourceDocument.GetTextSpan(new SourceRange(new(0, 1), new(2, 2)));
-        var diagnostic = new Diagnostic(range, entry, sourceDocument);
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(range, DiagnosticCode.IndentationLevelMismatch_Kd);
 
-        kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);
+        kimigayo.Render(owner.Finalize(), string.Empty);
 
         Assert.Contains("1 | abc\n  |  ^^\n", console.Output);
         Assert.Contains("2 | defg\n  | ^^^^\n", console.Output);
         Assert.Contains("3 | hij\n  | ^^\n", console.Output);
+    }
+
+    [Fact]
+    public void RendersTheLabelAfterTheLastUnderlineAndThenAdvice()
+    {
+        var console = new TestConsoleService();
+        var kimigayo = new Kimigayo(console);
+        var sourceDocument = new SourceDocument("test.kimi", "let ok = a < b < c\n");
+        var owner = new DiagnosticOwner();
+        owner.GetOrAddCollection("test.kimi").For(sourceDocument).Add(new(9, 9), DiagnosticCode.ChainedComparison_Kd);
+
+        kimigayo.Render(owner.Finalize(), string.Empty);
+
+        Assert.Equal(
+            "Comparison operators cannot be chained without parentheses : ChainedComparison_Kd\n" +
+            " --> test.kimi:1:10\n" +
+            "  |\n" +
+            "1 | let ok = a < b < c\n" +
+            "  |          ^^^^^^^^^ This comparison requires explicit grouping\n" +
+            "  |\n" +
+            "\n" +
+            "Advice: Use parentheses for a nested comparison, or combine separate comparisons with and\n" +
+            "\n",
+            console.Output);
+    }
+
+    // SPEC 23.4.7: related locations follow the excerpt, then the Note and the Advice.
+    [Fact]
+    public void RendersRelatedLocationsThenNoteAndAdvice()
+    {
+        var console = new TestConsoleService();
+        var kimigayo = new Kimigayo(console);
+        var record = new CheckDiagnostic("PrerequisiteUnavailable_Kd", DiagnosticSeverity.Error, DiagnosticCategory.Proof, "undecided", 0, null)
+        {
+            Note = "a note",
+            Advice = "an advice",
+            Related = [new("prerequisite", 0, new SourceSpan(4, 1), new SourceRange(new(1, 4), new(1, 5)), "the Type is formed"), new("prerequisite", -1, null, null, "the program has a valid startup")],
+        };
+
+        kimigayo.Render(new DiagnosticResult([record], [new("test.kimi", true)]), string.Empty);
+
+        Assert.Equal(
+            "undecided : PrerequisiteUnavailable_Kd\n --> test.kimi\n = prerequisite: test.kimi:2:5: the Type is formed\n = prerequisite: the program has a valid startup\n\nNote: a note\nAdvice: an advice\n\n",
+            console.Output);
+    }
+
+    [Fact]
+    public void ASilentServiceRendersNothing()
+    {
+        var owner = new DiagnosticOwner();
+        owner.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, "App.kimiproj", note: "failure");
+        Kimigayo.CreateSilent().Render(owner.Finalize(), string.Empty);
+        Assert.Single(owner.Finalize().Diagnostics);
     }
 
     private sealed class TestConsoleService : IConsoleService
@@ -189,8 +242,8 @@ public class SourceDocumentAndDiagnosticTest
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        var first = new SourceDocument("first.kimi", "struct Reading<T> {}\n    T is i32\n    T is not i32\n    public let value: i32\n");
-        var second = new SourceDocument("second.kimi", "struct Reading<T> {}\n    public let other: i32\n");
+        var first = new SourceDocument("first.kimi", "struct Reading<T>\n    T is i32\n    T is not i32\n    public let value: i32\n");
+        var second = new SourceDocument("second.kimi", "struct Reading<T>\n    public let other: i32\n");
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, first);
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, second);
@@ -207,9 +260,9 @@ public class SourceDocumentAndDiagnosticTest
         Assert.Contains(compilation.Binding.Issues, x => ReferenceEquals(x.Node, container) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
         compilation.Binding.ReportDiagnostics();
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.NotEmpty(diagnostics);
-        Assert.All(diagnostics, x => Assert.NotNull(x.SourceDocument));
-        Assert.Contains(diagnostics, x => ReferenceEquals(x.SourceDocument, first) && x.Span.Start == 0 && x.Entry.Name == nameof(DiagnosticCode.InvalidConstraint_Kd));
+        Assert.All(diagnostics, x => Assert.NotNull(x.Path));
+        Assert.Contains(diagnostics, x => x.Path == first.Path && x.Span.Start == 0 && x.Code == nameof(DiagnosticCode.InvalidConstraint_Kd));
     }
 }

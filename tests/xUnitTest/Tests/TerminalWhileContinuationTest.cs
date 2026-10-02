@@ -88,7 +88,7 @@ public class TerminalWhileContinuationTest
     [Fact]
     public void ReloadAndRepeatedAnalysisRebuildLoopAndMatchHistories()
     {
-        var source = Source("var x = 1", "if c => return else => exit", "choice: match c\n                true => yield to choice\n                false => x = 3", "let y = x");
+        var source = Source("var x = 1", "if c => return else => exit", "label choice: match c\n                true => yield to choice\n                false => x = 3", "let y = x");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         c = CompilationTestHelper.Reload(c);

@@ -45,9 +45,11 @@ public sealed partial class Binding
         return left == decisive || right == decisive ? decisive : left == both && right == both ? both : ConstraintProof.Unknown;
     }
 
+    // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
+    // Self is an obligation of every conformer rather than a closed proposition.
     private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || (contractSelf && type.Symbol?.Declaration is ContractKoto) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
+        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
         {
             return true;
         }
@@ -242,7 +244,7 @@ public sealed partial class Binding
             return proposition.Mask.Contains(subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload } intrinsic)
+        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned or IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload or IntrinsicKind.PrimitiveInteger } intrinsic)
         {
             return this.RequestCapability(proposition.Subject!, intrinsic, scope);
         }
@@ -298,7 +300,13 @@ public sealed partial class Binding
                     for (var j = 0; j < function.TypeConstraints.Count; j++)
                     {
                         var clause = (IsKoto)function.TypeConstraints[j];
-                        if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
+                        if (IsRecovery(clause, out _))
+                        {
+                            // The parser reported the prefix (SPEC 7.4); its parts are not judged again, and the clause rests on the Error.
+                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                            this.Fail(clause, BindingFailure.InvalidConstraint);
+                        }
+                        else if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[function]);
                         }
@@ -309,7 +317,7 @@ public sealed partial class Binding
                     // SPEC 8.4, Appendix D: a Contract declares Type parameters; Contract-owned Origin parameters are not introduced.
                     if (container is ContractKoto && container.OriginNames.Count != 0)
                     {
-                        Fail(container, BindingFailure.InvalidConstraint);
+                        this.Fail(container, BindingFailure.InvalidConstraint);
                     }
 
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
@@ -386,7 +394,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
-            Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.
             return;
         }
 
@@ -402,7 +410,7 @@ public sealed partial class Binding
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject ? BoundType.Unit : subject, semantics, bindingScope);
         if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
         {
-            Fail(clause, BindingFailure.Unsupported, true);
+            this.Fail(clause, BindingFailure.Unsupported, true);
             return;
         }
 
@@ -425,10 +433,11 @@ public sealed partial class Binding
 
         // Only propositions dependent on generic inputs or the conforming Self are premises.
         // Closed propositions are independently checked declaration obligations.
-        // SPEC 8.4.7.2: inside a Contract, `Self is [not] ObjectPayload` is a Self-dependent implementation
-        // requirement: a premise for the Contract's own signatures and an obligation of every conformer.
-        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && IsObjectPayloadRequirement(requirement);
-        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || (scope.Owner is ContractKoto && root?.Symbol?.Declaration is ContractKoto)));
+        // SPEC 8.4.7.2, 8.4.7: inside a Contract, `Self is [not] ObjectPayload`, `Self is Copy` and `Self is Owned` are
+        // Self-dependent implementation requirements: premises for the Contract's own signatures, derived for every Type
+        // that the Contract is available for, and obligations of every conformer.
+        var contractSelfClause = scope.Owner is ContractKoto && IsSelfConstraint(clause) && (IsObjectPayloadRequirement(requirement) || requirement.Contract?.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned);
+        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && DependentConstraint(requirement);
         input |= contractSelfClause;
         var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null && !DependentType(subject, unresolvedProjection: false);
@@ -436,7 +445,7 @@ public sealed partial class Binding
         if ((!validSubject && !unresolvedSubject) || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
-            Fail(clause, BindingFailure.InvalidConstraint);
+            this.Fail(clause, BindingFailure.InvalidConstraint);
         }
 
         clause.BoundConstraint = requirement;
@@ -511,7 +520,7 @@ public sealed partial class Binding
 
         if (result.Kind == ConstraintKind.Error)
         {
-            Fail(node, BindingFailure.InvalidConstraint);
+            this.Fail(node, BindingFailure.InvalidConstraint);
         }
         else if (result.HasUnresolved && node.BindingState != BindingState.Invalid)
         {
@@ -548,6 +557,7 @@ public sealed partial class Binding
         }
 
         environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
+        environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
         if (fact.Kind == ConstraintKind.Error)
         {
             environment.Invalid = true;
@@ -563,6 +573,7 @@ public sealed partial class Binding
     {
         var positive = false;
         var negative = false;
+        var parameterIdentity = HasParameterIdentity(scope);
         var normalized = this.NormalizeProofConstraint(proposition, scope);
         var negation = this.NegateConstraint(normalized);
         for (var current = scope; current is not null; current = current.Parent)
@@ -579,7 +590,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, normalized);
             negative |= this.AvailableConstraintFact(environment, negation);
-            if (environment.HasAssociatedProjection)
+            if (environment.HasAssociatedProjection || parameterIdentity)
             {
                 foreach (var fact in environment.Facts)
                 {
@@ -617,7 +628,7 @@ public sealed partial class Binding
 
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope)
     {
-        if (!constraint.HasAssociatedProjection)
+        if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
         {
             return constraint;
         }
@@ -646,13 +657,18 @@ public sealed partial class Binding
 
     private BoundType NormalizeProofType(BoundType type, BindingScope scope)
     {
+        if (type.ContainsParameter && HasParameterIdentity(scope))
+        {
+            type = this.SubstituteIdentity(type, scope, parametersOnly: true);
+        }
+
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
             return this.ContractType(type, scope);
         }
 
-        // Keep a symbolic subject's identity: an exact assumption is not a choice of one
-        // satisfying Type. Only associated identities (including nested ones) are reduced.
+        // Keep symbolic subjects symbolic: share facts within a parameter equivalence class, but do not turn a
+        // concrete-Type assumption into an extra proof/refutation rule. Associated identities are reduced as before.
         var count = type.Components.Count;
         if (count == 0)
         {

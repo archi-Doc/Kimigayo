@@ -2,7 +2,7 @@
 struct Resource
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Base resource destroyed.")
             2 => Console.writeLine("Derived resource destroyed.")
@@ -23,7 +23,7 @@ open struct Base
         self.count = count
         Console.writeLine("Base constructor finished.")
     public func marker() -> i32 => 25
-    deinit => Console.writeLine("Base deinit.")
+    drop => Console.writeLine("Base drop.")
 
 struct Derived : Base
     let resource: Resource = Construction.derivedField() // The base's private Name may be reused.
@@ -31,7 +31,7 @@ struct Derived : Base
     public init(count: i32, extra: i32) : base(count)
         self.extra = extra
         Console.writeLine("Derived constructor finished.")
-    deinit => Console.writeLine("Derived deinit.")
+    drop => Console.writeLine("Derived drop.")
 
 public func main()
     do

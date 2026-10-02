@@ -19,7 +19,7 @@ public class UnknownAttributeCertificateBindingTest
     public void UnknownAttributeCannotCertifyConformance(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
@@ -44,7 +44,7 @@ public class UnknownAttributeCertificateBindingTest
         const string invalidBase = "#Unknown\nopen struct Base\n";
         const string derived = "struct S: Base\n    Self is Marker\n";
         var c = MinimalEmissionTest.Analyze("contract Marker\n" + (reverseOrder ? derived + invalidBase : invalidBase + derived));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
     }
@@ -75,6 +75,7 @@ public class UnknownAttributeCertificateBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInvalidAttributeBindingAllocatesNothing()
     {

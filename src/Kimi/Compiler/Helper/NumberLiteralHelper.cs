@@ -34,7 +34,12 @@ public enum NumberLiteralParseResult : byte
 /// </summary>
 public static partial class NumberLiteralHelper
 {
+    // A decimal exponent saturates here: no source document holds that many digits, so every larger exponent truncates alike.
+    private const long ExponentLimit = 1L << 40;
+
     private static readonly SearchValues<char> FloatChars = SearchValues.Create(".eE");
+
+    private static readonly UInt128 TruncationThreshold = UInt128.MaxValue / 10;
 
     /// <summary>
     /// Determines whether a value fits in a signed 64-bit integer.
@@ -209,6 +214,104 @@ GeneralLiteral:
         return numberLiteral.IndexOfAny(FloatChars) >= 0 ?
             ParseFloat(numberLiteral, out value) :
             ParseDecimalInteger(numberLiteral, out value);
+    }
+
+    /// <summary>Truncates the exact value of a decimal floating-point literal toward zero (SPEC 13.5.4.2).</summary>
+    /// <remarks>The exponent moves the decimal point, the digits in front of it form the integer and the rest are dropped, so
+    /// neither a floating-point Type nor arbitrary-precision arithmetic takes part.</remarks>
+    /// <param name="text">The literal text with a fraction, an exponent or both; separators are ignored.</param>
+    /// <param name="magnitude">The truncated magnitude.</param>
+    /// <returns><see langword="false"/> when the truncated magnitude exceeds 128 bits.</returns>
+    public static bool TryTruncateDecimal(ReadOnlySpan<char> text, out UInt128 magnitude)
+    {
+        magnitude = 0;
+        var marker = text.IndexOfAny('e', 'E');
+        var mantissa = marker < 0 ? text : text[..marker];
+        var point = mantissa.IndexOf('.');
+        var integral = point < 0 ? mantissa : mantissa[..point];
+        var fraction = point < 0 ? default : mantissa[(point + 1)..];
+
+        // The number of mantissa digits in front of the decimal point once the exponent has moved it.
+        long count = 0;
+        foreach (var c in integral)
+        {
+            if (c != '_')
+            {
+                count++;
+            }
+        }
+
+        if (marker >= 0)
+        {
+            var tail = text[(marker + 1)..];
+            var negative = tail[0] == '-';
+            long exponent = 0;
+            foreach (var c in tail[(tail[0] is '+' or '-' ? 1 : 0)..])
+            {
+                if (c != '_' && exponent < ExponentLimit)
+                {
+                    exponent = (exponent * 10) + (uint)(c - '0');
+                }
+            }
+
+            count += negative ? -exponent : exponent;
+        }
+
+        long index = 0;
+        if (!AccumulateTruncated(integral, count, ref index, ref magnitude) || !AccumulateTruncated(fraction, count, ref index, ref magnitude))
+        {
+            return false;
+        }
+
+        // The exponent may place digits beyond the written ones; they are zeros, and zero itself needs none of them.
+        if (magnitude == 0 || index >= count)
+        {
+            return true;
+        }
+
+        if (count - index > 39)
+        {
+            return false;
+        }
+
+        for (; index < count; index++)
+        {
+            if (magnitude > TruncationThreshold)
+            {
+                return false;
+            }
+
+            magnitude *= 10;
+        }
+
+        return true;
+    }
+
+    private static bool AccumulateTruncated(ReadOnlySpan<char> digits, long count, ref long index, ref UInt128 magnitude)
+    {
+        foreach (var c in digits)
+        {
+            if (c == '_')
+            {
+                continue;
+            }
+
+            if (index >= count)
+            {
+                return true;
+            }
+
+            index++;
+            var digit = (uint)(c - '0');
+            if (magnitude > TruncationThreshold || (magnitude == TruncationThreshold && digit > 5))
+            {
+                return false;
+            }
+
+            magnitude = (magnitude * 10) + digit;
+        }
+
+        return true;
     }
 
     private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)

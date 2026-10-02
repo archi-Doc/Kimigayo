@@ -16,7 +16,7 @@ public class AssociatedProjectionCertificateBindingTest
     public void LateInvalidWitnessCannotCertifyAssociatedDefinition(int form)
     {
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + Consumer(form));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
         Assert.False(c.Bind().IsComplete);
@@ -49,7 +49,7 @@ public class AssociatedProjectionCertificateBindingTest
     public void ForwardWitnessDependenciesAlsoInvalidate(int form)
     {
         var c = MinimalEmissionTest.Analyze(Consumer(form) + "\n" + Prefix("internal"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
     }
@@ -98,6 +98,7 @@ public class AssociatedProjectionCertificateBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAssociatedProofsAllocateNothing()
     {

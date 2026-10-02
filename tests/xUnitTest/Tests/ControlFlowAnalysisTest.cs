@@ -47,7 +47,7 @@ public class ControlFlowAnalysisTest
         var compilation = Compilation.CreateForTest();
         var tree = compilation.Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, "var i3 = if (Func()) => 1 else => 0");
-        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(tree));
         var analysis = compilation.AnalyzeControlFlow(new ConditionCallTypes(returnType));
         Assert.Equal(hasError, analysis.Issues.Count > 0);
         var condition = analysis.Nodes.Single(x => x.Key is ParenthesizedKoto);
@@ -69,7 +69,7 @@ public class ControlFlowAnalysisTest
         _ = hasError;
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
     [Theory]
@@ -83,10 +83,10 @@ public class ControlFlowAnalysisTest
     [InlineData("let x = if true => 1\nelse\n    yield 2")]
     [InlineData("let x = loop\n    exit loop\n        continue")]
     [InlineData("let x = match true\n    true => 1\n    false => 2")]
-    [InlineData("outer: loop\n    loop\n        exit to outer")]
+    [InlineData("label outer: loop\n    loop\n        exit to outer")]
     [InlineData("func f(flag: bool) => match flag\n    true => 1\n    false => 2")]
     [InlineData("func f() -> i32\n    if false\n        return -1\n    return 1")]
-    [InlineData("func f() -> i32\n    work: do\n        exit to work\n    return 1")]
+    [InlineData("func f() -> i32\n    label work: do\n        exit to work\n    return 1")]
     [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1")]
     [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1")]
     [InlineData("let answer = if true\n    require false else => yield 0\n    yield 1\nelse => 2")]
@@ -114,9 +114,9 @@ public class ControlFlowAnalysisTest
     [InlineData("let x = match true\n    true => 1", "exhaustive")]
     [InlineData("func f() -> i32\n    return loop\n        if false\n            exit \"text\"", "incompatible")]
     [InlineData("func f() -> i32\n    return 1\n    1 + \"text\"", "incompatible")]
-    [InlineData("outer: loop\n    outer: loop\n        continue", "overlaps")]
+    [InlineData("label outer: loop\n    label outer: loop\n        continue", "overlaps")]
     [InlineData("loop\n    func f()\n        exit", "No valid target")]
-    [InlineData("outer: while (exit to outer)\n    ()", "No valid target")]
+    [InlineData("label outer: while (exit to outer)\n    ()", "No valid target")]
     [InlineData("func f() -> i32\n    return 1\n    -\"text\"", "numeric")]
     [InlineData("func f() -> i32\n    return 1\n    true + false", "numeric")]
     [InlineData("let x: Never = loop\n    if false\n        exit 1", "incompatible")]
@@ -220,7 +220,7 @@ public class ControlFlowAnalysisTest
     [Fact]
     public void ResolvesHeadersOutsideTheirOwnBoundary()
     {
-        var analysis = Analyze("let result = outer: loop\n    while (exit to outer: 1)\n        continue");
+        var analysis = Analyze("let result = label outer: loop\n    while (exit to outer 1)\n        continue");
         Assert.Empty(analysis.Issues);
         var exitTarget = analysis.Targets.Single(x => x.Key is ExitKoto).Value;
         Assert.IsType<LoopKoto>(exitTarget);
@@ -275,14 +275,14 @@ public class ControlFlowAnalysisTest
     {
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
     }
 
     private static ControlFlowAnalysis Analyze(string source)
     {
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         return compilation.AnalyzeControlFlow();
     }
 

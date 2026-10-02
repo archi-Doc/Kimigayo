@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using Kimi.Compiler;
 
 namespace Kimi;
 
@@ -52,7 +53,7 @@ internal static class DependencyLock
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporary, path, true);
+            ArtifactFiles.Replace(temporary, path);
             return true;
         }
         finally

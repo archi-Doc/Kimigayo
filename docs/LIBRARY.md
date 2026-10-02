@@ -26,6 +26,7 @@ These are compiler identities, not user-implementable replacements.
 | `contract Callable` | `F is Callable<r, (A...) -> R>` requires a call with receiver mode `ref`, `uniq` or `owner`. Omitting `r` means `ref`. | [Callable constraints](spec/08-generics-constraints-and-contracts.md#86-callable-constraints) |
 | `contract Sealed` | The outer semantics are owner and the Core is a valid, non-open, non-Never Type. It does not imply Copy or Owned. | [Sealed](spec/08-generics-constraints-and-contracts.md#8471-sealed) |
 | `contract ObjectPayload` | The value may become a new object payload: owner semantics, a non-Never Core, and no applicable opt-out. Open structs may qualify. | [ObjectPayload](spec/08-generics-constraints-and-contracts.md#8472-objectpayload) |
+| `contract PrimitiveInteger` | Exactly the twelve owner integer Types. On a Type parameter it supplies their common operators, comparisons, shifts, checked `@` conversions, `@wrap`, the formation of `Wrapping<T>`, value read, Copy, Owned, Equatable, Comparable, Utf8Format, Position and literals 0 through 127; unary `-` is unavailable on `T` itself. | [PrimitiveInteger](spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger) |
 
 ### 1.2. Comparison
 
@@ -49,6 +50,25 @@ The floating-point Equatable mapping treats all NaNs as equal and signed zeros a
 
 `try` propagates `None` or `Err` from a compatible enclosing function; Result propagation keeps the same error Type. Payload Origins and Loans follow ordinary enum rules.
 
+### 1.3.1. Loan<T>
+
+[Specification: Kimi.Loan<T>](spec/15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins).
+
+| Declaration | Guarantee |
+| --- | --- |
+| `struct Loan<T>` | Zero-sized; formed only over a complete `ref`, `uniq`, `objref` or `objuniq` borrow Type `T`. A `Loan<T>` Field is analyzed as storing a `T`: the slots it uses take their Loan requirements and variance from it and are not Phantom Origins. It has no address, reads nothing, grants no access, and is Copy exactly when `T` is Copy. |
+| `Loan<T>.init(value: T)` | Safe. Keeps the dependency of `value` (a `ref` is Copied, a `uniq` transferred) and creates no authority. |
+
+### 1.4. Wrapping integers
+
+[Specification: wrapping integer Types](spec/03-types-and-values.md#3111-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals).
+
+| Declaration | Guarantee |
+| --- | --- |
+| `struct Wrapping<T>`, `T is PrimitiveInteger` | A Scalar with the representation, signedness, order, layout, ABI, formatting and comparison of `T`, whose arithmetic wraps modulo 2ᴺ instead of Aborting; division by zero and invalid shift counts still Abort. Unary `-` exists for every `T`. No members or constructor: enter and leave through `@Wrapping<T>`/`@T` (same `T`), `@wrap<…>` or `@bits<…>`. Not PrimitiveInteger and not a Position, so it is never an index, range boundary, length or shift count. |
+
+The wrapping conversion `@wrap<U>` and the bit conversion `@bits<U>` are language operations, not library declarations.
+
 ## 2. Iteration and Indexing
 
 ### 2.1. Iterator Contracts
@@ -63,11 +83,12 @@ contract LendingIterator
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
+    effect LendingIterator.next preserves results
 ```
 
-`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and an effect bound that permits retaining earlier items across later calls. External source dependencies still apply.
+`next` exclusively borrows the iterator so it can advance its state. A lending item may borrow that call's receiver and prevent another call while retained. Iterator instead publishes a step-independent Item and declares `preserves results` for `next` ([§8.4.10.3](spec/08-generics-constraints-and-contracts.md#84103-preserves-results)): a later `next` on the same iterator conflicts with no Loan an earlier item keeps, so callers may retain earlier items across later calls. LendingIterator declares no bound. External source dependencies still apply.
 
-`for` stops at the first `None`. A general LendingIterator, including a user Iterator, may later return `Some`. Standard collection, Slice and ResolvedRange iterators remain exhausted after `None`.
+`for` stops at the first `None`. A general LendingIterator, including a user Iterator, may later return `Some`. Standard collection, Slice and range iterators remain exhausted after `None`.
 
 ### 2.2. Iteration Entries and Adapters
 
@@ -111,6 +132,7 @@ For an owning collection `values`, a bare subject uses Iterable, `values@uniq` u
 | `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
 | `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
+| `Range<T, T>`, `ClosedRange<T, T>`, `T is PrimitiveInteger` | `T` | `T` | `T` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
 Sequence iteration uses index order; Dictionary iteration uses insertion order. Dictionary keys remain shared during exclusive iteration. Nested references are not flattened. Owning collection iterators destroy unreturned elements or entries; borrowing iterators do not destroy the collection.
@@ -132,27 +154,35 @@ These Contracts provide indexed Places for shared access and exclusive access. T
 
 ## 3. Positions, Views and Collections
 
-### 3.1. Index and Ranges
+### 3.1. Positions and Ranges
 
-[Specification: Index](spec/04-arrays-indexing-and-slices.md#462-index), [ranges](spec/04-arrays-indexing-and-slices.md#463-range-and-resolvedrange) and [bounds](spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure).
+[Specification: positions](spec/04-arrays-indexing-and-slices.md#462-positions), [ranges](spec/04-arrays-indexing-and-slices.md#463-ranges) and [bounds](spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).
 
-Index, Range and ResolvedRange are Copy, Owned and Equatable. None provides Comparable or arithmetic.
+The closed Contracts `Position` and `PositionRange` fix the position and range Types; no other Type can conform, and integers conform to `Position` without gaining members.
+
+| Contract | Member | Guarantee |
+| --- | --- | --- |
+| `Position: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<isize>` | Resolves to a boundary in `[0, length]`, or `None` (also when `length < 0`). Implies Copy and Owned. The integer Types, `FromEnd<T>`, `Start` and `End` conform, a wide value being checked before any truncation; `T is PrimitiveInteger` implies `T is Position`. |
+| `PositionRange: Equatable, Utf8Format` | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>` | Resolves to a validated interval, or `None`. Implies Copy and Owned. `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform. |
+
+The position and range Types are Copy, Owned and Equatable. The non-integer position Types and the range Types have no public constructor and provide neither Comparable nor arithmetic; integer positions keep their integer operations. Every one other than the integers also publishes `resolve(self: Self, length: isize)`, which Aborts where `tryResolve` returns None.
 
 | Type | Member | Guarantee |
 | --- | --- | --- |
-| `Index` | `offset: isize`, `isFromEnd: bool` | Direction and nonnegative distance. |
-| | `init(offset: isize, fromEnd: bool = false)` | Negative offsets Abort at construction. `^n` constructs a from-end Index. |
-| | `resolve(self: ref/Self, length: isize) -> isize` | Returns a boundary in `[0, length]`; invalid length or bounds Abort. |
-| | `tryResolve(self: ref/Self, length: isize) -> Option<isize>` | Returns None for invalid length or bounds. |
-| `Range` | `start: Index`, `end: Index`, `isInclusive: bool` | Unresolved boundaries; no target-independent length and no iteration. |
-| | `resolve(self: ref/Self, length: isize) -> ResolvedRange` | Resolves and validates the interval; invalid length or bounds Abort. |
-| | `tryResolve(self: ref/Self, length: isize) -> Option<ResolvedRange>` | Returns None for invalid length or bounds. |
-| `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. |
-| | `init(! start: isize, end: isize)` | Invalid bounds Abort. |
+| `FromEnd<T>`, `T is PrimitiveInteger` | `offset: T` | `^x` stores `x` unchecked; it resolves to `length - offset` when `0 <= offset <= length`. Equality compares offsets; formatted as `^offset`. |
+| `Start`, `End` | (none) | Zero-sized boundaries of an omitted range start and end, resolving to `0` and `length`; all values of each are equal; formatted as nothing. |
+| `Range<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The half-open interval of `..`; resolves to `[s, e)` when the resolved `s <= e`. Possibly reversed; no `length` or `isEmpty`. Formatted as `start..end`. |
+| `ClosedRange<S, E>`, `S is Position`, `E is Position` | `start: S`, `end: E` | The closed interval of `..=`; its end resolves as an element position `q`, giving `[s, q + 1)` when `s <= q < length`. Formatted as `start..=end`. |
+| | `iterate`, `iterateUniq`, `intoIterator` | Conditional entries of both range Types, under `S is PrimitiveInteger` and `E is S`: return `RangeIterator<S>` or `ClosedRangeIterator<S>`, which copy the boundaries; a reversed range Aborts at the entry. |
+| `RangeIterator<T>`, `ClosedRangeIterator<T>` | `next(self: uniq/Self) -> Option<T>` | Non-Copy Iterators from `start` upward in unit steps, the closed one ending with `end` without computing past it, even at the maximum of `T`; both stay exhausted after None. No public constructor. |
+| `ResolvedRange` | `start: isize`, `end: isize`, `length: isize`, `isEmpty: bool` | Half-open interval with `0 <= start <= end <= isize.MaxValue`; length is end minus start. Only `indices`, `resolve` and `tryResolve` produce it. |
+| | `tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`, `resolve(self: Self, length: isize) -> ResolvedRange` | Its `PositionRange` conformance: the interval itself when `end <= length`; otherwise None, or Abort for `resolve`. |
+| | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes `start..end`. |
+| | `iterate`, `iterateUniq`, `intoIterator` | Return `RangeIterator<isize>` over `start` through `end - 1`; they never Abort. |
 
-Range is constructed only by syntax: `a..b`, `a..=b`, `a..`, `..b`, `..=b` or `..`. It has no specified public constructor or factory. Negative integer boundaries Abort immediately; ordering is checked on resolution. Omitted start and end normalize to `0` and `^0`.
+Prefix `^` and range syntax are the only constructors of `FromEnd<T>`, `Start`, `End`, `Range<S, E>` and `ClosedRange<S, E>`, through the internal group `PositionSyntax`. Each boundary has its own Type; a literal-only boundary takes the `S` or `E` of an expected range, else the integer Type of the other boundary, else `i32`. Nothing is checked at construction; resolution, indexing and iteration check their inputs.
 
-`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares Index direction/offset, normalized Range fields, or ResolvedRange endpoints; it does not compare coincidentally equivalent ranges across Types.
+`^0` is the end boundary, not an element. Applying a ResolvedRange to storage rechecks that storage's bounds. Equality compares boundaries of one Type; ranges of different shapes or boundary Types cannot be compared.
 
 ### 3.2. Slice<T> {source}
 
@@ -165,19 +195,22 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | Member | Guarantee |
 | --- | --- |
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Metadata without element access. |
-| `s[i]`, where i is `isize or Index` | `place ref/T during source`; invalid element bounds Abort. |
-| `s[r]`, where r is `Range or ResolvedRange` | `Slice<T> during source`; invalid range bounds Abort. |
-| `tryGet(self: Self, index: isize or Index) -> Option<ref/T during source>` | None for an invalid element index. |
-| `trySlice(self: Self, range: Range or ResolvedRange) -> Option<Slice<T> during source>` | None for invalid range bounds. |
-| `splitAt(self: Self, index: isize or Index) -> (Slice<T> during source, Slice<T> during source)` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
-| `trySplitAt(self: Self, index: isize or Index) -> Option<(Slice<T> during source, Slice<T> during source)>` | The same split, returning None for an invalid boundary. |
+| `s[i]`, where i is a position | `place ref/T during source`; invalid element bounds Abort. |
+| `s[r]`, where r is a range | `Slice<T> during source`; invalid range bounds Abort. |
+| `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>`, `P is Position` | None unless `index` resolves to an element position. |
+| `trySlice<R>(self: Self, range: R) -> Option<Slice<T> during source>`, `R is PositionRange` | None when `range` does not resolve against the length. |
+| `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)`, `P is Position` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
+| `trySplitAt<P>(self: Self, index: P) -> Option<(Slice<T> during source, Slice<T> during source)>`, `P is Position` | The same split, returning None for an invalid boundary. |
 | `contains(self: Self, value: ref/T) -> bool`, `T is Equatable` | Whether some element equals `value`; visits elements in index order and stops at the first match. |
 | `firstIndex(self: Self, of: ref/T) -> Option<isize>`, `T is Equatable` | The first index whose element equals the value, or None. |
 | `firstIndex<F>(self: Self, matching: F) -> Option<isize>`, `F is Callable<(ref/T) -> bool>` | The first index for which `matching` returns true, or None. |
+| `iterate(self: ref/Self during handle) -> SliceIterator<T> during source` | The Iterable entry: a shared enumeration in index order. Items keep `source`, not the borrow of the handle. |
+| `iterateUniq(self: uniq/Self during handle) -> SliceIterator<T> during source` | The UniqIterable entry: exclusive access lends only the handle, so the items stay shared. |
+| `intoIterator(self: Self) -> SliceIterator<T> during source` | The IntoIterable entry: the same shared enumeration from a Slice value, such as a range selection. |
 
-Split boundaries include zero and length. Both results retain the source dependency, including empty results. Indexable and the three iteration conformances follow §2.
+Split boundaries include zero and length. Both results retain the source dependency, including empty results. `SliceIterator<T> {source}` is an `Iterator` whose `Item` is `ref/T during source`; it copies the handle and keeps a position. Indexable and the iteration modes follow §2.
 
-Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` returns None, but `tryGet(^(-1))` Aborts while constructing the argument.
+Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` and `tryGet(^(-1))` return None, but an Abort while evaluating an argument still Aborts.
 
 ### 3.3. Common Dynamic Collection Rules
 
@@ -210,31 +243,46 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
 | `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
-| `values[i]`, where i is `isize or Index` | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
-| `values[r]`, where r is `Range or ResolvedRange` | A shared Slice; invalid bounds Abort. |
+| `values[i]`, where i is a position | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
+| `values[r]`, where r is a range | A shared Slice; invalid bounds Abort. |
 | `append(self: uniq/Self, value: T) -> ()` | Adds at the end; amortized O(1). |
-| `insert(self: uniq/Self, index: isize or Index, value: T) -> ()` | Inserts at a boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
+| `insert<P>(self: uniq/Self, index: P, value: T) -> ()`, `P is Position` | Inserts at the resolved boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
 | `pop(self: uniq/Self) -> Option<T>` | Returns the last element, or None when empty. O(1). |
-| `remove(self: uniq/Self, index: isize or Index) -> T` | Returns the removed element, preserving order; invalid bounds Abort. O(1 + n). |
+| `remove<P>(self: uniq/Self, index: P) -> T`, `P is Position` | Returns the element at the resolved element position, preserving order; invalid bounds Abort. O(1 + n). |
 | `clear(self: uniq/Self) -> ()` | Destroys elements in reverse index order and retains capacity. |
 | `isEmpty: bool` | Whether `length` is zero. |
 | `first`, `last: Option<ref/T during self>` | The first or last element, or None when empty. |
-| `tryGet(self, index: isize or Index) -> Option<ref/T during self>` | A shared element reference, or None for an invalid index. O(1). |
-| `tryGetUniq(self: uniq/Self, index: isize or Index) -> Option<uniq/T during self>` | An exclusive element reference, or None for an invalid index. O(1). |
-| `swap(self: uniq/Self, first: isize, second: isize) -> ()` | Exchanges two elements without Copy or destruction; equal indices change nothing; invalid indices Abort. O(1). |
-| `swapRemove(self: uniq/Self, index: isize) -> T` | Removes the element; the last element takes its position. O(1), order not preserved. |
+| `tryGet<P>(self, index: P) -> Option<ref/T during self>`, `P is Position` | A shared element reference, or None for an invalid position. O(1). |
+| `trySlice<R>(self, range: R) -> Option<Slice<T> during self>`, `R is PositionRange` | A shared Slice, or None when `range` does not resolve. O(1). |
+| `splitAt<P>(self, index: P)`, `trySplitAt<P>(self, index: P)`, `P is Position` | The splits of §3.2 on `self[..]`, with results `during self`. |
+| `tryGetUniq<P>(self: uniq/Self, index: P) -> Option<uniq/T during self>`, `P is Position` | An exclusive element reference, or None for an invalid position. O(1). |
+| `tryGetPairUniq<P, Q>(self: uniq/Self ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during self, uniq/T during self)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation. |
+| `swap<P, Q>(self: uniq/Self, first: P, second: Q) -> ()`, `P is Position`, `Q is Position` | Exchanges two elements without Copy or destruction; positions resolving to one element change nothing; invalid positions Abort. O(1). |
+| `swapRemove<P>(self: uniq/Self, index: P) -> T`, `P is Position` | Removes the element; the last element takes its position. O(1), order not preserved. |
 | `truncate(self: uniq/Self, length: isize) -> ()` | Destroys the elements from `length` in decreasing index order; a negative length Aborts. |
 | `appendAll(self: uniq/Self, other: Array<T>) -> ()` | Moves every element of `other` to the end in order. |
 | `appendCopies(self: uniq/Self, values: Slice<T>) -> ()`, `T is Copy` | Copies each element of `values` to the end in order. |
 | `reverse(self: uniq/Self) -> ()` | Reverses the order. O(1 + n). |
 | `removeAll<F>(self: uniq/Self, matching: F) -> ()`, `F is Callable<(ref/T) -> bool>` | Removes matching elements, keeping the others' order. |
-| `sort(self: uniq/Self) -> ()`, `T is Comparable` | Sorts in nondecreasing `compare` order; not stable, no allocation. |
+| `sort(self: uniq/Self) -> ()`, `T is Comparable` | Kimigayo heapsort in nondecreasing `compare` order; not stable, no allocation or element Copy/destruction. |
 | `sort<F>(self: uniq/Self, by: F) -> ()`, `F is Callable<(ref/T, ref/T) -> i32>` | The same with `by` as the comparison. |
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once, so earlier items stay valid across later steps. |
-| `intoIterator(self: Self) -> ArrayOwningIterator<T>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in index order and frees the buffer. |
+| `intoIterator(self: Self) -> ArrayOwningIterator<T>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and frees the buffer. |
 
 `ArrayIterator<T> {source}`, `ArrayUniqIterator<T> {source}` and `ArrayOwningIterator<T>` are the standard Array iterators: each is an `Iterator` whose `Item` is `ref/T during source`, `uniq/T during source` or `T`, `next` returns the next untaken element and stays `None` once exhausted, and each keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. Capacity operations are in §3.3; indexing Contracts and iteration modes are in §2.
+
+A fixed array `[N of T]` has no source declaration. Its members are receiver functions of the internal group `Kimi.Storage.FixedArray`, public on any `[N of T]` receiver, and the compiler records the entry conformances they implement (SPEC §22.1).
+
+| Member | Guarantee |
+| --- | --- |
+| `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
+| `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
+| `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
+| `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
+| `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
+
+`FixedArrayOwningIterator<T, A>` is the standard owning fixed-array iterator: an `Iterator` whose `Item` is `T`, holding the array `A` inline in its private storage-boundary Field. It names the array Type `A` rather than `N` because only functions have length slots (SPEC §4.4).
 
 ### 3.5. Dictionary<K, V>, where K is Equatable
 
@@ -244,12 +292,19 @@ An owning map constructed with `[:]` or `[k: v, ...]`. It preserves insertion or
 
 | Member | Guarantee |
 | --- | --- |
+| `index(self: ref/Self, key: ref/K) -> place ref/V during self` | The Indexable entry publishes the existing value Place; an absent key Aborts at the access. |
+| `indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self` | The UniqIndexable entry publishes the value exclusively; the search key is not a result dependency. |
 | `dict[key]` | A Place for the existing value; an absent key Aborts. Indexed replacement preserves the stored key and position. |
 | `tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>` | Appends a new entry; a duplicate returns both inputs in Err and leaves the collection unchanged. |
 | `insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>` | A new entry returns None. Replacement returns the old value, retains the stored key and position, and destroys the unused input key. |
 | `remove(self: uniq/Self, key: ref/K) -> Option<(K, V)>` | Returns the stored pair, or None when absent. |
 | `tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>` | Returns a shared value reference, or None when absent. |
 | `clear(self: uniq/Self) -> ()` | Destroys entries in reverse insertion order, each value before its key; retains capacity. |
+| `iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source` | The Iterable entry: a shared enumeration of the live entries in insertion order. |
+| `iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source` | The UniqIterable entry: keys stay shared and each value is lent exclusively exactly once, so earlier items stay valid across later steps. |
+| `intoIterator(self: Self) -> DictionaryOwningIterator<K, V>` | The IntoIterable entry: each entry is transferred out once as `(K, V)`; unreturned entries are destroyed with the iterator in reverse insertion order, each value before its key. |
+
+`DictionaryIterator<K, V> {source}` and `DictionaryUniqIterator<K, V> {source}` are the standard borrowing Dictionary iterators and `DictionaryOwningIterator<K, V>` the owning one: each is an `Iterator` whose `Item` is `(ref/K during source, ref/V during source)`, `(ref/K during source, uniq/V during source)` or `(K, V)`; `next` lends the next live entry once, stays `None` once exhausted, and keeps the internal storage boundary (SPEC §22.1.2.5) in a private Field. `for` over a Dictionary selects these entries by its Subject mode.
 
 Duplicate literal keys in the specification's statically comparable literal forms are compile-time errors. Other duplicates Abort at runtime after evaluating the key, before its value or later entries. Capacity operations are in §3.3; iteration modes are in §2.
 
@@ -264,7 +319,7 @@ All lengths and capacities here are byte counts of Type `isize`. [The formatting
 | Declaration | Member | Guarantee |
 | --- | --- | --- |
 | `struct BufferFull` | `init()` | Stateless Copy error for insufficient destination capacity. |
-| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>` | Reserves a Window dependent on the receiver borrow. Its effect bound permits only authority supplied through self. |
+| `contract BufferWriter` | `reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>`, `effect confined` | Reserves a Window dependent on the receiver borrow. `confined` ([§8.4.10.2](spec/08-generics-constraints-and-contracts.md#84102-confined)) permits only authority supplied through the inputs: no mutable static, Console output or unclassified call. |
 | `contract Utf8Format` | `format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>` | Writes a complete UTF-8 representation on success, with no output dependency on the input borrow. |
 
 User formatting may allocate or have side effects. Each adapter write calls it once, without a size pre-pass or retry. Success must not abbreviate output to fit.
@@ -393,6 +448,19 @@ The following functions belong to `Intrinsics`:
 
 Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure and reference-count overflow Abort.
 
+### 5.4. Raw Storage
+
+[Specification: raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations). All functions belong to `Raw`.
+
+| Function | Guarantee |
+| --- | --- |
+| `allocate<T>(count: isize) -> raw/T` | Safe. Allocates uninitialized storage for `count` elements; a negative count, an overflow of `count * stride(T)` or an allocation failure Aborts. Zero bytes allocate nothing and return a nonnull address aligned for `T`. An element alignment above 16 is unsupported at compile time. |
+| `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any element; null and zero-byte results are ignored. |
+| `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into live, aligned, writable storage that holds no value, destroying nothing. |
+| `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type. A positive length requires nonnull, aligned, initialized and valid elements that stay unwritten for `s`; a zero length accepts any storage. |
+
+Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses.
+
 ## 6. Console and Test Utilities
 
 | Function | Guarantee | Specification |
@@ -401,11 +469,41 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 | `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/utf8-formatting.md#61-console-output) |
 | `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/testing-profile.md#environment-and-temporary-directory) |
 
-## 7. Current Source Differences
+## 7. Windows and Time
+
+[Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time).
+
+`Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
+
+| Function | Guarantee |
+| --- | --- |
+| `Windows.queryPerformanceCounter(value: uniq/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
+| `Windows.queryPerformanceFrequency(value: uniq/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
+
+`Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
+
+| Declaration | Guarantee |
+| --- | --- |
+| `Duration.init(! microseconds: u64)` | Stores the exact input. |
+| `Duration.rawMicroseconds: u64` | Exact, immutable whole-microsecond value. |
+| `Duration.seconds: f64` | Converts the value to seconds. |
+| `Duration.milliseconds: f64` | Converts the value to milliseconds. |
+| `Duration.microseconds: f64` | Converts the value to floating-point microseconds. |
+| `Stopwatch.init()` | Stopped, zero accumulated time; no clock access. |
+| `Stopwatch.isRunning: bool` | Whether an interval is active. |
+| `Stopwatch.start(self: uniq/Self) -> ()` | Starts or resumes; no effect if already running. |
+| `Stopwatch.stop(self: uniq/Self) -> ()` | Adds the current interval's whole microseconds and stops; no effect if stopped. |
+| `Stopwatch.reset(self: uniq/Self) -> ()` | Clears time and stops; no clock access. |
+| `Stopwatch.restart(self: uniq/Self) -> ()` | Clears time and starts a new interval. |
+| `Stopwatch.elapsed(self: ref/Self) -> Duration` | Snapshot without state mutation; includes the running interval's whole microseconds. |
+
+Each stopped interval discards its sub-microsecond fraction. Floating-point Properties may round; rawMicroseconds does not. Clock failure, nonpositive frequency, a negative/reversed counter and microsecond overflow Abort. Frequency initializes once on first clock use through the normal static initialization protocol.
+
+## 8. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 
-[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item`; complete verification of the specified independence effect bound remains P28 work.
+[LendingIterator.kimi](../src/Kimi/Library/LendingIterator.kimi) declares the specified `LentItem(step)` formation domain and `next` signature; direct and generic calls preserve borrowed Option payloads and their Loans. [Iterator.kimi](../src/Kimi/Library/Iterator.kimi) refines it by fixing every `LentItem(step)` to `Item` and declares `preserves results` for `next`, which every conformance is checked against.
 
 [Iterable.kimi](../src/Kimi/Library/Iterable.kimi) and [UniqIterable.kimi](../src/Kimi/Library/UniqIterable.kimi) declare the borrowing entries of §2: `IteratorType(source)` requires LendingIterator and publishes the shared or exclusive Self formation domain. Direct and generic entry calls and user `for` dispatch preserve the source borrow and the item Type returned by `next`; standard storage/adapter migration remains P28 work.
 
@@ -413,8 +511,6 @@ The source library currently has the following differences from the required API
 
 | Source interface | Difference and intended treatment |
 | --- | --- |
-| `Index.init(! unchecked: isize)` in [Core.kimi](../src/Kimi/Library/Core.kimi) | A normalization helper can admit negative values, unlike specified Index construction. It must not be treated as the specified constructor. |
-| `Range.between`, `from`, `to`, `all`, `through`, `upTo` in [Core.kimi](../src/Kimi/Library/Core.kimi) | Public helpers used by syntax lowering. The specified construction interface is range syntax only. |
 | `Slice.iterate(self: Self) -> SliceIterator<T> during self.source` and `SliceIterator.init(values: Slice<T> during source)` in [Slice.kimi](../src/Kimi/Library/Slice.kimi) | Source convenience interfaces. The required iteration entries and item guarantees are in §2; no concrete iterator constructor is required. |
 
 `SliceIterator<T> {source}` is the current public concrete Slice iterator. Its `next(self: uniq/Self) -> Option<ref/T during source>` returns elements in order and retains the backing Loan. Source declaration shape and compiler-provided support may differ during implementation; use [STATUS.md](STATUS.md) to assess support.

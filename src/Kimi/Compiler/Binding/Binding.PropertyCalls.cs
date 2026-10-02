@@ -73,7 +73,7 @@ public sealed partial class Binding
         if (property.Getter.Result is not { } result || property.Setter.Input is not { } input ||
             !this.FitsTypeAt(result, input, node))
         {
-            Fail(node, BindingFailure.TypeMismatch);
+            this.Fail(node, BindingFailure.TypeMismatch);
             return false;
         }
 
@@ -82,14 +82,17 @@ public sealed partial class Binding
         var type = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
-            Fail(node, AccessFailure(node));
+            this.FailWrite(node, node);
             return false;
         }
 
         this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
         if (!this.propertyUpdateStorage.TryGetValue(node, out var storage))
         {
-            storage = new(node, new IdentifierNameKoto(node.Left, "self"), node.Right) { IsDirectStorage = true };
+            // The stored field is reached through the receiver the update locates once; it takes that borrow's Type.
+            var receiver = new EvaluatedKoto(node.Left);
+            storage = new(node, receiver, node.Right) { IsDirectStorage = true };
+            receiver.Parent = storage;
             this.propertyUpdateStorage.Add(node, storage);
         }
 
@@ -134,7 +137,7 @@ public sealed partial class Binding
             (accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null))))
         {
-            Fail(node, BindingFailure.Unsupported, true);
+            this.Fail(node, BindingFailure.Unsupported, true);
             return false;
         }
 
@@ -146,7 +149,7 @@ public sealed partial class Binding
                 (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null) ||
                 !this.AdaptInput(receiver, required, actual, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
             {
-                Fail(node, AccessFailure(node));
+                this.FailWrite(node, node);
                 return false;
             }
 

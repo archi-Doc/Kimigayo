@@ -8,17 +8,17 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 8.1: length slots belong only to functions; a nominal header with one is invalid, but its recovery Type is kept.
-    private static bool HasLengthParameter(DeclarationContainerKoto container)
+    private static LengthParameterKoto? LengthSlot(DeclarationContainerKoto container)
     {
         for (var i = 0; i < container.GenericParameterNodes.Count; i++)
         {
-            if (container.GenericParameterNodes[i] is LengthParameterKoto)
+            if (container.GenericParameterNodes[i] is LengthParameterKoto slot)
             {
-                return true;
+                return slot;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
@@ -97,7 +97,7 @@ public sealed partial class Binding
     /// <summary>Proves only context-independent outlives facts; lack of proof is not equality.</summary>
     private static bool OriginOutlives(BoundOrigin a, BoundOrigin b)
     {
-        if (ReferenceEquals(a, b) || a.Kind == OriginKind.Static)
+        if (ReferenceEquals(a, b) || a.Kind is OriginKind.Static or OriginKind.Anchor)
         {
             return true;
         }
@@ -129,6 +129,24 @@ public sealed partial class Binding
         return false;
     }
 
+    private static bool HasAnchor(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Anchor)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (origin.Operands[i].Kind == OriginKind.Anchor)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null)
     {
         var key = (binder, kind, slot);
@@ -142,12 +160,18 @@ public sealed partial class Binding
 
     private BoundOrigin Meet(BoundOrigin a, BoundOrigin b)
     {
-        if (OriginOutlives(a, b))
+        // An anchor outlives every Origin but is no lifetime bound: it names the Loan of a raw Place borrow, so a meet keeps it.
+        if (ReferenceEquals(a, b))
+        {
+            return a;
+        }
+
+        if (a.Kind == OriginKind.Static || (OriginOutlives(a, b) && !HasAnchor(a)))
         {
             return b;
         }
 
-        if (OriginOutlives(b, a))
+        if (b.Kind == OriginKind.Static || (OriginOutlives(b, a) && !HasAnchor(b)))
         {
             return a;
         }
@@ -261,18 +285,19 @@ public sealed partial class Binding
                 if (container.Parent is not (GroupKoto or StructKoto) &&
                     container.Parent is not CodeBlockKoto { DeclarationContext: Lexing.TokenKind.Group or Lexing.TokenKind.Struct })
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
 
                 if (container.HasIncompatibleBindingHeader)
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
 
                 parameters = container.GenericParameterNodes;
-                if (HasLengthParameter(container))
+                if (LengthSlot(container) is { } slot)
                 {
-                    Fail(node, BindingFailure.InvalidTypeFormation); // The invalid header is kept for recovery.
+                    this.AddPrerequisite(node, slot); // The invalid header is kept for recovery; a slot the parser reported explains the failure.
+                    this.Fail(node, BindingFailure.InvalidTypeFormation);
                 }
 
                 origins = container.OriginNames;
@@ -341,13 +366,13 @@ public sealed partial class Binding
                 origin.LoanRequirement = LoanRequirement.None;
                 if (i < origins.Count && scope.Parent is { } enclosing && FindAbstractOrigin(origin.Name, enclosing) is not null)
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
 
                 scope.Origins ??= new(StringComparer.Ordinal);
                 if (!scope.Origins.TryAdd(origin.Name, origin.Origin))
                 {
-                    Fail(node, BindingFailure.Duplicate);
+                    this.Fail(node, BindingFailure.Duplicate);
                 }
             }
         }
@@ -433,11 +458,11 @@ public sealed partial class Binding
                 return origin;
             }
 
-            Fail(use, BindingFailure.InvalidOrigin);
+            this.Fail(use, BindingFailure.InvalidOrigin);
             return null;
         }
 
-        Fail(use, BindingFailure.MissingOrigin, true);
+        this.Fail(use, BindingFailure.MissingOrigin, true);
         return null;
     }
 
@@ -485,12 +510,16 @@ public sealed partial class Binding
                     input.BindingState = target.BindingState = BindingState.Resolved;
                     target.BoundOrigin = result;
                 }
+                else if (type?.Symbol?.Schema is not null)
+                {
+                    this.RecordAbsentSlot(syntax, type);
+                }
             }
         }
 
         if (result is null)
         {
-            Fail(syntax, BindingFailure.InvalidOrigin);
+            this.Fail(syntax, BindingFailure.InvalidOrigin);
         }
         else
         {
@@ -499,7 +528,7 @@ public sealed partial class Binding
             syntax.BoundOrigin = result;
             if (!OriginVisible(result, syntax))
             {
-                Fail(syntax, BindingFailure.InvalidOrigin);
+                this.Fail(syntax, BindingFailure.InvalidOrigin);
             }
         }
 
@@ -580,7 +609,7 @@ public sealed partial class Binding
             {
                 if (!guaranteedBorrow && (requirement == LoanRequirement.Uniq || (aggregateSlot >= 0 && !OwnedWithoutConditionalBorrows())))
                 {
-                    Fail(use, BindingFailure.MissingOrigin);
+                    this.Fail(use, BindingFailure.MissingOrigin);
                     return null;
                 }
 
@@ -595,7 +624,7 @@ public sealed partial class Binding
                     {
                         if (BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
                         {
-                            Fail(use, BindingFailure.MissingOrigin);
+                            this.Fail(use, BindingFailure.MissingOrigin);
                             return null;
                         }
                     }
@@ -605,7 +634,7 @@ public sealed partial class Binding
             }
         }
 
-        Fail(use, BindingFailure.MissingOrigin);
+        this.Fail(use, BindingFailure.MissingOrigin);
         return null;
 
         bool OwnedWithoutConditionalBorrows()

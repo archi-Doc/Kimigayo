@@ -80,7 +80,7 @@ public class ExpressionPrecedenceTest
     [InlineData("try try nested@move", "try (try (nested@move))")]
     [InlineData("*pointer + offset", "(*pointer) + offset")]
     [InlineData("^count + offset", "(^count) + offset")]
-    [InlineData("pointer@unsafe/i32 + offset", "(pointer@unsafe/i32) + offset")]
+    [InlineData("pointer@raw/i32 + offset", "(pointer@raw/i32) + offset")]
     [InlineData("make<A<B>>(x)[^1].value * -count@i64", "(make<A<B>>(x)[^1].value) * ((-count)@i64)")]
     [InlineData("start + 1..end - 1", "(start + 1)..(end - 1)")]
     [InlineData("start + 1..=end - 1", "(start + 1)..=(end - 1)")]
@@ -120,7 +120,7 @@ public class ExpressionPrecedenceTest
         var (body, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Code);
         Assert.Equal(source.IndexOf($"b {second}", StringComparison.Ordinal) + 2, diagnostic.Span.Start);
         Assert.Equal(second.Length, diagnostic.Span.Length);
         Assert.Equal("next", Assert.IsType<FieldKoto>(body.Items[1]).NameKoto.IdentifierName);
@@ -138,7 +138,7 @@ public class ExpressionPrecedenceTest
         var (body, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Code);
         Assert.Equal(source.LastIndexOf(second, StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal("next", Assert.IsType<FieldKoto>(body.Items[1]).NameKoto.IdentifierName);
     }
@@ -149,7 +149,7 @@ public class ExpressionPrecedenceTest
         const string source = "func f<T>(x: T)\n    T is not Copy and Owned or Copy\n    ()";
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         var function = compilation.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
         var requirement = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
         var disjunction = Assert.IsType<OrKoto>(requirement.Operand);
@@ -218,12 +218,12 @@ public class ExpressionPrecedenceTest
         return Assert.IsType<FieldKoto>(Assert.Single(body.Items)).InitializerKoto!;
     }
 
-    private static (CodeBlockKoto Body, Diagnostic[] Diagnostics) Parse(string source)
+    private static (CodeBlockKoto Body, TestDiagnostic[] Diagnostics) Parse(string source)
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        return (kotonoha.GeneratedFunction!.Body!, kotonoha.DiagnosticCollection.GetArray());
+        return (kotonoha.GeneratedFunction!.Body!, TestDiagnostics.Of(kotonoha));
     }
 
     private static string Describe(Koto koto)

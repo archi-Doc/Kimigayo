@@ -65,7 +65,7 @@ public class Utf8DeclarationTest
     [InlineData(KimiDeclarationId.Utf8Writer)]
     public void ManagedLayoutsRejectExtraFieldsAndDestruction(KimiDeclarationId id)
     {
-        foreach (var added in new[] { "let extra: i32 = 0", "deinit => ()" })
+        foreach (var added in new[] { "let extra: i32 = 0", "drop => ()" })
         {
             var c = Compilation.CreateForTest();
             var type = (StructKoto)c.Library.GetSymbol(id)!.Declaration;
@@ -76,7 +76,7 @@ public class Utf8DeclarationTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Library.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString())) +
+        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString())) +
             "\nLibrary invalid: " + c.Library.InvalidDeclaration;
 }

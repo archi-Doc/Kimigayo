@@ -249,8 +249,10 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
+                    // The region carries the seed state; no runtime edge enters the checked body, and the Loan head below
+                    // resolves from the seed.
                     var seed = this.checkingRegion != region ? this.body.CheckingRegions[this.checkingRegion].Seed : guardCleanupStart - 1;
-                    this.current = seed;
+                    this.current = -1;
                     this.checkingRegion = this.body.CheckingRegions.Count;
                     this.body.CheckingRegions.Add(new(seed, -1));
                 }
@@ -424,8 +426,9 @@ public sealed partial class OwnershipAnalysis
     {
         // There is no Subject value. Retain each arm's checking continuation so
         // an abrupt Subject cannot hide unsupported operations or invalid uses.
+        // A region whose own operations already ran has no seed state here: its original seed would restore their Moves.
         var region = this.checkingRegion;
-        var seed = this.current >= 0 ? this.current : region > 0 ? this.body.CheckingRegions[region].Seed : -1;
+        var seed = this.CheckingSeed();
         var temps = this.temporaries.Count;
         var locals = this.locals.Count;
         var output = this.ResultPlace(syntax);

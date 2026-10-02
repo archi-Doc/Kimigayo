@@ -38,6 +38,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<EmitCommand, KimiOptions>();
                 context.AddCommand<RunCommand, RunCommand.Options>();
                 context.AddCommand<TestCommand>();
+                context.AddCommand<ToolchainCommand, ToolchainCommand.Options>();
 
                 // Logger
                 context.ClearLogOutputResolvers();

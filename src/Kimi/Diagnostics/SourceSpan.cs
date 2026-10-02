@@ -14,6 +14,7 @@ public readonly record struct SourceSpan(int Start, int Length) : IComparable<So
     /// <summary>
     /// Gets the exclusive absolute end offset.
     /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public int End => checked(this.Start + this.Length);
 
     /// <summary>

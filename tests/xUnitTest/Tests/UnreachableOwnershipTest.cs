@@ -8,7 +8,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class UnreachableOwnershipTest
 {
     [Theory]
@@ -41,8 +40,8 @@ public class UnreachableOwnershipTest
     [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    if c\n        return\n        Console.writeLine(x)\n    else if c\n        return\n        Console.writeLine(x)\n    Console.writeLine(x)")]
     [InlineData("func f()\n    let x = \"s\"\n    defer => loop => ()\n    return\n    Console.writeLine(x)")]
     [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    let value = match c\n        true\n            yield 1\n            Console.writeLine(x)\n        false => 2\n    Console.writeLine(x)")]
-    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    choice: if c\n        yield to choice\n        Console.writeLine(x)\n    Console.writeLine(x)")]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    work: do\n        exit to work\n        Console.writeLine(x)\n    Console.writeLine(x)")]
+    [InlineData("func f(c: bool)\n    let x = \"s\"\n    return\n    label choice: if c\n        yield to choice\n        Console.writeLine(x)\n    Console.writeLine(x)")]
+    [InlineData("func f()\n    let x = \"s\"\n    return\n    label work: do\n        exit to work\n        Console.writeLine(x)\n    Console.writeLine(x)")]
     [InlineData("func f()\n    return\n    let x = \"s\"\n    defer => Console.writeLine(x)")]
     [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    let y = 1")]
     public void SupportedCheckingContinuationsVerify(string source)
@@ -67,8 +66,8 @@ public class UnreachableOwnershipTest
     [InlineData("func f()\n    let x = \"s\"\n    defer => Console.writeLine(x)\n    return\n    _ = x@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    return\n    let x = \"s\"\n    if false => _ = x@move\n    Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    return\n    let x: i32\n    while c\n        x = 1\n        exit\n    let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    let result = work: do\n        exit to work: x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = work: do\n        exit to work: x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f()\n    let x = \"s\"\n    let result = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    match x@move\n        .Some(let text)\n            yield\n            _ = text@move\n            Console.writeLine(text)\n        .None => ()", OwnershipFailure.PossiblyMovedUse)]
     public void CheckingUsesOrdinaryOwnershipDiagnostics(string source, OwnershipFailure failure)
     {
@@ -92,7 +91,7 @@ public class UnreachableOwnershipTest
 
     [Theory]
     [InlineData("func f(x: string)\n    loop\n        Console.writeLine(x)\n        $abort(\"stop\")\n    Console.writeLine(x)")]
-    [InlineData("func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
+    [InlineData("func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x")]
     public void UnseededRegionsRetainTheSafetyGate(string source)
     {
         var c = Parse(source);
@@ -132,34 +131,7 @@ public class UnreachableOwnershipTest
         Assert.False(c.Ownership.Analyze().IsVerified);
         c.Ownership.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
-        Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray());
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmCheckingAndBindingAllocateNothing(int count)
-    {
-        var source = new StringBuilder("func f(c: bool)\n    return\n");
-        for (var i = 0; i < count; i++)
-        {
-            source.Append("    var s").Append(i).Append(" = \"s\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n    return\n");
-        }
-
-        var c = Parse(source.ToString());
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
-        var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
-        var combinedBytes = AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        });
-        Assert.True(
-            bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
-            $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
-        Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+        Assert.Single(TestDiagnostics.Of(c));
     }
 
     private static Compilation Parse(string source)
@@ -167,7 +139,7 @@ public class UnreachableOwnershipTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         return c;
     }
@@ -175,4 +147,36 @@ public class UnreachableOwnershipTest
     private static string Describe(Compilation c)
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
             string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(x => x.Message));
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmCheckingAndBindingAllocateNothing(int count)
+        {
+            var source = new StringBuilder("func f(c: bool)\n    return\n");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append("    var s").Append(i).Append(" = \"s\"\n    if c\n        Console.writeLine(s").Append(i).Append(")\n    return\n");
+            }
+
+            var c = Parse(source.ToString());
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            var bindingBytes = AllocationMeasurement.Measure(() => c.Bind());
+            var analysisBytes = AllocationMeasurement.Measure(() => c.Ownership.Analyze());
+            var combinedBytes = AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            });
+            Assert.True(
+                bindingBytes == 0 && analysisBytes == 0 && combinedBytes == 0,
+                $"Binding: {bindingBytes}; analysis: {analysisBytes}; combined: {combinedBytes}");
+            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+        }
+    }
 }

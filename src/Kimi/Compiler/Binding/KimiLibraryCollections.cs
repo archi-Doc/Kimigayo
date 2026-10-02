@@ -14,10 +14,8 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.ArrayReserve, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize]),
         new(KimiDeclarationId.ArrayAppend, CollectionType.Unit, [CollectionType.Receiver, CollectionType.Element]),
         new(KimiDeclarationId.ArrayInsert, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize, CollectionType.Element]),
-        new(KimiDeclarationId.ArrayInsertIndex, CollectionType.Unit, [CollectionType.Receiver, CollectionType.Index, CollectionType.Element]),
         new(KimiDeclarationId.ArrayPop, CollectionType.OptionElement, [CollectionType.Receiver]),
         new(KimiDeclarationId.ArrayRemove, CollectionType.Element, [CollectionType.Receiver, CollectionType.ISize]),
-        new(KimiDeclarationId.ArrayRemoveIndex, CollectionType.Element, [CollectionType.Receiver, CollectionType.Index]),
         new(KimiDeclarationId.ArrayClear, CollectionType.Unit, [CollectionType.Receiver]),
         new(KimiDeclarationId.ArraySwap, CollectionType.Unit, [CollectionType.Receiver, CollectionType.ISize, CollectionType.ISize]),
         new(KimiDeclarationId.ArrayShrinkToFit, CollectionType.Unit, [CollectionType.Receiver]),
@@ -28,13 +26,14 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.DictionaryTryGet, CollectionType.OptionBorrowedValue, [CollectionType.SharedReceiver, CollectionType.BorrowedKey]),
         new(KimiDeclarationId.DictionaryClear, CollectionType.Unit, [CollectionType.Receiver]),
         new(KimiDeclarationId.DictionaryShrinkToFit, CollectionType.Unit, [CollectionType.Receiver]),
+        new(KimiDeclarationId.DictionaryIndex, CollectionType.BorrowedValue, [CollectionType.SharedReceiver, CollectionType.BorrowedKey]),
+        new(KimiDeclarationId.DictionaryIndexUniq, CollectionType.ExclusiveBorrowedValue, [CollectionType.Receiver, CollectionType.BorrowedKey]),
     ];
 
     private enum CollectionType : byte
     {
         Unit,
         ISize,
-        Index,
         Receiver,
         Element,
         OptionElement,
@@ -45,6 +44,8 @@ public sealed partial class KimiLibrary
         SharedReceiver,
         BorrowedKey,
         OptionBorrowedValue,
+        BorrowedValue,
+        ExclusiveBorrowedValue,
     }
 
     private static bool BoundInputBorrow(BoundType? type, BoundType element, SemanticsKind semantics, FunctionKoto function, int input)
@@ -58,8 +59,8 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundCollectionOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        var dictionary = id is >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit;
-        if (!dictionary && id is not (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex or KimiDeclarationId.ArraySwap or KimiDeclarationId.ArrayWithCapacity))
+        var dictionary = id is >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq;
+        if (!dictionary && id is not (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap or KimiDeclarationId.ArrayWithCapacity))
         {
             return true;
         }
@@ -103,12 +104,13 @@ public sealed partial class KimiLibrary
         {
             CollectionType.Unit => ReferenceEquals(type, BoundType.Unit),
             CollectionType.ISize => ReferenceEquals(type, BoundType.ISize),
-            CollectionType.Index => ReferenceEquals(type, this.GetSymbol(KimiDeclarationId.Index)?.Type),
             CollectionType.Element => ReferenceEquals(type, element),
             CollectionType.OptionElement => type is not null && this.BoundStorageContainer(type, KimiDeclarationId.Option, element, 0),
             CollectionType.Value => value is not null && ReferenceEquals(type, value),
             CollectionType.OptionValue => type is not null && value is not null && this.BoundStorageContainer(type, KimiDeclarationId.Option, value, 0),
             CollectionType.BorrowedKey => BoundInputBorrow(type, element, SemanticsKind.Ref, function, 1),
+            CollectionType.BorrowedValue or CollectionType.ExclusiveBorrowedValue => value is not null &&
+                BoundInputBorrow(type, value, expected == CollectionType.BorrowedValue ? SemanticsKind.Ref : SemanticsKind.Uniq, function, 0),
             CollectionType.OptionPair => this.CollectionResult(type, KimiDeclarationId.Option) && type!.Components is [var pair] && CollectionPair(pair, element, value),
             CollectionType.ResultPair => this.CollectionResult(type, KimiDeclarationId.Result) && type!.Components is [var success, var pair] &&
                 ReferenceEquals(success, BoundType.Unit) && CollectionPair(pair, element, value),

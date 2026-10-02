@@ -8,9 +8,39 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--borrow-storage")
+        {
+            BorrowStorageMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--compiler-pipeline-check")
+        {
+            CompilerPipelineMeasurements.Check();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--compiler-pipeline")
+        {
+            CompilerPipelineMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--verification")
+        {
+            VerificationMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--lsp")
         {
             LspMeasurements.Run();
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--diagnostics")
+        {
+            DiagnosticMeasurements.Run();
             return;
         }
 
@@ -28,6 +58,7 @@ public class Program
 
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(CompilerPipelineBenchmark),
             typeof(DocumentationMarkdownBenchmark),
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),

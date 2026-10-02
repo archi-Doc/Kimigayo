@@ -42,7 +42,7 @@ Body := "=>" (Expression | Statement)
 
 A **single-item body** contains one expression or statement starting on the header's ending physical line; it may span more lines through ordinary expression continuation or a match arm list. An **indented body** (also called a Block body) contains declarations, expressions, statements and permitted compile-time directives, evaluated in order. Its direct expressions, including the last, are discarded, and structural arrival at its end supplies Unit where the owner uses the body result. For an iteration body, completion instead starts the next iteration.
 
-Both forms apply to selection clauses and arms, iterations, do expressions, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions and Closures, specializations, accessors, `init` and `deinit`. Declarations and directives require the indented form. Each position keeps its declaration restrictions; explicit function Constraints stay at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors keep their own rules.
+Both forms apply to selection clauses and arms, iterations, do expressions, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions and Closures, specializations, accessors, `init` and `drop`. Declarations and directives require the indented form. Each position keeps its declaration restrictions; explicit function Constraints stay at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors keep their own rules.
 
 | Concept | Question |
 | --- | --- |
@@ -61,12 +61,12 @@ Discarding a general expression destroys its result at the normal lifetime; it i
 | `if` / `match` / `do` | Inherit the owner's context: use the value in Value Context; discard it and complete with Unit in Discard Context. | `yield` for selections; named `exit` for `do` |
 | `for` / `while` / `loop` | Discard and continue the iteration. | `exit` |
 | `unsafe` / `defer` | Discard and complete the body with Unit; `defer` executes later during cleanup. | `exit` for `defer`; `unsafe` has no target |
-| `set` / `init` / `deinit` | Discard and complete the body with Unit. | `return` |
+| `set` / `init` / `drop` | Discard and complete the body with Unit. | `return` |
 | `require` failure | Discard; normal continuation after `require`, including after cleanup, is forbidden. | No target of its own |
 
 Statements in single-item bodies supply Unit only if they structurally complete normally. Values discarded directly inside a body need no common Type, but values supplied to a target must fit its Target Result Type, even when the target's result is discarded.
 
-The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `deinit`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. Receiving a transfer does not also supply an implicit body result.
+The Target Result Type is fixed as Unit for `for`, `while`, `defer`, `set`, `init`, `drop`, and discarded `if`/`match`/`do`/`loop` expressions. Explicit transfers must still fit it: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. Receiving a transfer does not also supply an implicit body result.
 
 ```kimi
 if ready => visited.insert(id)        // A bool result may be discarded.
@@ -118,9 +118,9 @@ A selection that removes a needed transfer may expose structural end arrival, an
 Each test evaluates its condition once, secures the `bool` result, destroys the remaining condition temporaries in reverse creation order, ends guard-local temporary Loans, and then branches using the secured `bool`. Cleanup effects update state but do not reevaluate the `bool`. A transfer, divergence or Abort during evaluation or cleanup prevents the test's continuation on that path. Match Subjects, iterators and explicit bindings keep their own owning scopes, and Moved values follow their destination's lifetime.
 
 ```kimi
-if (test: do
+if (label test: do
     let ready = check() // check returns bool; this declaration belongs to the do body.
-    exit to test: ready
+    exit to test ready
 )
     work()
 
@@ -134,7 +134,7 @@ To acquire a new local on every test, use `loop` with a declaration and `require
 
 `_ = Expression` is a dedicated executable statement, recognized by reserved `_` followed by `=`. It is not assignment, permits no compound form, and cannot be nested as an expression. Normal completion supplies Unit. Existing Body and continuation rules apply.
 
-Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by bare acquisition or transfer, and destroy the result at statement temporary cleanup: `_ = x@move` destroys a Non-Copy Place early, a bare Non-Copy Place is an error, and `_ = x@ref` discards a borrow without effect. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
+Check the right side in Value Context without an expected Type, as for an unannotated initializer, but introduce no local or lifetime extension. Evaluate once, acquire by bare acquisition (§3.5) or transfer, and destroy the result at statement temporary cleanup: `_ = x@move` destroys a Non-Copy Place early, a bare Non-Copy Place is an error unless it stores an exclusive reference, and `_ = x@ref` discards a borrow without effect. For a Place `r` storing `uniq/T` or `objuniq/T`, `_ = r` Reborrows a child and drops it at once without consuming `r`; `_ = r@move` consumes the reference value itself. A non-completing operand supplies no result to discard. Changing `expr` to `_ = expr` changes Context and may require a common branch Type.
 
 Explicit discard suppresses only the warnings for discarding that result (§17.4). It does not suppress warnings for internal discards or unintended Unit inference inside the operand, Type or ownership errors, or unrelated diagnostics.
 
@@ -143,6 +143,8 @@ _ = prepare()     // Ignore the entire Result, including Err.
 _ = try prepare() // Propagate failure; explicitly discard success.
 _ = resource@move // Transfer and destroy a Non-Copy value early.
 // _ = resource   // Error: a bare Non-Copy Place is not transferred.
+_ = r             // r: uniq/Node. Reborrow a child and drop it; r stays usable.
+_ = r@move        // Consume the reference value; r becomes Moved.
 _ = .None         // Error without enough Type information.
 _ = loop => exit  // Valid Unit result.
 _ = do
@@ -157,7 +159,7 @@ Explicitly ignoring a `Result` destroys its error payload normally, and executio
 
 | Construct | Category | Execution |
 | --- | --- | --- |
-| `do` / `Label: do` | Expression | Executes immediately; receives a named `exit` when labeled. |
+| `do` / `label Label: do` | Expression | Executes immediately; receives a named `exit` when labeled. |
 | `unsafe` | Statement | Executes immediately with lexical unsafe permission. |
 | `defer` | Statement | Registers immediately; executes at Scope Exit (§16.1). |
 
@@ -171,16 +173,16 @@ defer => exit () // Valid: end the deferred body with Unit.
 defer => return  // Error: cannot return from the outer function.
 ```
 
-`unsafe/T` remains Type Semantics syntax and `unsafe func` a modifier. In statement position, `unsafe` introduces a Body, not a colon-delimited label. Declaration and lexical role rules remain in force.
+`unsafe func` is a modifier. In statement position, `unsafe` introduces a Body, not a colon-delimited label. Declaration and lexical role rules remain in force.
 
 ### 14.3.2. Do expressions
 
 `do Body` executes once and uses the result rules of §14.2. An optional label permits a self-targeted `exit to Label`. An unlabeled `exit` skips do expressions, so an unlabeled `do` with an indented body cannot supply a non-Unit result of its own. Outward transfers and divergence are permitted.
 
 ```kimi
-let result = work: do
-    if cached() => exit to work: cachedValue()
-    exit to work: compute()
+let result = label work: do
+    if cached() => exit to work cachedValue()
+    exit to work compute()
 
 let direct = do => compute()
 do
@@ -197,7 +199,7 @@ let block = readBlock() // Ordinary identifier; no keyword interpretation.
 
 An **Unsafe Block** is an `unsafe` statement with a Body. It executes immediately with lexical permission for unsafe operations and has no transfer target or lookup barrier. To supply a value outward, use `return`, `yield` or a named `exit` inside the body; `let x = unsafe => readRaw(pointer)` is invalid because `unsafe` is a statement.
 
-The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5).
+The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5). Only the operations of §5 that may cause undefined behavior require the permission.
 
 ```kimi
 unsafe => releaseRaw(pointer)
@@ -206,20 +208,37 @@ unsafe
     updateState()
 ```
 
-## 14.4. Labels
-
-An optional `Label:` may prefix `if`, `match`, `for`, `while`, `loop` or `do` on the same physical line. Labels use a namespace separate from variables and Types. Equal label names whose active scopes overlap in one function are rejected.
-
-A label is active only inside its construct's bodies, not in its own conditions, Subject or guards. A transfer may target only an enclosing construct in the same function, never a sibling, inner or finished construct. A label names a construct, not an instruction address.
-
-Group a labeled expression where its colon would conflict with a named argument or Dictionary separator. A labeled `return`/`exit`/`yield` operand must be parenthesized, whether or not the transfer itself names a target.
+An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the Advice suggests removing `unsafe` and keeping the statements only when the Body declares no Name and registers no `defer`; otherwise it states that removal would change the scope of a Name or the time of a destruction or `defer` and does not recommend it. A structured repair (§23.5.3) is offered only when it is proven to preserve scopes, destruction order and control transfers.
 
 ```kimi
-consume(value: if ready => 1 else => 0)       // Named argument.
-consume((choice: if ready => 1 else => 0))    // Labeled expression.
-return (work: do => compute())
-yield to outer: (inner: if ready => 1 else => 0)
+unsafe
+    let address = pointer@usize   // Warning: the conversion needs no unsafe context.
 ```
+
+## 14.4. Labels
+
+An optional `label Label:` prefix names one `if`, `match`, `for`, `while`, `loop` or `do` construct. The introducer `label`, the Label Name, `:` and the construct keyword must all be on the same physical line. The prefix attaches one label to the immediately following construct; it introduces neither an executable Body nor an additional scope or value binding. A label cannot prefix another label, a parenthesized expression, a declaration or any other statement or expression.
+
+**Contextual recognition.** At a Primary expression start (including operator operands and transfer operands), the same-line token sequence `label Name :` commits to a label prefix. Recognition uses only these tokens, never name lookup, Types or whether a later construct succeeds. The following token must start one of the six permitted constructs on that same physical line; otherwise the label syntax is invalid and is not retried as a value expression. Recognition never scans across a physical newline, including inside delimiters. Elsewhere `label` is an ordinary Name: it can name a variable, function, member, argument or label. In particular, `label(...)`, `object.label`, `consume(label: value)` and a lone `label` expression do not introduce a label prefix.
+
+Labels use a namespace separate from variables and Types. Equal label names whose active scopes overlap in one function are rejected. A label is active only inside its construct's bodies, not in its own conditions, Subject or guards. A transfer may target only an enclosing construct in the same function, never a sibling, inner or finished construct. A label names a construct, not an instruction address, runtime value or callable; ordinary Name expressions do not resolve labels.
+
+No parentheses are required solely because an expression has a label, including an argument, Dictionary key or value, or a `return`/`exit`/`yield` operand. Ordinary grouping and Body rules still apply: a body-bearing expression inside a header must be grouped, and a labeled nested `if` still follows the nested-if rule of §2.2.1. A label prefix does not start a delimiter region or change a header's indentation baseline. Syntax rewrites preserve existing parentheses; removing them requires preserving operator grouping and the meaning of delimiter regions. For example, `return (label choice: if ready => a else => b) + 1` adds on both paths; without the parentheses only the else path adds.
+
+```kimi
+consume(value: if ready => 1 else => 0)             // Named argument.
+consume(label choice: if ready => 1 else => 0)      // Labeled positional argument.
+consume(value: label choice: if ready => 1 else => 0)
+return label work: do => compute()
+yield to outer label inner: if ready => 1 else => 0
+let table = [label key: do => 1: label item: do => 2]
+
+let label: bool = true
+let accepted: bool = label label: do
+    exit to label label // Target in the Label namespace; value in the Value namespace.
+```
+
+Only `label Label:` introduces a label. A bare `Name:` retains its ordinary meaning where another grammar supplies it, such as an argument name or Dictionary separator; it never labels a construct.
 
 ## 14.5. Control transfers
 
@@ -227,20 +246,28 @@ yield to outer: (inner: if ready => 1 else => 0)
 
 ```text
 return [Expression]
-exit [Expression] | exit to Label [: Expression]
+exit [Expression] | exit to Label [Expression]
 continue [to Label]
-yield [Expression] | yield to Label [: Expression]
+yield [Expression] | yield to Label [Expression]
 ```
 
 Brackets mark optional syntax. An omitted `return`, `exit` or `yield` operand means `()` and is checked against the target's Target Result Type (§14.2). `continue` has no operand, and `return` has no named form.
 
-The operand, and `to Label` when present, start on the transfer keyword's physical line. A named value follows `:`; the colon is omitted when the value is omitted. Normal continuation is allowed after the expression starts. `to` is contextual only immediately after `exit`, `continue` or `yield`; write `exit (to)` to use a variable of that name. Postfix `value to Label` and `value{Label}` are not transfer syntax.
+The operand, and both `to` and the Label when present, start on the transfer keyword's physical line. Normal continuation is allowed after the operand expression starts; a later physical line cannot start an operand, even inside delimiters. `to` is contextual only immediately after `exit`, `continue` or `yield`, and commits to the named form there; write `exit (to)` to use a variable of that name. `return` has no such recognition, so `return to` returns the value named `to`.
+
+**Target and operand boundary.** After `to`, consume exactly one Name as the Label, even when spelled `label` or `to`. A target is never an expression, qualified name, call or computed destination.
+
+For `return`, `exit` and `yield`, the operand is omitted only when no token follows on the same physical line, or the next token is an enclosing separator: `,`, `)`, `]`, `else`, `=>`, a parameter-list boundary `!`, a layout boundary or end of file. Each separator must be legal in its enclosing grammar. Otherwise a full expression is required under §13.1; invalid syntax or Types never cause a retry with an omitted operand. In particular, `:` and `and` cannot omit an operand: `[exit: value]`, `[exit to work: value]` and `exit to work and ready` are syntax errors.
+
+A named target and its operand's first token must be separated by whitespace or a same-line block comment (§2.3). `exit to work(x)`, `exit to work.value`, `exit to work[0]` and `exit to work..end` are invalid; `exit to work (x)` and `exit to work/* result */(x)` are valid syntax. Formatting uses one space without removing comments. The separated forms `-1`, `(value)`, `()`, `[1, 2]`, `.Some(1)` and `..end` are operands, never calls, members or indices of the label.
+
+A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. A repair for a colon at the operand start may remove it and insert any required space to supply the following expression, or insert `()` to express a Unit key. It must state that intent and cannot claim unconditional semantic preservation. Postfix `value to Label` and `value{Label}` are not transfer syntax.
 
 ```kimi
-exit to search: score(item)
-exit to outer: -1
+exit to search score(item)
+exit to outer -1
 continue to outer
-yield to choice: match mode
+yield to choice match mode
     .Fast => 1
     _ => 0
 ```
@@ -262,18 +289,18 @@ A construct acts as a target or barrier only inside its bodies. `unsafe` and `re
 
 ### 14.5.3. Function boundaries
 
-Function Boundaries include named functions, methods, anonymous functions, Closures, explicit specializations, accessors, `init` and `deinit`. A function declared inside `defer` keeps its own return target. A constructor's Unit control result is distinct from the owned constructed value, and a `return` in `deinit` does not skip automatic field destruction (§16.3.2). Named functions keep their declared or default Unit result even if their bodies never finish (§7.1).
+Function Boundaries include named functions, methods, anonymous functions, Closures, explicit specializations, accessors, `init` and `drop`. A function declared inside `defer` keeps its own return target. A constructor's Unit control result is distinct from the owned constructed value, and a `return` in `drop` does not skip automatic field destruction (§16.3.2). Named functions keep their declared or default Unit result even if their bodies never finish (§7.1).
 
 ### 14.5.4. Label and nesting examples
 
 ```kimi
-let result = choice: if enabled
-    if cached() => yield to choice: cachedValue()
+let result = label choice: if enabled
+    if cached() => yield to choice cachedValue()
     yield compute()
 else => 0
 // Omitting 'to choice' in the conditional yield targets the discarded inner if: error.
 
-outer: for row in rows
+label outer: for row in rows
     for cell in row
         if skipRow(cell) => continue to outer
         if done(cell) => exit to outer
@@ -335,9 +362,10 @@ The **item Type** is `LendingIterator.LentItem(step)` of the selected iterator T
 | `Array<E>`, `[N of E]` | `ref/E during a` | `uniq/E during a` | `E` |
 | `Dictionary<K, V>` | `(ref/K during a, ref/V during a)` | `(ref/K during a, uniq/V during a)` | `(K, V)` |
 | `Slice<E>` | `ref/E during s` | `ref/E during s` | `ref/E during s` |
+| `Range<T, T>`, `ClosedRange<T, T>` with `T is PrimitiveInteger` | `T` | `T` | `T` |
 | `ResolvedRange` | `isize` | `isize` | `isize` |
 
-Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. `Range` is not enumerable; resolve it first (§4.6.3).
+Here `a` is the Origin of the Subject borrow and `s` the Slice's external `source`. Element-internal Origins are kept separately: an `E` of `ref/Node during b` gives the shared item `ref/(ref/Node during b) during a` and the exclusive item `uniq/(ref/Node during b) during a`, never a flattened reference or exclusive access to the inner `Node`. Arrays, fixed arrays and Slices enumerate in index order and Dictionaries in insertion order, through the standard iterators of §22.1.2.3. Exclusive enumeration of a Slice lends the handle; its elements stay shared. Integer ranges enumerate through `RangeIterator<T>` and `ClosedRangeIterator<T>`; a range with an omitted, from-end or mixed-Type boundary is not enumerable (§4.6.3.4).
 
 ```kimi
 for item in items            // Shared iteration; items remains usable.
@@ -358,8 +386,8 @@ for (key, value) in dictionary@uniq
 **Loans and cleanup.** The Subject Loan is kept while the iterator or an escaped item needs it; conflicting mutation is rejected, and nonconflicting mutation is allowed under the ordinary Loan rules. Body fall-through and `continue` clean up the iteration scope before the next `next`. `exit`, `return`, `try` propagation and outward `yield` clean up the iteration scope, then the iterator, then the internal Subject. A Loan saved outside the loop is not ended by the iteration; when it conflicts with the next `next`, the loop's back edge is rejected. Early exit secures the dependencies of retained results before cleanup, does not destroy a Moved Subject twice, and consumes no further items of a ByValue Subject. Unnamed slots keep the same acquisition, dependencies and cleanup as named ones. Tuple components and separate bindings clean up last-to-first, after body locals and defers (§16.2–3). The protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 
 ```kimi
-// n: isize, n >= 0. Range itself is not Iterable.
-for _ in (0..n).resolve(n) => tick()
+// n: isize. A reversed range Aborts when the loop starts.
+for _ in 0..n => tick()
 for (key, _) in pairs => use(key)
 ```
 
@@ -372,9 +400,9 @@ for (key, _) in pairs => use(key)
 In Value Context, the loop's result is inferred from all self-targeted exits under §14.9; in Discard Context, its Target Result Type is Unit.
 
 ```kimi
-let found: i32 = search: loop
+let found: i32 = label search: loop
     for item in items[..]
-        if accepts(item) => exit to search: score(item)
+        if accepts(item) => exit to search score(item)
     exit -1
 // score returns i32. An unnamed exit inside for would have to fit Unit.
 
@@ -418,13 +446,13 @@ Condition evaluation follows §14.2.3; clause joins and nested-`if` grouping fol
 `yield` ends its resolved selection, not a function or iteration; its lookup and barriers follow §14.5.2. To end a discarded selection early, name the target and supply Unit. A conditional transfer should name an outer selection when the nearest `if` is not the intended target.
 
 ```kimi
-let result = selection: if enabled
+let result = label selection: if enabled
     for item in items[..]
-        if accepts(item) => yield to selection: score(item)
+        if accepts(item) => yield to selection score(item)
     yield -1
 else => 0
 
-action: match event@ref
+label action: match event@ref
     .Save
         if readOnly => yield to action
         save()
@@ -496,7 +524,7 @@ Wildcard and Binding also accept Types that support no structural Pattern, and b
 
 Tuple arity and Case payload count must match exactly; write `_` for each ignored element. Omitted, named, Rest and shorthand fields are not accepted. `(P)` groups, `(P,)` is a singleton Tuple, and `()` is Unit; `.Some((let x, let y))` matches one Tuple payload, while `.Pair(let x, let y)` matches two payloads. Structure is tested from the outside inward and left to right among siblings, stopping at the first mismatch, without Copying or Moving payloads.
 
-**Literal Patterns** support `bool`, integers, `char`, and non-interpolated ordinary or raw `string` literals. A negative integer is `-` followed by an integer literal; the sign applies to the mathematical value before fitting to the matched integer Type, so `-128` fits `i8` while `128` and `-129` do not. Lexical magnitude limits apply, and there is no runtime conversion.
+**Literal Patterns** support `bool`, integers, `char`, and non-interpolated ordinary or raw `string` literals. A negative integer is `-` followed by an integer literal; the sign applies to the mathematical value before fitting to the matched integer Type, so `-128` fits `i8` while `128` and `-129` do not. A wrapping integer Type is matched by the literals that fit its integer argument: `Wrapping<u32>` admits `0xFFFF_FFFF` but not `-1`. Lexical magnitude limits apply, and there is no runtime conversion.
 
 Booleans compare by value, characters by Unicode scalar value, and strings by exact UTF-8 content, without normalization, case folding or locale rules. Comparison neither consumes the value nor constructs an owned string at runtime. Coverage uses the fitted value, not the source spelling: integer `0`, `-0` and `0x00` coincide, as do Character and String literals that are equal after escape processing. Invalid Types, arities and out-of-range literals are rejected before coverage analysis. Floating-point values, `null`, interpolated strings, Ranges and arbitrary constant expressions are not Literal Patterns; use a guard for additional conditions.
 
@@ -522,7 +550,7 @@ Each Binding position has an internal **Candidate Place** that designates initia
 | `ref/T` | `ref/(ref/T)` | `ref/T` | `ref/(ref/T)` |
 | `uniq/T` | `ref/(uniq/T)` | `uniq/T` | `ref/(uniq/T)` |
 
-On an exclusive path, the body binding is `uniq/T` (§15.1.6). The table omits Origins; complete Types preserve them and their Loans. Scalar reads and comparisons follow the reference layers (§3.5.3, §13.4), so `n > 0` on a candidate `n: ref/i32` compares the integer. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
+On an exclusive path, the body binding is `uniq/T` (§15.1.6). The table omits Origins; complete Types preserve them and their Loans. Value reads and comparisons follow the reference layers (§3.5.3, §13.4), so `n > 0` on a candidate `n: ref/i32` compares the integer. Each scope resolves its expressions and overloads with its own Types. Guard lookup is not retried with the body Type, and guard refinement facts do not transfer automatically to the body's distinct Identity.
 
 A guarded arm proceeds as follows:
 
@@ -557,7 +585,7 @@ The literal is a temporary, so the Subject is owned: `text` is `ref/string` in t
 
 | Value obtained in the guard | Escape from the guard |
 | --- | --- |
-| Scalar read, or a Copy of the referent such as `candidate@follow@copy`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
+| Value read, or a Copy of the referent such as `candidate@follow@copy`, without Candidate or Subject lifetime dependence | Permitted by the ordinary rules |
 | Copy of a stored reference, `candidate@follow@copy` when the candidate is `ref/(ref/U)` | Permitted when the existing Origins and Loans and the destination allow |
 | The candidate reference, a new Borrow/Reborrow of the candidate Place, or any value depending on it | Forbidden; its Loan must end inside the guard |
 | Copy aggregate with an existing Subject dependency | Its Origins and Loans are checked; it cannot outlive the Subject |
@@ -689,13 +717,13 @@ Syntax, Names, target and operand restrictions, local Types and match coverage a
 The **Target Result Type** constrains the results supplied to a target. It is determined independently of source traversal order:
 
 1. Use the declaration or the fixed Type from §14.2; otherwise use a fixed outer expectation.
-2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one Scalar Type, or are unfitted literals of it, that Scalar Type is the common Type and each reference source is Scalar-read (§3.5.3).
-3. Propagate the fixed Type to sources checkable against it; apply numeric literal defaults only after all other available evidence.
+2. If it is still unknown, collect the independently typable source constraints together and find one common Type. Never alone supplies no concrete Type candidate. When the source Types differ only in safe reference layers over one read Type, or are unfitted literals or literal-only expressions of it (§12.3.1), that Type is the common Type and each reference source is value-read (§3.5.3).
+3. Propagate the fixed Type to sources checkable against it, including literal-only sources such as `0..3` beside a typed `0..n`; apply literal defaults only after all other available evidence.
 4. Check every source for fitting. If an unresolved call, anonymous function or empty literal still needs a Type, require an annotation or explicit Type arguments.
 
 ```kimi
 let count = match maybe          // maybe: Option<i32>, a bare Place.
-    .Some(let n) => n            // n: ref/i32; Scalar-read.
+    .Some(let n) => n            // n: ref/i32; value-read.
     .None => 0                   // count: i32
 ```
 
@@ -736,7 +764,7 @@ let typed = loop
     exit 1 // Still a result source: initializer Type i32, despite no normal path.
 ```
 
-Named functions keep their declared or default Unit return Type (§14.5.3). An anonymous function without a declared or fixed expected result infers its return Type by these source and Never rules; the function value itself keeps its Function Item or Closure Type. A constructor's Unit control result and a `deinit`'s `return` keep the separate obligations of §14.5.3.
+Named functions keep their declared or default Unit return Type (§14.5.3). An anonymous function without a declared or fixed expected result infers its return Type by these source and Never rules; the function value itself keeps its Function Item or Closure Type. A constructor's Unit control result and a `drop`'s `return` keep the separate obligations of §14.5.3.
 
 ### 14.9.2. Reachability
 
@@ -779,9 +807,9 @@ loop
     if boundPort > 0 => exit
 use(boundPort) // Valid: every delivered exit follows initialization.
 
-let stopped: i32 = work: do
+let stopped: i32 = label work: do
     defer => loop => ()
-    exit to work: 1
+    exit to work 1
 // Expression Type remains i32; Runtime Reachability stops at cleanup, before delivery.
 ```
 

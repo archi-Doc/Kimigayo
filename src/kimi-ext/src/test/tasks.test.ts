@@ -39,7 +39,7 @@ suite('Kimi build and run integration', () => {
     await mkdir(buildDirectory);
     buildFile = vscode.Uri.file(path.join(buildDirectory, 'Hello.kimi')).fsPath;
     await writeFile(buildFile, '::Kimi.Console.writeLine("Hello from Build and Run")\n');
-    const extension = vscode.extensions.getExtension('local.kimi-ext');
+    const extension = vscode.extensions.getExtension('archi-Doc.kimi-ext');
     const expires = Date.now() + 15000;
     while (!extension?.isActive && Date.now() < expires) {
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -52,7 +52,7 @@ suite('Kimi build and run integration', () => {
     originalPath = vscode.workspace.getConfiguration('kimi').inspect('serverPath')?.globalValue;
     originalTaskSave = vscode.workspace.getConfiguration('task').inspect('saveBeforeRun')?.globalValue;
     originalRunBuilds = vscode.workspace.getConfiguration('kimi').inspect('runBuilds')?.globalValue;
-    await vscode.workspace.getConfiguration('kimi').update('runBuilds', false, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration('kimi').update('runBuilds', undefined, vscode.ConfigurationTarget.Global);
     // VS Code otherwise saves every dirty editor independently of the extension.
     // Disable that in this isolated profile to verify the extension's own save scope.
     await vscode.workspace.getConfiguration('task').update('saveBeforeRun', 'never', vscode.ConfigurationTarget.Global);
@@ -117,7 +117,7 @@ suite('Kimi build and run integration', () => {
       assert.ok(commands.includes(`kimi.${action}`));
       assert.ok(commands.includes(`kimi.${action}WithTarget`));
     }
-    assert.equal(vscode.extensions.getExtension('local.kimi-ext')?.packageJSON.name, 'kimi-ext');
+    assert.equal(vscode.extensions.getExtension('archi-Doc.kimi-ext')?.packageJSON.name, 'kimi-ext');
   });
 
   test('Check saves dirty input and launches a process task with intact arguments', async () => {
@@ -205,16 +205,25 @@ suite('Kimi build and run integration', () => {
     assert.deepEqual(started, []);
   });
 
-  test('Build and Run waits for a real successful build then runs the result', async function () {
+  test('Build and Run defaults to one run task that builds a fresh source', async function () {
     this.timeout(60000);
+    assert.equal(vscode.workspace.getConfiguration('kimi').inspect('runBuilds')?.globalValue, undefined);
+    assert.equal(vscode.workspace.getConfiguration('kimi').get('runBuilds'), true);
     assert.equal(await vscode.commands.executeCommand('kimi.buildAndRun', vscode.Uri.file(buildFile)), 'succeeded');
-    assert.deepEqual(started.map(task => task.definition.command), ['build', 'run']);
+    assert.deepEqual(started.map(task => task.definition.command), ['run']);
     const output = await readdir(path.join(path.dirname(buildFile), 'bin', 'x86_64-pc-windows-msvc'));
     assert.ok(output.some(name => name.endsWith('.exe')));
   });
 
-  test('Run forwards to the CLI without a separate extension build task', async () => {
+  test('Run saves dirty input by default without a separate extension build task', async () => {
+    const document = await vscode.workspace.openTextDocument(buildFile);
+    const editor = await vscode.window.showTextDocument(document);
+    const source = '::Kimi.Console.writeLine("Saved by Run")\n';
+    assert.ok(await editor.edit(builder => builder.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), source)));
+    assert.ok(document.isDirty);
     assert.equal(await vscode.commands.executeCommand('kimi.run', vscode.Uri.file(buildFile)), 'succeeded');
+    assert.equal(document.isDirty, false);
+    assert.equal(await readFile(buildFile, 'utf8'), source);
     assert.deepEqual(started.map(task => task.definition.command), ['run']);
   });
 
@@ -225,7 +234,7 @@ suite('Kimi build and run integration', () => {
     assert.equal(started[0].definition.file, project);
   });
 
-  test('runBuilds builds a fresh source through one run task for palette and Ctrl+F5', async function () {
+  test('explicit runBuilds builds a fresh source through one run task for palette and Ctrl+F5', async function () {
     this.timeout(60000);
     const directory = path.join(root, 'run-builds');
     await mkdir(directory);
@@ -242,7 +251,7 @@ suite('Kimi build and run integration', () => {
       assert.deepEqual(started.map(task => task.definition.command), ['run', 'run']);
       assert.deepEqual(errors, []);
     } finally {
-      await vscode.workspace.getConfiguration('kimi').update('runBuilds', false, vscode.ConfigurationTarget.Global);
+      await vscode.workspace.getConfiguration('kimi').update('runBuilds', undefined, vscode.ConfigurationTarget.Global);
     }
   });
 
@@ -254,7 +263,7 @@ suite('Kimi build and run integration', () => {
     await waitFor(() => endedSessions.length === 1, 'Ctrl+F5 session completion');
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].configuration.noDebug, true);
-    assert.deepEqual(started.map(task => task.definition.command), ['build', 'run']);
+    assert.deepEqual(started.map(task => task.definition.command), ['run']);
     assert.deepEqual(errors, []);
   });
 
@@ -273,7 +282,7 @@ suite('Kimi build and run integration', () => {
       assert.equal(sessions[endCount].configuration.program.toLowerCase(),
         (program === buildProject ? buildProject : buildFile).toLowerCase());
     }
-    assert.deepEqual(started.map(task => task.definition.command), ['build', 'run', 'build', 'run', 'build', 'run']);
+    assert.deepEqual(started.map(task => task.definition.command), ['run', 'run', 'run']);
     assert.deepEqual(errors, []);
   });
 
@@ -357,7 +366,7 @@ suite('Kimi build and run integration', () => {
       assert.ok(runExecution, `Application did not start: ${errors.join('; ')}`);
       await vscode.debug.stopDebugging(sessions[0]);
       await waitFor(() => endedSessions.length === 1 && !vscode.tasks.taskExecutions.some(task => task === runExecution), 'Stop cleanup');
-      assert.deepEqual(started.map(task => task.definition.command), ['build', 'run']);
+      assert.deepEqual(started.map(task => task.definition.command), ['run']);
     } finally {
       if (runExecution && vscode.tasks.taskExecutions.includes(runExecution)) {
         runExecution.terminate();
@@ -366,7 +375,8 @@ suite('Kimi build and run integration', () => {
     }
   });
 
-  test('Stop during Build prevents the Run step', async () => {
+  test('legacy mode Stop during Build prevents the Run step', async () => {
+    await vscode.workspace.getConfiguration('kimi').update('runBuilds', false, vscode.ConfigurationTarget.Global);
     let buildExecution: vscode.TaskExecution | undefined;
     const observe = vscode.tasks.onDidStartTaskProcess(event => {
       if (event.execution.task.definition.type === 'kimi' && event.execution.task.definition.command === 'build') {
@@ -386,6 +396,7 @@ suite('Kimi build and run integration', () => {
         buildExecution.terminate();
       }
       observe.dispose();
+      await vscode.workspace.getConfiguration('kimi').update('runBuilds', undefined, vscode.ConfigurationTarget.Global);
     }
   });
 
@@ -394,8 +405,8 @@ suite('Kimi build and run integration', () => {
     const editor = await vscode.window.showTextDocument(document);
     await editor.edit(builder => builder.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), '::Kimi.Console.writeLine("broken" +'));
     assert.equal(await vscode.commands.executeCommand('kimi.buildAndRun', vscode.Uri.file(buildFile)), 'failed');
-    assert.deepEqual(started.map(task => task.definition.command), ['build']);
-    assert.ok(errors.some(error => error.includes('build failed')));
+    assert.deepEqual(started.map(task => task.definition.command), ['run']);
+    assert.ok(errors.some(error => error.includes('run failed')));
   });
 
   test('Run Without Debugging does not run an old executable when the build fails', async () => {
@@ -403,8 +414,8 @@ suite('Kimi build and run integration', () => {
       type: 'kimi', request: 'launch', name: 'Failing Kimi run', program: buildFile
     }, { noDebug: true }));
     await waitFor(() => endedSessions.length === 1, 'failed run completion');
-    assert.deepEqual(started.map(task => task.definition.command), ['build']);
-    assert.ok(errors.some(error => error.includes('build failed')));
+    assert.deepEqual(started.map(task => task.definition.command), ['run']);
+    assert.ok(errors.some(error => error.includes('run failed')));
   });
 
   test('invalid server paths prevent task creation and offer configuration errors', async () => {

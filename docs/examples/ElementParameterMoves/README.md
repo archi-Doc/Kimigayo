@@ -10,7 +10,7 @@ The selected element's responsibility moves into the result. Callee cleanup dest
 
 After a partial Move, remaining initialized elements may be read, borrowed, or moved. The incomplete whole value and moved elements cannot be acquired. Conditional Moves use path flags initialized when the parameter is received. Cleanup visits remaining parts in reverse logical order; Abort does not unwind, and divergent cleanup prevents result delivery.
 
-Parameters are immutable let-like bindings: reassignment, element updates and reinitialization are forbidden. Move to a `var` local before mutable work. Static fixed-array paths use only in-range integer literals, including parentheses, integer bases and separators. Dynamic indices, temporary/result partial Move, borrowed receivers, user `deinit` and general struct/Property paths are outside this implementation unit.
+Parameters are immutable let-like bindings: reassignment, element updates and reinitialization are forbidden. Move to a `var` local before mutable work. Static fixed-array paths use only in-range integer literals, including parentheses, integer bases and separators. Dynamic indices, temporary/result partial Move, borrowed receivers, user `drop` and general struct/Property paths are outside this implementation unit.
 
 From the repository root, with the Windows backend prepared:
 

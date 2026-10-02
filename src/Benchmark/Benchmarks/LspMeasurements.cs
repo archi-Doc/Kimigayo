@@ -37,29 +37,11 @@ internal static class LspMeasurements
         });
 
         var diagnostics = Enumerable.Range(0, 200).Select(static i => new LspDiagnostic(default, 1, "Code", "kimigayo", (i / 2).ToString("D3"))).ToArray();
-        var list = new List<LspDiagnostic>(diagnostics.Length);
+        var list = new List<LspDiagnostic>(diagnostics);
+        var contributions = new List<LspDiagnostic[]> { diagnostics[..100], diagnostics[50..150] };
         LspDiagnostic[]? payload = null;
-        results.Add(new
-        {
-            name = "deduplicate200Diagnostics",
-            cost = Measure(() =>
-            {
-                list.Clear();
-                list.AddRange(diagnostics);
-                payload = WorkspaceCheck.Deduplicate(list);
-            }),
-        });
-
-        results.Add(new
-        {
-            name = "deduplicate200DiagnosticsBefore",
-            cost = Measure(() =>
-            {
-                list.Clear();
-                list.AddRange(diagnostics);
-                payload = DeduplicateBefore(list);
-            }),
-        });
+        results.Add(new { name = "order200Diagnostics", cost = Measure(() => payload = WorkspaceCheck.Order(list)) });
+        results.Add(new { name = "merge2x100Diagnostics", cost = Measure(() => payload = WorkspaceCheck.Merge(contributions)) });
 
         var directory = Path.Combine(Path.GetTempPath(), "kimi-lsp-measurements");
         var files = Enumerable.Range(0, 1000).Select(i => Path.Combine(directory, i.ToString("D4") + ".kimi")).ToArray();
@@ -172,20 +154,5 @@ internal static class LspMeasurements
         Array.Sort(nanoseconds);
         Array.Sort(allocations);
         return new { nanoseconds = nanoseconds[2], bytes = allocations[2] };
-    }
-
-    // The implementation at 91aa2a5b, retained as a paired timing/allocation reference.
-    private static LspDiagnostic[] DeduplicateBefore(List<LspDiagnostic> sorted)
-    {
-        var count = 1;
-        for (var i = 1; i < sorted.Count; i++)
-        {
-            if (!sorted[i].Equals(sorted[count - 1]))
-            {
-                sorted[count++] = sorted[i];
-            }
-        }
-
-        return sorted.GetRange(0, count).ToArray();
     }
 }

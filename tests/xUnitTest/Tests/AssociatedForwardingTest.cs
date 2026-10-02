@@ -14,6 +14,7 @@ public class AssociatedForwardingTest
     public void EmitsUnchangedMilestone()
         => ScalarEmissionTest.EmitFixture("AssociatedForwardingMilestone19", MilestoneSource, "Associated numbers are 21, 21.\nAssociated flags are true, true.\nContract forwarding finished.\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingRetainsAssociatedEvidenceWithoutAllocations()
     {

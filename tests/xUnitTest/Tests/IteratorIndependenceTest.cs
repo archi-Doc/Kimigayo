@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class IteratorIndependenceTest
 {
-    private const string CleanupProgram = "struct Trace\n    public init() => ()\n    deinit => Console.writeLine(\"drop\")\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: ref/i32 during source\n    var count: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init(value: ref/i32 during source) => self.value = value\n    func advance<T>(self: uniq/Self) => self.count += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        let trace = Trace.init()\n        self.advance<i32>()\n        return .Some(self.value)\nlet value = 42\nvar cursor = Cursor.init(value@ref)\nlet first = cursor.next()\nlet second = cursor.next()\nmatch first\n    .Some(let item) => require item == 42 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch second\n    .Some(let item) => require item == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"independent cleanup\")";
+    private const string CleanupProgram = "struct Trace\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: ref/i32 during source\n    var count: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init(value: ref/i32 during source) => self.value = value\n    func advance<T>(self: uniq/Self) => self.count += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        let trace = Trace.init()\n        self.advance<i32>()\n        return .Some(self.value)\nlet value = 42\nvar cursor = Cursor.init(value@ref)\nlet first = cursor.next()\nlet second = cursor.next()\nmatch first\n    .Some(let item) => require item == 42 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch second\n    .Some(let item) => require item == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"independent cleanup\")";
 
     [Theory]
     [InlineData("Iterator", "Iterator.Item", false)]
@@ -138,13 +138,11 @@ public class IteratorIndependenceTest
     [InlineData("self.cursor.count += 1", true)]
     public void LocalDestructorEffectsParticipateInIndependence(string operation, bool valid)
     {
-        var source = "struct Cleanup {source, step}\n    origin source outlives step\n    let cursor: uniq/(Cursor during source) during step\n    public init(cursor: uniq/(Cursor during source) during step) => self.cursor = cursor@move\n    deinit => " + operation + "\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    public let value: uniq/i32 during source\n    public var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        do\n            let cleanup = Cleanup.init(self)\n        return .Some(self.value)";
+        var source = "struct Cleanup {source, step}\n    origin source outlives step\n    let cursor: uniq/(Cursor during source) during step\n    public init(cursor: uniq/(Cursor during source) during step) => self.cursor = cursor@move\n    drop => " + operation + "\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    public let value: uniq/i32 during source\n    public var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        do\n            let cleanup = Cleanup.init(self)\n        return .Some(self.value)";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
+        // A destructor runs only where ownership analysis plans its cleanup, so its effects are judged after that analysis.
+        var rejected = c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) || c.Ownership.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.True(valid != rejected, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
@@ -165,6 +163,7 @@ public class IteratorIndependenceTest
     public void IndependentCleanupAndAccessorsKeepEarlierItemsUsable()
         => ScalarEmissionTest.EmitFixture("AssociatedIteratorIndependentCleanup", CleanupProgram, "drop\ndrop\nindependent cleanup\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EffectCheckingReusesCallAndDestructionState()
     {

@@ -140,7 +140,7 @@ public class CoreCatalogTest
     public void CompilerImplementedSignaturesHaveNoSourceBodyErrors()
     {
         var c = Compilation.CreateForTest();
-        Assert.False(c.Library.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         foreach (var symbol in new[] { c.Library.Replace, c.Library.Exchange, c.Library.Swap })
         {
@@ -150,7 +150,7 @@ public class CoreCatalogTest
         }
 
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func missing() -> ()");
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
     }
 
     [Fact]
@@ -159,12 +159,14 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Library.IsCompleteLibrary);
-        Assert.Equal(91, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(99, c.Library.Declarations.Length);
+        // Dictionary's two source Indexable entries and the private storage primitives are catalog identities too, as is
+        // the Wrapping<T> stub (SPEC 3.1.1.1) and the private i64 address primitive.
+        Assert.Equal(117, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(125, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];
-            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Index or KimiDeclarationId.Range or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayRemoveIndex))
+            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.FromEnd or KimiDeclarationId.Wrapping or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit))
             {
                 Assert.Equal(KimiDeclarationState.Validated, entry.State);
                 Assert.Same(entry.Symbol, c.Library.GetSymbol(entry.Id));
@@ -183,6 +185,7 @@ public class CoreCatalogTest
     [InlineData(KimiDeclarationId.Callable)]
     [InlineData(KimiDeclarationId.Sealed)]
     [InlineData(KimiDeclarationId.ObjectPayload)]
+    [InlineData(KimiDeclarationId.PrimitiveInteger)]
     [InlineData(KimiDeclarationId.Iterable)]
     [InlineData(KimiDeclarationId.UniqIterable)]
     public void RebindRejectsChangedIntrinsicContracts(KimiDeclarationId id)
@@ -207,6 +210,7 @@ public class CoreCatalogTest
         Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCatalogValidationAndBindingReuseStorage()
     {

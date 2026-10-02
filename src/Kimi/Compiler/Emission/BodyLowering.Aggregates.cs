@@ -116,7 +116,8 @@ internal sealed partial class BodyLowering
                 body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && this.aggregatePlaces[operation.Place] is not null &&
                 (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && operation.Source is IndexKoto &&
-                        body.Sequences[(int)body.Values[id].Constant].Kind is SequenceOperation.Read or SequenceOperation.ArrayRead) ||
+                        body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Read) ||
+                    (body.Values[id].Kind == OwnershipValueKind.Sequence && body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Indices) ||
                     (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
                         body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } read && read.Input == operation.Place && ReferenceEquals(read.Source, operation.Source))))
             {
@@ -156,7 +157,7 @@ internal sealed partial class BodyLowering
                 type = type.StoredCases![selected.Ordinal];
                 offset = ownerLayout.PayloadOffset;
             }
-            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto { Entries.Count: 0 }))
+            else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
             {
                 return Fail("Aggregate construction has no matching source shape.", out failure);
             }
@@ -350,8 +351,8 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
             case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
-            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary:
-                // SPEC 4.6.1: metadata shares the handle in place; the sequence operation loads its fields.
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
+                // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Array receiver is not initialized.", out failure);
             case OwnershipOperationKind.Declare:
                 if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
@@ -443,7 +444,15 @@ internal sealed partial class BodyLowering
                         var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
                         for (var i = 0; i < plan.PayloadCount; i++)
                         {
-                            function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.SlotAddress, plan.PayloadStart + i), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            // A zero-sized payload has no slot; its placement only counts the element.
+                            if (element.IsZeroSized)
+                            {
+                                function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            }
+                            else
+                            {
+                                function.AddCall(id, placeElement, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.SlotAddress, plan.PayloadStart + i), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                            }
                         }
                     }
                 }
@@ -591,16 +600,10 @@ internal sealed partial class BodyLowering
             return Fail("Array destruction has an unsupported element Type.", out failure);
         }
 
-        var iterator = this.arrayIterators[place];
-        if (iterator >= 0 && body.IsReachable(id) && !this.Dominates(iterator, id))
-        {
-            return Fail("Array iterator cleanup requires its initialized cursor.", out failure);
-        }
-
         FunctionAbi callee;
         if (dictionary)
         {
-            if (!this.TryGetArrayElement(arrayType.Components[0], out var key, allowEmpty: true) || !this.TryGetArrayElement(arrayType.Components[1], out var item, allowEmpty: true))
+            if (!this.TryGetArrayElement(arrayType.Components[0], out var key) || !this.TryGetArrayElement(arrayType.Components[1], out var item))
             {
                 return Fail("Dictionary destruction requires concrete entry storage.", out failure);
             }
@@ -610,13 +613,12 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            callee = element.NeedsDestruction ? this.GetArrayHelper(iterator >= 0 ? ArrayHelperKind.IteratorDrop : ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
         }
 
         if (conditional)
         {
-            // An owning iterator always has a dominating unconditional cursor.
-            if (iterator >= 0 || this.continuations[id] < 0 || this.liveFlags[place] == 0)
+            if (this.continuations[id] < 0 || this.liveFlags[place] == 0)
             {
                 return Fail("Conditional Array destruction requires a live flag and one split.", out failure);
             }

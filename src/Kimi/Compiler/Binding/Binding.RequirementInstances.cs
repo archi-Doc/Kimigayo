@@ -19,7 +19,17 @@ public sealed partial class Binding
             return intrinsic;
         }
 
-        if (call.ConformingType is not { } self || call.Target.Scope.Owner.BoundSymbol is not { } contract ||
+        if (call.ConformingType is { } fixedSelf && call.RequirementContract is { } fixedContract && IsFixedArrayEntry(fixedSelf, fixedContract))
+        {
+            return this.InstantiateFixedArrayEntry(call, fixedSelf, fixedContract, destination); // PLAN G32.
+        }
+
+        if (call.ConformingType is { } integer && call.RequirementContract is { } positionContract && IsIntegerPosition(integer, positionContract))
+        {
+            return this.InstantiateIntegerPosition(call, integer, destination); // SPEC 4.6.2.
+        }
+
+        if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||
             witness.Function is not { BasePath: null } function ||
@@ -52,5 +62,37 @@ public sealed partial class Binding
                 result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
             }
         }
+    }
+
+    // SPEC 8.4.9: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type
+    // arguments is its own reference, and a bound reference has its Type arguments instantiated (`Indexable<Name>`, or
+    // `C<E>` read as `C<i32>`). Null when the call recorded none or the instance has no such conformance.
+    private BindingSymbol? InstanceReference(BoundCall call, BoundType self, BoundCall outer)
+    {
+        if (call.RequirementContract is not { } recorded)
+        {
+            return null;
+        }
+
+        if (!IsBoundContractReference(recorded))
+        {
+            return recorded;
+        }
+
+        if (this.InstantiateStorageType(recorded.Type!, outer) is not { } concrete || self.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < identities.Count; i++)
+        {
+            // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`).
+            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, concrete) || ReferenceEquals(this.StoredType(formal, self), concrete)))
+            {
+                return identities[i].Contract;
+            }
+        }
+
+        return null;
     }
 }

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -76,118 +77,180 @@ public sealed class GroupKoto : DeclarationContainerKoto
     private void ParseRoot(ref TokenReader reader)
     {
         ConsumeBlockStart(ref reader);
-        var hasNonAliasDeclaration = false;
+        var state = default(RootParseState);
+        this.ParseRootItems(ref reader, ref state);
+    }
+
+    /// <summary>Parses SourceDocument root items through the end of the current block.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="state">The root state, shared by directive targets and arms.</param>
+    /// <remarks>
+    /// Root directive targets and arms keep the root item grammar, including aliases and <c>rootgroup</c> (SPEC 6.1.1, 19.1).
+    /// Excluded syntax is parsed into a detached group and contributes no root item (SPEC 19.5).
+    /// </remarks>
+    private void ParseRootItems(ref TokenReader reader, ref RootParseState state)
+    {
         while (TryBeginDeclaration(ref reader))
         {
             if (reader.IsExcluded)
             {
-                Parser.SkipExcludedSyntax(ref reader, executableContext: true);
-                continue;
+                var owner = this.ExcludedRootOwner(ref reader, ref state);
+                var region = Parser.BeginExcludedRegion(ref reader);
+                owner.ParseRootDirectiveOrItem(ref reader, ref state);
+                Parser.EndExcludedRegion(ref reader, region);
             }
-
-            if (Parser.IsCompileTimeSwitchStart(ref reader))
+            else if (reader.HasCompileTimeIfPrefix || Parser.IsCompileTimeSwitchStart(ref reader))
             {
-                hasNonAliasDeclaration = true;
-                var caseGroup = Parser.ParseCompileTimeSwitch(ref reader);
-                this.AddSelectedRuntimeItems(reader.CodeContext, caseGroup);
-                continue;
+                this.ParseRootDirectiveOrItem(ref reader, ref state);
             }
-
-            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+            else
             {
-                hasNonAliasDeclaration = true;
-                this.AddSelectedRuntimeItems(reader.CodeContext, Parser.ParseBlock(ref reader));
-                continue;
-            }
-
-            var token = reader.CurrentToken;
-            var tokenKind = token.Kind;
-            if (tokenKind == TokenKind.Alias)
-            {
-                reader.Advance();
-                string? aliasName = null;
-                if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
-                {
-                    aliasName = reader.GetIdentifier(reader.Read());
-                    reader.Advance();
-                }
-
-                reader.TryConsume(TokenKind.ColonColon);
-                var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
-                var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
-                if (hasNonAliasDeclaration)
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
-                }
-                else
-                {
-                    var context = reader.TakeContext();
-                    if (context.ModifierKind != default || context.AttributeKoto is not null)
-                    {
-                        reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
-                    }
-
-                    var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
-                    Parser.ParseAttachedOriginBlock(ref reader, alias);
-                    this.AddLast(alias);
-                }
-
-                continue;
-            }
-
-            hasNonAliasDeclaration = true;
-            if (tokenKind == TokenKind.RootGroup)
-            {
-                reader.Advance();
-                var name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span, codeContext: reader.CodeContext);
-                reader.Document(groupKoto, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
-                groupKoto.AddHeader(TokenKind.Group, state.ModifierKind, null, null, state.AttributeKoto);
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    groupKoto.Parse(ref reader);
-                }
-
-                continue;
-            }
-
-            if (this.TryParseDeclarationContainer(ref reader, token))
-            {
-                continue;
-            }
-
-            var oldPosition = reader.Position;
-            var item = Parser.ParseBlockItem(ref reader);
-            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
-            {
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-            }
-
-            if (item is not null)
-            {
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
-            }
-
-            if (reader.Position == oldPosition)
-            {
-                reader.Advance();
+                this.ParseRootItem(ref reader, ref state);
             }
         }
     }
 
-    private void AddSelectedRuntimeItems(CodeContext context, Koto selected)
+    private void ParseRootDirectiveOrItem(ref TokenReader reader, ref RootParseState state)
     {
-        if (selected is CodeBlockKoto block)
+        if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
-            for (var i = 0; i < block.Items.Count; i++)
+            var start = reader.CurrentTokenRange.Start;
+            var selection = Parser.ScanCompileTimeSwitch(ref reader);
+            Parser.RejectDirectiveBlockAttributes(ref reader);
+            if (Parser.BeginCompileTimeSwitchArms(ref reader))
             {
-                this.Kotonoha.AddGeneratedFunctionItem(context, block.Items[i]);
+                for (var arm = 0; Parser.TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                {
+                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                    {
+                        reader.Expect(SyntaxForm.Body);
+                        continue;
+                    }
+
+                    if (arm == selection.Selected)
+                    {
+                        reader.Advance();
+                        this.ParseRootItems(ref reader, ref state);
+                    }
+                    else
+                    {
+                        var owner = this.ExcludedRootOwner(ref reader, ref state);
+                        var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
+                        reader.Advance();
+                        owner.ParseRootItems(ref reader, ref state);
+                        Parser.EndExcludedRegion(ref reader, region);
+                    }
+                }
             }
+
+            if (Parser.UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            {
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
+            }
+
+            return;
         }
-        else
+
+        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
         {
-            this.Kotonoha.AddGeneratedFunctionItem(context, selected);
+            Parser.RejectDirectiveBlockAttributes(ref reader);
+            reader.Advance();
+            this.ParseRootItems(ref reader, ref state);
+            return;
         }
+
+        this.ParseRootItem(ref reader, ref state);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ParseRootItem(ref TokenReader reader, ref RootParseState state)
+    {
+        var token = reader.CurrentToken;
+        var tokenKind = token.Kind;
+        if (tokenKind == TokenKind.Alias)
+        {
+            reader.Advance();
+            string? aliasName = null;
+            if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
+            {
+                aliasName = reader.GetIdentifier(reader.Read());
+                reader.Advance();
+            }
+
+            reader.TryConsume(TokenKind.ColonColon);
+            var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
+            var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
+            if (state.HasNonAliasDeclaration)
+            {
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
+            }
+            else
+            {
+                var context = reader.TakeContext();
+                if (context.ModifierKind != default || context.AttributeKoto is not null)
+                {
+                    reader.Unexpected(SyntaxForm.Decoration, token.Span);
+                }
+
+                var alias = new AliasKoto(ref reader, qualifiedName, aliasName, token.Span, targetSyntax);
+                Parser.ParseAttachedOriginBlock(ref reader, alias);
+                this.AddLast(alias);
+            }
+
+            return;
+        }
+
+        state.HasNonAliasDeclaration = true;
+        if (tokenKind == TokenKind.RootGroup)
+        {
+            reader.Advance();
+            var name = KotoHelper.ValidateAndGetNamespace(ref reader);
+            var context = reader.TakeContext();
+            var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, context, token.Span, codeContext: reader.CodeContext);
+            reader.Document(groupKoto, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), context.AttributeKoto);
+            groupKoto.AddHeader(TokenKind.Group, context.ModifierKind, null, null, context.AttributeKoto);
+            if (reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                groupKoto.Parse(ref reader);
+            }
+
+            return;
+        }
+
+        if (this.TryParseDeclarationContainer(ref reader, token))
+        {
+            return;
+        }
+
+        var oldPosition = reader.Position;
+        var item = Parser.ParseBlockItem(ref reader);
+        reader.ExpectLineEnd();
+
+        if (item is not null && !reader.InExcludedSyntax)
+        {
+            this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
+        }
+
+        if (reader.Position == oldPosition)
+        {
+            reader.Advance();
+        }
+    }
+
+    /// <summary>Gets the owner of excluded root syntax: this group inside excluded syntax, otherwise a detached group.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="state">The root state that keeps the detached group.</param>
+    /// <returns>The group that receives the excluded declarations.</returns>
+    private GroupKoto ExcludedRootOwner(ref TokenReader reader, ref RootParseState state)
+        => reader.InExcludedSyntax ? this : state.Detached ??= (GroupKoto)CreateStandalone(reader.CodeContext, TokenKind.Group, default, this.Span, string.Empty);
+
+    /// <summary>The source-order state of SourceDocument root items (SPEC 18.1.1, 19.5).</summary>
+    private struct RootParseState
+    {
+        /// <summary>Whether an ordinary declaration or executable item precedes, so a later alias is misplaced.</summary>
+        public bool HasNonAliasDeclaration;
+
+        /// <summary>The detached group that receives excluded root declarations.</summary>
+        public GroupKoto? Detached;
     }
 }

@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class LogicalTerminalContinuationTest
 {
     private const string Helpers = "\nfunc truth(x: i32) -> bool => true\nfunc effect(x: ()) -> bool => true\nfunc take(x: string) -> bool => true\nfunc stopTake(x: string) -> Never => $abort(\"taken\")";
@@ -40,7 +39,7 @@ public class LogicalTerminalContinuationTest
     [InlineData("let s = \"s\"", "c or truth(stopTake(s@move))", "return", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "c and (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     [InlineData("var x: i32", "c or (return)", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("var x: i32", "c and (choice: do\n            if c => return\n            exit to choice: true\n        )", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("var x: i32", "c and (label choice: do\n            if c => return\n            exit to choice true\n        )", "x = 2\n        return", "let y = x", OwnershipFailure.UninitializedUse)]
     public void CheckingJoinsRetainAllOperandPaths(string declaration, string expression, string tail, string use, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, expression, tail, use) + Helpers);
@@ -67,23 +66,6 @@ public class LogicalTerminalContinuationTest
     public void DefaultLogicalDivergenceChecksAndNeverReturns(string op)
         => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c: bool, x: i32 = (do\n    var n = 1\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " c\n        loop => continue\n    n\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
 
-    [Fact]
-    public void ReloadedLogicalTerminalCheckingAllocatesNothingWhenWarm()
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x = 1", "truth(stop()) and effect(x = 2)", "return", "let y = x") + Helpers);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
-
     private static string Source(string declaration, string expression, string tail, string use, bool condition = true)
         => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    " + declaration + "\n    do\n        let b = " + expression + "\n        " + tail + "\n    " + use + "\nf(" + (condition ? "true" : "false") + ")";
 
@@ -92,4 +74,26 @@ public class LogicalTerminalContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void ReloadedLogicalTerminalCheckingAllocatesNothingWhenWarm()
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var x = 1", "truth(stop()) and effect(x = 2)", "return", "let y = x") + Helpers);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

@@ -43,6 +43,8 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 - `[Kimi]` Treat acronyms as words: `Utf8Writer`, not `UTF8Writer`. Use familiar abbreviations such as
   `min`, `max` and `utf8`; prefer `index` to `idx`.
 - `[Kimi]` Put helpers in their domain's group or struct, not a catch-all `Utils` or `Helpers` group.
+- `[Advice]` Avoid giving a control-flow label the same name as a value visible in its active scope.
+  Labels and values remain separate namespaces; this recommendation changes no language validity.
 - `[Advice]` Put one primary public declaration in each file. Split large Types by topic, preserving
   storage order (§2.2).
 
@@ -82,7 +84,7 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
 2. Associated Types.
 3. enum Cases.
 4. Stored Properties, then computed Properties or Contract Property requirements.
-5. Constructors, then `deinit`.
+5. Constructors, then `drop`.
 6. Functions grouped by operation, with public API groups before helper-only groups. Keep overloads adjacent
    and shared variants before exclusive variants.
 7. Nested Types.
@@ -92,8 +94,16 @@ across fragments for style: logical order controls initializer effects and rever
 ([SPEC §6.2.1](spec/06-declarations-and-containers.md#621-split-structures-and-storage-order),
 [§16.3.2](spec/16-scope-exit-and-destruction.md#1632-field-cleanup)).
 
+`[Kimi]` In a function requirement's Constraint region, write Constraint Clauses, then `origin` relations, then
+`effect` clauses. In a Contract body, place `effect Ancestor.name ...` specifications after the `associate`
+specifications they rely on ([SPEC §8.4.10](spec/08-generics-constraints-and-contracts.md#8410-requirement-effect-bounds)).
+
+`[Kimi]` Declare an effect bound only where callers need it. Adding a bound obliges every implementer; removing one
+breaks callers that rely on it, so treat both as API changes. Do not restate a bound that an ancestor already
+declares; the restatement is valid but adds nothing.
+
 - `[Kimi]` Separate declaration groups with one blank line. Use one blank line between constructors,
-  `deinit`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
+  `drop`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
   signatures or simple stored declarations may stay consecutive.
 - `[Advice]` Inside a body, separate logical steps with a blank line.
 
@@ -117,11 +127,21 @@ across fragments for style: logical order controls initializer effects and rever
   capacities or two similar inputs: `init(! start: isize, end: isize)`.
 - `[Advice]` Use `external => internal` when it improves the call:
   `of => value: ref/T` permits `firstIndex(of: target)`.
-- `[Kimi]` Overloads describe the same operation with different input forms, such as `isize` and `Index`.
+- `[Kimi]` Overloads describe the same operation with different input forms. Take a position or a range as
+  one generic parameter, `P is Position` or `R is PositionRange`, instead of an overload per Type; the
+  generic entry only resolves it and delegates to a common `isize` or `ResolvedRange` body.
+- `[Kimi]` A try-prefixed operation is the try form of the operation with the same inputs: `tryGet(k)` is
+  the try form of `x[k]` for a position, as Dictionary's `tryGet` is for a key, and `trySlice(r)` for a range.
+  Constraints alone never distinguish overloads (SPEC §9.1), so a position and a range entry need different names.
+- `[Kimi]` Do not overload only on how an input is acquired, such as `T` and `ref/T` at the same position: a
+  caller passing a Place must then write `@ref`, `@copy` or `@move` (SPEC §10.2.2), and adding such an
+  overload, or importing one, rejects existing calls. Give operations with different purposes different names.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
 
 ### 3.3. Properties and comparisons
 
+- `[Kimi]` Time durations expose `seconds`, `milliseconds` and `microseconds` as f64 observations;
+  `rawMicroseconds: u64` is the exact integer representation. Read a running clock through `elapsed()`.
 - `[Kimi]` Use a Property for a stable observation with no explicit arguments, allocation or observable
   effects, and O(1) cost: `length`, `capacity`, `isEmpty`. Use functions for work such as `sorted()`.
 - `[Advice]` Prefer shared getters. An operation that needs exclusive access or consumes its receiver
@@ -129,6 +149,17 @@ across fragments for style: logical order controls initializer effects and rever
 - `[Kimi]` Use `Equatable.equals` and `Comparable.compare` for equality and ordering. The latter returns
   a negative, zero or positive `i32`. Do not introduce competing comparison Contracts or Boolean
   `lessThan` callbacks for the same purpose.
+
+### 3.4. Integer arithmetic and conversions
+
+- `[Kimi]` Make a wrapping integer Type visible on the line that introduces it: a Type annotation,
+  `@Wrapping<…>` or `@wrap<Wrapping<…>>`. Inference alone hides whether a line wraps or checks
+  ([SPEC §3.1.1.1](spec/03-types-and-values.md#3111-wrapping-integer-types)).
+- `[Kimi]` Write computations that are meant to wrap with `Wrapping<T>` and `@wrap`; do not avoid checks
+  by masking or by computing in a wider Type.
+- `[Kimi]` Enter and leave a wrapping integer Type over the same integer argument with `@`
+  (`x@Wrapping<u64>`, `w@u64`); use `@wrap` only across a width or signedness boundary
+  ([SPEC §13.5.4.1](spec/13-operators-and-assignment.md#13541-wrapping-integer-conversions)).
 
 ## 4. Ownership and borrowing
 
@@ -143,7 +174,7 @@ across fragments for style: logical order controls initializer effects and rever
 | Mutate the caller's value | `uniq/T` | `f(value@uniq)` |
 | Store, return or consume a value | `T` | `f(value@move)`; a Copy value may be passed bare |
 
-`[Kimi]` Pass integers, `bool`, `Index`, `Range` and `Slice` by value; borrow large Copy aggregates.
+`[Kimi]` Pass integers, `bool`, positions, ranges and `Slice` by value; borrow large Copy aggregates.
 Do not consume a Non-Copy input merely to inspect it. Temporaries and existing references follow ordinary
 acquisition and Reborrow rules.
 
@@ -206,6 +237,18 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
   copies only a proven Copy value ([SPEC §3.5](spec/03-types-and-values.md#35-copy-and-move)).
 - `[Advice]` Use `@copy` to make an expensive aggregate copy, a generic Copy operation or an acquisition
   mode clear. Prefer bare acquisition for routine scalar reads.
+
+### 4.5. Raw pointers and unsafe code
+
+- `[Kimi]` Spell an address whose referent the code does not access as `raw/()`, and compute byte offsets
+  on `raw/u8`; convert to the element pointer with `@raw/T` only where elements are accessed
+  ([SPEC §5](spec/05-raw-pointers-and-unsafe-memory.md)).
+- `[Kimi]` Declare a function `unsafe`, including a `#LibraryImport`, only when its callers carry obligations
+  that its signature cannot express, and state each one under `- safety:`. A foreign function whose access
+  the signature states, such as a borrow of a C-exchangeable referent, is a safe declaration
+  ([SPEC §22.3.1](spec/22-core-execution-and-foreign-functions.md#2231-declaration-and-call-contract)).
+- `[Kimi]` Enclose only the operations that need an unsafe context in an `unsafe` block, and lend the result
+  of a raw Place access to safe code as a borrow with a declared Origin.
 
 ## 5. Failure and construction
 
@@ -275,8 +318,9 @@ This hypothetical removal example omits its enclosing Type and body:
 /// Runs in O(1), allocates no storage and does not preserve order.
 ///
 /// - return: The removed element; the caller takes ownership.
-/// - abort: `index < 0` or `index >= self.length`.
-public func swapRemove(self: uniq/Self, index: isize) -> T
+/// - abort: `index` does not resolve to an element position.
+public func swapRemove<P>(self: uniq/Self, index: P) -> T
+    P is Position
 ```
 
 `[Advice]` Put explanations that span several declarations on a group or in a separate Markdown document.

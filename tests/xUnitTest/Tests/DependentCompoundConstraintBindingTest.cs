@@ -25,7 +25,7 @@ public class DependentCompoundConstraintBindingTest
     public void CompoundInputIsCheckedAfterSubstitution(string clause, string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -38,7 +38,7 @@ public class DependentCompoundConstraintBindingTest
     public void ConstructedSubjectIdentityIsSubstituted(string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Box<T>\npublic struct Target<T>\n    Box<T> is Box<i32>\npublic func use(value: Target<" + argument + ">)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -51,7 +51,7 @@ public class DependentCompoundConstraintBindingTest
     public void GroupedSelfRetainsCopyDerivation(string kind, string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public " + kind + " Target<T>\n    T is Copy\n    ((Self)) is Copy\n" + (kind == "enum" ? "    A(T)\n" : "    var value: T\n") + "public func use(value: Target<" + argument + ">)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -60,7 +60,7 @@ public class DependentCompoundConstraintBindingTest
     public void GroupedSelfDoesNotAssumeUnimplementedRequirements()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\n    func read(self: ref/Self) -> i32\npublic struct Target<T>\n    (Self) is C");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var target = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -73,7 +73,7 @@ public class DependentCompoundConstraintBindingTest
     public void CompoundAssumptionsSupportGenericForwarding(bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\npublic struct Forward<U>\n    " + (valid ? "[2 of U] is Copy" : "U is Owned") + "\n    var value: Target<U>");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
@@ -85,7 +85,7 @@ public class DependentCompoundConstraintBindingTest
     public void NestedProjectionInputsAreBoundAfterTheirRootPremises(string clause, string item, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -103,7 +103,7 @@ public class DependentCompoundConstraintBindingTest
     public void CompoundCopyPremiseSupportsStoredFieldDerivation()
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\n    Self is Copy\n    var values: [2 of T]");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -128,7 +128,7 @@ public class DependentCompoundConstraintBindingTest
     public void CompoundInputSubjectHasTheDeclarationApiDomain(string access, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(access + " struct Box<T>\npublic struct Target<T>\n    Box<T> is Owned");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
@@ -136,6 +136,7 @@ public class DependentCompoundConstraintBindingTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCompoundInputsAllocateNothing()
     {

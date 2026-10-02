@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class DefaultCompletionTest
 {
     [Theory]
@@ -32,8 +31,8 @@ public class DefaultCompletionTest
 
     [Theory]
     [InlineData("loop => continue")]
-    [InlineData("scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope: n")]
-    [InlineData("scope: do\n    defer => loop => ()\n    exit to scope: 3")]
+    [InlineData("label scope: do\n    var n: i32 = loop => continue\n    n = 3\n    exit to scope n")]
+    [InlineData("label scope: do\n    defer => loop => ()\n    exit to scope 3")]
     public void NoncompletingDefaultsSatisfyRequireFailure(string expression)
     {
         var c = Parse("func f(x: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
@@ -48,7 +47,7 @@ public class DefaultCompletionTest
     [InlineData("If", "if f() => Console.writeLine(\"bad\")")]
     [InlineData("While", "while f() => Console.writeLine(\"bad\")")]
     [InlineData("Require", "require f() else => $abort(\"bad\")")]
-    [InlineData("Result", "let n = scope: do => exit to scope: f()")]
+    [InlineData("Result", "let n = label scope: do => exit to scope f()")]
     public void NoncompletingDefaultConditionsHaveNoRuntimeSuccessor(string name, string use)
         => ScalarEmissionTest.EmitFixture(
             Prefix + name,
@@ -82,18 +81,6 @@ public class DefaultCompletionTest
         Assert.False(c.Ownership.Analyze().IsVerified);
     }
 
-    [Fact]
-    public void WarmDefaultFlowReanalysisAllocatesNothing()
-    {
-        var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
-        Assert.Empty(flow.Issues);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
-        Assert.Empty(flow.Issues);
-        Assert.Empty(flow.PendingBinding);
-        Assert.Single(flow.Nodes, x => x.Key is InvocationKoto && !x.Value.CanCompleteNormally);
-    }
-
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();
@@ -108,4 +95,21 @@ public class DefaultCompletionTest
 #else
     private const string Prefix = "DefaultCompletionRelease";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Fact]
+        public void WarmDefaultFlowReanalysisAllocatesNothing()
+        {
+            var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
+            var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+            Assert.Empty(flow.Issues);
+            Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
+            Assert.Empty(flow.Issues);
+            Assert.Empty(flow.PendingBinding);
+            Assert.Single(flow.Nodes, x => x.Key is InvocationKoto && !x.Value.CanCompleteNormally);
+        }
+    }
 }

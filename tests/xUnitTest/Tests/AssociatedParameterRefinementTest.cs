@@ -60,6 +60,29 @@ public class AssociatedParameterRefinementTest
         ScalarEmissionTest.EmitFixture("AssociatedParameterWitness" + (result.Contains(".(") ? "Qualified" : "Short"), source, "witness\n");
     }
 
+    // SPEC 8.4.9: a family of a generic Contract is identified by its bound reference, so a parameter conforming to C<i32>
+    // and C<i64> keeps `T.(C<i32>).Item(a)` and `T.(C<i64>).Item(a)` apart, and the instance uses the matching witness.
+    private const string TwoFamilies = "contract C<E>\n    associate Item(a)\n    func borrow(self: ref/Self, value: ref/E during a) -> Self.Item(a)\n" +
+        "struct S\n    Self is C<i32>\n    Self is C<i64>\n    associate C<i32>.Item(a) is ref/i32 during a\n    associate C<i64>.Item(a) is ref/i64 during a\n    public init() => ()\n" +
+        "    public func borrow(self: ref/Self, value: ref/i32 during a) -> ref/i32 during a => value\n    public func borrow(self: ref/Self, value: ref/i64 during a) -> ref/i64 during a => value\n";
+
+    [Fact]
+    public void FamiliesOfDistinctBoundReferencesStayDistinct()
+    {
+        const string Use = "func relay<T>(source: ref/T, small: ref/i32 during a, large: ref/i64 during a) -> T.(C<i64>).Item(a)\n    T is C<i32>\n    T is C<i64>\n" +
+            "    let first: T.(C<i32>).Item(a) = source.borrow(small)\n    return source.borrow(large)\n" +
+            "let s = S.init()\nvar small: i32 = 7\nvar large: i64 = 9\nlet b = relay(s@ref, small@ref, large@ref)\nrequire b == 9 else => $abort(\"relay\")\nConsole.writeLine(\"families\")";
+        ScalarEmissionTest.EmitFixture("AssociatedParameterTwoFamilies", TwoFamilies + Use, "families\n");
+    }
+
+    [Fact]
+    public void AFamilyOfAnotherBoundReferenceIsRejected()
+    {
+        const string Mixed = "func mix<T>(source: ref/T, large: ref/i64 during a) -> T.(C<i32>).Item(a)\n    T is C<i32>\n    T is C<i64>\n    return source.borrow(large)\n";
+        var c = MinimalEmissionTest.Analyze(TwoFamilies + Mixed);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Theory]
     [InlineData("C<i32>", "i32", true)]
     [InlineData("C<i32>", "string", false)]

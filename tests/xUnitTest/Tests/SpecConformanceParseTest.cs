@@ -66,7 +66,7 @@ public class SpecConformanceParseTest
     [InlineData("func f<T>()\n    other is Comparable\n    return")]
     [InlineData("func f<T>()\n    run()\n    T is Comparable\n    return")]
     public void RejectsInvalidFunctionConstraintDeclarations(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void ParsesContractPropertyRequirementsAndDestructor()
@@ -79,7 +79,7 @@ public class SpecConformanceParseTest
 
             struct Logger {sink}
                 let output: uniq/Writer during sink
-                deinit
+                drop
                     self.output.flush()
                     return
             """);
@@ -128,9 +128,9 @@ public class SpecConformanceParseTest
     {
         var character = Parse("let value = '\\" + escape + "'");
         var text = Parse("let value = \"\\" + escape + "\"");
-        var charError = Assert.Single(character.DiagnosticCollection.GetArray());
-        var stringError = Assert.Single(text.DiagnosticCollection.GetArray());
-        Assert.Equal(charError.Entry.Name, stringError.Entry.Name);
+        var charError = Assert.Single(TestDiagnostics.Of(character));
+        var stringError = Assert.Single(TestDiagnostics.Of(text));
+        Assert.Equal(charError.Code, stringError.Code);
     }
 
     [Theory]
@@ -162,7 +162,7 @@ public class SpecConformanceParseTest
     [InlineData("var value = \"\\(a b)\"")]
     [InlineData("var value = \"\\(a\"")]
     public void DiagnosesInvalidStringSyntaxDuringParsing(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Theory]
     [InlineData("(1, \"text\")")]
@@ -202,9 +202,8 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
-        var body = Assert.IsType<CodeBlockKoto>(Assert.Single(sample.Members));
-        Assert.IsType<PropertyKoto>(body.Items[0]);
-        Assert.IsType<FunctionKoto>(body.Items[1]);
+        // Selected directive items are parsed into the Container itself (SPEC 19.1).
+        Assert.Collection(sample.Members, x => Assert.IsType<PropertyKoto>(x), x => Assert.IsType<FunctionKoto>(x));
     }
 
     [Fact]
@@ -216,7 +215,7 @@ public class SpecConformanceParseTest
                 T is Comparable
                 return
             """);
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(parsed.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(parsed)).Code);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
         Assert.Empty(function.TypeConstraints);
     }
@@ -262,7 +261,7 @@ public class SpecConformanceParseTest
     public void RecoversFromMalformedSyntaxWithoutLosingTheNextDeclaration(string source)
     {
         var parsed = Parse(source + "\nvar after = 1");
-        Assert.NotEmpty(parsed.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(parsed));
         Assert.Contains(parsed.GeneratedFunction!.Body!.Items.OfType<FieldKoto>(), x => x.NameKoto.IdentifierName == "after");
     }
 
@@ -271,7 +270,7 @@ public class SpecConformanceParseTest
     {
         const string Source = "func f()\n    var value = \"\\(x + )\"";
         var parsed = Parse(Source);
-        var diagnostic = Assert.Single(parsed.DiagnosticCollection.GetArray());
+        var diagnostic = Assert.Single(TestDiagnostics.Of(parsed));
         Assert.Equal(Source.LastIndexOf(')'), diagnostic.Span.Start);
     }
 
@@ -302,25 +301,25 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData("struct Resource\n    deinit\n        release()")]
-    [InlineData("struct Resource\n    deinit => release()")]
+    [InlineData("struct Resource\n    drop\n        release()")]
+    [InlineData("struct Resource\n    drop => release()")]
     public void PreservesDestructorBody(string source)
     {
         var parsed = Parse(source);
         AssertValid(parsed);
-        Assert.Contains("deinit", ParseTestHelper.Unparse(parsed));
+        Assert.Contains("drop", ParseTestHelper.Unparse(parsed));
         RoundTrip(parsed);
     }
 
     [Theory]
-    [InlineData("struct Resource\n    public deinit\n        release()")]
-    [InlineData("struct Resource\n    #Marker\n    deinit\n        release()")]
+    [InlineData("struct Resource\n    public drop\n        release()")]
+    [InlineData("struct Resource\n    #Marker\n    drop\n        release()")]
     [InlineData("struct Resource\n    unsafe init()\n        ()")]
     [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
     public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
     {
-        // deinit accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
-        Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        // drop accepts no modifiers, and init only an access modifier (SPEC 16.3, 6.2.3).
+        Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
     }
 
     [Fact]
@@ -343,7 +342,7 @@ public class SpecConformanceParseTest
     [InlineData("func f()\n    #if unknown\nfunc g() => 1")]
     [InlineData("group Example\n    #if true\ngroup Other")]
     public void DiagnosesCompileTimeIfWithoutATarget(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     private static void RoundTrip(Kotonoha parsed)
     {

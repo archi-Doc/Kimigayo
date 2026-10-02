@@ -6,29 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private static bool IsPointerPlace(Koto source)
-    {
-        // SPEC 5.2, 12: stored fields, Tuple elements and isize-indexed fixed-array elements
-        // of *p or p[n] are raw Places too. Range and from-end forms keep their existing handling.
-        for (var depth = 0; depth < 64; depth++)
-        {
-            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
-            {
-                return true;
-            }
-
-            if (source is not BinaryKoto element || !ElementAccess.IsSyntax(element) ||
-                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || !ReferenceEquals(element.Right.BoundType, BoundType.ISize))))
-            {
-                return false;
-            }
-
-            source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        return false;
-    }
-
     private bool SupportsPointerValue(Koto source, bool abstractRead = false)
     {
         var type = this.Concrete(source.BoundType);
@@ -39,9 +16,11 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)) &&
-                this.compilation.Binding.ProveOwned(type, source) == ConstraintProof.Proven);
+        // Acquisition preserves the complete pointee Type, including its internal Origins. Raw access supplies no
+        // new Loan or lifetime; initialized storage and valid Copy/Move permission remain the unsafe caller's obligations.
+        return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceTypes.IsBorrow(type) ||
+            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
+            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
     }
 
     private int PointerAddress(Koto source)
@@ -77,7 +56,7 @@ public sealed partial class OwnershipAnalysis
         // against the fixed length during lowering; a literal in-range index is a static offset.
         var pointer = this.PointerAddress(KotoHelper.UnwrapParentheses(element.Left));
         var selector = element is IndexKoto ? ElementAccess.StaticSelector(element) : position;
-        var index = pointer >= 0 && selector < 0 ? this.Value(this.Expression(element.Right, PlaceUseKind.Read)) : -1;
+        var index = pointer >= 0 && selector < 0 ? this.Value(this.PositionPlace(element.Right, this.Expression(element.Right, PlaceUseKind.Read))) : -1;
         if (pointer < 0 || (selector < 0 && (index < 0 || !this.flow!.Nodes[element].CanCompleteNormally)))
         {
             return -1;
@@ -90,15 +69,21 @@ public sealed partial class OwnershipAnalysis
         return this.Value(projected);
     }
 
-    private int ReadPointer(Koto source, PlaceUseKind use)
+    private int ReadPointer(Koto source, PlaceUseKind use, AcquisitionKind? acquisition)
     {
         // A non-consuming access needs a raw Place/borrow plan, not a Move to a
         // disposable owner. In particular, string comparisons must not consume *p.
-        if (!this.SupportsPointerValue(source, abstractRead: true) ||
-            (use != PlaceUseKind.Consume && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven))
+        var copy = this.compilation.Binding.ProveCopy(source.BoundType!, source) == ConstraintProof.Proven;
+        if (!this.SupportsPointerValue(source, abstractRead: true) || (use != PlaceUseKind.Consume && !copy))
         {
             this.Unsupported(source);
             return -1;
+        }
+
+        if (use == PlaceUseKind.Consume && acquisition is null && !copy)
+        {
+            // SPEC 3.5, 5.2.3: a raw Place, like every Place, never Moves by bare acquisition; (*p)@move takes its value.
+            this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
         }
 
         var pointer = this.PointerAddress(source);
@@ -228,6 +213,47 @@ public sealed partial class OwnershipAnalysis
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
             type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
+    // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
+    // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.
+    private int BorrowRawPlace(Koto source, Koto place, BoundType type)
+    {
+        var pointer = this.PointerAddress(place);
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        var reference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        this.Emit(OwnershipOperationKind.Produce, source, reference);
+        this.SetValue(this.Value(reference), OwnershipValueKind.Convert, [pointer], constant: OwnershipValue.RawPlaceBorrow);
+        if (type.Origin is { Kind: OriginKind.Anchor, Binder: { } borrow })
+        {
+            this.Anchor(borrow, this.body.Places[reference].Type);
+        }
+
+        return this.RegisterTemporary(reference);
+    }
+
+    // The anchor Place that the borrow's Anchor Origin names. It has the borrow's Type, so it is represented like the borrow and
+    // depends on the referent's own Origins; it holds no value, needs no storage or cleanup, and no operation uses it.
+    private void Anchor(Koto borrow, BoundType reference)
+    {
+        var anchors = this.body.Anchors ??= new();
+        for (var i = 0; i < anchors.Count; i++)
+        {
+            if (ReferenceEquals(this.body.Places[anchors[i]].Source, borrow))
+            {
+                return;
+            }
+        }
+
+        var place = this.body.PlaceStorage.Count;
+        this.body.PlaceStorage.Add(new(place, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None));
+        this.placeValues.Add(-1);
+        this.resultDeclarations.Add(-1);
+        anchors.Add(place);
+    }
+
     private int LoadPointer(Koto source, int pointer)
     {
         // SPEC 5.2: acquire Copy/Move into a fresh owner without a Loan. For Move,
@@ -269,8 +295,6 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it,
-    // securing the RHS first. The stored value follows the borrowed-field rules: Copy scalars, references and pointers.
     // SPEC 7.1.1: a value use of a published Place reads the referent through the reference the call returns, like a
     // selected referent: a Copy snapshot of a proven-Copy stored Type, never a Move.
     private int ReadPlaceCall(InvocationKoto call, AcquisitionKind? acquisition)
@@ -280,14 +304,16 @@ public sealed partial class OwnershipAnalysis
         {
             if (acquisition is null && call.BoundType is { } element && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
             {
-                this.body.ReportIssue(new(call, OwnershipFailure.TransferRequired));
+                var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
+                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                // Keep checking the call and its typed result after this rejected acquisition, as for a bare local.
+                // Dropping the result would invent an uninitialized return and hide independent argument/Loan errors.
             }
             else
             {
                 this.Unsupported(call);
+                return -1;
             }
-
-            return -1;
         }
 
         var reference = this.PlaceCallReference(call);
@@ -312,12 +338,13 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 7.1.1, 13.7: an assignment or compound update through a place uniq/T result secures the right-hand side,
-    // evaluates the call once as its reference, and stores through it.
+    // evaluates the call once as its reference, and replaces the referent through it (any stored Type for `=`, numeric for
+    // a compound update).
     private int WritePlaceCall(Koto source, InvocationKoto call)
     {
         var type = call.BoundType;
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))
         {
             this.Unsupported(source);
@@ -360,17 +387,18 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var stored = this.Emit(OwnershipOperationKind.StorePointer, call, value, acquisition: this.body.Places[value].Acquisition);
-        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        this.StorePointer(call, pointer, value);
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
+    // SPEC 13.5.5.1, 13.7: r@follow = v and r@follow op= v write the referent of a uniq reference through it, securing the
+    // RHS first, as the same replacement.
     private int WriteReferent(Koto source, ConversionKoto followed)
     {
         var reference = followed.Left;
         var type = this.Concrete(followed.BoundType);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsValue(type) || operation == KotoKind.Invalid ||
+        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
             (operation != KotoKind.Equals && type?.IsNumeric != true))
         {
             this.Unsupported(source);
@@ -411,17 +439,18 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var stored = this.Emit(OwnershipOperationKind.StorePointer, reference, value, acquisition: this.body.Places[value].Acquisition);
-        this.SetValue(stored, OwnershipValueKind.PointerStore, ScalarResult(type!) ? [pointer, this.Value(value)] : [pointer], constant: value);
+        this.StorePointer(reference, pointer, value);
         return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
     }
 
+    // SPEC 5.2, 7.1.1, 13.5.5.1, 13.7: the one replacement through an address, whether a raw pointer, the reference a Place
+    // call publishes, a followed uniq reference or the exclusive address of a field reached through a reference. The old
+    // value is destroyed by its Type's destruction plan and the acquired value's responsibility moves into the destination
+    // (LowerPointer); no compiler-owned destination or temporary is created for it.
     private void StorePointer(Koto target, int pointer, int value)
     {
-        // Transfer the acquired source's responsibility to caller-managed storage.
-        // No compiler-owned destination or temporary is created for the raw Place.
         var stored = this.Emit(OwnershipOperationKind.StorePointer, target, value, acquisition: this.body.Places[value].Acquisition);
-        if (ScalarResult(target.BoundType!))
+        if (ScalarResult(this.body.Places[value].Type))
         {
             this.SetValue(stored, OwnershipValueKind.PointerStore, [pointer, this.Value(value)], constant: value);
         }

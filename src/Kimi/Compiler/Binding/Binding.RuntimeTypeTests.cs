@@ -57,12 +57,12 @@ public sealed partial class Binding
 
         if (HasRuntimeTypeDependency(target) || test.Right.BoundSymbol?.Kind == BindingSymbolKind.AssociatedType)
         {
-            return Fail(test, BindingFailure.Unsupported, true);
+            return this.Fail(test, BindingFailure.Unsupported, true);
         }
 
         if (!IsRuntimeStructCore(target) || target.Origin is not null || target.OriginArguments.Count != 0)
         {
-            return Fail(test, BindingFailure.InvalidTypeFormation);
+            return this.Fail(test, BindingFailure.InvalidTypeFormation);
         }
 
         // SPEC 13.6.1: refinement would give the operand an object form of the target, which an opt-out forbids.
@@ -77,14 +77,14 @@ public sealed partial class Binding
         {
             if (HasRuntimeTypeDependency(operand))
             {
-                return Fail(test, BindingFailure.Unsupported, true);
+                return this.Fail(test, BindingFailure.Unsupported, true);
             }
 
             if (operand.Kind != BoundTypeKind.Semantics ||
                 operand.Semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq) ||
                 !IsRuntimeStructCore(operand.Components[0]))
             {
-                return Fail(test, BindingFailure.TypeMismatch);
+                return this.Fail(test, BindingFailure.TypeMismatch);
             }
         }
 

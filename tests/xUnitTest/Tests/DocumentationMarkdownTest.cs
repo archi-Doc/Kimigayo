@@ -127,7 +127,7 @@ public class DocumentationMarkdownTest
     [Fact]
     public void ExcludedDocumentationDoesNotProduceMarkdownDiagnostics()
     {
-        var tree = DocumentationCommentTest.Parse("#if false\n    /// - `missing`: description\n    let invalid =\n()");
+        var tree = DocumentationCommentTest.Parse("#if false\n    /// - `missing`: description\n    let excluded = 1\n()");
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         Assert.Empty(DocumentationMarkdown.Parse(comment).GetDiagnostics());
     }

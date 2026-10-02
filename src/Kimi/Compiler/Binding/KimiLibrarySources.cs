@@ -14,6 +14,8 @@ public sealed partial class KimiLibrary
         internal static readonly Source[] All =
         [
             Read("Core.kimi"),
+            Read("Windows.kimi"),
+            Read("Time.kimi"),
             Read("Comparison.kimi"),
             Read("Iterator.kimi"),
             Read("LendingIterator.kimi"),
@@ -27,6 +29,7 @@ public sealed partial class KimiLibrary
             Read("Dictionary.kimi"),
             Read("DictionaryStorage.kimi"),
             Read("Storage.kimi"),
+            Read("Raw.kimi"),
             Read("Formatting.kimi"),
             Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
             Read("FixedBuffer.kimi", KimiLibraryContainer.FixedBuffer, signatures: true),
@@ -34,8 +37,8 @@ public sealed partial class KimiLibrary
             Read("WriteWindow.kimi", KimiLibraryContainer.WriteWindow, signatures: true),
             Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
-            Read("DictionaryOperations.kimi", KimiLibraryContainer.Dictionary, signatures: true),
             Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
+            Read("RawOperations.kimi", KimiLibraryContainer.Raw, signatures: true),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
             Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
@@ -69,9 +72,7 @@ public sealed partial class KimiLibrary
                 return cached;
             }
 
-            var diagnostics = context.DiagnosticCollection;
-            var errorVersion = diagnostics.ErrorVersion;
-            var tokenizer = new Tokenizer(diagnostics, context.SourceDocument!);
+            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!);
             try
             {
                 tokenizer.ReadAll();
@@ -79,7 +80,7 @@ public sealed partial class KimiLibrary
                 // Tokens contain only immutable kinds and source offsets, never ASTs,
                 // source documents or compilation state. Invalid lexing is not cached:
                 // each compilation must receive its own source diagnostics.
-                return diagnostics.ErrorVersion != errorVersion ? parsed :
+                return context.Compilation.Diagnostics.HasSyntaxErrors(context.SourceDocument!) ? parsed :
                     Interlocked.CompareExchange(ref this.tokens, parsed, null) ?? parsed;
             }
             finally
@@ -108,6 +109,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
                 KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
                 KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
+                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
                 KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
                 _ => this.FormattingContainer(source.Container),
             };
@@ -124,7 +126,6 @@ public sealed partial class KimiLibrary
     {
         var document = new SourceDocument(source.Path, source.Text);
         var context = new CodeContext(this.Kotonoha, sourceDocument: document);
-        context.DiagnosticCollection.SetSourceDocument(document);
         var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
         if (!source.Signatures)
         {
@@ -146,7 +147,7 @@ public sealed partial class KimiLibrary
             var constructor = reader.CurrentTokenKind == TokenKind.Init && container is StructKoto;
             if (reader.CurrentTokenKind != TokenKind.Func && !constructor)
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, reader.CurrentTokenKind.ToString());
+                reader.Expect(SyntaxForm.Declaration);
                 break;
             }
 

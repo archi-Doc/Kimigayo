@@ -121,7 +121,7 @@ public class ControlTransferParseTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var deserialized = new Kotonoha(compilation);
@@ -152,7 +152,7 @@ public class ControlTransferParseTest
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;
             reparsed.CreateCodeContext().Parse(reparsed.RootKoto, unparsed);
-            Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(reparsed));
         }
         finally
         {
@@ -176,7 +176,7 @@ public class ControlTransferParseTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(2, body.Items.Count);

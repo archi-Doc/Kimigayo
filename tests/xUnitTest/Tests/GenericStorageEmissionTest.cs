@@ -9,7 +9,7 @@ public class GenericStorageEmissionTest
 {
     internal const string Box = "struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n";
     private const string Choose = "func choose<T>(a: T, b: T, first: bool) -> T => if first => a@move else => b@move\n";
-    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     public static TheoryData<string, string, string> Fixtures => new()
     {
@@ -45,7 +45,7 @@ public class GenericStorageEmissionTest
     [Theory]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())", true)]
     [InlineData(Box + "let value = Box<string>.init(\"value\")\nConsole.writeLine(value@move.take())\nConsole.writeLine(value@move.take())", false)]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    deinit => ()\nConsole.writeLine(\"unused\")", false)]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    drop => ()\nConsole.writeLine(\"unused\")", false)]
     [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func twice(self: Self) -> T\n        let first = self.value@move\n        return self.value@move\nConsole.writeLine(\"unused\")", false)]
     public void ChecksGenericOwnershipAtDefinition(string source, bool valid)
     {

@@ -5,11 +5,10 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ScopedContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
-    private const string Default = "func value(y: i32 = (scope: do\n    var n: i32 = loop => continue\n    n = 1\n    exit to scope: n\n)) -> i32 => y\n";
+    private const string Default = "func value(y: i32 = (label scope: do\n    var n: i32 = loop => continue\n    n = 1\n    exit to scope n\n)) -> i32 => y\n";
 
     [Theory]
     [InlineData("let n: i32 = do => stop()\nlet y = n", OwnershipFailure.UninitializedUse)]
@@ -44,7 +43,7 @@ public class ScopedContinuationTest
     public void OuterTransferDoesNotExecuteLaterArgumentEffects()
         => ScalarEmissionTest.EmitFixture(
             "NeverScope" + Configuration + "OuterTransfer",
-            "func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)\nif y == 7 and x == 1 => Console.writeLine(\"ok\") else => Console.writeLine(\"bad\")",
+            "func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), x++)\nif y == 7 and x == 1 => Console.writeLine(\"ok\") else => Console.writeLine(\"bad\")",
             "ok\n");
 
     [Theory]
@@ -62,7 +61,7 @@ public class ScopedContinuationTest
     [Fact]
     public void DivergentCleanupRetainsItsGuard()
     {
-        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: i32)\n    work: do\n        defer => loop => ()\n        exit to work\n    let y = x");
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: i32)\n    label work: do\n        defer => loop => ()\n        exit to work\n    let y = x");
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
     }

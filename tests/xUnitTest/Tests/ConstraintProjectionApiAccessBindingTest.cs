@@ -2,6 +2,7 @@
 
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -164,6 +165,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Assert.Equal(BindingFailure.Access, clause.BindingFailure);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConstraintProjectionChecksAllocateNothing()
     {
@@ -188,8 +190,8 @@ public class ConstraintProjectionApiAccessBindingTest
 
     private static void Check(Compilation c, bool valid)
     {
-        var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi");
-        Assert.False(diagnostics.HasErrors, string.Join(", ", diagnostics.GetArray().Select(x => x.Entry.Name)));
+        var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
+        Assert.DoesNotContain(diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {

@@ -363,6 +363,9 @@ public enum KotoKind : byte
     /// <summary>An associated-Type Origin application.</summary>
     OriginApplication,
 
+    /// <summary>A requirement effect bound: an effect clause or an effect specification.</summary>
+    EffectBound,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -532,13 +535,13 @@ public abstract class Koto
         this.VisitChildrenCore(visitor);
     }
 
-    /// <summary>Adds a diagnostic for this node.</summary>
+    /// <summary>Reports a syntax problem at this node's span.</summary>
     /// <param name="code">The diagnostic code.</param>
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
-    /// <param name="hint">An optional context-specific explanation appended to the message.</param>
-    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? hint = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, hint);
+    /// <param name="note">A Note formed from the facts.</param>
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null, string? note = null)
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument, note);
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
@@ -576,6 +579,89 @@ public abstract class Koto
         }
 
         return false;
+    }
+
+    /// <summary>Reports a syntax problem at a part of this node, such as the content of a literal without its delimiters.</summary>
+    /// <param name="at">The part of this node's source that the problem concerns.</param>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The optional diagnostic argument.</param>
+    internal void AddDiagnostic(SourceSpan at, DiagnosticCode code, object? obj = null)
+        => this.DiagnosticCollection?.Add(at, code, obj, null, this.CodeContext.SourceDocument);
+
+    /// <summary>Gets the key of a check of this node.</summary>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="condition">The condition within the requirement.</param>
+    /// <returns>The key, or the unresolved mark when the node records nowhere.</returns>
+    internal DiagnosticKey KeyOf(DiagnosticRequirement requirement, ushort condition = 0)
+        => this.DiagnosticCollection is { } diagnostics ? diagnostics.KeyOf(this, this.Span, this.CodeContext.SourceDocument, requirement, condition) : DiagnosticKey.Unresolved;
+
+    /// <summary>Reports a directly established problem of this node.</summary>
+    /// <param name="requirement">The requirement that failed.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="first">The first message argument.</param>
+    /// <param name="second">The second message argument.</param>
+    /// <param name="note">A Note formed from the facts.</param>
+    /// <param name="at">The smallest syntax that shows the failed condition, when it is not this node; this node stays the subject.</param>
+    /// <param name="evidence">The code's evidence facts, all of them or none.</param>
+    /// <param name="advice">Conditional advice formed from the facts.</param>
+    /// <param name="related">Syntax related to the problem, with its role and label.</param>
+    /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
+    /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
+    /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null)
+    {
+        if (this.DiagnosticCollection is not { } collection)
+        {
+            return;
+        }
+
+        DiagnosticRelatedFact[]? locations = null;
+        var count = (related?.Length ?? 0) + (relatedSpans?.Length ?? 0);
+        if (count != 0)
+        {
+            locations = new DiagnosticRelatedFact[count];
+            var next = 0;
+            for (var i = 0; related is not null && i < related.Length; i++)
+            {
+                locations[next++] = collection.Relate(related[i].Role, related[i].At.Span, related[i].At.CodeContext.SourceDocument, related[i].Label);
+            }
+
+            for (var i = 0; relatedSpans is not null && i < relatedSpans.Length; i++)
+            {
+                locations[next++] = collection.Relate(relatedSpans[i].Role, relatedSpans[i].Span, relatedSpans[i].In.CodeContext.SourceDocument, relatedSpans[i].Label);
+            }
+        }
+
+        // A span narrows the location within the located node's document, such as one capture entry of a closure.
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
+    }
+
+    /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
+    /// <param name="requirement">The requirement left undecided.</param>
+    /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
+    internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument);
+
+    /// <summary>Reports that this node is a form of syntax not permitted where it stands (docs/dev/DIAGNOSTICS.md §4.4). The caller
+    /// records the node as a recovery when its later checks depend on the misplaced syntax; independent checks stay direct.</summary>
+    /// <param name="form">The misplaced form.</param>
+    /// <returns>The key of the Error, or <see langword="null"/> when the node reports nowhere.</returns>
+    internal DiagnosticKey? Unexpected(SyntaxForm form)
+        => this.DiagnosticCollection?.ReportSyntax(this.Span, DiagnosticCode.MisplacedSyntax_Kd, form, null, this.CodeContext.SourceDocument);
+
+    /// <summary>Reports that a form is expected where this node stands; the node's first source line is what was found. The caller decides whether the node is a recovery.</summary>
+    /// <param name="form">The expected form.</param>
+    /// <returns>The key of the Error, or <see langword="null"/> when the node reports nowhere.</returns>
+    internal DiagnosticKey? Expected(SyntaxForm form)
+    {
+        if (this.DiagnosticCollection is not { } diagnostics)
+        {
+            return null;
+        }
+
+        var found = this.CodeContext.SourceDocument is { } document ? document.AsSpan().Slice(this.Span.Start, this.Span.Length) : default;
+        var lineEnd = found.IndexOfAny('\r', '\n');
+        return diagnostics.ReportSyntax(this.Span, DiagnosticCode.ExpectedSyntax_Kd, form, (lineEnd < 0 ? found : found[..lineEnd]).ToString(), this.CodeContext.SourceDocument);
     }
 
     /// <summary>Attaches an attribute chain and links its parents.</summary>

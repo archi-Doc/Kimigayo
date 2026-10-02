@@ -6,7 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private static BoundType? AssociatedFormationType(Koto declaration)
+    /// <summary>Gets the formation Type of an associated-Type declaration, such as <c>ref/Self during source</c> (SPEC 8.4.3).</summary>
+    /// <param name="declaration">The associated-Type declaration or specification.</param>
+    /// <returns>The formation Type, or <see langword="null"/>.</returns>
+    internal static BoundType? AssociatedFormationType(Koto declaration)
         => AssociatedFormationSyntax(declaration)?.BoundType ?? (declaration is IsKoto clause ? AssociatedIdentityType(clause.BoundConstraint) : null);
 
     private static Koto? AssociatedFormationSyntax(Koto declaration)
@@ -28,7 +31,10 @@ public sealed partial class Binding
     // Whether `type` is the stored Type or one of the Type arguments stored in it, through nested value layers.
     private static bool StoresTypeArgument(BoundType stored, BoundType type)
     {
-        if (ReferenceEquals(stored, type))
+        // SPEC 8.1.1: a stored pair original `s/T` keeps every dependency of its whole Type, which includes those of its
+        // target `T`.
+        if (ReferenceEquals(stored, type) ||
+            (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && ReferenceEquals(stored, whole)))
         {
             return true;
         }
@@ -66,13 +72,13 @@ public sealed partial class Binding
 
         if (!IsAssociatedRequirement(declaration) || (declaration is IsKoto clause && AssociatedIdentityType(clause.BoundConstraint) is not null))
         {
-            Fail(declaration, BindingFailure.InvalidAssociatedType);
+            this.Fail(declaration, BindingFailure.InvalidAssociatedType);
             return;
         }
 
         if (this.BindType(syntax, scope) is { } type && !HasSupportedAssociatedFormation(type))
         {
-            Fail(declaration, BindingFailure.Unsupported);
+            this.Fail(declaration, BindingFailure.Unsupported);
         }
     }
 
@@ -105,7 +111,7 @@ public sealed partial class Binding
 
     private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection || type.Symbol?.Declaration is ContractKoto)
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection)
         {
             return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use);
         }

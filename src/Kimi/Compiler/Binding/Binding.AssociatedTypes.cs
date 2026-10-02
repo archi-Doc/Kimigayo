@@ -9,17 +9,62 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundConformancePath Path, BindingSymbol Associated), AssociatedBinding> associatedBindings = new();
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
 
-    private static BoundType? EnclosingContractSelf(BindingScope scope)
+    // SPEC 8.4: whether a Type is the Self of a Contract, a Type parameter standing for any conforming Type. It is distinct
+    // from every reference to the Contract itself, such as the declaring Contract of a projection.
+    internal static bool IsContractSelf(BoundType? type) => type is { Kind: BoundTypeKind.Parameter, Symbol.SelfOf: not null };
+
+    // SPEC 8.4: the dedicated Self Type parameter of a Contract. It has no generic slot, so no substitution of the Contract's
+    // own Type parameters replaces it; ContractType substitutes it by the conforming Type.
+    internal BoundType ContractSelfType(BindingSymbol contract)
+    {
+        if (contract.ContractSelf is { } existing)
+        {
+            return existing;
+        }
+
+        var symbol = new BindingSymbol("Self", BindingSymbolKind.TypeParameter, contract.Declaration, this.scopes.GetValueOrDefault(contract.Declaration) ?? contract.Scope) { SelfOf = contract, Slot = -1 };
+        symbol.WholeType = symbol.Type = new("Self", BoundTypeKind.Parameter, symbol);
+        return contract.ContractSelf = symbol.Type;
+    }
+
+    // SPEC 8.4.9: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
+    // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
+    private static bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
+    {
+        var head = AssociatedHead(clause);
+        head = head is OriginApplicationKoto applied ? UnwrapAssociatedHead(applied.Type) : head;
+        if (head is not MemberAccessKoto { Left.BoundSymbol: { Type.Kind: BoundTypeKind.Constructed } reference })
+        {
+            return true;
+        }
+
+        return ReferenceEquals(contract, reference) || contract.Contract?.Ancestors.Contains(reference) == true;
+    }
+
+    // The Type that `Self` denotes inside a declaration: a Contract's Self parameter, or the declared Type applied to its own
+    // Type parameters.
+    private BoundType DeclarationSelf(BindingSymbol owner) => owner.Declaration is ContractKoto ? this.ContractSelfType(owner) : this.SelfType(owner);
+
+    private BoundType? EnclosingContractSelf(BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Owner is ContractKoto)
             {
-                return current.Owner.BoundSymbol!.Type;
+                return this.ContractSelfType(current.Owner.BoundSymbol!);
             }
         }
 
         return null;
+    }
+
+    // SPEC 8.4.9: every projection names the Contract reference that declares its associated Type, as its second component:
+    // a bound reference (`Indexable<isize>`), or a Contract applied to its own Type parameters (`Indexable<Key>` inside its
+    // declaration), reached from the reference or refinement that supplied the name, or from the declaring Contract.
+    private BoundType ProjectionContract(BindingSymbol associated, BindingSymbol? reference)
+    {
+        var supplied = reference ?? associated.Scope.Owner.BoundSymbol!;
+        return this.DeclaringReference(associated, IsBoundContractReference(supplied) ? supplied.Type! : this.SelfType(supplied));
     }
 
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
@@ -36,7 +81,7 @@ public sealed partial class Binding
         }
         else
         {
-            if (type.Symbol?.Contract is { } own)
+            if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
             {
                 Search(own);
             }
@@ -69,7 +114,7 @@ public sealed partial class Binding
         reference = foundReference;
         if (ambiguous)
         {
-            Fail(use, BindingFailure.Ambiguous);
+            this.Fail(use, BindingFailure.Ambiguous);
             return null;
         }
 
@@ -117,7 +162,7 @@ public sealed partial class Binding
         {
             if (applyingOrigins && qualified.Right is not ParenthesizedTypeKoto)
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
             qualifier = contract;
@@ -146,7 +191,7 @@ public sealed partial class Binding
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
         {
-            return Fail(syntax, BindingFailure.InvalidAssociatedType);
+            return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
         }
 
         var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
@@ -158,7 +203,8 @@ public sealed partial class Binding
             this.AddContractPremises(evidence.Contract!, type, scope);
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type]);
+        // SPEC 8.4.9: an associated Type is identified by its receiver and its declaring Contract reference.
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
         syntax.BoundSymbol = associated;
         syntax.Right.BoundSymbol = associated;
         Complete(syntax.Right, projection);
@@ -230,7 +276,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
+            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: a specification fixes its Type; only a requirement may end with a formation Type.
             return;
         }
 
@@ -244,9 +290,15 @@ public sealed partial class Binding
         {
             name = member.Right;
             qualifier = this.TypeName(member.Left, scope, false);
+            if (qualifier?.Declaration is ContractKoto && UnwrapAssociatedHead(member.Left) is GenericsKoto)
+            {
+                // SPEC 8.4.9: `Indexable<isize>.Element` names the associated Type of that bound reference's conformance.
+                qualifier = this.BindContractReference(member.Left, qualifier, scope);
+            }
+
             if (qualifier?.Declaration is not ContractKoto)
             {
-                Fail(clause, BindingFailure.InvalidAssociatedType);
+                this.Fail(clause, BindingFailure.InvalidAssociatedType);
                 return;
             }
 
@@ -258,27 +310,33 @@ public sealed partial class Binding
         var ambiguous = false;
         if (associated is null || this.ConformanceByDeclaration(self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
         {
-            Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
+            this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
             return;
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
         {
-            Fail(clause, BindingFailure.InvalidAssociatedType);
+            this.Fail(clause, BindingFailure.InvalidAssociatedType);
             return;
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self], originArguments: parameters);
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, conformance.Contract)], originArguments: parameters);
         clause.BoundSymbol = associated;
         clause.Left.BoundSymbol = associated;
         name!.BoundSymbol = associated;
         Complete(name, projection);
         Complete(clause.Left, projection);
+        if (head is MemberAccessKoto qualified && !ReferenceEquals(qualified, clause.Left) && applied is null)
+        {
+            qualified.BoundSymbol = associated;
+            Complete(qualified, projection); // A qualifier with Type arguments keeps the head inside a Type wrapper.
+        }
+
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
         if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
         {
-            Fail(clause, BindingFailure.Unsupported, true);
+            this.Fail(clause, BindingFailure.Unsupported, true);
             return;
         }
 
@@ -334,7 +392,7 @@ public sealed partial class Binding
             var container = (DeclarationContainerKoto)path.Type.Declaration;
             for (var j = 0; j < container.Members.Count; j++)
             {
-                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint })
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && SpecifiesContract(clause, path.RootContract))
                 {
                     Collect(constraint, path);
                 }
@@ -413,17 +471,21 @@ public sealed partial class Binding
         return binding.Result;
     }
 
-    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope)
+    // `qualifier` is the declaring Contract reference of the projection (SPEC 8.4.9); a bound reference of a Contract with Type
+    // arguments selects that conformance, and a Contract without them has one conformance per Type.
+    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier = null)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol))
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
+                (qualifier is null || ReferenceEquals(this.DeclaringReference(associated, path.Contract.Type ?? qualifier), qualifier)))
             {
                 return this.ResolveAssociated(path, associated);
             }
         }
 
-        if (receiver.Symbol is not { } owner || this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) is not { } identity)
+        if (receiver.Symbol is not { } owner ||
+            (qualifier is not { Kind: BoundTypeKind.Constructed } ? this.ConformanceByDeclaration(owner, associated.Scope.Owner.BoundSymbol!, out _) : this.ConformanceByReference(owner, receiver, associated, qualifier)) is not { } identity)
         {
             return null;
         }
@@ -521,9 +583,11 @@ public sealed partial class Binding
             type = this.SubstituteContractReference(type, bound); // SPEC 8.4.2: the requirement of a bound reference.
         }
 
-        if (type.Symbol?.Declaration is ContractKoto && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
+        // SPEC 8.4: Self of any Contract, including an ancestor whose requirement is read here, is the conforming Type. A
+        // reference to a Contract, such as a projection's declaring Contract, only has its Type arguments substituted.
+        if (IsContractSelf(type))
         {
-            return self ?? EnclosingContractSelf(scope) ?? type;
+            return self ?? this.EnclosingContractSelf(scope) ?? type;
         }
 
         var count = type.Components.Count;
@@ -545,7 +609,13 @@ public sealed partial class Binding
 
             try
             {
-                if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver && this.ResolveAssociated(receiver, result.Symbol!, scope) is { } fixedType)
+                if (result.Kind == BoundTypeKind.AssociatedProjection && this.FixedArrayIteratorType(result) is { } fixedIterator)
+                {
+                    return fixedIterator;
+                }
+
+                if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver &&
+                    this.ResolveAssociated(receiver, result.Symbol!, scope, result.Components.Count == 2 ? result.Components[1] : null) is { } fixedType)
                 {
                     fixedType = this.SubstituteStoredOrigins(fixedType, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
                     // A container substitution can expose another associated projection
@@ -585,6 +655,55 @@ public sealed partial class Binding
                 this.typeScratch.Return(components, clearArray: true);
             }
         }
+    }
+
+    // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
+    // reaches `qualifier` as the declaring reference of `associated`.
+    private BoundConformance? ConformanceByReference(BindingSymbol owner, BoundType receiver, BindingSymbol associated, BoundType qualifier)
+    {
+        if (!this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return null;
+        }
+
+        BoundConformance? found = null;
+        for (var i = 0; i < identities.Count; i++)
+        {
+            var identity = identities[i];
+            if (identity.Paths.Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
+                (ReferenceEquals(reference, qualifier) || ReferenceEquals(this.StoredType(reference, receiver), qualifier)))
+            {
+                if (found is not null && !ReferenceEquals(found, identity))
+                {
+                    return null;
+                }
+
+                found = identity;
+            }
+        }
+
+        return found;
+    }
+
+    // The bound reference, as a Type, of the Contract that declares `associated`, reached from a reference to it or to a
+    // refinement of it (`UniqIndexable<isize>` reaches `Indexable<isize>`).
+    private BoundType DeclaringReference(BindingSymbol associated, BoundType reference)
+    {
+        var owner = associated.Scope.Owner;
+        if (ReferenceEquals(reference.Symbol?.Declaration, owner) || reference.Symbol?.Contract is not { } shape)
+        {
+            return reference;
+        }
+
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner) && shape.Ancestors[i].Type is { } ancestor)
+            {
+                return this.StoredType(ancestor, reference) ?? ancestor;
+            }
+        }
+
+        return reference;
     }
 
     private sealed class AssociatedBinding

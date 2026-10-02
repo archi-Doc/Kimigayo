@@ -183,8 +183,6 @@ public sealed class IndexKoto : BinaryKoto
     /// <summary>Gets a value indicating whether this subscript produces a slice.</summary>
     public bool IsSlice => this.Right is RangeKoto;
 
-    internal BoundType? DictionaryKeyReference { get; set; }
-
     /// <summary>Initializes a new instance of the <see cref="IndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
@@ -229,6 +227,10 @@ public sealed class ConversionKoto : BinaryKoto
     public override KotoKind Akind => KotoKind.Conversion;
 
     internal ConversionBinding ConversionBinding { get; set; }
+
+    /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4.2), as the
+    /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>
+    internal Int128? FoldedConstant { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="ConversionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

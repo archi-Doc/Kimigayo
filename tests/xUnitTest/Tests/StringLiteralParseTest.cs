@@ -64,9 +64,9 @@ public class StringLiteralHelperTest
     {
         // The unterminated literal ends before its line break, so the next line keeps its own item boundary.
         var parsed = XunitTest.ParseTestHelper.Parse("let bad = " + broken + "let next = 1");
-        var diagnostics = parsed.DiagnosticCollection.GetArray();
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(Kimi.DiagnosticCode.MissingStringLiteralEnd_Kd));
-        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(Kimi.DiagnosticCode.UnexpectedTrailingToken_Kd));
+        var diagnostics = TestDiagnostics.Of(parsed);
+        Assert.Contains(diagnostics, x => x.Code == nameof(Kimi.DiagnosticCode.MissingStringLiteralEnd_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Code == nameof(Kimi.DiagnosticCode.ExpectedSyntax_Kd));
         var last = Assert.IsType<Kimi.Compiler.Parsing.FieldKoto>(parsed.GeneratedFunction!.Body!.Items[^1]);
         Assert.Equal("next", last.NameKoto.IdentifierName);
     }

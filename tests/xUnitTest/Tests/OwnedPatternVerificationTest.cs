@@ -34,9 +34,9 @@ public class OwnedPatternVerificationTest
     [InlineData("Yield", "if true", "yield", "\n    else => \"unused\"")]
     public void GuardTransferSecuresResultBeforeLeavingOwnedScopes(string name, string selection, string transfer, string otherwise)
     {
-        var source = "func run() -> string\n    let outer = \"outer\"\n    let result: string = target: " + selection +
+        var source = "func run() -> string\n    let outer = \"outer\"\n    let result: string = label target: " + selection +
             "\n        let inner = \"inner\"\n        match (\"subject\", 1)\n            (_, let n) if (" + transfer +
-            " to target: \"result\") => $abort(\"selected\")\n            _ => $abort(\"fallback\")" + otherwise +
+            " to target \"result\") => $abort(\"selected\")\n            _ => $abort(\"fallback\")" + otherwise +
             "\n    return result@move\nConsole.writeLine(run())";
         var fixture = "VerificationOwnedPattern" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "result\n");

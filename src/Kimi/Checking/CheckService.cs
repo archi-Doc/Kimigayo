@@ -29,9 +29,14 @@ internal static class CheckService
         var context = new CheckContext(inputs);
         project.KimiOptions = new KimiOptions { Target = target, Debug = debug };
         var accepted = false;
-        var diagnostics = new List<CheckDiagnostic>();
         var outcome = CheckOutcome.Completed;
-        var location = project.FilePath is { } file ? SourceIdentity.FromPath(file) : default;
+        var location = project.FilePath;
+        if (location is not null)
+        {
+            context.Diagnostics.RegisterPath(location); // SPEC 23.3.6.3: the project file is consumed before every source.
+        }
+
+        Exception? failure = null;
         try
         {
             accepted = mode == CheckMode.Product
@@ -41,80 +46,60 @@ internal static class CheckService
         catch (InvalidDataException ex)
         {
             // Test preparation reports configuration and test-definition failures as exceptions.
-            context.Failures.Add(ex.Message);
+            context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
+        }
+        catch (DiagnosticContractException ex)
+        {
+            // SPEC 23.3.3: a violated contract discards every partial record.
+            return new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(ex.Fault, ex.Message, location));
         }
         catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
         {
             outcome = CheckOutcome.Faulted;
-            diagnostics.Add(Create(DiagnosticCode.CheckFaulted_Kd, location, ex.Message));
+            failure = ex;
         }
 
         if (outcome == CheckOutcome.Completed && !context.FrontEndRan)
         {
             outcome = CheckOutcome.Blocked;
-        }
-
-        foreach (var failure in context.Failures)
-        {
-            diagnostics.Add(Create(DiagnosticCode.ProjectPreparationFailed_Kd, location, failure));
-        }
-
-        if (context.Compilation is { } compilation)
-        {
-            foreach (var collection in compilation.Kimigayo.DiagnosticCollections)
+            if (!context.Diagnostics.HasErrorsThrough(DiagnosticPartition.Input))
             {
-                foreach (var diagnostic in collection.GetArray())
-                {
-                    diagnostics.Add(Convert(diagnostic));
-                }
+                // SPEC 23.3.3: the fallback of input preparation, a compiler defect to repair where it occurs.
+                context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: "The project inputs could not be established.");
             }
         }
 
-        if (outcome == CheckOutcome.Blocked && !diagnostics.Exists(static x => x.Severity == DiagnosticSeverity.Error))
+        DiagnosticResult result;
+        try
         {
-            // SPEC 23.3.3: a Blocked result always carries a diagnostic that explains it.
-            diagnostics.Add(Create(DiagnosticCode.ProjectPreparationFailed_Kd, location, "the project inputs could not be established"));
+            // SPEC 23.3.3: a rejected result that publishes no Error violates the diagnostic contract.
+            result = context.Diagnostics.Finalize(rejected: outcome != CheckOutcome.Faulted && !accepted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new(CheckOutcome.Faulted, false, TestPresence.Unknown, DiagnosticFaults.Create(ex is DiagnosticContractException contract ? contract.Fault : DiagnosticFault.Collection, ex.Message, location));
+        }
+
+        if (failure is not null)
+        {
+            // Analysis threw while collection stayed intact: keep the valid records.
+            return new(outcome, false, TestPresence.Unknown, DiagnosticFaults.Create(DiagnosticFault.Exception, failure.Message, location, result));
         }
 
         var presence = mode == CheckMode.Product ? ScanTestPresence(context) : TestPresence.Unknown;
-        return new(outcome, accepted && outcome == CheckOutcome.Completed, presence, diagnostics.ToArray());
+        return new(outcome, accepted && outcome == CheckOutcome.Completed, presence, result);
     }
 
-    /// <summary>Creates a record that concerns a whole input, such as a project file.</summary>
+    /// <summary>Creates the diagnostics of a result that concerns a whole input, such as a project file.</summary>
     /// <param name="code">The diagnostic code.</param>
     /// <param name="location">The input, or the default value.</param>
-    /// <param name="argument">The message argument.</param>
-    /// <returns>The record, without a range.</returns>
-    public static CheckDiagnostic Create(DiagnosticCode code, SourceIdentity location, object? argument = null)
+    /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>
+    /// <returns>The finalized diagnostics, without a range.</returns>
+    public static DiagnosticResult Create(DiagnosticCode code, SourceIdentity location, string? note = null)
     {
-        DiagnosticEntries.TryGet(code, out var entry);
-        var message = entry?.Message ?? code.ToString();
-        if (argument is not null)
-        {
-            message = string.Format(message, argument);
-        }
-
-        return new(code.ToString(), entry?.Severity ?? DiagnosticSeverity.Error, message, location, null);
-    }
-
-    private static CheckDiagnostic Convert(Diagnostic diagnostic)
-    {
-        var location = default(SourceIdentity);
-        SourceRange? range = null;
-        if (diagnostic.SourceDocument is { } document)
-        {
-            location = SourceIdentity.FromPath(document.Path);
-            if (diagnostic.Span.Start >= 0 && diagnostic.Span.End <= document.SourceText.Length)
-            {
-                range = document.GetSourceRange(diagnostic.Span);
-            }
-        }
-        else if (diagnostic.Location is { } path)
-        {
-            location = SourceIdentity.FromPath(path);
-        }
-
-        return new(diagnostic.Entry.Name, diagnostic.Entry.Severity, diagnostic.Message, location, range);
+        var owner = new DiagnosticOwner();
+        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: note);
+        return owner.Finalize();
     }
 
     // SPEC 23.3.1: a syntax-level scan of the project's own sources; semantic failures never hide a marker.
@@ -127,7 +112,7 @@ internal static class CheckService
 
         var finder = new MarkerFinder();
         finder.Visit(compilation.Kotonoha.RootKoto);
-        return finder.Found ? TestPresence.Yes : compilation.Kotonoha.HasSourceErrors ? TestPresence.Unknown : TestPresence.No;
+        return finder.Found ? TestPresence.Yes : compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha) ? TestPresence.Unknown : TestPresence.No;
     }
 
     private sealed class MarkerFinder : KotoVisitor

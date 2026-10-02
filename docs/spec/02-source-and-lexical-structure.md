@@ -135,7 +135,7 @@ Eligible targets are declaration items directly in declaration or executable lis
 | Target | Included forms |
 | --- | --- |
 | Containers | group, rootgroup, struct, enum, contract |
-| Functions | Named functions and requirements, explicit specializations, init, deinit |
+| Functions | Named functions and requirements, explicit specializations, init, drop |
 | Properties/bindings | let/var/computed Properties, Contract property requirements, local let/var |
 | Cases | Each enum Case, including its payload description |
 | Associated Types | Contract associate declarations and implementation-side specifications |
@@ -144,7 +144,7 @@ A public `main` is a named-function target. Documentation on `rootgroup A.B` bel
 
 ### 2.3.3. Selection and related declarations
 
-Documentation is associated only where §19.5 requires ordinary declaration grammar, using original source positions. False `#if` interiors receive no association and no documentation diagnostics, and unselected syntax requires no additional semantic checks or link resolution. Documentation must not add parsing obligations or migrate to a surviving declaration. Place it after the directive, inside the region the directive controls, including the same-indentation form:
+Documentation is associated only with selected syntax, using original source positions. [Excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) receives no association, publication or documentation diagnostics, and its documentation never migrates to a surviving declaration. Documentation adds no parsing obligation. A SourceDocument with syntax errors, including errors in its excluded syntax, defers its associations; such a document cannot be built, so accepted documents are unaffected. Place it after the directive, inside the region the directive controls, including the same-indentation form:
 
 ```kimi
 #if windows
@@ -224,7 +224,7 @@ Outside comments and literals, the longest punctuation spelling is matched: `..=
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
 
-Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name, and only a Type declaration header may be empty `{}` (§15.3.1). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
+Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name; empty braces are an error in both roles (§15.3.1, §15.3.2). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
 
 ## 2.5. Names
 
@@ -275,31 +275,32 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Bindings and functions | `let`, `var`, `func` |
 | Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `try`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
 | Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
-| Dedicated forms | `Self`, `init`, `deinit`, `base` |
+| Dedicated forms | `Self`, `init`, `drop`, `base` |
 | Compile-time selection | `switch`; used after `#`. There is no runtime switch construct. |
 | Reserved future syntax | `as` |
 
 | Contextual class | Spellings and recognizing context |
 | --- | --- |
 | Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
+| Control labels | `label` at a Primary expression start when followed by a Name and `:` on the same physical line; commits to the label-prefix rules of §14.4. Elsewhere it is an ordinary Name. |
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
 | Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1). |
 | Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
-| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements and the mode of a Place result. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
-| Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`. |
+| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `raw` in Semantics positions, including requirements and the mode of a Place result; `raw` also immediately after `@` (§5.4). Elsewhere `raw` is an ordinary Name, such as a Field `raw`. `unsafe` is recognized only before `func` and before a Body that introduces an Unsafe Statement. |
+| Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`; `wrap` and `bits` immediately after `@` and followed by an adjacent `<`, as the [wrapping and bit conversions](13-operators-and-assignment.md#1354-numeric-conversions-and-literals) `E@wrap<U>` and `E@bits<U>`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
 | Fixed arrays and lengths | `of` between length and element Type in `[N of T]`, or length and value in fill construction `[N of value]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
 
 Further notes on individual keywords:
 
-- After `@`, a built-in Semantics name selects a shorthand target (§13.5.1). There is no prefix `move` operator and no `*` operator for safe references.
+- After `@`, a built-in Semantics name selects a shorthand target (§13.5.1), except bare `raw`, which takes an address (§5.4). There is no prefix `move` operator and no `*` operator for safe references.
 - The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
-- `init`, `deinit` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
+- `init`, `drop` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).
 - `specialize` introduces an [explicit specialization declaration](08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) and reserves nothing in other contexts.
 
-**Unavailable modifiers.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the declaration introducer of the same logical header. This applies to Type, function and Property declarations, Contract requirements, constructors, `deinit` and accessors, even where access and `open` modifiers are otherwise forbidden. Recognition does not scan across a newline, indent or dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override deinit` and `abstract get` all receive the unavailable-feature diagnostic. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`, and a standalone `abstract` expression must not consume the declaration on the next line. This recognition adds no valid declaration form and no globally reserved word.
+**Unavailable modifiers.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the declaration introducer of the same logical header. This applies to Type, function and Property declarations, Contract requirements, constructors, `drop` and accessors, even where access and `open` modifiers are otherwise forbidden. Recognition does not scan across a newline, indent or dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override drop` and `abstract get` all receive the unavailable-feature diagnostic. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`, and a standalone `abstract` expression must not consume the declaration on the next line. This recognition adds no valid declaration form and no globally reserved word.
 
 ## 2.6. Number literals
 

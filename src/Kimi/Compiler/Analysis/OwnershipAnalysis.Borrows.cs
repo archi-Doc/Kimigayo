@@ -27,7 +27,7 @@ public sealed partial class OwnershipAnalysis
 
             // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
             // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
-            // nested dependencies, including deinit uses, in VerifyBorrows.
+            // nested dependencies, including drop uses, in VerifyBorrows.
             if (obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
                 obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
                 (uint)outer.Slot >= (uint)function.Parameters.Count ||
@@ -45,6 +45,14 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
+        if (ElementAccess.IsRawPlace(unwrapped))
+        {
+            // Like a selected element, a reserved argument Reborrows the converted reference, so its reservation and
+            // activation refer to a real exclusive borrow (SPEC 15.6.7).
+            var raw = this.BorrowRawPlace(source, unwrapped, type);
+            return raw >= 0 && reservation >= 0 ? this.BorrowThrough(source, raw, type, reservation) : raw;
+        }
+
         if (this.ImplicitlyFollowsReference(unwrapped, type))
         {
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation); // SPEC 7.3: a receiver through a pair layer.
@@ -57,6 +65,12 @@ public sealed partial class OwnershipAnalysis
             // through exclusive layers, which Binding checked), which the receiver borrows through.
             var reference = this.ReadReference(unwrapped, type);
             return reference < 0 ? -1 : this.BorrowThrough(unwrapped, reference, type, reservation);
+        }
+
+        if ((ElementAccess.IsUserIndex(unwrapped) || ElementAccess.IsPlaceCall(unwrapped)) && ReferenceTypes.IsBorrow(unwrapped.BoundType) &&
+            ReferenceEquals(unwrapped.BoundType!.Components[0], type.Components[0]))
+        {
+            return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation);
         }
 
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
@@ -83,42 +97,23 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStruct(selected.Left, type, reservation);
         }
 
-        if (unwrapped is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Dictionary } dictionaryIndex && type.Semantics == SemanticsKind.Ref)
-        {
-            var depth = this.comparisonDepth++;
-            var projection = this.LocateElement(dictionaryIndex);
-            if (projection < 0)
-            {
-                this.EndComparisonLoans(depth, source);
-                this.comparisonDepth = depth;
-                return -1;
-            }
-
-            var plan = this.body.Projections[projection];
-            var elementReference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
-            var borrow = this.Emit(OwnershipOperationKind.Borrow, source, plan.Root, elementReference, loanMode: LoanRequirement.Ref, projection: projection);
-            this.SetValue(borrow, OwnershipValueKind.Address, [], constant: plan.Root);
-            this.body.Projections[projection] = plan with { Borrow = borrow };
-            this.EndComparisonLoans(depth, source);
-            this.comparisonDepth = depth;
-            return this.RegisterTemporary(elementReference);
-        }
-
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
-            (element.Left.BoundType?.Kind == BoundTypeKind.Array || (ReferenceTypes.IsDynamicArray(element.Left.BoundType) && element.Left.BoundType!.Semantics == SemanticsKind.Uniq)))
+            (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
         {
-            // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole Array exclusively (an owned
-            // Array is borrowed like an exclusive receiver; an exclusive reference is read) and splits the element off
+            // SPEC 4.6.9, 4.5: an exclusive element borrow uses the array's existing exclusive capability (an owned
+            // Array is borrowed like an exclusive receiver; a fixed/dynamic array reference is read) and selects the element
             // through that reference, as exclusive enumeration does; the element keeps the reference's dependency.
             var depth = this.comparisonDepth++;
             var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
                 ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
                 : this.Expression(element.Left, PlaceUseKind.Read);
-            var subscript = handle < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(element)));
+            var subscript = handle < 0 ? -1 : this.Value(this.SelectionKey(element, handle));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(element, type, SequenceOperation.Borrow, handle, index: subscript);
             this.EndComparisonLoans(depth, element);
             this.comparisonDepth = depth;
-            return borrowedElement;
+            // A call reservation needs a real Reborrow of the selected address, not the Sequence operation that
+            // computed it. This keeps the parent capability and makes activation refer to the acquired element.
+            return borrowedElement >= 0 && reservation >= 0 ? this.BorrowThrough(source, borrowedElement, type, reservation) : borrowedElement;
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
@@ -129,7 +124,7 @@ public sealed partial class OwnershipAnalysis
             var reborrow = slice.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type);
             var depth = this.comparisonDepth++;
             var handle = this.SequenceReceiver(slice.Left, out var projection, type.Origin);
-            var subscript = this.Value(this.Expression(ElementAccess.KeySyntax(slice)));
+            var subscript = this.Value(this.SelectionKey(slice, handle, projection));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(slice, type, reborrow ? SequenceOperation.Read : SequenceOperation.Borrow, handle, projection, index: subscript);
             this.EndComparisonLoans(depth, slice);
             this.comparisonDepth = depth;
@@ -151,7 +146,7 @@ public sealed partial class OwnershipAnalysis
 
                 var depth = this.comparisonDepth++;
                 var handle = this.Expression(index.Left, PlaceUseKind.Read);
-                var position = handle < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(index)));
+                var position = handle < 0 ? -1 : this.Value(this.SelectionKey(index, handle));
                 var read = position < 0 ? -1 : this.SequenceValue(index, type, SequenceOperation.Read, handle, index: position);
                 this.EndComparisonLoans(depth, index);
                 this.comparisonDepth = depth;
@@ -166,7 +161,7 @@ public sealed partial class OwnershipAnalysis
 
             var receiver = this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
-            var subscript = this.Expression(ElementAccess.KeySyntax(index));
+            var subscript = this.SelectionKey(index, receiver);
             if (receiver < 0 || subscript < 0)
             {
                 return -1;
@@ -187,10 +182,18 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStoredReference(storedField, storedField, type, reservation);
         }
 
+        if (unwrapped is BinaryKoto storedPart && !Binding.IsGetterResult(storedPart) && !this.SpecialField(storedPart) &&
+            ReferenceTypes.IsBorrow(storedPart.BoundType) && ReferenceEquals(storedPart.BoundType!.Components[0], type.Components[0]) &&
+            ElementAccess.OwnedPathRoot(storedPart) is not null)
+        {
+            // SPEC 10.2, 13.5.5.1: the same Reborrow of a pointer stored in an inline part of an owned root.
+            return this.BorrowStoredReference(storedPart, storedPart, type, reservation);
+        }
+
         if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
-            var receiver = this.Receiver(root);
+            var receiver = this.Receiver(root, type.Semantics == SemanticsKind.Uniq);
             if (receiver < 0)
             {
                 return -1;
@@ -218,13 +221,20 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
+        var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType) || ReferenceTypes.IsPointer(source.BoundType)) &&
+            unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate;
         var place = this.SpecialField(unwrapped) ? this.Local(unwrapped)
             : source is FormattingKoto hidden && !ReferenceTypes.IsBorrow(hidden.BoundType) && this.formattingPlaces.TryGetValue(hidden, out var prepared) ? prepared
-            : (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType)) && unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate
-            ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
+            : direct ? this.Local(unwrapped) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
             return -1;
+        }
+
+        if (direct && ReferenceTypes.IsBorrow(this.body.Places[place].Type))
+        {
+            // SPEC 8.9: an instance's generic Place storing a reference is Reborrowed through the stored pointer it reads.
+            this.Emit(OwnershipOperationKind.Read, source, place);
         }
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
@@ -237,9 +247,9 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
-    private int Receiver(Koto root)
+    private int Receiver(Koto root, bool exclusive = false)
         => this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow
-            ? this.BorrowStruct(root, adaptation.Type) : this.Expression(root, PlaceUseKind.Read);
+            ? this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!) : this.Expression(root, PlaceUseKind.Read);
 
     private int ReadBorrowedField(MemberAccessKoto field)
     {
@@ -267,32 +277,40 @@ public sealed partial class OwnershipAnalysis
             return this.UpdateBorrowedField(assignment, field);
         }
 
+        // SPEC 13.7: secure the RHS, then replace the field through its exclusive address, borrowed through the receiver,
+        // like a referent: the old value is destroyed by its Type's plan and the new one moves in.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (ElementAccess.AccessType(root)?.Semantics != SemanticsKind.Uniq ||
-            !ReferenceTypes.IsValue(field.BoundType))
+        if (ElementAccess.AccessType(root, true) is not { Semantics: SemanticsKind.Uniq } receiverType || field.BoundType is not { } stored)
         {
             this.Unsupported(assignment);
             return -1;
         }
 
         var input = this.Expression(assignment.Right);
-        var receiver = this.Receiver(root);
-        if (input < 0 || receiver < 0)
+        var address = input < 0 ? -1 : this.BorrowStruct(field, this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType.Origin));
+        if (address < 0)
         {
             return -1;
         }
 
-        var operation = this.Emit(OwnershipOperationKind.WriteBorrowedField, assignment, receiver, input);
-        this.SetValue(operation, OwnershipValueKind.BorrowedFieldWrite, [this.Value(receiver), this.Value(input)]);
+        this.StorePointer(field, this.Value(address), input);
         return this.Temporary(assignment);
     }
+
+    // SPEC 8.4.7.3: a generic integer field is an owner scalar in every instance. Universal verification accepts it,
+    // and each instance plan sees the concrete scalar.
+    // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance.
+    private bool GenericInteger(Koto source)
+        => this.instance is null && source.BoundType is { } type &&
+        ((type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven) ||
+            this.compilation.Binding.IsGenericWrappingInteger(type, source));
 
     private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = ElementAccess.AccessType(root);
-        if (receiverType?.Semantics != SemanticsKind.Uniq || field.BoundType?.IsNumeric != true || operation == KotoKind.Invalid)
+        var receiverType = ElementAccess.AccessType(root, true);
+        if (receiverType?.Semantics != SemanticsKind.Uniq || !(this.Concrete(field.BoundType)?.IsNumeric == true || this.GenericInteger(field)) || operation == KotoKind.Invalid)
         {
             this.Unsupported(source);
             return -1;
@@ -301,7 +319,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7.2: secure the RHS, then the receiver and old value. The receiver is read like that of a simple
         // write; nothing runs between reading the old value and storing the new one.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
-        var receiver = right < 0 ? -1 : this.Receiver(root);
+        var receiver = right < 0 ? -1 : this.Receiver(root, true);
         var receiverValue = this.Value(receiver);
         var previous = -1;
         if (receiver >= 0)

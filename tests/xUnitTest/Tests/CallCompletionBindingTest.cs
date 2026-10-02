@@ -14,7 +14,7 @@ public class CallCompletionBindingTest
     public void LateApiFailureInvalidatesEarlierCallPlan(string input, string result)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic group Api\n    public func identity(value: " + input + ") -> " + result + " => value\ngroup Consumer\n    func call() => Api.identity(1)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
@@ -29,7 +29,7 @@ public class CallCompletionBindingTest
     public void LateConstraintApiFailureInvalidatesEarlierCallPlan()
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic group Api\n    public func take<T>()\n        T is Hidden\n        ()\ngroup Consumer\n    func call() => Api.take<Source>()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
@@ -78,6 +78,7 @@ public class CallCompletionBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCompletionChecksAllocateNothing()
     {

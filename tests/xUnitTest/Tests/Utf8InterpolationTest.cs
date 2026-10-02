@@ -13,10 +13,12 @@ public class Utf8InterpolationTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString())));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BoundedOwningInterpolationUsesOneAllocation()
         => NativeAllocationAudit.WriteFixture("Utf8InterpolationBounded", "let n = 42@i64\nlet text = \"My number is \\(n)\"\nConsole.writeLine(text)", 1, 1, 33, "My number is 42\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void InterpolationUsesTheUserFormatter()
     {
@@ -39,7 +41,7 @@ public class Utf8InterpolationTest
             struct Value
                 Self is Utf8Format
                 public init() => Console.writeLine("create")
-                deinit => Console.writeLine("destroy")
+                drop => Console.writeLine("destroy")
                 public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
                     Console.writeLine("format")
                     return writer.write("v")
@@ -84,6 +86,7 @@ public class Utf8InterpolationTest
         ScalarEmissionTest.EmitFixture("Utf8InterpolationBorrowEnd", Source, "12\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("String", "\"abc\"", "prefixabc:42\n", 21)]
     [InlineData("Empty", "\"\"", "prefix:42\n", 18)]
@@ -94,10 +97,12 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationHint" + name, source, 1, 1, capacity, expected);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyUnboundedOutputRemainsUnallocated()
         => NativeAllocationAudit.WriteFixture("Utf8InterpolationEmpty", "let value = \"\"\nlet text = \"\\(value)\"\nConsole.writeLine(text)", 0, 0, 0, "\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AFormatterThatNeverReservesDoesNotLosePendingLiterals()
     {
@@ -112,6 +117,7 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationPendingEmpty", Source, 1, 1, 2, "ab\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void NestedReservationsRetainTheOuterHint()
     {

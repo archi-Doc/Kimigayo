@@ -61,6 +61,26 @@ public sealed partial class Binding
         }
     }
 
+    // The Contract, as a bound reference when it takes Type arguments, that declares a requirement reached through a shape.
+    private static BindingSymbol RequirementReference(BoundContract shape, BindingSymbol requirement)
+    {
+        var owner = requirement.Scope.Owner;
+        if (ReferenceEquals(shape.Symbol.Declaration, owner))
+        {
+            return shape.Symbol;
+        }
+
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner))
+            {
+                return shape.Ancestors[i];
+            }
+        }
+
+        return shape.Symbol;
+    }
+
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
         if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
@@ -79,6 +99,7 @@ public sealed partial class Binding
         group.Self = type;
         group.Active = true;
         group.TypeAccess = typeAccess;
+        group.PropertyRequirement = false;
         if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
         {
             Add(formatting);
@@ -96,7 +117,7 @@ public sealed partial class Binding
             Add(ordering);
         }
 
-        if (type.Symbol?.Contract is { } own)
+        if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
         {
             Add(own);
         }
@@ -115,6 +136,13 @@ public sealed partial class Binding
                     Add(this.AppliedAssociatedContract(fact, type).Contract!);
                 }
             }
+        }
+
+        // SPEC 8.4.7.3: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
+        // concrete integers gain no members.
+        if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
+        {
+            Add(position);
         }
 
         // Expand the proved contracts of this referenced receiver only, as for an explicit associated
@@ -143,7 +171,7 @@ public sealed partial class Binding
             }
             else if (expected != current)
             {
-                Fail(member, BindingFailure.ReceiverShapeMismatch);
+                this.Fail(member, BindingFailure.ReceiverShapeMismatch);
                 group.Active = false;
                 return null;
             }
@@ -161,11 +189,17 @@ public sealed partial class Binding
 
             for (var i = 0; i < members.Count; i++)
             {
+                // SPEC 8.4.9: one requirement reached through distinct bound references (Indexable<isize>, Indexable<Name>)
+                // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var requirement = members[i];
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add(requirement))
+                if (requirement.Declaration is FunctionKoto && group.Seen.Add((requirement, RequirementReference(shape, requirement))))
                 {
                     group.Members.Add(requirement);
                     group.Contracts.Add(shape.Symbol);
+                }
+                else if (requirement.Kind == BindingSymbolKind.Property)
+                {
+                    group.PropertyRequirement = true;
                 }
             }
         }
@@ -211,13 +245,17 @@ public sealed partial class Binding
         /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
         internal List<BindingSymbol> Contracts { get; } = new();
 
-        internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
+        internal HashSet<(BindingSymbol Requirement, BindingSymbol Contract)> Seen { get; } = new();
 
         internal BoundType Self { get; set; } = null!;
 
         internal bool Active { get; set; }
 
         internal bool TypeAccess { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name; its use through a
+        /// generic receiver is not yet implemented (P24).</summary>
+        internal bool PropertyRequirement { get; set; }
     }
 
     private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)

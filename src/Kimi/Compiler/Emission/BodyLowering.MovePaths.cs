@@ -150,7 +150,7 @@ internal sealed partial class BodyLowering
     private void CollectPartDestruction(OwnershipBody body, int path, int offset)
     {
         var node = body.GetMovePath(path);
-        var layout = this.aggregateLayouts.Get(node.Type);
+        var layout = this.aggregateLayouts.GetStored(node.Type);
         if (node.Child < 0 || (body.CurrentPathState(path) & PlaceState.MustInit) != 0)
         {
             this.AddPartDestruction(body, path, offset, 1, layout?.Value ?? WindowsLowering.GetValue(node.Type)!, layout);

@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedStringTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowedWholeUpdatesTransferAndDestroyHeapBuffersExactlyOnce()
     {
@@ -26,6 +27,7 @@ public class SharedStringTest
         NativeAllocationAudit.WriteFixture("WholeValueBorrowedStringHeap", Source, 3, 3, 11, "old\nnew\nreplacement\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void LocalsAndResultsRetainTheOriginalOwner()
     {
@@ -41,6 +43,7 @@ public class SharedStringTest
         NativeAllocationAudit.WriteFixture("SharedStringLocals", Source, 0, 0, 0, "hello\nhello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -66,6 +69,7 @@ public class SharedStringTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SharedSliceIterationRetainsTheArray()
     {
@@ -73,6 +77,7 @@ public class SharedStringTest
         NativeAllocationAudit.WriteFixture("SharedStringSlice", Source, 1, 1, 96, "first\nlast\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ExclusiveParameterCanBeReadWithoutTransferringItsOwner()
     {

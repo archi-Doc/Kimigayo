@@ -153,7 +153,7 @@ internal sealed partial class BodyLowering
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ReferenceEquals(type, SignatureType(this, ElementAccess.AccessType(projectedRoot))) ||
+                    !ReferenceEquals(type, SignatureType(this, ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq))) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
                     !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
@@ -262,7 +262,7 @@ internal sealed partial class BodyLowering
         // without interpreting padding as typed values.
         var handle = fieldType is not null ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
-            (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, ElementAccess.AccessType(root))) &&
+            (!ReferenceEquals(ValueType(body, receiver), SignatureType(this, ElementAccess.AccessType(root, ValueType(body, receiver)?.Semantics == SemanticsKind.Uniq))) &&
                 !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || ReferenceEquals(fieldType, BoundType.Unit) || handle is not null) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
@@ -303,7 +303,7 @@ internal sealed partial class BodyLowering
         else
         {
             var input = Input(body, id, 1);
-            if (handle is not null || operation.Kind != OwnershipOperationKind.WriteBorrowedField || SignatureType(this, ElementAccess.AccessType(root))!.Semantics != SemanticsKind.Uniq ||
+            if (handle is not null || operation.Kind != OwnershipOperationKind.WriteBorrowedField || ValueType(body, receiver)?.Semantics != SemanticsKind.Uniq ||
                 !ReferenceEquals(ValueType(body, input), fieldType) || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Borrowed field write requires exclusive access and a matching secured value.", out failure);

@@ -11,7 +11,7 @@ public class PatternCoverageCompletionTest
     public void LateInvalidTypeSuppressesMissingCoverageCascade()
     {
         var c = MinimalEmissionTest.Analyze(Source("internal"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
@@ -43,6 +43,7 @@ public class PatternCoverageCompletionTest
         Assert.True(c.Bind().IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCoverageFailureAllocatesNothing()
     {

@@ -1,0 +1,313 @@
+# 診断情報の改善と CSP の前提整備 — 実装計画
+
+状態：実装計画（2026-09-29、簡約版）。仕様への取り込み・実装・検証の完了を示さない。実装は別途の指示で開始する。
+
+本書で変更する事項は [SPEC.md](../../docs/SPEC.md) とその参照先より優先し、それ以外は既存仕様に従う。[PLAN.md](../../docs/dev/PLAN.md) の言語実装マイルストーンの順序は変えない。既存のサービス契約は [SPEC 第23章](../../docs/spec/23-compiler-services.md)、実装済みの範囲は [STATUS.md](../../docs/STATUS.md) を参照する。
+
+本書は、実装が守る性質と実装の手掛かりを示す。データ構造・アルゴリズム・細かな場合分けは本書の原則に沿って実装時に決め、SPEC へ反映するときに記録する。独立した試作は作らず、本体への小さな変更と回帰テストで進める。
+
+## 1. 目的と範囲
+
+- 一つの独立した問題を、一つの主診断と必要な根拠で説明する。
+- CLI・LSP・将来の Compiler Server Protocol（CSP）が共通に使う、構造化した公開診断と公開経路を整える。
+- 変異テストと測定によって、診断の品質を継続的に改善する方法を作る。
+
+対象は、問題の識別と重複排除、明示した原因による連鎖抑制、位置・理由・補足の構造化、エラー状態と表示の分離、共通の確定・公開経路、評価方法である。CSP サーバー、永続 ID、機械的な修正の適用などは §8 の Deferred とする。
+
+### 1.1. 現状の問題（実装の出発点）
+
+| 現状の問題 | 主な箇所 |
+| --- | --- |
+| 同じ開始位置の診断を一件しか残さず、別の問題も消える | [DiagnosticCollection](../../src/Kimi/Diagnostics/DiagnosticCollection.cs) の Add |
+| 受理が表示件数（errorCount）に依存する。同じ位置で Warning の後に来た Error は数えられず、Remove・ClearDiagnostic で件数が減る | DiagnosticCollection の HasErrors。参照元は [Project](../../src/Kimi/SolutionAndProject/Project.cs) の Check、[LlvmEmitter](../../src/Kimi/Compiler/Emission/LlvmEmitter.cs)、[KimiLibraryValidation](../../src/Kimi/Compiler/Binding/KimiLibraryValidation.cs) |
+| エラー状態が errorCount・ErrorVersion の差分・HasSourceErrors に分散している | [KimiLibrarySources](../../src/Kimi/Compiler/Binding/KimiLibrarySources.cs)、[CodeContext](../../src/Kimi/Compiler/Core/CodeContext.cs)、[Kotonoha](../../src/Kimi/Compiler/Core/Kotonoha.cs) |
+| 連鎖抑制が、助言文（BorrowOriginHint）の有無と AST 子孫の探索に依存する | [Binding.Diagnostics](../../src/Kimi/Compiler/Binding/Binding.Diagnostics.cs) の IsDependentDiagnostic・DiagnosticDependencyVisitor |
+| 公開レコードで Label・Note・Fix が失われる。CLI は追加時に即時表示する | [CheckResult](../../src/Kimi/Checking/CheckResult.cs) の CheckDiagnostic、[CheckService](../../src/Kimi/Checking/CheckService.cs) の Convert、[Kimigayo](../../src/Kimi/Unit/Kimigayo.cs) の ReportDiagnostic |
+| 帰属が名前付きコレクションと「現在の SourceDocument」に依存し、範囲なしを default の範囲で表す。テキストから解析するソースはコレクション名をパスにする | Kimigayo のコレクション辞書、DiagnosticCollection の Add、Project の読み込み失敗、CodeContext の Parse |
+| 早期の重複排除が別の問題を落とす | [Binding](../../src/Kimi/Compiler/Binding/Binding.cs) の Fail（先着優先）、[OwnershipBody](../../src/Kimi/Compiler/Analysis/OwnershipModel.cs) の (Source, Failure) |
+| コードの流用と定義異常の黙殺がある | Kotonoha.OnDeserialized の UnexpectedToken_Kd、[DiagnosticEntries](../../src/Kimi/Diagnostics/DiagnosticCode.cs) の LoadAssembly、CheckService.Convert の範囲外位置の切り捨て |
+
+### 1.2. 設計原則
+
+| 原則 | 内容 |
+| --- | --- |
+| I1 定義 | 診断の意味と定義は一か所で決める |
+| I2 決定性 | 公開内容と順序は、到着順・スレッド・文言に左右されない |
+| I3 説明 | 連鎖を抑制しても、問題を説明する主診断は必ず残る |
+| I4 受理 | 受理可否は、表示・抑制・補足に左右されない |
+| I5 局所性 | ある診断の説明は、無関係な問題を追加しても減らない |
+| I6 境界 | 公開内容は一度だけ確定し、以後は変えない |
+
+### 1.3. 用語
+
+| 用語 | 意味 |
+| --- | --- |
+| 診断事実（DiagnosticFact） | 検査が記録する指摘と根拠。Warning を含む |
+| 検査キー・問題キー | 検査の同一性（主体・検査・文脈）と、問題の同一性（検査キー＋コード） |
+| Direct／Derived | 自ら確認した指摘／前提が成立せず判定できない検査。Derived は PrerequisiteUnavailable_Kd で表す |
+| 公開診断（CheckDiagnostic） | 確定した共通レコード。各出力への変換元 |
+| 診断所有者 | 一回のチェック要求の診断事実とエラー状態を管理するもの |
+| 区画 | まとめて無効化する事実の範囲（§4.1） |
+| 結果単位 | 診断を確定する単位。チェック全体で一つとし、コード生成などの後続フェーズは別単位 |
+| 確定 | 事実を整理し、公開診断を作る処理 |
+| 表示方針 | 説明の上限、CLI 引用の要否、LSP の関連位置対応など、確定前に決める設定 |
+
+## 2. 診断定義
+
+- 一つのコードに一つの重大度と分類を定める。分類は「言語上の指摘」「証明不成立」「実装未対応」「入力・設定」「資源制限」「内部障害」の六つとする。異なる分類を兼ねるコードは分け、文言の違いだけではコードを増やさない。
+- 呼び出し側も定義の契約に従う。例えば直列化したソースの形式不一致は「入力・設定」の専用コードで報告し、UnexpectedToken_Kd に自由文を渡さない。
+- 理由と本文は同じ型付き引数から作る（例：TypeMismatch_Kd は `expected`・`actual`）。汎用の属性辞書、実行時のテンプレート解析、新しい定義言語は使わない。
+- 判定できなかった検査（Derived）は PrerequisiteUnavailable_Kd（Error・証明不成立）一つで表し、本文は「前提を確立できないため、この要求を判定できない」とする。Reason は `requirement`（要求の安定名）と `condition`（条件と必要な事実）とする。要求の安定名はコード名と同じく公開語彙とする。
+- 判明した事実は理由に、推測した意図は Advice に置く。証明不成立を「条件が偽」と説明せず、Advice・Note の文から編集や保証を推定しない。
+- 既存の Fix は Advice に改名し、別名を残さない。hint 引数は廃止し、その内容は型付き生成処理で Note か Advice に移す。
+
+| 定義元 | 持つもの |
+| --- | --- |
+| [DiagnosticCode.tinyhand](../../src/Kimi/Diagnostics/DiagnosticCode.tinyhand)・DiagnosticEntry | 重大度、分類、既定の Message・Label・Note・Advice |
+| コードごとの型付き生成処理（C#） | 引数の型、関連位置の役割、条件に応じた説明 |
+| 検査種別（C# の列挙） | 要求の安定名、所属する区画、意味順 |
+| DiagnosticRequirement.tinyhand（新設） | 要求の安定名ごとの短い説明文 |
+
+## 3. 共通モデル
+
+### 3.1. 診断事実と同一性
+
+以下は論理モデルであり、フィールドごとのヒープ割り当てを求めない。
+
+```text
+DiagnosticFact
+  Code        : DiagnosticCode
+  Subject     : 構文対象・トークン・入力・コンパイラ処理への解析内参照
+  Check       : 検査種別と条件番号（診断コードに依存しない）
+  Context     : 具体化・展開の文脈、またはなし
+  Primary     : 主位置（§3.3）
+  Args        : コードに対応する型付きの事実
+  Evidence    : 役割付きの補足の根拠
+  DerivedFrom : 満たせなかった前提の検査キーの集合（原因不明なら未解決印）
+```
+
+- 検査キーは `(Subject, Check, Context)`、問題キーは `(検査キー, Code)` とする。同一性の判定に表示範囲や文字列を使わない。
+- Check は一つの要求を表し、フェーズ間でも区別する。例えば「宣言の型の確立」と「呼び出しの引数個数」は別の検査である。条件番号は、同じ要求の中の引数・契約条件・Place などを区別する。
+- Subject は、ソースのスナップショットと解析の世代を区別する。構文エラーはトークンや境界を、入力失敗は入力そのものを指す。合成ノードは、元の主体・変換の役割・変換内の順序で区別する。
+- 複数の対象にまたがる問題は、記録前に正規化する。例えば宣言の重複では、後の各宣言を主体と主位置、最初の宣言を関連位置にする（三つの宣言なら主診断は二件）。
+- 記録後に変わりうる値（再束縛される BoundCall、再利用される作業領域など）は、記録時に値として保存する。不変の解析データは参照でよい。
+- 解析固有の失敗 enum は残し、診断への変換を一か所に集める。Ownership は既存の OwnershipIssue.Code を使う。
+- 実装の手掛かり：Binding.Fail の先着優先と OwnershipBody の (Source, Failure) による早期排除は、問題キーが同じ場合だけに限るよう改める。
+
+### 3.2. 公開診断
+
+公開診断は CheckDiagnostic に集約する。DiagnosticFact を直接 JSON にせず、AST・変更可能な解析データ・遅延処理を公開しない。任意の項目は根拠がある場合だけ持つ。
+
+| 項目 | 内容 |
+| --- | --- |
+| Code・Severity・Category | コードの定義名、重大度、分類 |
+| Message | それだけで問題が分かる主説明 |
+| Primary・Label | 主位置と、その位置の短い説明 |
+| Reason | コードごとの小さな型付き値。番号・列挙値・真偽値は正確に保持し、型・制約は省略印付きの有界な表示値とする |
+| Related | 役割付きの関連位置 |
+| Note・Advice | 追加説明、条件付きの修正助言 |
+| 省略情報 | 要約・省略した部分。件数は分かる場合だけ持つ |
+| 表示用データ | 行・列、CLI の引用、位置の代替文。意味判定には使わない |
+
+- 不可欠な事実を省略可能な補足だけに置かない。具体化や条件による違いは、仮引数番号・使用箇所・型引数など理解に必要な意味情報で説明し、内部の番号で代用しない。
+- 入力記録・設定・報告元は結果の側に持ち、各診断に複製しない。
+
+### 3.3. 位置とソース表
+
+- 位置は「ソース参照＋SourceSpan?」とする。範囲は元の不変ソース上の UTF-16 の `start`・`length` で、終端を含まない。長さ0は挿入位置、範囲なしは入力全体、ソースなしはソース外の問題を表す。範囲はソースの境界内になければならない。
+- 主位置は失敗した条件の主体を説明する最小の範囲、関連位置は条件の出どころや根拠とする。どちらも生成側が記録時に決め、確定時に AST を探し直さない。
+
+| 問題 | 主位置 | 関連位置の例 |
+| --- | --- | --- |
+| 型不一致 | 要求された型に合わない式 | 型注釈・仮引数・戻り値契約 |
+| 不正な代入 | 操作または代入先 | 制限する宣言 |
+| Move 後の使用・借用競合 | 不正な使用・競合する操作 | 先行する Move・借用、必要な分岐 |
+| 宣言の重複 | ソース順で後の宣言名 | 最初の宣言 |
+| 構文要素の不足 | 挿入位置・不足が判明した境界 | 対応する開始記号 |
+
+- ソース参照は、結果内のソース表の索引とする。各項目は表示パス、入力記録との対応（あれば入力と revision）、スナップショットの区別を持つ。同じパスでも別のスナップショットは別の項目にする。表は入力・生成元の規定順に並べる。
+- スナップショットの区別は結果の中でだけ使い、JSON・CSP には出さない。
+- 入力記録を持たないソース（組み込み・生成・CodeContext.Parse に渡したテキスト）は、作成元（モジュール・生成元・追加順）から表示パスを決める。
+- 読み込みに失敗した入力は、入力への参照だけを持ち、範囲や内容 ID を作らない。
+- 行・列と引用は、確定時に同じ不変ソースから計算する。後からディスクや編集中の文書を読み直さない。Diagnostic.Location の文字列による別経路は廃止する。
+
+## 4. 収集から公開まで
+
+処理は **記録と集約 → 連鎖抑制 → 説明の確定 → 整列 → 公開** の順に行う。各出力は公開診断を変換するだけで、意味の再判定や再 Binding をしない。
+
+### 4.1. 診断所有者・区画・エラー状態
+
+- 診断所有者はチェック要求ごとに一つ、入力準備の前に作り、Compilation と後続フェーズへ引き継ぐ。名前付きコレクション、IsGlobal、変更可能な「現在の SourceDocument」、位置を指定する Remove は廃止する。
+- 事実は区画に記録する。区画は既存の解析の無効化範囲に合わせる。
+
+| 区画 | 無効化するとき |
+| --- | --- |
+| 入力・設定 | チェック要求の間は保持する |
+| 構文（モジュールごと） | そのモジュールのソース木を作り直したとき。構文回復の対応表もここに持つ |
+| 意味（Binding・起動条件・ControlFlow／Ownership） | 構文を変更したときは全体、フェーズ単独の再解析ではそのフェーズと後段 |
+| 後続フェーズ | 結果単位ごとに持つ |
+
+- 無効化は区画ごと切り離し、全事実を走査しない（BeginSourceParsing はソースを解析するたびに意味解析を無効化するため、安価である必要がある）。無効な区画の事実は確定と受理に使わない。
+- Error を記録した時点で、重複排除や抑制より前に、その区画と対象モジュールのエラー有無を立てる。有効な区画の中では取り消さない。
+- 受理・コード生成・ライブラリ検証は、所有者に有効な区画のエラー有無を問い合わせる。呼び出し中の判断（トークンのキャッシュ、Documentation.Finish）には、その呼び出しの局所結果を使う。errorCount、ErrorVersion の差分、HasSourceErrors は廃止する。
+- 解析内の暫定的な再試行は解析側で処理し、採用した検査結果だけを事実にする。
+
+### 4.2. 記録と集約
+
+- 記録時に問題キーで集約し、再報告を別レコードにしない。
+- 同じ問題キーでは、Primary と Args が一致しなければならない。不一致は診断契約違反とする（§4.7）。原因は和集合とする。記録時に保存した根拠値も和集合とし、§4.4 の共通順で上位 N 件だけを残す。
+- 不変条件：「Code が PrerequisiteUnavailable_Kd である ⇔ DerivedFrom が空でない」。原因が分からなくても未解決印を入れる。
+- Derived は Error に限る。前提不足で実行できない Warning の検査は記録しない。
+
+### 4.3. 原因と連鎖抑制
+
+- 派生した失敗の記録元が、満たせなかった前提を検査キーで指定する。前提のコードが未確定でもよく、記録の順序も問わない。
+- 前提の検査キーが表す Error は、参照した要求の成立を妨げる失敗に限る。別の要求はキーを分ける。
+- 前提の失敗で見送った子孫は、原因側の Error で説明済みとし、ノードごとに Derived を作らない。明示的に前提として参照された検査が見送られた場合は、見送りの原因を引き継ぐ Derived を記録する。
+- 構文回復では、ErrorKoto や補完した構文と、原因になった字句・構文検査のキーとの対応を、失敗時だけ構文区画に記録する。Binding などが回復箇所に依存する検査を判定できない場合は、この対応から得たキーを前提に指定する。ErrorKoto は現在のトークンの範囲で作られるので、今は開始位置の抑制で隠れている連鎖がここで表に出る（[TokenReader](../../src/Kimi/Compiler/Lexing/TokenReader.cs) の NewErrorKoto）。
+- 既存の最終退避は、結果に他の Error が一件もないときだけ出す条件に改めて残す。Binding は、未解決が残れば先頭の未解決ノードに PrerequisiteUnavailable_Kd（DerivedFrom は未解決印）を一件出す（現在は Binding の問題が空のときに UnresolvedBinding_Kd を出すため、構文エラーだけの場合も回復箇所に出てしまう）。UnresolvedBinding_Kd は、名前や型が見つからない場合だけに使う。CheckService は、Error のない Blocked に ProjectPreparationFailed_Kd を一件加える。これらが変異テストで出たら、判定元の報告漏れとして直す。
+
+抑制の規則：
+
+- 確定時に有効な事実を検査キーで索引化し、前提をその検査が報告した Error すべてに結び付ける。Error がない前提、Warning だけの前提、結果外の前提、無効な区画の前提は未解決とする。
+- Derived は、すべての原因が同じ結果で公開される Direct の Error にたどり着き、途中に未解決も循環もない場合だけ抑制する。それ以外は公開し、他の診断を抑制する根にしない。
+- 原因を AST の子孫、位置の近さ、直前の診断、助言文から推定しない。DiagnosticDependencyVisitor と BorrowOriginHint による抑制は撤去する。
+- 実装の手掛かり：原因の解決は非再帰の一回の走査で行い、前提検査ごとの判定を共有する。抑制した事実は公開せずに解放する。
+
+### 4.4. 説明と上限
+
+- 確定時に、公開する診断だけについて Message・Label・Reason・Note・Advice・省略情報・表示用データを一度作る。出力側は固定の書式で並べるだけで、説明を足したり切り詰め直したりしない。
+- 上限は診断ごとに適用し、結果全体の予算は設けない。既定値は表示方針として一か所に置き、テストでだけ差し替える。
+- 型・制約・長い識別子には、共通の有界な整形を使う。型不一致では相違箇所を優先し、共通部分を省略する。
+- 補足は「役割の順位 → 元位置 → 根拠の意味値」の共通順で並べ、上位 N 件を残す。打ち切った場合は省略印を付ける。生成処理ごとの比較器は作らない。
+- ソース引用は主位置の周辺に限り、行数・文字数・表示幅を制限する。
+- 入力失敗と例外の本文は、コードと型付きの失敗種別から作る。環境に依存する例外文は、有界な Note に置く。
+- 上限は、問題の同一性・分類・存続・受理・位置を変えない。
+
+### 4.5. 順序と一致
+
+- 同じ採用事実・診断定義・表示方針からは、同じ公開内容と順序を作る。
+- 並び順は「ソース表の順 → 主範囲 → 意味順」とする。範囲なしは同じ文書の範囲付きより前に、ソースなしは文書付きの後に置く。
+- 意味順は、問題キーの各要素（主体 → コード名 → 検査種別 → 条件 → Context）を、§3.1 の同一性と同じ情報で順に比べる。位置を持つ要素はソース上の順、それ以外は規定の順で比べ、到着順・メモリアドレス・本文・型の表示名は使わない。
+- 意味順は、集約後の異なる問題キーを区別する。区別できない場合は、表示内容によらず診断契約違反とする（§4.7）。
+- 公開値の一致は、表示用データを含む全項目で判定する。内部のキーは含めない。
+
+### 4.6. 出力
+
+- **CLI：** 確定後に表示する（現在の追加時表示から変える）。主範囲の下線に Label を添える。入力の消費順と後続処理の開始条件は変えない。後続フェーズは自分の結果だけを表示する。
+- **JSON・将来の CSP：** 公開診断の全項目と、自己完結した Message を持つ。利用側にカタログの参照や本文の解析を求めない。
+- **LSP：**
+  - message に本文を置き、Label・Note・Advice・省略情報を固定の書式で添える。関連位置は、対応するクライアントでは relatedInformation に置き、非対応なら確定済みの代替文を添える。
+  - 範囲を使うのは、ソース表の項目がその結果の入力記録に対応する場合だけとする。判定は結果と項目の組ごとに一度行い、現在の編集内容に合わせて動かさない。対応しない範囲は範囲なしとして表示する。
+  - 表示先は、file: の表示パスを持つソースならそのファイル、それ以外（ソースなし・compiler://・入力記録のない生成ソース）ならプロジェクトまたは暗黙ソースの先頭とする。代替表示では、元の位置を代替文で示す。
+  - 同じ URI に複数の結果が寄与する場合、結果の間で送信値が等しい診断を集約する。同じ結果の中の別問題はまとめない。件数は各結果での件数の最大値とし、報告元が一つなら集約しない。
+  - 並び順は「表示範囲 → 報告元の固定順 → 結果内の順」とする。採用・鮮度・再送の条件は既存の契約に従う。
+
+### 4.7. 受理・終了・内部障害
+
+- 受理には次のすべてが必要である：入力・実効設定・依存内容・ロック検証が成立していること。SPEC §23.3.2 手順3の検査（構文解析、Binding、起動条件、制御フローを含む Ownership）が全モジュールで完了・成功していること。有効な区画に Error がないこと。Outcome が Completed であること。表示や補足は受理に影響しない。
+- 不受理の結果には、理由を説明する公開 Error が少なくとも一件ある。これは結果単位で確認し、未完了の要求の台帳は作らない。網羅性は変異テストで確認する。
+
+| Outcome | 意味と必要な診断 |
+| --- | --- |
+| Completed | チェックを実行した。言語エラー・証明不成立・未対応による不受理を含む |
+| Blocked | 入力・実効設定を確立できない。「入力・設定」の Error で説明する |
+| Faulted | コンパイラ内の例外、または診断契約違反で終了した。「内部障害」の Error で説明し、結果を再利用しない |
+| Cancelled | コマンドの中止。結果を公開しない |
+
+- Outcome は終了状態から決め、分類から逆算しない。解析が安全に続けられる経路で InternalInvariant_Kd を報告して終了した場合は、Completed かつ不受理になりうる。
+- 解析が例外で終了しても診断経路が健全なら、有効な事実に内部障害の Error を加えて Faulted とする。CheckService.Create の独自の整形は共通経路に統合する。
+- 診断契約違反は一つの退避処理で扱う。対象は、カタログの異常、未知のコード、不正な位置・引数、同じ問題キーでの Primary・Args の不一致、説明のない不受理、意味順の定義不足（§4.5）、収集・確定処理の例外である。退避処理は途中の公開列を捨て、固定本文の内部障害 Error（障害種別を Reason に持つ）を出して Faulted・不受理とする。退避処理はカタログにも通常の整形にも依存しない。固定値は一か所にまとめ、カタログとの一致をテストで確認する。
+- 中止と、未確立の入力を待つ制御は既存の扱いを保つ。
+
+## 5. 実装段階
+
+各段階を「再現例 → 実装 → 対象を絞った検証」の小さな単位に分けて進める。
+
+| 段階 | 作業 | 完了条件 |
+| --- | --- | --- |
+| 1. 基準と定義 | 変異ケースと性能の基準を記録する。全定義（146件、Template を含む）と呼び出し箇所の分類・引数・役割を監査する。検査種別、PrerequisiteUnavailable_Kd、要求の説明表、Advice を導入する。カタログの読み込みで未知・重複・欠落を検出する。現行の出力で位置・引数の契約違反を洗い出して直す | 全定義に分類がある。enum・定義・説明表の一致テストが通る。既存テストで契約違反が0件 |
+| 2a. 共通の確定境界 | 診断所有者・区画・局所結果、位置型とソース表、CheckDiagnostic と退避処理、CLI・LSP の変換の順に移す。独立したエラー状態を廃止する。旧来の開始位置抑制は、移行用の入口で再現する（旧収集単位＋開始位置、範囲なしは0とし、改良しない） | 出力と終了状態を基準と比べ、差が意図したもの（表示時期、順序、帰属、エラー状態の修正）だけである |
+| 2b. 同一性と明示依存 | 全記録元（字句・構文・Binding・起動条件・ControlFlow・Ownership）に検査キーと原因をそろえる。集約、原因の引き継ぎ、構文回復の対応を実装し、共通の抑制規則に切り替える。旧来の開始位置抑制、BorrowOriginHint による抑制、DiagnosticDependencyVisitor を撤去する | 同じ位置の独立した問題が残る。構文誤りからの連鎖が抑制される。Milestone と変異テストで、説明のない不受理と、原因不明の PrerequisiteUnavailable_Kd が0件。順序が決定的 |
+| 3. 説明の改善 | 有界な整形・引用・補足を仕上げる。型不一致と不正な代入の理由と下線範囲を改善する。Move・借用・オーバーロードの詳細は、取得費用を確認してから広げる | 対象ケースで位置・理由・補足が期待どおりになる |
+| 4. 総合評価 | §6 の評価を完了し、§7 の反映を行う | CLI・LSP の結果、性能、検証済みの範囲と残る制限を記録する。Completion also requires the ongoing workflow of §6.5 to be documented in AGENTS.md under §7. |
+
+- 問題キーに基づく契約検査（Primary・Args の不一致、説明のない不受理、意味順の定義不足）は 2b で有効にする。2a では、旧来の抑制による欠落を契約違反としない。
+- 経路ごとに旧方式と新方式を併存させない。`(範囲, Code)` のような中間の同一性は作らない。
+- 説明は導入時から有界にする。enum は自動生成せず、一致テストで保つ。
+
+## 6. 評価と改善の方法
+
+### 6.1. 変異テスト
+
+- 正常に通る Milestone、または独立に検証済みの部分に変異を加える。元ファイルは変えず、メモリ上か temp/ のコピーを使い、変更箇所が一意であることを確認する。既存エラーのある未完了プログラムを単一エラーの基準にしない。
+- 一ケースに、元ソース・実効設定・変更・意図した問題・期待する公開診断を記録する。期待値は生成処理と独立に書く。
+- 観点は、定義と記録元、原因と連鎖（構文回復を含む）、エラー状態と無効化、終了と退避、位置とスナップショット、出力と上限とする。具体的なケースは各段階で追加する。
+- 比較はコード・検査条件・理由・位置で行う。全文一致は少数の表示テストに限り、下線と説明の対応は人も確認する。診断件数を減らすこと自体を目標にしない。
+- [DiagnosticPrecisionTest](../../tests/xUnitTest/Tests/DiagnosticPrecisionTest.cs) は、内部の失敗名の文字列連結をやめ、公開診断を検査する形に改める。
+
+### 6.2. 入力間の関係
+
+- 空行を追加しても、位置以外の意味情報は変わらない。
+- 同じ検査・入力・前提なら、無関係な問題を追加しても、既存の主診断と説明は変わらない。
+- 文言だけを変えても、同一性・抑制・順序は変わらず、公開値の変化は検出される。
+- 仕様上のソース順を保って処理順を変えても、公開内容と順序は変わらない。
+- 表示上限を変えても、問題の存続・分類・受理は変わらない。
+
+### 6.3. 性能
+
+- 診断の出ない通常経路に、ノード単位の割り当てや文字列生成を加えない。文字列化は公開する診断だけに行う。
+- 目安：原因の解決は事実数 F・前提参照数 E に対して O(F + E)、整列は公開診断数 D に対して O(D log D)、説明の保持は一診断の上限 K に対して O(D × K)。
+- 同じマシン・設定・入力で、変更前後の時間・割り当て・保持量を比べる。測定ケース、比較方法と許容範囲は、段階1で基準を記録するときに決める。再現する性能低下は解消し、未測定の改善は主張しない。
+- 追加時のロックは、呼び出し経路を確認してから外す。並列化は対象外とする。
+
+### 6.4. 手順と証拠
+
+- 各実装単位は `scripts/verify.ps1 -Class ...` と、関連するネイティブ実行用テスト・Milestone ハーネスで検証し、検証済みの単位ごとにコミットする。実装セッションの末尾に Session 検証を一度行う。ビルド中はソースを編集せず、NativeAOT は実行しない。拡張機能を変更した場合は、その検証手順にも従う。
+- 失敗を含む証拠は artifacts/verify/、測定は artifacts/benchmarks/、使い捨ての出力は temp/ に置く。
+
+### 6.5. Ongoing diagnostic improvement
+
+This workflow applies during implementation of this plan and remains required after its completion. Apply it whenever a change adds or modifies a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication and presentation. Reusing an existing diagnostic code does not exempt a new reporting path. Reported confusing, missing or misleading diagnostics also start this cycle.
+
+1. **Capture the intended problem.** Add a minimal reproducer or a mutation of a known-valid program under §6.1. Record the intended failure and independently specified public diagnostic expectations. Confirm that the case reaches the intended check; an unrelated earlier error is not evidence. Include a valid counterpart to detect false positives.
+2. **Review the explanation.** Check the code, severity and category, the primary range and label, the factual reason, related locations and any Note or Advice. The message must explain the problem on its own; required facts must survive display limits. Distinguish established facts from suggested intent, and state any conditions on advice. Inspect representative CLI and LSP output, including the correspondence between underlines and explanations, for changed user-visible behavior; retain the human review required by §6.1.
+3. **Exercise interactions.** Add focused cases for relevant dependencies and recovery, independent errors, and the input relationships of §6.2. Verify that the cause remains explained, independent problems remain visible, and acceptance does not depend on suppression or presentation. Cover affected output adapters; a future CSP adapter must preserve the same public diagnostic contract. Select cases by the change's impact rather than repeating every test for each diagnostic.
+4. **Repair and repeat.** Correct missing evidence, misleading explanations, wrong ranges or unwanted cascades at their source, then rerun the affected checks and inspect the revised output. Do not weaken expectations to match current output or treat a lower diagnostic count as improvement. Keep the reproducer and independent expectations as regression tests.
+5. **Verify and retain evidence.** Follow §6.4 and the repository verification workflow. Measure under §6.3 when a changed path is hot or at milestone completion. Record the reviewed behavior, intentional public-output changes, verification results and any remaining uncertainty in commits and the existing evidence locations.
+
+A unit is complete only when its intended problem is explained accurately and understandably at the appropriate locations, the applicable interaction and output checks pass, and any observed quality defect within that unit has been repaired and reverified. Test success alone does not establish clarity. If these conditions cannot be met, record the unresolved condition and next action without marking the unit complete or claiming verified support.
+
+## 7. 仕様・記録への反映
+
+- 実装に合わせて SPEC を更新する。
+  - §23.3.2・§23.3.3：CLI の確定時表示、受理と表示の分離、開始位置抑制の置き換え、公開診断の項目、Faulted に診断契約違反を含めること
+  - §23.3.4：入力失敗の同一性は観測した失敗（種別と省略前の文）で判定し、表示とは分けること
+  - §23.4.7：範囲の対応判定、代替配置、結果間の集約と並び順
+  - Fix を参照する箇所を Advice に改めること
+- Deferred は §23.5 と Appendix D に反映する。正式仕様は本書に依存させない。
+- Before completing this plan, add an English **Diagnostic development workflow** section to [AGENTS.md](../../AGENTS.md). It must require §6.5's triggers, improvement cycle and completion conditions for subsequent implementation work, including new reporting paths that reuse existing codes. Keep the actionable steps in AGENTS.md; move any supporting detail to a permanent document under docs/dev/ and link it there. Neither the permanent workflow nor the specification may depend on this draft. Update [implementation-execution.md](../../docs/dev/prompts/implementation-execution.md) to explicitly apply that workflow when diagnostics are affected. Verify that these permanent instructions cover reproduction, independent expectations, explanation and location review, interactions and output adapters, repair and re-verification, regression retention and evidence before freezing this plan. This handoff is a completion requirement, not a claim that the planned infrastructure already exists.
+- STATUS は検証済みの範囲、PLAN は現在の作業、PLAN_HISTORY は短い実施記録に限って更新する。正式仕様へ取り込んだら [INTEGRATED.md](../INTEGRATED.md) に記録して本書を凍結する。他の draft は自動更新しない。
+
+## 8. Deferred
+
+以下は必要性が明らかになった時点で、契約と費用を確認して実装する。
+
+| 項目 | 導入の条件・方針 |
+| --- | --- |
+| 永続的な診断 ID | 編集やセッションをまたぐ追跡が必要になったとき。対応付けを意味上の妥当性の保証にしない |
+| 診断への構文・意味ノード ID、全解析の因果グラフ | CSP の調査・移動に必要なとき、または失敗に限った明示依存では足りないとき |
+| 完全な型・制約の構造化表現 | 有界な表示値では調査の要求を満たせないとき |
+| 抑制した事実の照会・件数、suppressedBy、結果内の診断 ID | 照会の要求が出たとき。原因を直した後は再検証し、依存関係だけで改善を保証しない |
+| CSP サーバー・公開スキーマ・永続的な入力と結果・検証証拠 | 共通基盤の検証後に設計する。内容 ID は実バイト列に結び付け、[既存の入力識別体系](../../docs/spec/18-modules-and-dependencies.md#1841-identities-and-graph) に接続する |
+| 診断・要求カタログの公開、enum の自動生成 | 利用側の要求や保守の費用が導入の費用を上回ったとき |
+| Repair（構造化した修正）の生成・適用・検証 | 前提条件と保証を示せる修正から導入する。古い入力や編集の競合は拒否する |
+
+## 付記：主な設計判断
+
+- 解析固有の型は残し、診断の境界だけを共通化する。全フェーズの型の置き換えは不要である。
+- 原因は検査キーで明示する。単一の原因ポインターでは複数の原因を失い、AST の探索では別の問題を巻き込む。
+- Derived は一つのコードで表し、Kind や許可フラグを増やさない。
+- 上限は診断ごとにかける。結果全体の予算は局所性（I5）を損なう。
+- 既存の最終退避は残し、報告漏れを見つける目印として使う。診断契約違反は一つの退避処理で扱う。
+- 細部は実装時に決める。本書は、守る性質と実装の手掛かりに限る。

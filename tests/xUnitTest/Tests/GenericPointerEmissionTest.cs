@@ -13,36 +13,36 @@ public class GenericPointerEmissionTest
         var source = """
             struct Resource
                 public var value: i32
-                deinit
+                drop
                     require self.value == 0 else => $abort("value")
                     Console.writeLine("drop")
             struct Empty
-                deinit => Console.writeLine("empty")
+                drop => Console.writeLine("empty")
             enum Choice<T>
                 None
                 Some(T)
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func take<E>(pointer: unsafe/E) -> E
-                unsafe => return *pointer
-            func at<E>(pointer: unsafe/E, index: isize) -> E
-                unsafe => return pointer[index]
-            func reads(bytes: unsafe/u8)
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func take<E>(pointer: raw/E) -> E
+                unsafe => return (*pointer)@move
+            func at<E>(pointer: raw/E, index: isize) -> E
+                unsafe => return pointer[index]@move
+            func reads(bytes: raw/u8)
                 unsafe
-                    let integer = take(bytes@unsafe/i32)
+                    let integer = take(bytes@raw/i32)
                     require integer == 0 else => $abort("integer")
-                    require take(bytes@unsafe/bool) == false else => $abort("bool")
-                    require take(bytes@unsafe/unsafe/i32) == null else => $abort("pointer")
-                    let item = at(bytes@unsafe/Resource, 1)
-                    let tuple = take((bytes + 32)@unsafe/(Resource, Resource))
-                    let array = at((bytes + 64)@unsafe/[2 of Resource], 1)
-                    let empty = take((bytes + 128)@unsafe/Empty)
-                    let unit = take(bytes@unsafe/())
-                    let text = take((bytes + 160)@unsafe/string)
-                    let choice = take((bytes + 224)@unsafe/Choice<Resource>)
+                    require take(bytes@raw/bool) == false else => $abort("bool")
+                    require take(bytes@raw/raw/i32) == null else => $abort("pointer")
+                    let item = at(bytes@raw/Resource, 1)
+                    let tuple = take((bytes + 32)@raw/(Resource, Resource))
+                    let array = at((bytes + 64)@raw/[2 of Resource], 1)
+                    let empty = take((bytes + 128)@raw/Empty)
+                    let unit = take(bytes@raw/())
+                    let text = take((bytes + 160)@raw/string)
+                    let choice = take((bytes + 224)@raw/Choice<Resource>)
                     Console.writeLine("scope")
             public func main()
                 unsafe
@@ -56,11 +56,11 @@ public class GenericPointerEmissionTest
     }
 
     [Theory]
-    [InlineData("*pointer")]
-    [InlineData("pointer[index]")]
+    [InlineData("(*pointer)@move")]
+    [InlineData("pointer[index]@move")]
     public void AbstractOwnedPointeeCanBeAcquired(string expression)
     {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E, index: isize) -> E\n    unsafe => return {expression}\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E, index: isize) -> E\n    unsafe => return {expression}\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
@@ -69,35 +69,33 @@ public class GenericPointerEmissionTest
     [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
-    public void DependentInstantiationsRemainUnsupported(string type)
+    public void DependentInstantiationsPreserveTheCompletePointee(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc read(pointer: unsafe/({type})) => take(pointer)\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc read(pointer: raw/({type})) => take(pointer)\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Ownership.Result.UnsupportedCount > 0);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        CompilationTestHelper.WriteIr(c);
     }
 
     [Theory]
     [InlineData("ref/i32 during static")]
     [InlineData("(ref/i32 during static, i32)")]
-    public void VerifiedTemplateStillRefusesDependentConcreteReads(string type)
+    public void VerifiedTemplateBuildsDependentConcreteReads(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: unsafe/E) -> E\n    unsafe => return *pointer\nfunc input(pointer: unsafe/({type})) => ()\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func take<E>(pointer: raw/E) -> E\n    unsafe => return (*pointer)@move\nfunc input(pointer: raw/({type})) => ()\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
         var element = input.Function.Parameters[0].Type.BoundType!.Components[0];
         var call = new BoundCall();
         call.Set(generic.Function.BoundSymbol!, element, null, [0], [element]);
-        Assert.Null(c.Ownership.AnalyzeInstance(generic, call));
+        Assert.NotNull(c.Ownership.AnalyzeInstance(generic, call));
     }
 
     [Fact]
     public void AcquiredGenericValueCannotBeMovedTwice()
     {
-        var c = MinimalEmissionTest.Analyze("func take<E>(pointer: unsafe/E) -> E\n    unsafe\n        let value = *pointer\n        let moved = value@move\n        return value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("func take<E>(pointer: raw/E) -> E\n    unsafe\n        let value = (*pointer)@move\n        let moved = value@move\n        return value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
     }

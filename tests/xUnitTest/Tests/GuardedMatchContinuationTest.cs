@@ -11,7 +11,7 @@ public class GuardedMatchContinuationTest
     [InlineData("let n if n => return\n                _ => x = 3")]
     [InlineData("true if check(x = 2, c) => return\n                false if check(x = 3, c) => exit\n                _ => x = 4")]
     [InlineData("let n if (if n => true else => false) => yield to choice\n                _ => x = 3")]
-    [InlineData("let n if (guard: do\n                    x = 2\n                    exit to guard: n\n                ) => return\n                _ => x = 3")]
+    [InlineData("let n if (label guard: do\n                    x = 2\n                    exit to guard n\n                ) => return\n                _ => x = 3")]
     [InlineData("let n if (match n\n                    true\n                        yield true\n                    false => false\n                ) => return\n                _ => x = 3")]
     public void CompletingGuardsKeepNormalAndTerminalHistories(string arms)
     {
@@ -23,7 +23,7 @@ public class GuardedMatchContinuationTest
     [Theory]
     [InlineData("let s = \"s\"", "true if take(s@move) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "true if check(x = 3, c) => return\n                _ => ()", "x = 4", "()", OwnershipFailure.ReassignedLet)]
-    [InlineData("let s = \"s\"", "true if (guard: do\n                    _ = s@move\n                    exit to guard: false\n                ) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "true if (label guard: do\n                    _ = s@move\n                    exit to guard false\n                ) => return\n                _ => ()", "()", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("var x: i32", "true if c => return\n                _ => x = 3", "()", "let y = x", OwnershipFailure.UninitializedUse)]
     public void FalseGuardsAndTerminalArmsPreserveEffects(string declaration, string arms, string after, string use, OwnershipFailure failure)
     {
@@ -38,7 +38,7 @@ public class GuardedMatchContinuationTest
     [Theory]
     [InlineData("let text\n                    Console.writeLine(text)\n                    return")]
     [InlineData("let text if same(text, \"s\")\n                    Console.writeLine(text)\n                    yield to choice\n                _ => ()")]
-    [InlineData("let text if (guard: do\n                    x += 1\n                    exit to guard: same(text, \"s\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return")]
+    [InlineData("let text if (label guard: do\n                    x += 1\n                    exit to guard same(text, \"s\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return")]
     public void OwnedStringSubjectsKeepAcquisitionAndGuardCleanup(string arms)
     {
         var source = Source("var x = 1", arms, "x = 3", "let y = x", "\"s\"");
@@ -47,6 +47,7 @@ public class GuardedMatchContinuationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ManyFalseGuardsKeepACompactTargetHistory()
     {
@@ -84,6 +85,6 @@ public class GuardedMatchContinuationTest
 
     private static string Source(string declaration, string arms, string after, string use, string subject = "c")
         => "func stop() -> Never => $abort(\"guarded match\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc check(effect: (), value: bool) -> bool => value\nfunc take(text: string) -> bool\n    Console.writeLine(text)\n    return false\nfunc f(c: bool)\n    " + declaration +
-            "\n    do\n        loop\n            if c => return else => exit\n            choice: match " + subject + "\n                " + arms +
+            "\n    do\n        loop\n            if c => return else => exit\n            label choice: match " + subject + "\n                " + arms +
             "\n            " + after + "\n        stop()\n    " + use + "\nf(true)";
 }

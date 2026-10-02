@@ -13,8 +13,14 @@ public sealed partial class OwnershipAnalysis
     private BoundCall? instance;
     private bool instanceFailed;
 
+    internal string? InstanceStorageLimit { get; private set; }
+
     /// <summary>Releases the instance plans of the previous generation request.</summary>
-    internal void ClearInstances() => this.instanceCount = 0;
+    internal void ClearInstances()
+    {
+        this.instanceCount = 0;
+        this.InstanceStorageLimit = null;
+    }
 
     /// <summary>
     /// Rebuilds the ownership plan of a verified generic body under one closed call substitution. The
@@ -51,9 +57,6 @@ public sealed partial class OwnershipAnalysis
                 return null;
             }
 
-            // Validations that run later, during lowering, see the instance's substitution through the body itself.
-            target.Instance = call;
-            target.InstanceBinding = this.compilation.Binding;
             this.instanceCount++;
             return target;
         }
@@ -131,7 +134,7 @@ public sealed partial class OwnershipAnalysis
     private bool ReadsStoredReference(ConversionKoto conversion)
     {
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
-        // Built-in elements already acquire their stored pointer through the sequence borrow plan (SPEC 4.6.9).
+        // Published Places acquire their complete stored reference through the ordinary Place call.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
             ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null) ||
                 (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
@@ -147,16 +150,25 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(Koto left, SemanticsKind mode)
     {
-        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left))
+        // SPEC 13.5.5.1, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
+        // reached by borrowing that slot in place; let restricts replacing the slot, not the stored reference's capability.
+        var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
+        if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
         {
-            // A published element Place is borrowed, in the mode its selection published, only to load the stored reference.
-            var slot = this.BorrowStruct(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            var stored = this.Concrete(left.BoundType)!;
+            var slotType = ownedSlot ? this.compilation.Binding.Reference(mode, left.BoundType!)
+                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            var slot = this.BorrowStruct(left, slotType);
             if (slot < 0)
             {
                 return -1;
             }
 
-            var pointer = this.Place(left, left.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+            // The slot is inspected only for its address value. A shared path yields the stored reference's shared
+            // capability, with the referent's own Origin; an exclusive path can lend its exclusive capability.
+            var acquired = mode == SemanticsKind.Ref && stored.Semantics == SemanticsKind.Uniq
+                ? this.compilation.Binding.SharedReference(stored.Components[0], stored.Origin) : stored;
+            var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, left, pointer);
             this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
             return this.RegisterTemporary(pointer);
@@ -165,7 +177,7 @@ public sealed partial class OwnershipAnalysis
         if (left is MemberAccessKoto field && !Binding.IsGetterResult(field) && ElementAccess.BorrowedPathRoot(field) is { } root)
         {
             // The stored reference is loaded from the field for the Reborrow; it is not a Copy of an exclusive reference.
-            var receiver = this.Receiver(root);
+            var receiver = this.Receiver(root, mode == SemanticsKind.Uniq);
             if (receiver < 0)
             {
                 return -1;

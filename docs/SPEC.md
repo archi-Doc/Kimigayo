@@ -45,15 +45,18 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 - [12. Expressions](spec/12-expressions.md)
 - [13. Operators and assignment](spec/13-operators-and-assignment.md)
   - [Pair layers](spec/13-operators-and-assignment.md#pair-layers): a pair `s/T` or `s/U` whose admitted set lies in `value or valueborrow` is a safe value-reference layer that may or may not exist; `@follow` selects its direct target, and every operation applies the rule of each admitted Semantics, taking the weakest capability and mode and keeping each case's dependencies conditionally.
+  - [Integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [wrapping integers](spec/03-types-and-values.md#3111-wrapping-integer-types): one rule computes the mathematical result; an integer Type Aborts on an unrepresentable result, `Wrapping<T>` wraps, and undefined inputs Abort for both. [Numeric, wrapping and bit conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals): `@Type` never wraps, `@wrap<U>` wraps, `@bits<U>` reinterprets bits, and direct literals convert once from their exact value.
 - [14. Control flow](spec/14-control-flow.md)
+  - [Contextual labels](spec/14-control-flow.md#144-labels) and [named transfers](spec/14-control-flow.md#1451-syntax-and-operands): `label name: do` and `exit to name value`.
 
 ### Part V. Ownership, cleanup, and failure
 
 - [15. Ownership and lifetime analysis](spec/15-ownership-and-lifetime-analysis.md)
-  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): bare acquisition Copies a proven-Copy Place and never Moves it, and `@move` is the only transfer. A new exclusive borrow of an owned Place or temporary needs `@uniq`/`@objuniq`, except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly. `@ref`/`@uniq` borrow the written slot, and `@follow` selects the referent. At a fixed expected Type, the [common adaptation](spec/10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) shared-borrows a readable Place storing `U` (never a reference or handle slot) or an owner temporary for an expected `ref/U`, Reborrows a borrow value, yields one shared reference through nested reference layers and Scalar-reads a reference chain ending in a Scalar.
+  - [Lending rule](spec/15-ownership-and-lifetime-analysis.md#1515-movable-places): [bare acquisition](spec/03-types-and-values.md#35-copy-and-move) Copies a proven-Copy Place, Reborrows a stored exclusive reference in its own Semantics and never Moves, and `@move` is the only transfer. A new exclusive borrow of an owned Place or temporary needs `@uniq`/`@objuniq`, except for a [Receiver Expression](spec/07-functions-and-callable-values.md#73-explicit-receivers), which is acquired implicitly. `@ref`/`@uniq` borrow the written slot, and `@follow` selects the referent. At a fixed expected Type, the [common adaptation](spec/10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types) shared-borrows a readable Place storing `U` (never a reference or handle slot) or an owner temporary for an expected `ref/U`, Reborrows a borrow value, yields one shared reference through nested reference layers and value-reads a reference chain ending in a read Type (a Scalar, position or range Type, [§3.5.3](spec/03-types-and-values.md#353-value-read)). Overload resolution never chooses between Copying a bare Place and newly sharing it: where both remain, the call needs `@ref`, `@copy` or `@move` ([acquisition conflicts](spec/10-overload-resolution-and-inference.md#1022-acquisition-conflicts)).
   - [Subject rule](spec/15-ownership-and-lifetime-analysis.md#1516-match-acquisition-and-lifetime): a `match` or `for` Subject is acquired as written, like any other expression, except that a bare Place is borrowed in place. The Subject mode is Shared for a shared borrow or a `ref`/`objref` value, Exclusive for an exclusive borrow or a `uniq`/`objuniq` value, and ByValue for an owned value, such as a temporary, `E@copy` or `E@move` of an owned Place; a transferred or returned reference keeps its own mode. Shared and exclusive paths bind `ref/T` and `uniq/T`, an owned Subject transfers its parts, and guard candidates are `ref/T`.
   - [Call borrow reservations](spec/15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations): reservation, preparation, activation and abandoned calls.
 - [16. Scope exit and destruction](spec/16-scope-exit-and-destruction.md)
+  - [Drop declarations and obligations](spec/16-scope-exit-and-destruction.md#163-aggregate-destruction-and-drop); `defer` registers cleanup in the enclosing execution scope.
 - [17. Failure handling](spec/17-failure-handling.md)
 
 ### Part VI. Programs, compilation, and runtime
@@ -62,13 +65,14 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 - [19. Compile-time directives](spec/19-compile-time-directives.md)
 - [22. Kimi, program execution, and foreign functions](spec/22-core-execution-and-foreign-functions.md)
   - [UTF-8 formatting profile](spec/utf8-formatting.md): buffers, views, formatting, interpolation and required costs.
+  - [Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time): native counter imports, Duration and Stopwatch.
 
 Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and code generation) and the test execution profile belong to the [implementation specification](IMPL.md).
 
 ### Part VII. Compiler services
 
 - [23. Compiler services](spec/23-compiler-services.md)
-  - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes, diagnostic records, input identity and revisions.
+  - [Check foundation](spec/23-compiler-services.md#233-check-foundation): check units, the shared check entry, outcomes and acceptance, input identity, revisions and diagnostics (categories, records, source tables, prerequisites and suppression, limits, order and rendering).
   - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication and settings.
   - [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol): purpose, the provided foundation and the requirements of the future protocol.
 
@@ -97,7 +101,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](impl/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.
 - **Editor and tool integration:** the [language server](spec/23-compiler-services.md#234-language-server-protocol) publishes the diagnostics of the shared [check foundation](spec/23-compiler-services.md#233-check-foundation), which the future [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol) also uses.
-- **Milestone programs:** the [milestone roadmap](../tests/milestones/README.md) plans 40 independent programs of increasing difficulty, from Hello World through ownership and lifetimes, control flow and Patterns, arrays, generics and specialization, closures, iteration, collections, Properties, formatting and objects. Programs 1–39 have source files and 40 has a design and verification scope; the README records their status. Source creation does not establish compiler support, and expected behavior follows this specification.
+- **Milestone programs:** the [milestone roadmap](../tests/milestones/README.md) plans 41 independent programs of increasing difficulty, from Hello World through ownership and lifetimes, control flow and Patterns, arrays, generics and specialization, closures, iteration, collections, Properties, formatting and objects. Programs 1–39 and 41 have source files; 40 has a design and verification scope; the README records their status. Source creation does not establish compiler support, and expected behavior follows this specification.
 
 ## Kimi declaration and function reference
 
@@ -105,9 +109,11 @@ This table indexes the required declarations of [§22.1](spec/22-core-execution-
 
 | Declaration container | Declarations / functions | Reference |
 | --- | --- | --- |
-| `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-contracts-and-guarantees) |
-| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `Index`, `Range`, `ResolvedRange`, `Slice<T>`, `Dictionary<K,V>`; Contracts: `Equatable`, `Comparable`, `LendingIterator`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage) |
+| `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger`; closed Contracts: `Position`, `PositionRange` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts) |
+| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<S>`, `Array<T>`, `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange`, `RangeIterator<T>`, `ClosedRangeIterator<T>`, `Slice<T>`, `Dictionary<K,V>`, `Loan<T>`; Contracts: `Equatable`, `Comparable`, `LendingIterator`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage) |
 | `Kimi.Iteration` | `OwningIterator<I>`, `BorrowingIterator<I>`; `owning`, `borrowing` | [§22.1.2.3 standard adapters](spec/22-core-execution-and-foreign-functions.md#22123-standard-adapters) |
+| `Kimi.Raw` | `allocate`, `release`, `initialize`, `slice` | [§5.6 raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations) |
+| `Kimi.Windows`, `Kimi.Time` | Windows counter imports; `Duration`, `Stopwatch` | [§22.7 Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time) |
 | `Kimi.Storage` (internal) | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`; `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` | [§22.1.2.5 storage boundary](spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |
@@ -125,3 +131,5 @@ The owning sections define required behavior. Proposal and migration history is 
 The Composition Root Entry/Provider design was withdrawn; its declarations and final selection remain unsettled. [§13.8](spec/13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) defines the reserved root and the independently specified built-ins; it neither redirects `Kimi.Console.writeLine` nor introduces composition Bindings.
 
 [Appendix D](spec/appendices/D-deferred-features.md) records deferred implementation work that awaits explicit instructions, including the [ObjectCallCompatible plan](spec/appendices/D-deferred-features.md#objectcallcompatible).
+
+Toolchain verification and original-source O0/O2 integration checks follow [§20.8.5](impl/20-compilation-configuration.md#2085-explicit-toolchain-verification). Compilation success does not certify toolchain identity.

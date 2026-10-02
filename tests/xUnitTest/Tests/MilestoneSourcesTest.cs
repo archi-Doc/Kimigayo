@@ -3,6 +3,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -18,7 +19,7 @@ public class MilestoneSourcesTest
     {
         var readme = File.ReadAllText(Path.Combine(DirectoryPath, "README.md"));
         var rows = Regex.Matches(readme, @"^\| (\d+) \| (YES|NO \(planned\)) \| ([^|]+) \|", RegexOptions.Multiline);
-        Assert.Equal(Enumerable.Range(1, 40), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Equal(Enumerable.Range(1, 42), rows.Select(x => int.Parse(x.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
         var baselines = JsonSerializer.Deserialize<Baseline[]>(File.ReadAllText(Path.Combine(DirectoryPath, "stage-baselines.json")))!;
         Assert.Equal(baselines.Length, baselines.Select(x => x.Program).Distinct().Count());
         var pending = baselines.ToDictionary(x => x.Program);
@@ -47,25 +48,20 @@ public class MilestoneSourcesTest
                 continue;
             }
 
+            // The first diagnostic is the first published Error in result order (SPEC 23.3.6.6); its anchor is the underlined text.
             var stage = "Binding";
-            string diagnostic;
-            string anchor;
+            c.Binding.ReportDiagnostics();
             if (c.Binding.Result.IsComplete)
             {
                 stage = "Ownership";
                 Assert.False(c.Ownership.Analyze().IsVerified, $"Milestone{number} advanced: update its verified stage and README.");
-                Assert.NotEmpty(c.Ownership.Issues);
-                var primary = c.Ownership.Issues[0];
-                diagnostic = primary.Code.ToString();
-                anchor = primary.Source.ToString().Split('\n')[0];
+                c.Ownership.ControlFlow!.ReportDiagnostics();
+                c.Ownership.ReportDiagnostics();
             }
-            else
-            {
-                Assert.NotEmpty(c.Binding.Issues);
-                var primary = c.Binding.Issues[0];
-                diagnostic = primary.Code.ToString();
-                anchor = primary.Node.ToString().Split('\n')[0];
-            }
+
+            var primary = TestDiagnostics.Of(c).First(static x => x.Severity == DiagnosticSeverity.Error);
+            var diagnostic = primary.Code;
+            var anchor = (primary.Text ?? string.Empty).Split('\n')[0].TrimEnd('\r');
 
             if (expected.Stage != stage || expected.Diagnostic != diagnostic || expected.Anchor != anchor)
             {
@@ -93,7 +89,7 @@ public class MilestoneSourcesTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
-        Assert.False(c.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.False(c.Diagnostics.HasErrors);
         c.Bind();
         return c;
     }

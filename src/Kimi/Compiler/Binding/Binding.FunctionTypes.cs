@@ -6,38 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal static bool CallableSignatureFits(BoundType actual, BoundType expected)
-    {
-        if (FitsType(actual, expected))
-        {
-            return true;
-        }
-
-        if (!PerCallSignature(actual) || !PerCallSignature(expected) || !FitsType(actual.Components[1], expected.Components[1]))
-        {
-            return false;
-        }
-
-        var a = actual.Components[0];
-        var b = expected.Components[0];
-        if (a.Components.Count != b.Components.Count)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < a.Components.Count; i++)
-        {
-            var input = a.Components[i];
-            var required = b.Components[i];
-            if (!FitsType(required, input) && !(input.Origin is { Kind: OriginKind.Input } && required.Origin is { Kind: OriginKind.Input } &&
-                input.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && required.Semantics == input.Semantics && ReferenceEquals(input.Components[0], required.Components[0])))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    internal static bool CallableSignatureFits(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool PerCallSignature(BoundType signature)
     {
@@ -70,7 +39,7 @@ public sealed partial class Binding
                 function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
                 candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
             {
-                return Fail(use, BindingFailure.Unsupported, true);
+                return this.Fail(use, BindingFailure.Unsupported, true);
             }
 
             if (!this.Accessible(candidate, scope) || !this.FunctionReferenceFits(use, candidate, function, required))
@@ -80,12 +49,12 @@ public sealed partial class Binding
 
             if ((function.Modifier & ModifierKind.Unsafe) != 0)
             {
-                return Fail(use, BindingFailure.UnsafeFunctionValue);
+                return this.Fail(use, BindingFailure.UnsafeFunctionValue);
             }
 
             if (selected is not null)
             {
-                return Fail(use, BindingFailure.Ambiguous, true);
+                return this.Fail(use, BindingFailure.Ambiguous, true);
             }
 
             selected = candidate;
@@ -93,7 +62,7 @@ public sealed partial class Binding
 
         if (selected is null)
         {
-            return Fail(use, BindingFailure.TypeMismatch);
+            return this.Fail(use, BindingFailure.TypeMismatch);
         }
 
         use.BoundSymbol = selected;

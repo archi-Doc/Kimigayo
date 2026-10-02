@@ -7,7 +7,7 @@ struct Order
         self.id = id
         self.category = category
         self.amount = amount
-    deinit => Console.writeLine("Order \(self.id) destroyed.")
+    drop => Console.writeLine("Order \(self.id) destroyed.")
 
 func countMatching<F>(orders: Slice<Order>, predicate: ref/F) -> i32
     F is Callable<ref, (ref/Order) -> bool>

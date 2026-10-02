@@ -55,6 +55,7 @@ public class InferredPropertyAccessBindingTest
         Assert.False(property.BoundSymbol!.Property!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmInferredPropertyAccessAllocatesNothing()
     {
@@ -79,7 +80,7 @@ public class InferredPropertyAccessBindingTest
     private static Compilation Check(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         var property = Property(c);
         Assert.Equal(valid, property.BoundSymbol!.Property!.IsVerified);

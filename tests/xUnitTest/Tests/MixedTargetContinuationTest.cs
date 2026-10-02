@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class MixedTargetContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
@@ -19,8 +18,8 @@ public class MixedTargetContinuationTest
     [InlineData("While", "while c\n            if c\n                x = 1\n                return\n            else => exit", true)]
     [InlineData("NestedSelection", "loop\n            if c\n                if c\n                    x = 1\n                    return\n                else => exit\n            else => exit", true)]
     [InlineData("NestedLoop", "loop\n            loop\n                if c\n                    x = 1\n                    return\n                else => exit\n            exit", true)]
-    [InlineData("Scope", "inner: do\n            if c\n                x = 1\n                return\n            else => exit to inner", true)]
-    [InlineData("Yield", "choice: if c\n            if c\n                x = 1\n                return\n            else => yield to choice\n        else => ()", true)]
+    [InlineData("Scope", "label inner: do\n            if c\n                x = 1\n                return\n            else => exit to inner", true)]
+    [InlineData("Yield", "label choice: if c\n            if c\n                x = 1\n                return\n            else => yield to choice\n        else => ()", true)]
     public void MixedTargetsReachTheirOwnExtents(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedTarget" + Configuration + name,
@@ -127,8 +126,8 @@ public class MixedTargetContinuationTest
     [Theory]
     [InlineData("Reversed", "loop\n            if c => exit\n            else => return\n            x = 3", false)]
     [InlineData("Nested", "loop\n            loop\n                if c => return\n                else => exit\n                x = 3\n            exit", true)]
-    [InlineData("Scope", "inner: do\n            if c => return\n            else => exit to inner\n            x = 3", true)]
-    [InlineData("Yield", "choice: if c\n            if c => return\n            else => yield to choice\n            x = 3\n        else => ()", true)]
+    [InlineData("Scope", "label inner: do\n            if c => return\n            else => exit to inner\n            x = 3", true)]
+    [InlineData("Yield", "label choice: if c\n            if c => return\n            else => yield to choice\n            x = 3\n        else => ()", true)]
     public void EffectsSurviveEnclosingTargetFiltering(string name, string body, bool condition)
         => ScalarEmissionTest.EmitFixture(
             "NeverMixedEffect" + Configuration + name,
@@ -191,16 +190,6 @@ public class MixedTargetContinuationTest
             condition ? 0 : 1,
             condition ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
-    [Theory]
-    [InlineData("return\n            exit")]
-    [InlineData("x = 3\n            return\n            x = 4\n            exit")]
-    public void ReloadedAndReusedMixedTargetsAllocateNothing(string dead)
-        => CheckReloadAndReuse(Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x"));
-
-    [Fact]
-    public void StoredLoanReplayReloadAndReuseAllocateNothing()
-        => CheckReloadAndReuse(Source("var counter = Counter.init()\n    let r = counter@ref", "loop\n            if c => return\n            else => exit\n            let n = counter.value", "()", "let n = r.value") + "\nstruct Counter\n    public var value: i32 = 0");
-
     private static void CheckReloadAndReuse(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -225,4 +214,19 @@ public class MixedTargetContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("return\n            exit")]
+        [InlineData("x = 3\n            return\n            x = 4\n            exit")]
+        public void ReloadedAndReusedMixedTargetsAllocateNothing(string dead)
+            => CheckReloadAndReuse(Source("var x: i32", "loop\n            if c\n                x = 1\n                return\n            else => exit\n            " + dead, "x = 2", "let y = x"));
+
+        [Fact]
+        public void StoredLoanReplayReloadAndReuseAllocateNothing()
+            => CheckReloadAndReuse(Source("var counter = Counter.init()\n    let r = counter@ref", "loop\n            if c => return\n            else => exit\n            let n = counter.value", "()", "let n = r.value") + "\nstruct Counter\n    public var value: i32 = 0");
+    }
 }

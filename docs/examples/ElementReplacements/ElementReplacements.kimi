@@ -9,9 +9,9 @@ rows[index] = replacement@move
 rows[0].0 = "renamed"
 
 var state = (40, "old")
-state.0 += work: do
+state.0 += label work: do
     state.1 = "new"
-    exit to work: 2
+    exit to work 2
 
 if rows[0].1 == 42 and rows[1].1 == 2 and state.0 == 42
     Console.writeLine("element replacements complete")

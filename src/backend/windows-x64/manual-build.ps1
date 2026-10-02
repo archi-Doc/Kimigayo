@@ -3,8 +3,7 @@ param(
     [Parameter(Mandatory)] [string] $Manifest,
     [string] $ToolchainRoot = '',
     [string] $LlvmBin = '',
-    [switch] $Run,
-    [switch] $AllowUnpinnedToolchain
+    [switch] $Run
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -43,19 +42,13 @@ if (-not $LlvmBin) {
 $LlvmBin = (Resolve-Path -LiteralPath $LlvmBin).Path
 $tools = @{}
 $identities = [ordered]@{}
-$matched = $true
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj')) {
     $exe = Join-Path $LlvmBin "$name.exe"
-    $identity = Get-KimiLlvmToolIdentity $exe $expectedVersion -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
-    $matched = $matched -and $identity.versionMatched
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Toolchain file not found: $exe. Run setup.ps1." }
     $tools[$name] = $exe
-    $identities[$name] = $identity
+    $identities[$name] = @{ path = $exe }
 }
-@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
-$tools['llvm-dlltool'] = Join-Path $LlvmBin 'llvm-dlltool.exe'
-$identities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool'] -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
-$unverified = -not $matched -or -not $identities['llvm-dlltool'].hashMatched
-@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; toolchainVerification = 'not-performed'; reportedVersionsMatched = $null; unverifiedToolchain = $true; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
 $ir = Resolve-Input $data.irFile
 $irHash = (Get-FileHash -LiteralPath $ir -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($irHash -cne $data.irSha256) { throw 'IR/manifest SHA-256 mismatch; do not use mixed or stale outputs' }
@@ -75,13 +68,14 @@ foreach ($entry in $data.libraries) {
     $seen[$entry.name] = $true
     if ($entry.name -ceq 'kernel32') {
         Assert-KimiKernel32Manifest $entry
-        $kernel = New-KimiKernel32Library $tools (Join-Path $directory ([IO.Path]::GetFileNameWithoutExtension($ir) + ".$($data.codegen.optimization).kernel32.lib"))
+        $kernel = Get-KimiInstalledKernel32 $ToolchainRoot
         $path = $kernel.path
     }
     elseif ($entry.name -ceq 'kimi_backend') { $path = Resolve-KimiBackendLibrary $entry $ToolchainRoot $directory }
     else { $path = Resolve-Input $entry.input }
-    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($entry.name -ceq 'kimi_backend' -and ($entry.kind -cne 'static' -or $hash -cne $support.artifactSha256)) { throw 'Backend archive SHA-256/kind mismatch' }
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Native library not found: $path. Run setup.ps1 for missing toolchain libraries." }
+    $hash = if ($entry.name -cnotin @('kernel32', 'kimi_backend') -or $entry.PSObject.Properties['input']) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
+    if ($entry.name -ceq 'kimi_backend' -and ($entry.kind -cne 'static' -or ($null -ne $hash -and $hash -cne $support.artifactSha256))) { throw 'Backend archive SHA-256/kind mismatch' }
     if ($entry.name -ceq 'kernel32' -and $entry.kind -cne 'import') { throw 'kernel32 must be an import library' }
     $libraries += $path
     $libraryIdentities += @{ name = $entry.name; path = $path; sha256 = $hash }
@@ -112,7 +106,7 @@ if ($LASTEXITCODE -ne 0 -or $inspection -notmatch 'RuntimeFunction' -or $inspect
 $inspection | ConvertTo-KimiArtifactText | Set-Content -LiteralPath "$stem.inspection.txt" -Encoding utf8
 $exe = "$stem.exe"
 Invoke-Tool $tools['lld-link'] (@($obj) + $libraries + @('/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe"))
-$record = @{ status = 'linked'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; kernel32 = $kernel; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
+$record = @{ status = 'linked'; llvmVersion = $expectedVersion; toolchainVerification = 'not-performed'; reportedVersionsMatched = $null; unverifiedToolchain = $true; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; kernel32 = $kernel; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
 if ($Run) {
     & $exe
     $record.exitCode = $LASTEXITCODE

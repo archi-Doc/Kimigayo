@@ -22,14 +22,17 @@ internal sealed partial class BodyLowering
     // Every operation whose lowering emits a checked split is classified here, so its block continuation is known before
     // the physical blocks are computed.
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
-        ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
+        ? conversion.Checked && value.Constant != OwnershipValue.PositionConversion ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
         : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
         : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
-        OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
+        OwnershipValueKind.Binary when value.Operator == KotoKind.Slash && type is not null && ScalarTypes.Signed(type) => type.IsWrappingInteger ? ArithmeticCheckKind.WrappingDivision : ArithmeticCheckKind.Division,
+        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.DivisionZero,
+
+        // SPEC 13.3: a wrapping integer Type has no unrepresentable result, so its +, -, * and negation carry no check.
+        OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
+        OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
 
         // An element of a fixed array borrowed through a reference takes a bounds-checked address (SPEC 4.6.9).
         OwnershipValueKind.Address when value.Count == 2 => ArithmeticCheckKind.Bounds,
@@ -83,7 +86,7 @@ internal sealed partial class BodyLowering
         Grow(ref this.checks, count);
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure) || !this.PrepareArrayIterators(body, out failure))
+        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
         {
             return false;
         }
@@ -95,7 +98,7 @@ internal sealed partial class BodyLowering
 
         foreach (var sequence in body.Sequences)
         {
-            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.ArrayRead or SequenceOperation.Borrow or SequenceOperation.Slice or SequenceOperation.FromEnd && (uint)sequence.Operation < (uint)count)
+            if (sequence.Kind is SequenceOperation.Read or SequenceOperation.Borrow or SequenceOperation.Slice && (uint)sequence.Operation < (uint)count)
             {
                 this.continuations[sequence.Operation] = count + sequence.Operation;
             }
@@ -152,7 +155,7 @@ internal sealed partial class BodyLowering
 
                 if (edge.Kind == OwnershipEdgeKind.Abort)
                 {
-                    if (body.Operations[op].Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort) || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
+                    if (body.Operations[op].Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort or OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry) || body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0)
                     {
                         return Fail("Invalid terminal call Abort edge.", out failure);
                     }
@@ -187,7 +190,7 @@ internal sealed partial class BodyLowering
             }
 
             var exit = body.Operations[op].Kind == OwnershipOperationKind.Exit;
-            var call = body.Operations[op].Kind is OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort;
+            var call = body.Operations[op].Kind is OwnershipOperationKind.Call or OwnershipOperationKind.TestAbort or OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry;
             var neverCall = body.Operations[op].Kind == OwnershipOperationKind.TestAbort || (call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType ?? invocation.BoundValueCall?.ReturnType, BoundType.Never));
             if (aborts != (call ? 1 : 0) || (exit || neverCall ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0)))
             {
@@ -604,9 +607,9 @@ internal sealed partial class BodyLowering
         var operandType = ValueType(body, first)!;
         if (ReferenceTypes.IsPointer(operandType) && value.Operator is KotoKind.Plus or KotoKind.Minus)
         {
-            // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count.
-            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? 0;
-            if (value.Kind != OwnershipValueKind.Binary || stride <= 0 ||
+            // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count; a zero stride displaces by zero.
+            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? -1;
+            if (value.Kind != OwnershipValueKind.Binary || stride < 0 ||
                 !ReferenceEquals(type, operandType) || !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.ISize))
             {
                 return Fail("Unsupported pointer operation.", out failure);
@@ -631,9 +634,12 @@ internal sealed partial class BodyLowering
         }
 
         var signed = integer && ScalarTypes.Signed(operandType);
+
+        // SPEC 13.3: wrapping arithmetic is the plain instruction without nsw/nuw; checked arithmetic names its overflow intrinsic.
+        var wrapping = operandType.IsWrappingInteger;
         var op = value.Operator switch
         {
-            KotoKind.Plus => signed ? "sadd" : "uadd", KotoKind.Minus or KotoKind.PrefixMinus => signed ? "ssub" : "usub", KotoKind.Asterisk => signed ? "smul" : "umul",
+            KotoKind.Plus => wrapping ? "add" : signed ? "sadd" : "uadd", KotoKind.Minus or KotoKind.PrefixMinus => wrapping ? "sub" : signed ? "ssub" : "usub", KotoKind.Asterisk => wrapping ? "mul" : signed ? "smul" : "umul",
             KotoKind.Slash => signed ? "sdiv" : "udiv", KotoKind.Percent => signed ? "srem" : "urem",
             KotoKind.Ampersand => "and", KotoKind.Bar => "or", KotoKind.Caret => "xor",
             KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => signed ? "ashr" : "lshr",
@@ -662,7 +668,7 @@ internal sealed partial class BodyLowering
                 : !ReferenceEquals(operandType, ValueType(body, Input(body, id, 1))))) ||
             ((value.Kind == OwnershipValueKind.Unary) != (value.Operator is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)) ||
             (value.Operator == KotoKind.Not && !ReferenceEquals(operandType, BoundType.Boolean)) ||
-            (value.Operator == KotoKind.PrefixMinus && !signed))
+            (value.Operator == KotoKind.PrefixMinus && !signed && !wrapping))
         {
             return Fail("Inconsistent scalar operator or operand Types.", out failure);
         }

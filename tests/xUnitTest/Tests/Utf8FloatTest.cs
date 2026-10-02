@@ -11,6 +11,7 @@ public class Utf8FloatTest
 {
     private static readonly BigInteger[] PowersOfTen = Enumerable.Range(0, 350).Select(x => BigInteger.Pow(10, x)).ToArray();
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Zero", "0.0", "0")]
     [InlineData("NegativeZero", "-0.0", "-0")]
@@ -35,6 +36,7 @@ public class Utf8FloatTest
         NativeAllocationAudit.WriteFixture("Utf8Float" + name, source, 0, 0, 0, expected + "\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("f32", 17)]
     [InlineData("f64", 24)]

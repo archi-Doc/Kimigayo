@@ -136,7 +136,7 @@ public sealed partial class Binding
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
         {
-            Fail(function, BindingFailure.Duplicate);
+            this.Fail(function, BindingFailure.Duplicate);
         }
     }
 
@@ -144,16 +144,22 @@ public sealed partial class Binding
     {
         if (member.Parent is not InvocationKoto invocation || !ReferenceEquals(invocation.Method, member))
         {
-            Fail(member, BindingFailure.NotCallable);
+            this.Fail(member, BindingFailure.NotCallable);
             return null;
         }
 
         var qualifier = this.TypeName(member.Left, scope, false);
-        var type = qualifier is null ? null : this.EnumQualifierType(member.Left, qualifier, scope, null);
+        if (qualifier is null)
+        {
+            // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
+            return null;
+        }
+
+        var type = this.EnumQualifierType(member.Left, qualifier, scope, null);
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
-            Fail(member, BindingFailure.Unsupported);
+            this.Fail(member, BindingFailure.Unsupported);
             return null;
         }
 
@@ -175,7 +181,7 @@ public sealed partial class Binding
             }
         }
 
-        return Fail(node, BindingFailure.InvalidTypeFormation);
+        return this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
     private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope)

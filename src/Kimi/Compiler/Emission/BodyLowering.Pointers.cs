@@ -6,6 +6,37 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // SPEC 13.7: the one replacement at an address, for an element, a field, a referent or a Place call result. The old
+    // value is destroyed by its Type's destruction plan (a string, an aggregate that needs destruction, nothing for a
+    // scalar), unless the caller destroyed its remaining parts, and the input's responsibility moves in. Zero-sized values
+    // access no bytes. Returns false for a scalar, which the caller stores in its own addressing form.
+    private static bool AddReplacement(EmissionFunction function, int id, EmissionOperand destination, int input, ValueLowering representation, AggregateLayout? layout, bool text, int location, bool destroy)
+    {
+        if (destroy && (text || layout is { NeedsDestruction: true }))
+        {
+            AddOwnedDestruction(function, id, destination, location, layout); // Including zero-sized logical values.
+        }
+
+        if (representation.Layout.Size == 0)
+        {
+            return true;
+        }
+
+        if (layout is not null)
+        {
+            Transfer(function, id, layout, [new(EmissionOperandKind.SlotAddress, input), destination]);
+            return true;
+        }
+
+        if (text)
+        {
+            function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, input), destination]);
+            return true;
+        }
+
+        return false;
+    }
+
     private bool LowerPointerProjection(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         // SPEC 5.2, 12: displace the containing raw address to one stored part. A computed array
@@ -66,8 +97,12 @@ internal sealed partial class BodyLowering
         // SPEC 3.3: a Copy borrow's referent is loaded through the reference; the
         // operation's source is then the borrow itself, and its address needs no Unsafe obligation.
         // SPEC 7.1.1: a write through a Place call stores through the reference the call returns.
-        var sourceType = SignatureType(this, ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType);
         var pointerType = ValueType(body, address);
+        // SPEC 13.7: a field replaced through a reference is stored through the exclusive address of that field.
+        var sourceType = store && ((operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
+            ElementAccess.IsExclusiveArrayElement(operation.Source)) &&
+            ReferenceEquals(SignatureType(this, operation.Source.BoundType), type) ? pointerType
+            : SignatureType(this, ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType);
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
         // SPEC 10.2, 3.4.1: a stored ref or uniq reference may be loaded as one reference to the same referent, shared,
@@ -99,45 +134,48 @@ internal sealed partial class BodyLowering
             return Fail("Pointer write requires a dominating acquired value of the pointee Type.", out failure);
         }
 
-        var layout = this.aggregatePlaces[place.Id];
+        var layout = store ? this.aggregateLayouts.GetStored(type) : this.aggregatePlaces[place.Id];
         var text = ReferenceEquals(type, BoundType.String);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
         if (representation is null ||
             (layout is null && !text && !ScalarTypes.Supports(type) && !ReferenceTypes.IsPointer(type) && !ReferenceTypes.IsBorrow(type) && !ReferenceEquals(type, BoundType.Unit)))
         {
-            return Fail("Pointer access requires a supported Owned representation.", out failure);
+            return Fail("Pointer access requires a supported complete pointee representation.", out failure);
         }
 
         if (store)
         {
-            if (text || layout is { NeedsDestruction: true })
+            var location = -1;
+            if ((text || layout is { NeedsDestruction: true }) && !this.TryGetLocation(operation.Source, directory, constants, out location))
             {
-                if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
-                {
-                    return Fail("Pointer replacement requires a destruction location.", out failure);
-                }
-
-                // Destroy at the original address, including zero-sized logical values.
-                AddOwnedDestruction(function, id, this.PhysicalOperand(body, address), location, layout);
+                return Fail("Pointer replacement requires a destruction location.", out failure);
             }
+
+            var destination = this.PhysicalOperand(body, address);
+            if (text)
+            {
+                // Field-wise string Moves take the verified raw address as an element address; no padding is read.
+                function.AddScalar(EmissionOpcode.ElementAddress, id, [destination, new(EmissionOperandKind.Integer, 0)], representation: representation);
+                destination = new(EmissionOperandKind.ElementAddress, id);
+            }
+
+            // Caller-provided storage meets the pointee alignment; add no provenance or alias attributes.
+            if (!AddReplacement(function, id, destination, source, representation, layout, text, location, destroy: true))
+            {
+                function.AddScalar(EmissionOpcode.StorePointer, id, [this.PhysicalOperand(body, input), this.PhysicalOperand(body, address)], representation.ComputationType, representation: representation);
+            }
+
+            this.AddStringFlags(function, operation, id);
+            return true;
         }
 
         this.AddStringFlags(function, operation, id);
-
         if (text)
         {
             // Reuse field-wise string Moves; do not read its padding or invent a
             // second handle owner. ElementAddress carries the verified raw address.
             function.AddScalar(EmissionOpcode.ElementAddress, id, [this.PhysicalOperand(body, address), new(EmissionOperandKind.Integer, 0)], representation: representation);
-            if (store)
-            {
-                function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, source), new(EmissionOperandKind.ElementAddress, id)]);
-            }
-            else
-            {
-                function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.ElementAddress, id)], place: place.Id);
-            }
-
+            function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.ElementAddress, id)], place: place.Id);
             return true;
         }
 
@@ -149,28 +187,11 @@ internal sealed partial class BodyLowering
 
         if (layout is not null)
         {
-            if (store)
-            {
-                Transfer(function, id, layout, [new(EmissionOperandKind.SlotAddress, source), this.PhysicalOperand(body, address)]);
-            }
-            else
-            {
-                Transfer(function, id, layout, [this.PhysicalOperand(body, address)], place.Id);
-            }
-
+            Transfer(function, id, layout, [this.PhysicalOperand(body, address)], place.Id);
             return true;
         }
 
-        // Caller-provided storage meets the pointee alignment; add no provenance or alias attributes.
-        if (store)
-        {
-            function.AddScalar(EmissionOpcode.StorePointer, id, [this.PhysicalOperand(body, input), this.PhysicalOperand(body, address)], representation.ComputationType, representation: representation);
-        }
-        else
-        {
-            function.AddScalar(EmissionOpcode.LoadPointer, id, [this.PhysicalOperand(body, address)], representation.ComputationType, representation: representation);
-        }
-
+        function.AddScalar(EmissionOpcode.LoadPointer, id, [this.PhysicalOperand(body, address)], representation.ComputationType, representation: representation);
         return true;
     }
 }

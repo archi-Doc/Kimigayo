@@ -39,7 +39,7 @@ public class OwnershipJoinTest
     [InlineData("if c => b@ref else => a@ref")]
     [InlineData("if c\n        yield a@ref\n    else => b@ref")]
     [InlineData("match c\n        true => a@ref\n        false => b@ref")]
-    [InlineData("choose: do\n        if c => exit to choose: a@ref\n        exit to choose: b@ref")]
+    [InlineData("label choose: do\n        if c => exit to choose a@ref\n        exit to choose b@ref")]
     [InlineData("if c => (if c => a@ref else => b@ref) else => a@ref")]
     public void BorrowResultsRetainBothDependencies(string expression)
     {
@@ -65,7 +65,7 @@ public class OwnershipJoinTest
     [Fact]
     public void JoinedBorrowCannotOutliveEitherLocalSource()
     {
-        var c = MinimalEmissionTest.Analyze(Pair + "    let selected = choose: do\n        let local = Cell.init()\n        exit to choose: if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
+        var c = MinimalEmissionTest.Analyze(Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.False(c.Emission.Validate(out _));

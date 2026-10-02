@@ -28,7 +28,7 @@ public class BorrowedArrayEmissionTest
     [InlineData("let a: [1 of i32] = [1]\nlet b = a@ref\nb[0] = 2")]
     [InlineData("func escape() -> ref/[1 of i32]\n    let a: [1 of i32] = [1]\n    return a@ref")]
     [InlineData("let a: [1 of i32] = [1]\nlet b = a@ref/[2 of i32]")]
-    [InlineData("var a: [1 of i32] = [1]\nlet b = a@ref\nlet n = b[(work: do\n    a[0] = 2\n    exit to work: 0)]")]
+    [InlineData("var a: [1 of i32] = [1]\nlet b = a@ref\nlet n = b[(label work: do\n    a[0] = 2\n    exit to work 0)]")]
     [InlineData("var a: [1 of i32] = [1]\nlet b = a@uniq\nlet r = b@ref\nlet c = b@uniq\nlet m = r[0]")]
     [InlineData("func make() -> [1 of i32] => [42]\nlet b = make()@ref\nlet n = b[0]")]
     [InlineData("let a: [1 of i32]\nlet b = a@ref\nlet n = b[0]")]
@@ -44,7 +44,7 @@ public class BorrowedArrayEmissionTest
     [Theory]
     [InlineData("Negative", "-1")]
     [InlineData("Length", "1")]
-    [InlineData("Maximum", "9223372036854775807")]
+    [InlineData("Maximum", "9223372036854775807@isize")]
     public void BoundsAbort(string name, string index)
         => ScalarEmissionTest.EmitFixture(
             "BorrowedArrayBounds" + name,
@@ -53,6 +53,7 @@ public class BorrowedArrayEmissionTest
             1,
             "Hello.kimi:1:38: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPlans()
     {

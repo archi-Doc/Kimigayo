@@ -17,7 +17,7 @@ public class TypeBindingTest
     [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => value")]
     [InlineData("func identity<s/T>(x: s/T) -> s/T => x\nlet x = identity(1)")]
     [InlineData("struct Box<T>\n    let value: T\nfunc f(x: Box<ref/i32 during a>)")]
-    [InlineData("func f(x: unsafe/obj/Thing)\nstruct Thing")]
+    [InlineData("func f(x: raw/obj/Thing)\nstruct Thing")]
     public void SupportedCompleteTypesBind(string source)
     {
         var c = Parse(source);
@@ -32,7 +32,7 @@ public class TypeBindingTest
     [InlineData("func f<s/s>(x: s/s)", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T)\nfunc f<s/U>(x: s/U)", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f(x: ref/i32 during a)\nfunc f(x: ref/i32 during b)", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct S {}\n    let x: ref/i32 during absent", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("struct S\n    let x: ref/i32 during absent", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func f(x: i32, y: ref/i32 during x)", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("func f(x: obj/(ref/i32 during static))", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("func f(x: i32{slots})", DiagnosticCode.InvalidOriginBinding_Kd)]
@@ -76,7 +76,7 @@ public class TypeBindingTest
     [Fact]
     public void StaticStorageDoesNotTreatPointerPointeesAsRetainedBorrows()
     {
-        var c = Parse("struct PointerBox<T>\n    let value: unsafe/T\ngroup Values\n    var p: PointerBox<ref/i32 during static>");
+        var c = Parse("struct PointerBox<T>\n    let value: raw/T\ngroup Values\n    var p: PointerBox<ref/i32 during static>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var retained = Parse("struct Box<T>\n    let value: T\ngroup Values\n    var p: Box<ref/i32 during static>");
         Assert.False(retained.Bind().IsComplete);
@@ -148,6 +148,7 @@ public class TypeBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingOriginRichHeadersReusesAllScratchStorage()
     {
@@ -207,7 +208,7 @@ public class TypeBindingTest
     [Fact]
     public void RequirementsPropagateThroughForwardAndRecursiveDeclarations()
     {
-        var c = Parse("struct A {a}\n    let b: B{bb}\n        origin bb.b == a\nstruct B {b}\n    let a: unsafe/(A{aa})\n        origin aa.a == b\n    let value: uniq/i32 during b");
+        var c = Parse("struct A {a}\n    let b: B{bb}\n        origin bb.b == a\nstruct B {b}\n    let a: raw/(A{aa})\n        origin aa.a == b\n    let value: uniq/i32 during b");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var a = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "A");
         Assert.Equal(LoanRequirement.Uniq, a.BoundSymbol!.Schema!.Origins[0].LoanRequirement);
@@ -262,7 +263,7 @@ public class TypeBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         return c;
     }
 

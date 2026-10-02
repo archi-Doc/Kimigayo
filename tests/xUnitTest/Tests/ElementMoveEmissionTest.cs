@@ -22,18 +22,18 @@ public class ElementMoveEmissionTest
         { "BranchRepair", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=2;ok=1" },
         { "BranchParent", "func f(take: bool)\n    var a = ((\"first\", \"last\"), \"sibling\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.0.0@move\n    a.0 = (\"newFirst\", \"newLast\")\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;sibling=2;newFirst=2;newLast=2;ok=1" },
         { "Loop", "var a = (\"first\", \"last\")\nvar i = 0\nloop\n    let taken = a.0@move\n    a.0 = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=1;last=1;new=3;ok=1" },
-        { "Defer", "var a = (\"first\", \"last\")\nwork: do\n    defer => a.0 = \"new\"\n    let taken = a.0@move\n    exit to work\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
+        { "Defer", "var a = (\"first\", \"last\")\nlabel work: do\n    defer => a.0 = \"new\"\n    let taken = a.0@move\n    exit to work\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
         { "Return", "func f() -> string\n    let a = (\"first\", \"last\")\n    return a.0@move\nlet taken = f()\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
         { "DynamicSibling", "var a: (string, [1 of i32]) = (\"first\", [40])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] += 2\nif a.1[i] == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
         { "LiteralIdentity", "var a: [2 of string] = [\"first\", \"last\"]\nlet taken = a[(0x0)]@move\na[0b0] = \"new\"\nlet whole = a@move\nConsole.writeLine(\"ok\")", "first=1;last=1;new=1;ok=1" },
         { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet taken = a.0@move\na.0 = []\nlet whole = a@move\nConsole.writeLine(\"ok\")", "ok=1" },
-        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += work: do\n    let taken = a.1@move\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
-        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (work: do\n        let taken = a.0@move\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += label work: do\n    let taken = a.1@move\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
+        { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (label work: do\n        let taken = a.0@move\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
         { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.1@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
         { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
         { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0@move\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
         { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a@move\n    else\n        let taken = a.0@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0@move\n        exit to work: 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
+        { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (label work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0@move\n        exit to work 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
         { "NestedArray", "var a: [2 of (string, [2 of string])] = [(\"a\", [\"b\", \"c\"]), (\"d\", [\"e\", \"f\"])]\nlet taken = a[0].1[1]@move\na[0].1[1] = \"new\"\nlet whole = a[0]@move\nConsole.writeLine(\"ok\")", "a=1;b=1;c=1;d=1;e=1;f=1;new=1;ok=1" },
         { "DynamicReplacement", "var a: (string, [2 of string]) = (\"first\", [\"old\", \"last\"])\nlet taken = a.0@move\nvar i: isize = 0\na.1[i] = \"new\"\nConsole.writeLine(\"ok\")", "first=1;old=1;last=1;new=1;ok=1" },
         { "ConditionalSelf", "func f(take: bool)\n    var a = (\"first\", \"last\")\n    a.0 = if take => a.0@move else => \"new\"\n    let whole = a@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;new=1;ok=1" },
@@ -44,8 +44,8 @@ public class ElementMoveEmissionTest
     public void RemainingResponsibilityIsDestroyedExactlyOnce(string name, string source, string destructions)
     {
         var analysis = MinimalEmissionTest.Analyze(source);
-        Assert.False(analysis.Kotonoha.HasSourceErrors, string.Join("\n", analysis.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.ToString("source"))));
-        Assert.False(analysis.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", analysis.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
+        Assert.False(analysis.Diagnostics.HasSyntaxErrors(analysis.Kotonoha), string.Join("\n", TestDiagnostics.Of(analysis, "Hello.kimi").Select(x => x.ToString())));
+        Assert.False(analysis.Diagnostics.HasErrors, string.Join("\n", TestDiagnostics.Of(analysis).Select(x => x.ToString())));
         var fixture = "ElementMove" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "ok\n");
         StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "ok\n", destructions);
@@ -196,8 +196,8 @@ public class ElementMoveEmissionTest
     // SPEC 13.7.2: the RHS completes before the target is located, so a target moved there is Moved at the
     // update, whereas the located receiver stays protected while its index operands evaluate (SPEC 4.6.4).
     [Theory]
-    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += work: do\n    let taken = a.0@move\n    exit to work: 2", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(work: do\n    let taken = a.0@move\n    exit to work: 0\n)] += 2", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("var a = ((\"held\", 40), 0)\na.0.1 += label work: do\n    let taken = a.0@move\n    exit to work 2", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("var a: (string, [1 of i32]) = (\"held\", [40])\na.1[(label work: do\n    let taken = a.0@move\n    exit to work 0\n)] += 2", OwnershipFailure.ComparisonLoanConflict)]
     public void MoveOfTheTargetInTheRightSideOrIndexIsRejected(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -230,6 +230,7 @@ public class ElementMoveEmissionTest
         ScalarEmissionTest.EmitFixture("ElementMoveDivergent", Source, string.Empty, timeoutMilliseconds: 300);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPartialMoveAnalysisAndEmissionAllocateNothing()
     {

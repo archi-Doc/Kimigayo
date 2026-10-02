@@ -6,32 +6,38 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal static string DescribeTryPayloadFailure(TryKoto propagation, ControlFlowType? result)
+    /// <summary>Gets the facts of a try payload that does not fit its use: the payload Type, when known, and the note that
+    /// forwarding the complete operand may be meant.</summary>
+    /// <param name="propagation">The try expression.</param>
+    /// <param name="result">The Type its enclosing result expects.</param>
+    /// <returns>The evidence of <c>TryPayloadMismatch_Kd</c>, or <see langword="null"/> when the payload is unknown, and the Note.</returns>
+    internal static (object?[]? Evidence, string? Note) TryPayloadFacts(TryKoto propagation, ControlFlowType? result)
     {
         var operand = propagation.Expression.BoundType;
-        var payload = operand is { Components.Count: > 0 } ? operand.Components[0].Name : propagation.BoundType?.Name ?? "an unresolved Type";
-        var wrap = operand?.Symbol?.Name == "Option" ? "Some" : "Ok";
-        var forward = ReferenceEquals(result, operand) ? " Forwarding the complete operand without try is another candidate when it supplies the function result." : string.Empty;
-        return $"The normal value of try has payload Type {payload}, which does not fit this use. At an Option/Result return, consider .{wrap}(try ...) and an appropriate return annotation.{forward} Recheck Type inference, ownership and cleanup after changing the expression.";
+        var payload = operand is { Components.Count: > 0 } ? operand.Components[0].Name : propagation.BoundType?.Name;
+        var note = ReferenceEquals(result, operand) ? "Forwarding the complete operand without try is another candidate when it supplies the function result." : null;
+        return (payload is null ? null : [payload], note);
     }
 
-    private string DescribeTryFailure(Koto node)
+    // SPEC 17: the requirement of try that failed, as one code per requirement with its evidence.
+    private (DiagnosticCode Code, object?[]? Evidence, string? Note) TryFailure(Koto node)
     {
         var propagation = (TryKoto)(node is TryKoto ? node : node.Parent!);
         var operand = propagation.Expression.BoundType;
         if (operand?.Kind != BoundTypeKind.Constructed || operand.Semantics != SemanticsKind.Owner ||
             (operand.Symbol != this.Library.Option && operand.Symbol != this.Library.Result))
         {
-            return $"try requires an independently resolved owned Kimi Option or Result operand; received {operand?.Name ?? "an unresolved Type"}. Use explicit Type arguments or an annotated intermediate when inference is incomplete. Calls and member selection bind before try.";
+            return (DiagnosticCode.InvalidTry_Kd, operand is null ? null : [operand.Name], null);
         }
 
         var target = KotoHelper.ResolveTransferTarget(propagation.Failure);
         var result = target is PropertyAccessorKoto accessor ? Accessor(accessor).Result : target?.BoundSymbol?.Type;
         if (node is ReturnKoto)
         {
-            return $"The failure path of try {operand.Name} cannot return to {result?.Name ?? "this position"}. Use a compatible Option/Result return Type and ordinary error fitting; explicitly wrap normal success values where needed.";
+            return (DiagnosticCode.InvalidTryReturn_Kd, result is null ? null : [operand.Name, result.Name], null);
         }
 
-        return DescribeTryPayloadFailure(propagation, result);
+        var (evidence, note) = TryPayloadFacts(propagation, result);
+        return (DiagnosticCode.TryPayloadMismatch_Kd, evidence, note);
     }
 }

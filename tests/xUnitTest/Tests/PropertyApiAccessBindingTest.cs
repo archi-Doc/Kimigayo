@@ -105,6 +105,7 @@ public class PropertyApiAccessBindingTest
         Assert.False(original.BoundSymbol!.Property!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPropertyHeaderAccessChecksAllocateNothing()
     {

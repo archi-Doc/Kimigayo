@@ -10,14 +10,14 @@ public class CallSignatureFormationBindingTest
 {
     [Theory]
     [InlineData("Box<string>")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("(Box<string>, i32)")]
     [InlineData("[2 of Box<string>]")]
     [InlineData("() -> Box<string>")]
     public void InvalidSignatureCannotPublishCall(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
@@ -37,7 +37,7 @@ public class CallSignatureFormationBindingTest
 
     [Theory]
     [InlineData("Box<i32>")]
-    [InlineData("unsafe/Box<i32>")]
+    [InlineData("raw/Box<i32>")]
     [InlineData("(Box<i32>, i32)")]
     public void ValidSignaturesRemainCallable(string type)
     {
@@ -80,10 +80,11 @@ public class CallSignatureFormationBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSignatureChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: unsafe/Box<i32>) => ()\n    func call(value: unsafe/Box<i32>) => take(value)");
+        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take(value: raw/Box<i32>) => ()\n    func call(value: raw/Box<i32>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

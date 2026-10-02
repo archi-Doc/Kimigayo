@@ -13,7 +13,7 @@ public enum CheckOutcome : byte
     /// <summary>An input or the effective configuration could not be established.</summary>
     Blocked,
 
-    /// <summary>An exception inside the compiler.</summary>
+    /// <summary>An exception inside the compiler, or a violation of the diagnostic contract.</summary>
     Faulted,
 
     /// <summary>Command cancellation; never published.</summary>
@@ -43,41 +43,24 @@ public enum TestPresence : byte
     Unknown,
 }
 
-/// <summary>One diagnostic record of a check (SPEC 23.3.3). No compiler object escapes into it.</summary>
-/// <param name="Code">The diagnostic entry name.</param>
-/// <param name="Severity">The severity.</param>
-/// <param name="Message">The formatted message.</param>
-/// <param name="Location">The source identity, or the default value when the record has no location.</param>
-/// <param name="Range">The range within the location, if known.</param>
-public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, string Message, SourceIdentity Location, SourceRange? Range)
-{
-    /// <summary>Orders records within one URI by range, code, severity and message (SPEC 23.4.7).</summary>
-    /// <param name="left">The first record.</param>
-    /// <param name="right">The second record.</param>
-    /// <returns>The ordering.</returns>
-    public static int Compare(CheckDiagnostic left, CheckDiagnostic right)
-    {
-        var order = (left.Range ?? default).CompareTo(right.Range ?? default);
-        if (order == 0)
-        {
-            order = string.CompareOrdinal(left.Code, right.Code);
-        }
-
-        if (order == 0)
-        {
-            order = left.Severity.CompareTo(right.Severity);
-        }
-
-        return order == 0 ? string.CompareOrdinal(left.Message, right.Message) : order;
-    }
-}
-
 /// <summary>What one check produced, before the language server attaches its recorded inputs.</summary>
 /// <param name="Outcome">The outcome.</param>
 /// <param name="Accepted">Whether every selected target passed the front-end checks.</param>
 /// <param name="Presence">The test presence of a product check.</param>
-/// <param name="Diagnostics">The diagnostic records.</param>
-public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresence Presence, CheckDiagnostic[] Diagnostics);
+/// <param name="Diagnostics">The diagnostic records in result order (SPEC 23.3.6.6).</param>
+/// <param name="Sources">The source table the records refer to (SPEC 23.3.6.3).</param>
+public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresence Presence, CheckDiagnostic[] Diagnostics, DiagnosticSource[] Sources)
+{
+    /// <summary>Initializes a new instance of the <see cref="CheckOutput"/> class from finalized diagnostics.</summary>
+    /// <param name="outcome">The outcome.</param>
+    /// <param name="accepted">Whether every selected target passed the front-end checks.</param>
+    /// <param name="presence">The test presence of a product check.</param>
+    /// <param name="result">The finalized diagnostics.</param>
+    public CheckOutput(CheckOutcome outcome, bool accepted, TestPresence presence, DiagnosticResult result)
+        : this(outcome, accepted, presence, result.Diagnostics, result.Sources)
+    {
+    }
+}
 
 /// <summary>Signals a read of an open document that is out of sync (SPEC 23.4.2); it is reported as <c>DocumentDesynchronized_Kd</c>.</summary>
 internal sealed class DesynchronizedInputException : IOException

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -14,6 +15,8 @@ public sealed partial class Binding
     private readonly List<AliasKoto> aliases = new();
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
+    private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
+    private readonly List<string?> importSignatures = new();
     private readonly IndexVisitor indexer;
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
@@ -84,18 +87,19 @@ public sealed partial class Binding
         this.running = true;
         try
         {
+            // Every later phase rests on Binding, so its facts are discarded with Binding's.
+            this.compilation.Diagnostics.InvalidateSemantics();
             this.storageVersion++;
             this.issues.Clear();
             this.libraryImports.Clear();
             this.constraintDiagnosticCauses?.Clear();
-            this.diagnosticDependencies?.Clear();
+            this.ResetPrerequisites();
             this.objectPayloadCauses?.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
             this.resultCursor = 0;
             this.ResetStartup();
-            this.specializations.Clear();
-            this.specializationsByOriginal.Clear();
+            this.ResetSpecializations();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
             this.adaptations.Clear();
@@ -152,7 +156,7 @@ public sealed partial class Binding
             this.kimiValid = this.Library.ValidateDeclarations();
             if (!this.kimiValid)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
                 // A malformed compiler library must not enter indexing/overload chains.
                 return this.Result = this.Check(mode);
             }
@@ -223,6 +227,7 @@ public sealed partial class Binding
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
             this.ValidateContractDeclarations();
+            this.PrepareEffectBounds();
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
@@ -292,7 +297,7 @@ public sealed partial class Binding
             this.kimiValid = this.Library.ValidateBoundDeclarations();
             if (!this.kimiValid)
             {
-                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
+                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
             this.Result = this.Check(mode);
@@ -304,48 +309,171 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Publishes final diagnostics to the source contexts. Invoke after final analysis, not between Mods.</summary>
+    /// <summary>Records Binding's facts, replacing any it recorded before. Invoke after final analysis, not between Mods.</summary>
     public void ReportDiagnostics()
     {
+        var diagnostics = this.compilation.Diagnostics;
+        diagnostics.Invalidate(DiagnosticPartition.Binding);
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
+            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
+            {
+                continue; // Pairwise declaration failures are normalized as one group below.
+            }
+
+            var requirement = DiagnosticRequirement.Binding(issue.Failure);
             if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
                 this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
                 cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
             {
-                continue;
+                // The recorded missing Name of the Constraint is its prerequisite.
+                issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
             }
-
-            if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
+            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
             {
-                issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
+                // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
+                var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
+                issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
+            }
+            else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
+            {
+                // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
+                var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
+                issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
             }
             else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
             {
-                issue.Node.AddDiagnostic(issue.Code, this.DescribeTryFailure(issue.Node));
+                var (code, evidence, note) = this.TryFailure(issue.Node);
+                issue.Node.Report(requirement, code, note: note, evidence: evidence);
+            }
+            else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
+            {
+                // SPEC 15.3.5: the formation condition of Loan<T>.
+                issue.Node.Report(
+                    requirement,
+                    issue.Code,
+                    note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
+                    advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
             }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
-                issue.Node.AddDiagnostic(issue.Code, this.objectPayloadCauses?.TryGetValue(issue.Node, out var renounced) == true ? renounced.Name : string.Empty);
+                // FailObjectPayload records the declaring Type before it fails the use.
+                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+            }
+            else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+            {
+                var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+                string? shapeNote = null;
+                for (var c = 0; c < rejected.Length; c++)
+                {
+                    var candidate = rejected[c];
+                    var label = candidate.Function.Name;
+                    if (candidate.Actual is { } actual && candidate.Expected is { } expected)
+                    {
+                        var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
+                        label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
+                        // Keep the compared Types even when the related-location limit omits this candidate.
+                        shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                    }
+
+                    candidates[c] = ("candidate", candidate.Function, label);
+                }
+
+                // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
+                // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
+                var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
+                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
+            }
+            else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
+            {
+                this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
+            }
+            else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
+            {
+                this.ReportEffectBound(effect, requirement);
+            }
+            else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 8.4.10.6: reported at the violating effect.
+            }
+            else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: an undeclared storage name, at the name.
+            }
+            else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
+            }
+            else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
+            {
+                this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
+            }
+            else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
+            {
+                this.ReportWrite(issue.Node, target, requirement, issue.Code);
+            }
+            else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
+            {
+                // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
+                // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
+                var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
+                issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            }
+            else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
+            {
+                var subject = rangeFailure.Subject;
+                var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
+                var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
+                    "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
+                issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+            }
+            else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
+            {
+                // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
+                var start = DiagnosticTypeName(unproven.Subject.Components[0]);
+                var end = DiagnosticTypeName(unproven.Subject.Components[1]);
+                var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
+                    ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
+                    : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
+                issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
             }
             else
             {
-                issue.Node.AddDiagnostic(issue.Code, hint: this.BorrowOriginHint(issue.Node));
+                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
             }
+        }
+
+        foreach (var node in this.derivedIssues)
+        {
+            node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
         }
 
         if (this.Result.Mode == BindingMode.Final)
         {
-            for (; this.reportedAliasWarnings < this.aliasWarnings.Count; this.reportedAliasWarnings++)
+            this.ReportDuplicateDeclarations();
+            var warning = DiagnosticRequirement.Binding(BindingFailure.None);
+            foreach (var alias in this.aliasWarnings)
             {
-                this.aliasWarnings[this.reportedAliasWarnings].AddDiagnostic(DiagnosticCode.HiddenNamedAlias_Kd);
+                alias.Report(warning, DiagnosticCode.HiddenNamedAlias_Kd);
             }
 
-            for (; this.reportedPatternWarnings < this.patternWarnings.Count; this.reportedPatternWarnings++)
+            foreach (var pattern in this.patternWarnings)
             {
-                var warning = this.patternWarnings[this.reportedPatternWarnings];
-                warning.Pattern.AddDiagnostic(DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
+                pattern.Pattern.Report(warning, DiagnosticCode.UnreachablePattern_Kd, pattern.CoveringArm + 1);
+            }
+
+            foreach (var position in this.positionWarnings)
+            {
+                position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Kind, evidence: position.FixedLength < 0 ? null : [position.FixedLength]);
+            }
+
+            // SPEC 23.3.3: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
+            // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
+            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) &&
+                this.nodes.Find(static x => x.BindingState != BindingState.Resolved) is { } first)
+            {
+                first.ReportDerived(DiagnosticRequirement.Binding(first.BindingFailure == BindingFailure.None ? BindingFailure.MissingType : first.BindingFailure), [DiagnosticKey.Unresolved]);
             }
         }
     }
@@ -368,7 +496,8 @@ public sealed partial class Binding
         this.issues.Clear();
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
-        this.diagnosticDependencies?.Clear();
+        this.ResetPrerequisites();
+        this.partPrerequisites.Clear();
         this.obligations.Clear();
         this.obligationSet.Clear();
         this.associatedOrigins.Clear();
@@ -385,16 +514,20 @@ public sealed partial class Binding
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
+        => InvalidDeclarationContextCause(declaration) is not null;
+
+    // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
+    private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
             if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
             {
-                return true;
+                return node;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static bool UnresolvedTypeDeclarationContext(Koto declaration)
@@ -415,16 +548,21 @@ public sealed partial class Binding
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
             function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
 
-    private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
+    // The target of the plain numeric conversion whose direct literal operand failed to fit, if the node is such a literal.
+    private static BoundType? LiteralConversionTarget(Koto node)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (node is not (NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }))
         {
             return null;
         }
 
-        node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
-        node.BindingFailure = failure;
-        return null;
+        var parent = node.Parent;
+        while (parent is ParenthesizedKoto)
+        {
+            parent = parent.Parent;
+        }
+
+        return parent is ConversionKoto { Right: not TypeSemanticsKoto { ConversionOperation: not null } } conversion ? conversion.Right.BoundType : null;
     }
 
     private static BoundType? Complete(Koto node, BoundType? type)
@@ -479,6 +617,24 @@ public sealed partial class Binding
         return true;
     }
 
+    private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
+    {
+        // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
+        if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
+        {
+            this.consulted.Add(node);
+        }
+
+        if (node.BindingFailure != BindingFailure.None)
+        {
+            return null;
+        }
+
+        node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
+        node.BindingFailure = failure;
+        return null;
+    }
+
     private BindingResult Check(BindingMode mode)
     {
         if (mode == BindingMode.Final)
@@ -487,7 +643,7 @@ public sealed partial class Binding
             {
                 if (this.obligations[i].Deadline == BindingDeadline.Definition)
                 {
-                    Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
+                    this.Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
                 }
             }
         }
@@ -533,7 +689,11 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && !this.IsDependentDiagnostic(node))
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && (this.IsDerived(node) || this.RestsOnAbsentSlot(node)))
+            {
+                this.derivedIssues.Add(node);
+            }
+            else if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
             {
                 var code = node.BindingFailure switch
                 {
@@ -568,6 +728,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
                     BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
+                    BindingFailure.ClosedContractConformance => DiagnosticCode.ClosedContractConformance_Kd,
+                    BindingFailure.NotIndexable => DiagnosticCode.NotIndexable_Kd,
                     BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
@@ -581,6 +743,8 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
+                    BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
+                    BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,
@@ -589,6 +753,9 @@ public sealed partial class Binding
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
+                    BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
+                    BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
+                    BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
@@ -596,19 +763,7 @@ public sealed partial class Binding
                     code = DiagnosticCode.InvalidTry_Kd;
                 }
 
-                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code));
-            }
-        }
-
-        if (mode == BindingMode.Final && unresolved != 0 && this.issues.Count == 0)
-        {
-            for (var i = 0; i < this.nodes.Count; i++)
-            {
-                if (this.nodes[i].BindingState == BindingState.Unresolved)
-                {
-                    this.issues.Add(new(this.nodes[i], DiagnosticCode.UnresolvedBinding_Kd));
-                    break;
-                }
+                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code) { Failure = node.BindingFailure });
             }
         }
 
@@ -660,8 +815,7 @@ public sealed partial class Binding
             if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
                 !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
             {
-                Fail(node, BindingFailure.Duplicate);
-                Fail(previous.Declaration, BindingFailure.Duplicate);
+                this.FailDuplicate(node, previous.Declaration);
             }
         }
 
@@ -701,7 +855,7 @@ public sealed partial class Binding
                 var receiver = function.Parameters[symbol.ReceiverIndex];
                 if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
                 {
-                    Fail(function, BindingFailure.InvalidTypeFormation);
+                    this.Fail(function, BindingFailure.InvalidTypeFormation);
                 }
             }
         }
@@ -738,8 +892,8 @@ public sealed partial class Binding
                         {
                             if (ReceiverShape(b) is { } other && other != shape)
                             {
-                                Fail(fa, BindingFailure.ReceiverShapeMismatch);
-                                Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
+                                this.Fail(fa, BindingFailure.ReceiverShapeMismatch);
+                                this.Fail(b.Declaration, BindingFailure.ReceiverShapeMismatch);
                             }
                         }
                     }
@@ -765,8 +919,7 @@ public sealed partial class Binding
 
                         if (equal)
                         {
-                            Fail(fa, BindingFailure.Duplicate);
-                            Fail(fb, BindingFailure.Duplicate);
+                            this.FailDuplicate(fa, fb);
                         }
                     }
                 }
@@ -797,10 +950,10 @@ public sealed partial class Binding
                     }
                     else if (expected != current)
                     {
-                        Fail(contract, BindingFailure.ReceiverShapeMismatch);
+                        this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
                         if (ReferenceEquals(members[i].Declaration.Parent, contract))
                         {
-                            Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
+                            this.Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
                         }
                     }
                 }
@@ -833,7 +986,7 @@ public sealed partial class Binding
             if (marker is not null)
             {
                 marker.BindingFailure = BindingFailure.None;
-                Fail(marker, BindingFailure.InvalidTestDefinition);
+                binding.Fail(marker, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(marker);
             }
 
@@ -939,9 +1092,9 @@ public sealed partial class Binding
                 if (!TestDefinition.IsValidSyntax(test))
                 {
                     marker.BindingFailure = BindingFailure.None;
-                    Fail(marker, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(marker, BindingFailure.InvalidTestDefinition);
                     binding.nodes.Add(marker);
-                    Fail(test, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(test, BindingFailure.InvalidTestDefinition);
                 }
                 else
                 {
@@ -957,7 +1110,7 @@ public sealed partial class Binding
 
                             // No Mod marker registry exists yet; selection does not recognize an unknown marker.
                             attribute.BindingFailure = BindingFailure.None;
-                            Fail(attribute, BindingFailure.Unsupported, true);
+                            binding.Fail(attribute, BindingFailure.Unsupported, true);
                             binding.nodes.Add(attribute);
                         }
                     }
@@ -981,11 +1134,11 @@ public sealed partial class Binding
                     return;
                 }
 
-                Fail(node, BindingFailure.InvalidTestDefinition);
+                binding.Fail(node, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(node);
                 if (AttributeTarget(invalidTest) is { } invalidTarget)
                 {
-                    Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
+                    binding.Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
                 }
 
                 if (invalidTest.AttributeChain is { } precedingMarker)
@@ -1027,7 +1180,15 @@ public sealed partial class Binding
             {
                 // Layout/Test are handled above. Unrecognized markers and non-function
                 // LibraryImport targets cannot certify; retain syntax and diagnostics.
-                Fail(target, BindingFailure.InvalidTypeFormation);
+                binding.Fail(target, BindingFailure.InvalidTypeFormation);
+            }
+
+            if (node is EffectBoundKoto)
+            {
+                // SPEC 8.4.10.1: the selector and Name of an effect item designate a Contract and its requirement; they are
+                // resolved with the item, never as expressions.
+                binding.nodes.Add(node);
+                return;
             }
 
             if (node is ConversionKoto conversion)
@@ -1146,7 +1307,9 @@ public sealed partial class Binding
 
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
                         symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
-                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto)
+                        // The members of the fixed array and the integer Position witness are receiver functions of internal
+                        // Kimi groups (SPEC 22.1, 4.6.2, PLAN G32).
+                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto || binding.Library.IsBuiltinMemberGroup(memberScope.Owner))
                         {
                             for (var p = 0; p < function.Parameters.Count; p++)
                             {
@@ -1154,7 +1317,7 @@ public sealed partial class Binding
                                 {
                                     if (symbol.ReceiverIndex >= 0)
                                     {
-                                        Fail(function, BindingFailure.InvalidTypeFormation);
+                                        binding.Fail(function, BindingFailure.InvalidTypeFormation);
                                     }
 
                                     symbol.ReceiverIndex = p;
@@ -1207,7 +1370,7 @@ public sealed partial class Binding
                         Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
                         if (!bound.IsStored && getter is null)
                         {
-                            Fail(property, BindingFailure.InvalidTypeFormation);
+                            binding.Fail(property, BindingFailure.InvalidTypeFormation);
                         }
                     }
 
@@ -1230,7 +1393,7 @@ public sealed partial class Binding
                         typeSymbol.Pair = semanticsSymbol;
                         if (!this.Scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                         {
-                            Fail(node, BindingFailure.Duplicate);
+                            binding.Fail(node, BindingFailure.Duplicate);
                         }
                     }
 

@@ -58,7 +58,7 @@ The returned Storage's actual Type `A` and the published `T` must agree in Seman
 
 **Contracts and identity.** Overloads that differ only in result mode cannot coexist. The published `T` is fixed from the arguments, explicit Type information and the expected Place contract. The use position is checked under the result adaptation of §10.3; an outer `@ref` never prefers a Place-returning candidate. Function references, Callable, Contract implementations, indirect calls and separate compilation preserve the result mode, capabilities, Origins and Loan contract. A Place result cannot be bound to an ordinary Type argument; a higher-order value API needs an explicit wrapper that returns an ordinary reference. Function Type and Callable compatibility require the same result mode and the corresponding reference contract, under the input contravariance, Origin quantification, Unsafe and Closure rules of §10.7. Contract implementation matching follows §8.4.5.
 
-**Using a Place.** A published Place is acquired under §3.5 and §10.2: a Copy value may be read bare, a Non-Copy value cannot, `@move` is unavailable because the Place offers no Take, and a reference comes from an explicit borrow or from the common adaptation at a fixed expected Type.
+**Using a Place.** A published Place is acquired under §3.5 and §10.2: a Copy value may be read bare, a stored exclusive reference is Reborrowed when the Place grants exclusive access, any other Non-Copy value cannot be read bare, `@move` is unavailable because the Place offers no Take, and a reference comes from an explicit borrow or from the common adaptation at a fixed expected Type.
 
 ```kimi
 let view = table.get(key)@ref  // One search; the reference is kept.
@@ -66,7 +66,7 @@ inspect(table.get(key))        // Shared borrow at a ref/Resource parameter.
 // let value = table.get(key)  // Error when Resource is Non-Copy.
 ```
 
-A Place is used without acquiring a value when it is returned as a Place, is the operand of an explicit borrow or transfer, is projected, is a Subject or is an assignment target. Discarding an unacquired Place performs the call and its effects but destroys nothing in the published Storage. `_ = expression` instead acquires a value and destroys it, so it cannot discard a Non-Copy borrowed Place. Publishing an exclusive whole `T` permits replacing it with any valid `T`, so a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
+A Place is used without acquiring a value when it is returned as a Place, is the operand of an explicit borrow or transfer, is projected, is a Subject or is an assignment target. Discarding an unacquired Place performs the call and its effects but destroys nothing in the published Storage. `_ = expression` instead acquires a value and destroys it, so it cannot discard a published Place that bare acquisition rejects (§3.5). Publishing an exclusive whole `T` permits replacing it with any valid `T`, so a Place through which an internal invariant could be broken is not published. A Dictionary publishes its values, but never an exclusive Place of a key.
 
 ## 7.2. Parameters and defaults
 
@@ -119,7 +119,7 @@ options(count: 3) // Uses mode's default.
 options(3)        // Error: 3 supplies mode, not count.
 ```
 
-Function Types keep no argument names, name contracts or defaults: a call through a function value supplies every parameter positionally, with no named or omitted arguments (§7.6). The boundary is not available in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls, or dedicated attribute and built-in argument syntax. Special restrictions, such as those of `deinit`, still apply. Foreign declarations permit the boundary but not defaults (§22.3).
+Function Types keep no argument names, name contracts or defaults: a call through a function value supplies every parameter positionally, with no named or omitted arguments (§7.6). The boundary is not available in anonymous functions, Function Types, accessor signatures, specialization headers, generic lists, enum payloads, calls, or dedicated attribute and built-in argument syntax. Special restrictions, such as those of `drop`, still apply. Foreign declarations permit the boundary but not defaults (§22.3).
 
 ### 7.2.3. Default evaluation and ownership
 
@@ -164,7 +164,7 @@ struct Counter
 
 struct Buffer
     func insert(self: uniq/Self, index: isize, value: i32)
-    func insert(self: uniq/Self, index: Index, value: i32)   // OK: the same shape.
+    func insert(self: uniq/Self, index: string, value: i32)  // OK: the same shape.
 ```
 
 **Method calls.** In `receiver.method(arguments)`, the receiver is evaluated and acquired first, wherever `self` is declared, and is passed at the declared position of `self`. The receiver is a Receiver Expression ([§3.4](03-types-and-values.md#34-values-places-and-storage)) and is acquired implicitly, exactly as if the operation in the following table were written on it; the row depends on the receiver requirement and on whether the input is value-kind or object-kind. The explicit positional and named arguments are matched against the remaining parameters in written order, and no argument label can supply `self`. Defaults follow in the ordinary order. Exclusive preparation follows [call borrow reservations](15-ownership-and-lifetime-analysis.md#1567-call-borrow-reservations). Cleanup inside the callee uses the full written parameter order.
@@ -174,9 +174,9 @@ struct Buffer
 | `ref/Self`, `uniq/Self` | An owned Place or temporary is borrowed as `p@ref`, `p@uniq`; a borrow value is Reborrowed in the required mode as `p@follow@ref`, `p@follow@uniq`, after the [reference-path selection](03-types-and-values.md#341-reference-path-selection) that located the member | The complete payload `p@follow@ref`, `p@follow@uniq` (§13.5.5.1) when the View Target is exactly the same complete Sealed Type `T`; otherwise `p@objref`, `p@objuniq` |
 | `objref/Self`, `objuniq/Self` | Not applicable | `p@objref`, `p@objuniq` |
 | Declaration in a base `B` | The projection of §9.5.1 | The same |
-| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a Scalar `Self` by the Scalar read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
+| Owning receiver: `Self`, or an owning object-Semantics form | An owned temporary passes as is; an owned Place is Copied when Copy and is otherwise not acquired (write `p@move.m()`); a reference supplies a `Self` of a read Type (§3.5.3) by the value read, and otherwise `p@follow.m()` Copies a Copy referent | An owned temporary passes as is; an owned Place requires `p@move`; there is no read from an object borrow |
 
-A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the Scalar read of a Scalar `Self`, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
+A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path is followed like a borrow value: a `ref/Self` or `uniq/Self` receiver is acquired as `p@follow@ref` or `p@follow@uniq`, and an exclusive receiver needs the Write capability of §13.5.5.1. For an owning receiver, the only implicit acquisition through a pair layer is the value read of a `Self` of a read Type, the rule of its `ref` case; otherwise write `p@follow.m()`, which Copies the selected Place and needs Copy evidence.
 
 **Checks.** The acquisition is checked in the following order, and the call is an error if any check fails:
 
@@ -186,7 +186,7 @@ A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path 
 
 **Consequences.**
 
-- *No fallback.* When a check fails, the call does not switch to a Scalar read, a materialized temporary or any other acquisition; in particular, it never modifies a Copy and discards the update.
+- *No fallback.* When a check fails, the call does not switch to a value read, a materialized temporary or any other acquisition; in particular, it never modifies a Copy and discards the update.
 - *Explicit spellings.* Writing the table's operation explicitly means the same: for a value-kind input and an exclusive receiver, `p@uniq.m()` equals `p.m()` through the preparation path of §15.6.7, and the redundant spelling is accepted. A different explicit operation means what it says: `tasks@uniq.length` lends `tasks` exclusively and then reads it through shared access, and `r@ref.m()` on a reference `r` borrows the slot of `r` rather than Reborrowing its referent.
 - *Chains.* Each call acquires the previous call's result as its receiver by this table. Acquisition never reaches back through an earlier call, and each call has its own reservations (§15.6.7).
 
@@ -276,7 +276,7 @@ A missing spelling at a position other than a Receiver Expression uses the exist
 
 Every function, constructor, destructor and accessor with an indented body may begin that body with [Constraints](08-generics-constraints-and-contracts.md#82-constraints). Its Constraint Clauses must precede every executable body item; they are processed at compile time and are not executable expressions.
 
-Before lookup, the longest leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so later value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. The prefix rule is purely syntactic and applies to every such body; a leading `value is Dog` is never an expression statement, which would have no effect, so a body that means the runtime test writes it inside its statement, as in `require value is Dog else => return`. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
+Before lookup, the longest leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items is parsed as Constraint Clauses. A subject not permitted for the function is an error, never a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as in `(value is Dog)`, makes it an executable expression item and ends the prefix, so later value tests are executable. A later clause rooted in a generic parameter is a misplaced-Constraint error. The prefix rule is purely syntactic and applies to every such body. It is judged in source order over selected and excluded items alike: a directive is not itself an item, and the items in its target and in all of its arms extend or end the prefix by their own kinds (§19.5); a leading `value is Dog` is never an expression statement, which would have no effect, so a body that means the runtime test writes it inside its statement, as in `require value is Dog else => return`. Dedicated Type and Contract Constraint regions keep their own rules, even through parentheses.
 
 ```kimi
 func inspect<s/T>(value: s/T) -> ()
@@ -308,27 +308,27 @@ let yes = a.same(Box<i32>.init(1))   // OK: i32 is Equatable.
 
 ## 7.5. Unsafe functions
 
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. A function is declared unsafe only when its caller has obligations that its Types cannot express; those obligations are its safety contract. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.
 
 ```kimi
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
 // with valid range, alignment, provenance, and read permission.
 // Access must obey reference, aliasing, and data-race rules.
-unsafe func read(pointer: unsafe/i32) -> i32
+unsafe func read(pointer: raw/i32) -> i32
     unsafe => return *pointer
 
 // Safety: the same requirements as read.
-unsafe func forward(pointer: unsafe/i32) -> i32
+unsafe func forward(pointer: raw/i32) -> i32
     unsafe
         return read(pointer)
 
-unsafe func invalidRead(pointer: unsafe/i32) -> i32
+unsafe func invalidRead(pointer: raw/i32) -> i32
     return *pointer // Error: unsafe func does not make its body an unsafe context.
 ```
 
 `unsafe` is not part of the Signature and does not distinguish overloads. Overload resolution ignores the caller's unsafe context; the selected call's requirement is checked afterward, and another overload is never substituted because the selected one is unsafe.
 
-Unsafe functions support direct calls only. Taking one as a function value, assigning it to a variable, passing it as an argument or converting it to an ordinary Function Type is an error. Unsafe Function Types are not specified in this revision (§5.6).
+Unsafe functions support direct calls only. Taking one as a function value, assigning it to a variable, passing it as an argument or converting it to an ordinary Function Type is an error. Unsafe Function Types are not specified in this revision (Appendix D).
 
 ```kimi
 let reader = read // Error: an unsafe function cannot be taken as a function value.
@@ -359,12 +359,12 @@ Creation evaluates the captures, not the body, and acquires them in the creation
 | No list | Infer the needed outer runtime bindings; Copy only when each complete Type is Copy |
 | `[]` | Prohibit runtime captures |
 | `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
-| `x` | Bare acquisition: Copy; a Non-Copy binding is an error |
-| `x@move` | Transfer, even for a Copy binding |
-| `x@ref` / `x@uniq` | The existing value Borrow, Copy or Reborrow operation for that Semantics |
-| `var x` / `var x@move` | Copy / transfer into a mutable environment binding |
+| `x` / `var x` | Initialize the environment binding `x` as `let x = x` / `var x = x` would |
+| `x@op` / `var x@op` | Initialize it as `let x = x@op` / `var x = x@op` would; `op` is `move`, `ref` or `uniq` |
 
-Captures are resolved by Binding Identity. An omitted list never infers a Move, a new external Borrow or Reborrow, or a partial capture: a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. A bare capture of a binding whose Copy capability depends on generic parameters requires declared Copy evidence at definition checking; unknown Copy is an error, never deferred checking, an inferred Move or a hidden Constraint. `x@move` transfers for every binding.
+Captures are resolved by Binding Identity. An omitted list is a boundary at which no acquisition is inferred from the body: it never infers a Move, a new external Borrow or Reborrow, including the Reborrow that bare acquisition gives a stored exclusive reference (§3.5), or a partial capture, so a Non-Copy root is rejected even when only a Copy Field is read. An existing `ref/T` may be copied with its dependencies. An omitted-list capture of a binding whose Copy capability depends on generic parameters requires declared Copy evidence at definition checking; unknown Copy is an error, never deferred checking, an inferred Move or a hidden Constraint.
+
+**Explicit entries.** Each explicit entry is the initialization of one environment binding. Its right side designates the outer binding by Binding Identity, and the entry acquires it at creation exactly as the initialization in the table would, under §3.5 and §13.5 and, in a generic body, §8.9. A bare entry therefore Copies a Copy binding, Reborrows a binding that holds `uniq/T` or `objuniq/T` and rejects any other Non-Copy binding; `x@move` transfers even a Copy binding; and `x@ref` and `x@uniq` borrow the outer binding's slot as in any other expression (§13.5.5.2), so on a reference binding they add a reference layer. A Closure whose entry borrows an outer slot depends on that slot and cannot outlive it; its call permission, escape and cleanup are checked as for any other captured dependency (§7.6.3, §15.8).
 
 Type names and accessible static function declarations are not runtime captures. Contextual `self` and a setter's `value` are never captured implicitly, and explicit captures of them obey all receiver, accessor, construction and destruction restrictions. The contextual `storage` binding cannot be captured by name; ordinary bindings named `storage` follow the normal capture rules. No runtime receiver is implicitly bound into a function reference.
 
@@ -378,14 +378,22 @@ let invalid = func () => text              // Error: explicit list required.
 let holder = func [text@move] () => ()     // Transfer executes even if unused.
 ```
 
-Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` entries or additional object-borrow capture syntax; a bare entry already Copies. `var` combines only with a bare Copy or `@move`, not with `@ref` or `@uniq`. Capture entries are capture operations, not the slot borrows of §13.5.5.2: on a reference binding, `@ref` and `@uniq` Copy or Reborrow the reference value instead of borrowing the binding's slot:
+Capture targets are binding names only. There are no aliases, initializer expressions, field targets, inter-entry references, `@copy` entries or additional object-borrow capture syntax; a bare entry already Copies a Copy binding.
 
-| Source | `[x]` | `[x@move]` | `[x@ref]` | `[x@uniq]` |
-| --- | --- | --- | --- | --- |
-| `ref/T` | Copy the reference | Transfer the reference | Copy the reference, without adding a reference layer | Error |
-| `uniq/T` | Exclusive Reborrow | Transfer the reference | Shared Reborrow | Exclusive Reborrow |
+```kimi
+var number: i32 = 1
+let r = number@uniq
+let view: ref/i32 = r                    // Share the referent first when shared access suffices.
+let reader = func [view] () -> i32 => view@follow
+let snapshot = reader()
 
-Captures without `var` create `let`-like environment bindings, whatever the mutability of the source or of the binding that holds the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes only binding mutability, not deep copying, Copy classification or Origin dependencies.
+var bump = func [r] () => r@follow += 1  // [r] Reborrows r as uniq/i32.
+bump()                                   // An Exclusive call (§7.6.3).
+// [r@move] transfers the reference value, and [r@ref] borrows the slot of r as ref/(uniq/i32).
+// [r@uniq] is an error: the let binding r cannot be borrowed exclusively.
+```
+
+Captures without `var` create `let`-like environment bindings, whatever the mutability of the source or of the binding that holds the Closure. Value capture takes a snapshot; no shared heap box is created automatically. A captured exclusive reference can mutate its referent given adequate call access, but assignment to the capture name is not rewritten as assignment to the referent. `var` changes only the mutability of the environment binding, not deep copying, Copy classification, Origin dependencies or the authority of the source; with `var x@ref` or `var x@uniq`, the environment binding is a reassignable borrow of the outer slot.
 
 ```kimi
 let count: i32 = 0
@@ -398,7 +406,7 @@ let second = next() // 2; outer count is still 0.
 
 Environment bindings are not user Fields. Ownership-bearing calls apply ordinary local acquisition and Move Paths, and a consumed `let` cannot be reinitialized. Shared and Exclusive calls cannot move owned captures out. No environment may borrow its own owned capture through another capture; external borrowed dependencies remain legal under the lifetime rules.
 
-**Nested Closures** acquire through every enclosing environment. A binding free only in the inner Closure must still be captured by the outer one; an outer `[]` or an insufficient explicit list is an error. Each omitted-list boundary requires Copy on its own. The outer Closure's own parameters and body locals need capturing only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming, and an inner `@uniq` cannot exceed the access of the outer binding.
+**Nested Closures** acquire through every enclosing environment. A binding free only in the inner Closure must still be captured by the outer one; an outer `[]` or an insufficient explicit list is an error. Each omitted-list boundary requires Copy on its own. The outer Closure's own parameters and body locals need capturing only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming. An inner `[x@uniq]` borrows the outer environment binding `x`: it is an error when that binding is `let`, and for a `var` binding it is judged by the outer call's permission and Loans (§7.6.3).
 
 ```text
 lexical x -> outer capture x -> inner capture x
@@ -447,7 +455,7 @@ The internal call signature keeps the complete receiver, parameter and result Ty
 
 ### 7.6.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `deinit` cannot be acquired as values.
+A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y

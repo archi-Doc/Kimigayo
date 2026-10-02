@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryIndexTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CopyReadAndReplacementPreserveTheStoredKey()
     {
@@ -22,6 +23,7 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexScalar", Source, 1, 1, 96);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SimpleReplacementSecuresRhsThenBorrowsKeyThenDestroysOldValue()
     {
@@ -29,7 +31,7 @@ public class DictionaryIndexTest
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             func key() -> i32
                 Console.writeLine("key")
                 return 1
@@ -44,6 +46,7 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexOrder", Source, 1, 1, 192, "rhs\nkey\nold\nplaced\nnew\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void TemporaryNonCopyKeyIsBorrowedAndDestroyedOnce()
     {
@@ -56,7 +59,7 @@ public class DictionaryIndexTest
                     self.number = number
                     self.name = name@move
                 public func equals(self: ref/Self, other: ref/Self) -> bool => self.number == other.number
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<Key, i32> = [:]
             _ = entries.tryInsert(Key.init(1, "stored"), 2)
             entries[Key.init(1, "search")] = 3
@@ -77,6 +80,7 @@ public class DictionaryIndexTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void IndependentStoredKeyCanBeBorrowedWithoutCopyingItsReferent()
     {
@@ -94,6 +98,7 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexBorrowedKey", Source, 2, 2, 192);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericIndexUsesTheConcreteEqualityWitness()
     {
@@ -126,6 +131,7 @@ public class DictionaryIndexTest
         ScalarEmissionTest.WriteFixture("DictionaryIndexMissing", output.ToString(), "rhs\n", 1, "Hello.kimi:5:1: abort KIMI_E_MISSING_KEY: Dictionary key was not found\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void Milestone31RunsUnchangedWithOneBufferAllocation()
     {

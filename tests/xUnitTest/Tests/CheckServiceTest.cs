@@ -6,6 +6,7 @@ using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -31,9 +32,9 @@ public sealed class CheckServiceTest : IDisposable
         first.Kotonoha.AddSource(new SourceDocument("main.kimi", Broken));
         second.Kotonoha.AddSource(new SourceDocument("main.kimi", Valid));
 
-        Assert.NotEmpty(first.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
-        Assert.Empty(second.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
-        Assert.Empty(kimigayo.GetOrAddDiagnosticCollection("main.kimi").GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(first, "main.kimi"));
+        Assert.Empty(TestDiagnostics.Of(second, "main.kimi"));
+        Assert.NotSame(first.Diagnostics, second.Diagnostics);
     }
 
     [Fact]
@@ -43,8 +44,8 @@ public sealed class CheckServiceTest : IDisposable
         var compilation = new Compilation(kimigayo, new Project(kimigayo));
         compilation.Kotonoha.AddSource(new SourceDocument("main.kimi", Broken));
 
-        Assert.True(compilation.Kotonoha.HasSourceErrors);
-        Assert.True(compilation.Kimigayo.GetOrAddDiagnosticCollection("main.kimi").HasErrors);
+        Assert.True(compilation.Diagnostics.HasSyntaxErrors(compilation.Kotonoha));
+        Assert.True(compilation.Diagnostics.HasErrors);
     }
 
     [Fact]
@@ -60,8 +61,8 @@ public sealed class CheckServiceTest : IDisposable
         Assert.False(output.Accepted);
         var error = output.Diagnostics.First(static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Contains(error.Code, console.Output);
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), error.Location);
-        Assert.NotNull(error.Range);
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), Location(output, error));
+        Assert.NotNull(error.Span);
     }
 
     [Fact]
@@ -76,6 +77,29 @@ public sealed class CheckServiceTest : IDisposable
         Assert.DoesNotContain(output.Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
     }
 
+    [Theory]
+    [MemberData(nameof(ContextualLabelTest.DiagnosticCases), MemberType = typeof(ContextualLabelTest))]
+    public async Task ContextualSyntaxExplainsTheExactRangeInCliAndCheck(string source, string valid, string code, string token)
+    {
+        const string Prefix = "func sample()\n    ";
+        var project = this.WriteProject("Labels", ("main.kimi", Prefix + source));
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
+        Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
+        var output = this.Run(project);
+        Assert.False(output.Accepted);
+        var error = Assert.Single(output.Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(code, error.Code);
+        var start = token.Length == 0 ? source.Length : source.LastIndexOf(token, StringComparison.Ordinal);
+        Assert.Equal(new SourceSpan(Prefix.Length + start, token.Length), error.Span);
+        Assert.Contains(error.Message, console.Output);
+        Assert.Contains(error.Label!, console.Output);
+        Assert.Contains("Advice: " + error.Advice, console.Output);
+        Assert.Contains($"main.kimi:2:{start + 5}", console.Output);
+        File.WriteAllText(this.PathOf("Labels", "main.kimi"), Prefix + valid);
+        Assert.True(this.Run(project).Accepted);
+    }
+
     [Fact]
     public void TextOnlyPreparationFailuresBecomeBlockedDiagnostics()
     {
@@ -85,8 +109,40 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var failure = Assert.Single(output.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
-        Assert.Contains("At least one compilation target", failure.Message);
-        Assert.Equal(SourceIdentity.FromPath(project), failure.Location);
+        Assert.Contains("At least one compilation target", failure.Note);
+        Assert.Equal(SourceIdentity.FromPath(project), Location(output, failure));
+    }
+
+    // SPEC 23.3.1, 23.3.3: an unsupported target is an Input problem of its own, Blocked in the check entry and reported by the
+    // command, never an unexplained rejection.
+    [Fact]
+    public async Task AnUnsupportedTargetIsAnInputProblem()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "Targets={\"unknown-none-elf\"}");
+        var output = this.Run(project, target: "unknown-none-elf");
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedTarget_Kd), failure.Code);
+        Assert.Equal(DiagnosticCategory.Input, failure.Category);
+
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
+        loaded.KimiOptions = new Kimi.Command.KimiOptions { Target = "unknown-none-elf" };
+        Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
+        Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.3.3: an invalid test configuration is not established, so test preparation is Blocked before the front end.
+    [Fact]
+    public void AnInvalidTestProjectIdBlocksTestPreparation()
+    {
+        var project = this.WriteProject("App", ("main.kimi", Valid), settings: "TestProjectId=\" \"");
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), failure.Code);
+        Assert.Contains("TestProjectId", failure.Note, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -101,9 +157,9 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var encoding = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidSourceEncoding_Kd));
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "b.kimi")), encoding.Location);
-        Assert.Null(encoding.Range);
-        var syntax = output.Diagnostics.First(x => x.Location == SourceIdentity.FromPath(this.PathOf("App", "a.kimi")));
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "b.kimi")), Location(output, encoding));
+        Assert.Null(encoding.Span);
+        var syntax = output.Diagnostics.First(x => Location(output, x) == SourceIdentity.FromPath(this.PathOf("App", "a.kimi")));
         Assert.Contains(syntax.Code, console.Output);
         Assert.True(console.Output.IndexOf(syntax.Code, StringComparison.Ordinal) < console.Output.IndexOf(encoding.Code, StringComparison.Ordinal));
     }
@@ -119,9 +175,100 @@ public sealed class CheckServiceTest : IDisposable
         }
 
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        var failure = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.GenerationFailed_Kd));
-        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), failure.Location);
+        var failure = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.SourceReadFailed_Kd));
+        Assert.Equal(SourceIdentity.FromPath(this.PathOf("App", "main.kimi")), Location(output, failure));
         Assert.True(this.Run(project).Accepted);
+    }
+
+    [Fact]
+    public void EveryFailedSourceReadIsExplainedAtItsOwnInput()
+    {
+        var project = this.WriteProject("ReadFailures", ("a.kimi", Valid));
+        var first = this.PathOf("ReadFailures", "a.kimi");
+        var second = this.PathOf("ReadFailures", "b.kimi");
+        File.WriteAllText(second, "public func two() -> i32 => 2\n");
+        using (new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var output = this.Run(project);
+            Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+            Assert.False(output.Accepted);
+            Assert.Equal([first, second], output.Diagnostics.Select(x => output.Sources[x.Source].Path));
+            Assert.All(output.Diagnostics, static x =>
+            {
+                Assert.Equal(nameof(DiagnosticCode.SourceReadFailed_Kd), x.Code);
+                Assert.Equal(DiagnosticCategory.Input, x.Category);
+                Assert.Null(x.Span);
+                Assert.NotEmpty(x.Note!);
+            });
+        }
+
+        Assert.True(this.Run(project).Accepted);
+    }
+
+    [Fact]
+    public async Task EncodingFailuresPreserveEveryConsumedInputsOwnExplanation()
+    {
+        var project = this.WriteProject("EncodingFailures", ("a.kimi", Valid));
+        File.WriteAllBytes(this.PathOf("EncodingFailures", "a.kimi"), [0xff]);
+        File.WriteAllText(this.PathOf("EncodingFailures", "b.kimi"), Broken);
+        File.WriteAllBytes(this.PathOf("EncodingFailures", "c.kimi"), [0xfe]);
+        var output = this.Run(project);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(["a.kimi", "c.kimi"], output.Diagnostics.Where(static x => x.Code == nameof(DiagnosticCode.InvalidSourceEncoding_Kd)).Select(x => Path.GetFileName(output.Sources[x.Source].Path)));
+        Assert.Contains(output.Diagnostics, x => Path.GetFileName(output.Sources[x.Source].Path) == "b.kimi" && x.Category == DiagnosticCategory.Language);
+        Assert.DoesNotContain(output.Diagnostics, static x => x.Code is nameof(DiagnosticCode.CheckFaulted_Kd) or nameof(DiagnosticCode.ProjectPreparationFailed_Kd));
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, project, out var loaded));
+        Assert.False(await loaded.Check(TestContext.Current.CancellationToken));
+        Assert.Equal(2, console.Output.Split(nameof(DiagnosticCode.InvalidSourceEncoding_Kd), StringSplitOptions.None).Length - 1);
+        Assert.Contains("a.kimi", console.Output, StringComparison.Ordinal);
+        Assert.Contains("b.kimi", console.Output, StringComparison.Ordinal);
+        Assert.Contains("c.kimi", console.Output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TestSourceFailuresAreBlockedInputProblems(bool encoding)
+    {
+        var project = this.WriteProject("TestInput", ("main.kimi", Valid), settings: "TestSources={\"tests/one.kimi\"}");
+        Directory.CreateDirectory(this.PathOf("TestInput", "tests"));
+        var path = this.PathOf("TestInput", "tests", "one.kimi");
+        if (encoding)
+        {
+            File.WriteAllBytes(path, [0xff]);
+        }
+
+        var output = this.Run(project, CheckMode.Test);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.False(output.Accepted);
+        var failure = Assert.Single(output.Diagnostics);
+        Assert.Equal(encoding ? nameof(DiagnosticCode.InvalidSourceEncoding_Kd) : nameof(DiagnosticCode.SourceReadFailed_Kd), failure.Code);
+        Assert.Equal(DiagnosticCategory.Input, failure.Category);
+        Assert.Equal(path, output.Sources[failure.Source].Path);
+        Assert.Null(failure.Span);
+        var identity = SourceIdentity.FromPath(path);
+        var sent = Assert.Single(WorkspaceCheck.Place(output, [], SourceIdentity.FromPath(project))[identity]);
+        Assert.Equal(failure.Code, sent.Code);
+        Assert.Equal(default, sent.Range);
+        Assert.Contains(failure.Message, sent.Message, StringComparison.Ordinal);
+        File.WriteAllText(path, "#Test\nfunc check()\n    $expect(true)\n");
+        Assert.True(this.Run(project, CheckMode.Test).Accepted);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AFailedProductInputDoesNotSwallowPendingOrCancelledTestReads(bool cancelled)
+    {
+        var project = this.WriteProject("PendingTest", ("main.kimi", Valid), settings: "TestSources={\"pending.kimi\"}");
+        File.WriteAllBytes(this.PathOf("PendingTest", "main.kimi"), [0xff]);
+        var path = this.PathOf("PendingTest", "pending.kimi");
+        Exception exception = cancelled ? new OperationCanceledException() : new PendingInputException(path);
+        var inputs = new FailingInputSource(path, exception);
+        var thrown = Record.Exception(() => this.Run(project, CheckMode.Test, inputs: inputs));
+        Assert.Same(exception, thrown);
     }
 
     [Fact]
@@ -141,7 +288,7 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         var failure = Assert.Single(output.Diagnostics);
-        Assert.Contains("Conflicting inputs for leaf@1", failure.Message);
+        Assert.Contains("Conflicting inputs for leaf@1", failure.Note);
         Assert.Contains("Conflicting inputs for leaf@1", console.Output);
     }
 
@@ -154,7 +301,7 @@ public sealed class CheckServiceTest : IDisposable
         var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "public func two() -> i32 => 2\n" });
         var output = this.Run(project, inputs: inputs);
 
-        Assert.Contains(output.Diagnostics, x => x.Location == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
+        Assert.Contains(output.Diagnostics, x => Location(output, x) == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
         Assert.Contains(added, inputs.Listed);
         Assert.True(this.Run(project).Accepted);
     }
@@ -168,8 +315,8 @@ public sealed class CheckServiceTest : IDisposable
 
         Assert.False(output.Accepted);
         var encoding = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidSourceEncoding_Kd));
-        Assert.Equal(SourceIdentity.FromPath(main), encoding.Location);
-        Assert.NotNull(encoding.Range);
+        Assert.Equal(SourceIdentity.FromPath(main), Location(output, encoding));
+        Assert.NotNull(encoding.Span);
     }
 
     [Theory]
@@ -192,7 +339,7 @@ public sealed class CheckServiceTest : IDisposable
 
         var output = this.Run(project, CheckMode.Test);
         Assert.Equal(CheckOutcome.Completed, output.Outcome);
-        Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Location}{x.Range}: {x.Message}")));
+        Assert.True(output.Accepted, string.Join("; ", output.Diagnostics.Select(x => $"{x.Source}{x.Span}: {x.Message}")));
     }
 
     [Fact]
@@ -202,8 +349,11 @@ public sealed class CheckServiceTest : IDisposable
         var output = this.Run(project, CheckMode.Test, "x86_64-unknown-linux-gnu");
 
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
-        Assert.Contains(output.Diagnostics, static x => x.Message.Contains("Windows x64", StringComparison.Ordinal));
+        Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
     }
+
+    private static SourceIdentity Location(CheckOutput output, CheckDiagnostic diagnostic)
+        => diagnostic.Source < 0 ? default : SourceIdentity.FromPath(output.Sources[diagnostic.Source].Path);
 
     private CheckOutput Run(string projectPath, CheckMode mode = CheckMode.Product, string target = "", CheckInputSource? inputs = null)
     {
@@ -262,6 +412,15 @@ public sealed class CheckServiceTest : IDisposable
             this.Listed.AddRange(files);
             return files.ToArray();
         }
+    }
+
+    private sealed class FailingInputSource(string failing, Exception failure) : CheckInputSource
+    {
+        public override byte[] ReadAllBytes(string path) => Disk.ReadAllBytes(path);
+
+        public override SourceContent ReadSource(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadSource(path);
+
+        public override string[] GetFiles(string directory, string pattern) => Disk.GetFiles(directory, pattern);
     }
 
     private sealed class CapturingConsole : IConsoleService

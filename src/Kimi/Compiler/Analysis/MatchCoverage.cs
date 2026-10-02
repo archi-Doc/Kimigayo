@@ -32,12 +32,17 @@ public readonly record struct MatchCoverage(MatchCoverageState State, MatchCover
         _ => null,
     };
 
-    public string Describe() => this.Reason switch
+    /// <summary>Gets what a non-exhaustive match lacks; an unexplained one lacks a catch-all.</summary>
+    public MatchCoverageReason Requirement => this.Reason == MatchCoverageReason.None ? MatchCoverageReason.CatchAllRequired : this.Reason;
+
+    /// <summary>Describes what a non-exhaustive match lacks; the message states that the match must be exhaustive.</summary>
+    /// <returns>The description.</returns>
+    public string Describe() => this.Requirement switch
     {
-        MatchCoverageReason.MissingCase => $"A Result-requiring match must be exhaustive: missing Case at declaration index {this.CaseIndex}.",
-        MatchCoverageReason.WholePayloadRequired => $"A Result-requiring match must be exhaustive: Case at declaration index {this.CaseIndex} requires an unguarded whole-payload arm.",
-        MatchCoverageReason.BooleanValuesRequired => "A Result-requiring match must be exhaustive: unguarded true and false Patterns or a catch-all are required.",
-        _ => "A Result-requiring match must be exhaustive: an unguarded whole-position catch-all is required.",
+        MatchCoverageReason.MissingCase => $"The Case at declaration index {this.CaseIndex} has no arm.",
+        MatchCoverageReason.WholePayloadRequired => $"The Case at declaration index {this.CaseIndex} requires an unguarded whole-payload arm.",
+        MatchCoverageReason.BooleanValuesRequired => "Unguarded true and false Patterns or a catch-all are required.",
+        _ => "An unguarded whole-position catch-all is required.",
     };
 
     // Only syntax whose entire shape has a type-independent interpretation is considered.

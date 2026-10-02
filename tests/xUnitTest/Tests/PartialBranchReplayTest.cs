@@ -6,36 +6,35 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class PartialBranchReplayTest
 {
     [Theory]
-    [InlineData("Then", "inner: if c => yield to inner else => x = 3")]
-    [InlineData("Else", "inner: if c => x = 3 else => yield to inner")]
-    [InlineData("All", "inner: if c => yield to inner else => yield to inner")]
-    [InlineData("MissingElse", "inner: if c => yield to inner")]
-    [InlineData("Escaping", "inner: if c => return else => yield to inner")]
-    [InlineData("OwnedLocal", "inner: if c\n                let local = \"local\"\n                yield to inner\n            else => x = 3")]
-    [InlineData("Nested", "outer: if c\n                inner: if c => yield to outer else => yield to inner\n            else => x = 4")]
-    [InlineData("Scope", "scope: do\n                inner: if c => exit to scope else => yield to inner")]
-    [InlineData("Scalar", "let n = inner: if c => yield to inner: 3 else => 4\n            x = n")]
+    [InlineData("Then", "label inner: if c => yield to inner else => x = 3")]
+    [InlineData("Else", "label inner: if c => x = 3 else => yield to inner")]
+    [InlineData("All", "label inner: if c => yield to inner else => yield to inner")]
+    [InlineData("MissingElse", "label inner: if c => yield to inner")]
+    [InlineData("Escaping", "label inner: if c => return else => yield to inner")]
+    [InlineData("OwnedLocal", "label inner: if c\n                let local = \"local\"\n                yield to inner\n            else => x = 3")]
+    [InlineData("Nested", "label outer: if c\n                label inner: if c => yield to outer else => yield to inner\n            else => x = 4")]
+    [InlineData("Scope", "label scope: do\n                label inner: if c => exit to scope else => yield to inner")]
+    [InlineData("Scalar", "let n = label inner: if c => yield to inner 3 else => 4\n            x = n")]
     public void CaughtSelectionTransfersRetainNormalArrivals(string name, string dead)
         => Emit("Caught" + name, Source("var x = 1", dead + "\n            x = 4", "x = 2", "let y = x"));
 
     [Theory]
-    [InlineData("Initialization", "var x: i32", "inner: if c\n                x = 3\n                yield to inner\n            else => x = 4\n            let y = x")]
-    [InlineData("DeadMove", "let s = \"s\"", "inner: if c\n                yield to inner\n                _ = s@move\n            else => ()\n            Console.writeLine(s)")]
-    [InlineData("DeadLet", "let x: i32", "inner: if c\n                yield to inner\n                x = 3\n            else => ()\n            x = 4")]
-    [InlineData("MissingCondition", "var x: i32", "inner: if c => x = 3 else if truth(stop()) => yield to inner else => x = 4\n            let y = x")]
-    [InlineData("LocalLoan", "var counter = Counter.init()", "inner: if c\n                let r = counter@ref\n                let n = r.value\n                yield to inner\n            else => ()\n            counter.value = 9")]
+    [InlineData("Initialization", "var x: i32", "label inner: if c\n                x = 3\n                yield to inner\n            else => x = 4\n            let y = x")]
+    [InlineData("DeadMove", "let s = \"s\"", "label inner: if c\n                yield to inner\n                _ = s@move\n            else => ()\n            Console.writeLine(s)")]
+    [InlineData("DeadLet", "let x: i32", "label inner: if c\n                yield to inner\n                x = 3\n            else => ()\n            x = 4")]
+    [InlineData("MissingCondition", "var x: i32", "label inner: if c => x = 3 else if truth(stop()) => yield to inner else => x = 4\n            let y = x")]
+    [InlineData("LocalLoan", "var counter = Counter.init()", "label inner: if c\n                let r = counter@ref\n                let n = r.value\n                yield to inner\n            else => ()\n            counter.value = 9")]
     public void CaughtSelectionArrivalsIncludeCleanupAndExcludeLaterDeadEffects(string name, string declaration, string dead)
         => Emit("CaughtNormal" + name, Source(declaration, dead, "()", "()") + Counter + "\nfunc truth(x: i32) -> bool => true");
 
     [Theory]
-    [InlineData("var x: i32", "inner: if c\n                yield to inner\n                x = 3\n            else => x = 4\n            let y = x", OwnershipFailure.UninitializedUse)]
-    [InlineData("let s = \"s\"", "inner: if c\n                _ = s@move\n                yield to inner\n            else => ()\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let s = \"s\"", "inner: if c => () else\n                _ = s@move\n                yield to inner\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: i32", "inner: if c\n                x = 3\n                yield to inner\n            else => ()\n            x = 4", OwnershipFailure.ReassignedLet)]
+    [InlineData("var x: i32", "label inner: if c\n                yield to inner\n                x = 3\n            else => x = 4\n            let y = x", OwnershipFailure.UninitializedUse)]
+    [InlineData("let s = \"s\"", "label inner: if c\n                _ = s@move\n                yield to inner\n            else => ()\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let s = \"s\"", "label inner: if c => () else\n                _ = s@move\n                yield to inner\n            Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("let x: i32", "label inner: if c\n                x = 3\n                yield to inner\n            else => ()\n            x = 4", OwnershipFailure.ReassignedLet)]
     public void CaughtSelectionArrivalsRetainTheirOwnEffects(string declaration, string dead, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Source(declaration, dead, "()", "()"));
@@ -49,7 +48,7 @@ public class PartialBranchReplayTest
     [InlineData(true)]
     [InlineData(false)]
     public void CaughtSelectionCheckingAddsNoRuntimeEdges(bool condition)
-        => Emit("CaughtRuntime" + condition, Source("var x = 1", "inner: if c => yield to inner else => x = 3", "x = 2", "let y = x", condition), condition);
+        => Emit("CaughtRuntime" + condition, Source("var x = 1", "label inner: if c => yield to inner else => x = 3", "x = 2", "let y = x", condition), condition);
 
     [Theory]
     [InlineData("ThenReturn", "if c => return else => x = 3")]
@@ -90,7 +89,7 @@ public class PartialBranchReplayTest
     [Fact]
     public void CaughtYieldArrivalsMustNotBeDroppedFromTheNormalJoin()
     {
-        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "inner: if c => yield to inner else => x = 3\n            let y = x", "()", "()"));
+        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "label inner: if c => yield to inner else => x = 3\n            let y = x", "()", "()"));
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Empty(c.Ownership.ControlFlow!.Issues);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
@@ -121,33 +120,14 @@ public class PartialBranchReplayTest
     [InlineData("if c\n                counter.value = 9\n                return\n            else => ()")]
     [InlineData("if c => return else => counter.value = 9")]
     [InlineData("if c => return else => ()\n            counter.value = 9")]
-    [InlineData("inner: if c\n                counter.value = 9\n                yield to inner\n            else => ()")]
-    [InlineData("inner: if c => () else\n                counter.value = 9\n                yield to inner")]
+    [InlineData("label inner: if c\n                counter.value = 9\n                yield to inner\n            else => ()")]
+    [InlineData("label inner: if c => () else\n                counter.value = 9\n                yield to inner")]
     public void StoredLoansCoverTerminalAndNormalPaths(string dead)
     {
         var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "()", "let n = r.value") + Counter);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-    }
-
-    [Theory]
-    [InlineData("if c => return else\n                if c => return else => ()\n                let n = counter.value")]
-    [InlineData("inner: if c => yield to inner else => counter.value")]
-    public void ReloadedNormalJoinsAllocateNothingWhenWarm(string dead)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "()", "let n = r.value") + Counter);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
     }
 
     private static void Emit(string name, string source, bool condition = true)
@@ -163,4 +143,28 @@ public class PartialBranchReplayTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("if c => return else\n                if c => return else => ()\n                let n = counter.value")]
+        [InlineData("label inner: if c => yield to inner else => counter.value")]
+        public void ReloadedNormalJoinsAllocateNothingWhenWarm(string dead)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var counter = Counter.init()\n    let r = counter@ref", dead, "()", "let n = r.value") + Counter);
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

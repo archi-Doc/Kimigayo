@@ -25,7 +25,7 @@ public class GuardedDefaultContinuationTest
     [Fact]
     public void FalseGuardKeepsDefaultLocalEffectsAndCandidateSnapshot()
     {
-        const string Source = "func f(x: i32, y: i32 = (scope: do\n    var total = 1\n    let value = match x\n        let n if (check: do\n            total += n\n            exit to check: false\n        ) => 0\n        let n => n + total\n    exit to scope: value\n)) -> i32 => y\nif f(3) != 7 => $abort(\"effects lost\")";
+        const string Source = "func f(x: i32, y: i32 = (label scope: do\n    var total = 1\n    let value = match x\n        let n if (label check: do\n            total += n\n            exit to check false\n        ) => 0\n        let n => n + total\n    exit to scope value\n)) -> i32 => y\nif f(3) != 7 => $abort(\"effects lost\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -59,7 +59,7 @@ public class GuardedDefaultContinuationTest
     [Fact]
     public void TupleDefaultLocalPreservesThePreparedSnapshot()
     {
-        const string Source = "func f(x: i32, result: i32 = (scope: do\n    var pair = (x, 2)\n    pair.0 += pair.1\n    let selected = match pair\n        let saved => saved.0\n    exit to scope: selected\n)) -> i32 => result\nvar input = 7\nif f(input) != 9 or input != 7 => $abort(\"local tuple\")";
+        const string Source = "func f(x: i32, result: i32 = (label scope: do\n    var pair = (x, 2)\n    pair.0 += pair.1\n    let selected = match pair\n        let saved => saved.0\n    exit to scope selected\n)) -> i32 => result\nvar input = 7\nif f(input) != 9 or input != 7 => $abort(\"local tuple\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);

@@ -6,7 +6,7 @@ public func main()
         [5, 6, 7, 8],
     ]
     var total: i32 = 0
-    rows: for row in matrix.indices
+    label rows: for row in matrix.indices
         defer => Console.writeLine("Row finished.")
         for column in matrix[row].indices
             let value = matrix[row][column]

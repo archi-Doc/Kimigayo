@@ -130,7 +130,8 @@ public static partial class KotoHelper
         Token first = default;
         Token last = default;
         StringBuilder? fallback = default;
-        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.Separator)
+        // A line ends at a separator or at the layout token of a dedent or body, which the caller handles.
+        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock))
         {
             var token = reader.Read();
             if (expectsIdentifier)
@@ -150,7 +151,8 @@ public static partial class KotoHelper
             }
             else
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
@@ -173,7 +175,7 @@ public static partial class KotoHelper
 
         if (expectsIdentifier)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         if (reader.CurrentTokenKind == TokenKind.Separator)
@@ -206,6 +208,12 @@ public static partial class KotoHelper
         var expectsIdentifier = true;
         while (reader.CanRead)
         {
+            // A dedent or a body ends the line without being consumed; a separator is consumed.
+            if (reader.CurrentTokenKind is TokenKind.EndBlock or TokenKind.StartBlock)
+            {
+                break;
+            }
+
             var token = reader.Read();
             if (token.Kind == TokenKind.Separator)
             {
@@ -225,7 +233,8 @@ public static partial class KotoHelper
             }
             else if (token.Kind != TokenKind.Dot)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
@@ -234,7 +243,7 @@ public static partial class KotoHelper
 
         if (expectsIdentifier)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
+            reader.Expect(SyntaxForm.Name);
         }
 
         return list;

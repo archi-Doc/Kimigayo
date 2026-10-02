@@ -16,7 +16,7 @@ public abstract class JumpKoto : ExpressionKoto
     /// <summary>Gets the transferred value, if present.</summary>
     public Koto? Expression { get; private set; }
 
-    /// <summary>Gets the explicit target Label of an exit, continue, or yield, if present.</summary>
+    /// <summary>Gets the target Label: null for an unnamed transfer, empty for a missing Name after to.</summary>
     public string? Label { get; private set; }
 
     /// <summary>Gets the source keyword for this expression.</summary>
@@ -49,10 +49,6 @@ public abstract class JumpKoto : ExpressionKoto
         {
             builder.Append(" to ");
             builder.Append(this.Label);
-            if (this.Expression is not null)
-            {
-                builder.Append(':');
-            }
         }
 
         if (this.Expression is not null)

@@ -10,6 +10,12 @@ internal enum ConversionBinding : byte
     Floating,
     Abrupt,
     Numeric,
+
+    // SPEC 13.5.4.3: E@wrap<U> wraps an integer value to U; it never fails, and a direct literal is folded.
+    Wrap,
+
+    // SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and a same-width integer Type.
+    Bits,
     Identity,
 
     // SPEC 13.5.3: @move transfers a Movable Place, even a Copy one.
@@ -27,4 +33,7 @@ internal enum ConversionBinding : byte
 
     // SPEC 5.4-5.5: between raw pointer Types, or a raw pointer and usize.
     Pointer,
+
+    // SPEC 5.4: P@raw takes the address of the written slot through an immediately ending shared borrow.
+    Address,
 }

@@ -119,7 +119,7 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            if (!this.PrepareDictionaryProjections(compilation, module, layouts, body, null, out failure))
+            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure))
             {
                 return false;
             }
@@ -171,7 +171,7 @@ internal sealed partial class GenericStoragePlan
         {
             var operation = body.Operations[i];
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || KimiLibraryCatalog.IsDictionaryOperation(call.Target.CompilerFunction) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
             {
                 calls.Add(call);
             }
@@ -301,7 +301,7 @@ internal sealed partial class GenericStoragePlan
         // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
         var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
         entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
-            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol)), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
                 ConcreteCalls = new BoundCall[template.DirectCalls.Length],
             };
@@ -331,7 +331,7 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
-        if (!this.PrepareDictionaryProjections(compilation, module, layouts, template.Body, call, out failure, depth + 1))
+        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1))
         {
             return false;
         }
@@ -467,7 +467,7 @@ internal sealed partial class GenericStoragePlan
             if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
                 ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
                 previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
-                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts))
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol)))
             {
                 return previous;
             }

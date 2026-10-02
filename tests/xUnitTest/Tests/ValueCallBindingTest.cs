@@ -9,6 +9,13 @@ namespace XunitTest;
 public class ValueCallBindingTest
 {
     [Theory]
+    [InlineData("ElementBorrow", "let values: Array<i32> = [42]\nlet f = func (x: ref/i32) -> i32 => x\nlet result = f(values[0])")]
+    [InlineData("ReferentRead", "let n: i32 = 42\nlet r = n@ref\nlet f = func (x: i32) -> i32 => x\nlet result = f(r)")]
+    [InlineData("Reborrow", "var n: i32 = 42\nlet r = n@uniq\nlet f = func (x: ref/i32) -> i32 => x\nlet result = f(r)")]
+    public void ExpectedAdaptationsKeepTheOriginalCallableArgument(string name, string source)
+        => ScalarEmissionTest.EmitFixture("ValueCallAdaptation" + name, source + "\nrequire result == 42 else => $abort(\"argument\")", string.Empty);
+
+    [Theory]
     [InlineData("func apply(f: (i32) -> bool) -> bool => f(42)")]
     [InlineData("func apply(f: () -> i32) -> i32 => f()")]
     [InlineData("func apply(f: (()) -> bool) -> bool => f(())")]
@@ -46,6 +53,7 @@ public class ValueCallBindingTest
         Assert.Empty(output.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmBindingRetainValuePlan()
     {

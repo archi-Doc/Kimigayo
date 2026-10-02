@@ -66,7 +66,7 @@ public class ReceiverShorthandTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
     }
 
     [Theory]
@@ -119,6 +119,7 @@ public class ReceiverShorthandTest
         Assert.Same(getter.Receiver, getter.Result);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmShorthandBindingAllocatesNothing()
     {

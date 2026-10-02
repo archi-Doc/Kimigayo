@@ -14,7 +14,7 @@ public class RuntimeTestFormationBindingTest
     public void InvalidInputConstraintsCannotRetainRuntimeTest(string operand, string target)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x: " + operand + ") -> bool => x is " + target);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         Assert.Null(Test(c).BoundRuntimeTest);
@@ -32,7 +32,7 @@ public class RuntimeTestFormationBindingTest
     public void NestedTargetArgumentsCannotRetainRuntimeTest(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
     }
@@ -44,7 +44,7 @@ public class RuntimeTestFormationBindingTest
     public void LateInvalidDeclarationsCannotRetainRuntimeTest(string declarations, string target)
     {
         var c = MinimalEmissionTest.Analyze("struct Valid\n" + declarations + "\ngroup G\n    func f(x: objref/Valid) -> bool => x is " + target);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         Assert.Null(Test(c).BoundRuntimeTest);
@@ -100,6 +100,7 @@ public class RuntimeTestFormationBindingTest
         Assert.Same(target, test.BoundRuntimeTest!.Value.TargetType);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFormationChecksAllocateNothing()
     {

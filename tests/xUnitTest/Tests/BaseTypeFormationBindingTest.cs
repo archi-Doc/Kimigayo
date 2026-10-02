@@ -16,7 +16,7 @@ public class BaseTypeFormationBindingTest
         const string middle = "open struct Middle: Base<string>\n";
         const string derived = "struct S: Middle\n    Self is C\n";
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\n" + (reverseOrder ? derived + middle : middle + derived));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Type(c).BindingState);
         Assert.False(Definition(c).IsVerified);
@@ -35,7 +35,7 @@ public class BaseTypeFormationBindingTest
     public void NestedBaseArgumentsMustBeValid(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nopen struct Base<T>\ncontract C\nstruct S: Base<" + argument + ">\n    Self is C");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Type(c).BindingState);
         Assert.False(Definition(c).IsVerified);
@@ -93,6 +93,7 @@ public class BaseTypeFormationBindingTest
         Assert.True(definition.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBaseChecksAllocateNothing()
     {

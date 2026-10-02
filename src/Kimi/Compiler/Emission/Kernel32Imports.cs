@@ -14,8 +14,8 @@ internal static partial class Kernel32Imports
     internal const string Dll = "KERNEL32.dll";
     internal const string Generator = "llvm-dlltool";
 
-    /// <summary>Gets the exports: the seven runtime APIs plus the VirtualAlloc family used only by native tests.</summary>
-    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree"];
+    /// <summary>Gets the runtime APIs, the VirtualAlloc test family and the Windows counter APIs.</summary>
+    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency"];
 
     internal static readonly string Definition;
     internal static readonly string DefinitionSha256;
@@ -43,6 +43,16 @@ internal static partial class Kernel32Imports
             library.TryGetProperty("input", out _))
         {
             throw new InvalidDataException("Invalid generated kernel32 identity. Re-emit the link manifest; external kernel32 paths are no longer supported.");
+        }
+    }
+
+    internal static void ValidateInstallation(JsonElement entry, string actualHash)
+    {
+        if (entry.GetProperty("generator").GetString() != Generator || entry.GetProperty("generatorSha256").GetString() != DlltoolSha256 ||
+            entry.GetProperty("target").GetString() != WindowsProfile.Target || entry.GetProperty("dll").GetString() != Dll ||
+            entry.GetProperty("definitionSha256").GetString() != DefinitionSha256 || entry.GetProperty("sha256").GetString() != actualHash)
+        {
+            throw new InvalidDataException("Installed kernel32 generation conditions or SHA-256 mismatch. Run setup.ps1 again.");
         }
     }
 

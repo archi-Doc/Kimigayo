@@ -26,7 +26,8 @@ internal sealed class LspSession : IDisposable
     private readonly Dictionary<UnitKey, UnitState> units = new();
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
     private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version)> sent = new();
-    private readonly List<LspDiagnostic> mergedDiagnostics = [];
+    private readonly List<(UnitKey Key, LspDiagnostic[] Payload)> contributions = [];
+    private readonly List<LspDiagnostic[]> orderedContributions = [];
     private readonly HashSet<SourceIdentity> changedReports = [];
     private readonly CancellationTokenSource shutdown = new();
     private readonly HashSet<SourceIdentity> undeterminedOwners = [];
@@ -37,6 +38,7 @@ internal sealed class LspSession : IDisposable
     private bool clientInitialized;
     private bool shutdownRequested;
     private bool watchSupported;
+    private bool relatedInformationSupported;
     private long? eligibleAt;
     private long checkBase = -1;
     private int nextRequestId;
@@ -174,6 +176,7 @@ internal sealed class LspSession : IDisposable
             BaseTexts = baseTexts,
             Documents = views,
             Settings = settings,
+            RelatedInformation = this.relatedInformationSupported,
             Projects = new(this.projects),
             Units = results,
             ChangedAfterBase = () => this.store.ChangedAfterBase,
@@ -316,6 +319,7 @@ internal sealed class LspSession : IDisposable
         var parameters = Read<InitializeParams>(message);
         this.settings = LspSettings.Parse(parameters?.InitializationOptions, x => this.Log(2, x));
         this.watchSupported = parameters?.Capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration == true;
+        this.relatedInformationSupported = parameters?.Capabilities?.TextDocument?.PublishDiagnostics?.RelatedInformation == true;
         this.initialized = true;
         var result = new InitializeResult
         {
@@ -741,7 +745,7 @@ internal sealed class LspSession : IDisposable
         }
     }
 
-    // SPEC 23.4.7: send a URI only when all its contributors are valid; the payload is their sorted, distinct union.
+    // SPEC 23.4.7: send a URI only when all its contributors are valid; the payload merges them in contributor order.
     private void Reconsider(IEnumerable<SourceIdentity> uris)
     {
         if (this.shutdownRequested)
@@ -751,8 +755,8 @@ internal sealed class LspSession : IDisposable
 
         foreach (var uri in uris)
         {
-            var merged = this.mergedDiagnostics;
-            LspDiagnostic[] payload = [];
+            var contributions = this.contributions;
+            contributions.Clear();
             var ready = true;
             if (this.contributors.TryGetValue(uri, out var set))
             {
@@ -764,39 +768,33 @@ internal sealed class LspSession : IDisposable
                         break;
                     }
 
-                    var contribution = result.Reports[uri];
-                    if (contribution.Length == 0)
+                    if (result.Reports[uri] is { Length: > 0 } contribution)
                     {
-                        continue;
-                    }
-
-                    if (payload.Length == 0)
-                    {
-                        payload = contribution; // A single contributor is already sorted and distinct.
-                    }
-                    else
-                    {
-                        if (merged.Count == 0)
-                        {
-                            merged.AddRange(payload);
-                        }
-
-                        merged.AddRange(contribution);
+                        contributions.Add((key, contribution));
                     }
                 }
             }
 
             if (!ready)
             {
-                merged.Clear();
                 continue;
             }
 
-            if (merged.Count != 0)
+            LspDiagnostic[] payload = [];
+            if (contributions.Count == 1)
             {
-                merged.Sort(WorkspaceCheck.Compare);
-                payload = WorkspaceCheck.Deduplicate(merged);
-                merged.Clear();
+                payload = contributions[0].Payload; // A single contributor is already ordered.
+            }
+            else if (contributions.Count > 1)
+            {
+                contributions.Sort(static (x, y) => x.Key.CompareTo(y.Key));
+                this.orderedContributions.Clear();
+                foreach (var (_, contribution) in contributions)
+                {
+                    this.orderedContributions.Add(contribution);
+                }
+
+                payload = WorkspaceCheck.Merge(this.orderedContributions);
             }
 
             var document = this.documents.GetValueOrDefault(uri);

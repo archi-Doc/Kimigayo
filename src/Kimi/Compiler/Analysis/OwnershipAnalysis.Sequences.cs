@@ -6,6 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // The evaluated operand of a directly applied range boundary: the boundary itself, or the operand of its `^`.
+    private static Koto? PositionOperand(Koto? boundary) => boundary is FromEndIndexKoto fromEnd ? fromEnd.Operand : boundary;
+
     private int CreateSlice(IndexKoto source)
     {
         var depth = this.comparisonDepth++;
@@ -13,15 +16,21 @@ public sealed partial class OwnershipAnalysis
         int result;
         if (ElementAccess.IsResolvedSlice(source))
         {
-            // SPEC 4.6.4: a ResolvedRange key, written or resolved from an Index-bounded or inclusive range, is one value.
-            var key = receiver < 0 ? -1 : this.Value(this.Expression(ElementAccess.KeySyntax(source)));
+            // SPEC 4.6.4: a ResolvedRange key, written or resolved from a range key of other boundaries, is one value.
+            var key = receiver < 0 ? -1 : this.Value(this.SelectionKey(source, receiver, projection));
             result = receiver < 0 || key < 0 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, key);
         }
         else
         {
+            // SPEC 4.6.4: both written boundaries, or the operands of their `^`, are evaluated before either is converted
+            // to an isize position; the slice operation resolves from-end boundaries and checks the interval once.
             var range = (RangeKoto)source.Right;
-            var start = range.Start is { } begin ? this.Value(this.Expression(begin)) : -1;
-            var end = range.End is { } finish ? this.Value(this.Expression(finish)) : -1;
+            var begin = PositionOperand(range.Start);
+            var finish = PositionOperand(range.End);
+            var startPlace = begin is null ? -1 : this.Expression(begin);
+            var endPlace = finish is null ? -1 : this.Expression(finish);
+            var start = begin is null ? -1 : this.Value(this.PositionPlace(begin, startPlace));
+            var end = finish is null ? -1 : this.Value(this.PositionPlace(finish, endPlace));
             result = receiver < 0 || (range.Start is not null && start < 0) || (range.End is not null && end < 0)
                 ? -1 : this.SequenceValue(source, source.BoundType!, SequenceOperation.Slice, receiver, projection, start, end);
         }
@@ -33,11 +42,32 @@ public sealed partial class OwnershipAnalysis
 
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
+        if (ReferenceTypes.IsDictionary(source.Left.BoundType))
+        {
+            if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } stored || !this.SupportsCopySnapshot(stored, source))
+            {
+                if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
+                {
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                }
+                else
+                {
+                    this.Unsupported(source);
+                }
+
+                return -1;
+            }
+
+            // Lookup produces the same borrowed Place used by explicit @ref; a bare read snapshots its Copy referent.
+            var reference = this.BorrowStruct(source, this.compilation.Binding.SharedReference(source.BoundType!, source.Left.BoundType!.Origin));
+            return reference < 0 ? -1 : this.LoadPointer(source, this.Value(reference));
+        }
+
         var depth = this.comparisonDepth++;
         var dynamicArray = source.Left.BoundType?.Kind == BoundTypeKind.Array;
         // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect
         // the handle throughout index evaluation so it cannot be resized underneath the read.
-        var keepPlace = dynamicArray || (ReferenceTypes.IsArray(source.Left.BoundType) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
+        var keepPlace = dynamicArray || ((ReferenceTypes.IsArray(source.Left.BoundType) || ReferenceTypes.IsDictionary(source.Left.BoundType)) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
         var receiver = this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
         if (dynamicArray && receiver >= 0)
         {
@@ -45,7 +75,7 @@ public sealed partial class OwnershipAnalysis
             this.BeginSharedLoan(receiver, access: true);
         }
 
-        var index = this.Value(this.Expression(ElementAccess.KeySyntax(source)));
+        var index = this.Value(this.SelectionKey(source, receiver));
         if (receiver < 0 || index < 0)
         {
             this.EndComparisonLoans(depth, source);
@@ -76,12 +106,29 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int element = -1)
+    // SPEC 4.6.2, 4.6.9: an integer position of another Type is converted to isize where the plan places it. A value that
+    // isize cannot hold becomes -1, which the one bounds check of its use rejects; the universal verification of a generic
+    // integer has no value to convert.
+    private int PositionPlace(Koto source, int place)
+    {
+        if (place < 0 || this.Value(place) < 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.ISize) || this.body.Places[place].Type is not { IsInteger: true })
+        {
+            return place;
+        }
+
+        var converted = this.Place(source, BoundType.ISize, OwnershipPlaceKind.Temporary, false);
+        this.Emit(OwnershipOperationKind.Produce, source, converted);
+        this.RegisterTemporary(converted);
+        this.SetValue(this.Value(converted), OwnershipValueKind.Convert, [this.Value(place)], constant: OwnershipValue.PositionConversion);
+        return converted;
+    }
+
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
-        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, element));
+        this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) || ReferenceTypes.IsSlice(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
         return this.RegisterTemporary(result);
     }
 
@@ -89,16 +136,20 @@ public sealed partial class OwnershipAnalysis
     {
         projection = -1;
         var receiver = KotoHelper.UnwrapParentheses(source);
+        if (receiver is EvaluatedKoto evaluated)
+        {
+            return this.EvaluatedOperand(evaluated, out projection); // The selection already located its receiver.
+        }
+
         if (this.compilation.Binding.ImplicitPairAdmitted(receiver) != SemanticsMask.None)
         {
-            var mode = receiver.Parent is ForKoto { Mode: SubjectMode.Exclusive } ? SemanticsKind.Uniq : SemanticsKind.Ref;
-            if (this.ThroughPairLayers(receiver, mode) is var through && through != -2)
+            if (this.ThroughPairLayers(receiver, SemanticsKind.Ref) is var through && through != -2)
             {
                 return through;
             }
 
-            // SPEC 14.6.2, 13.5.5.1: a pair Subject in a ref or uniq instance is read as the reference it holds; the universal
-            // verification and an owner instance share the Place itself for the loop.
+            // SPEC 13.5.5.1: a pair receiver in a ref or uniq instance is read as the reference it holds; the universal
+            // verification and an owner instance share the Place itself for the operation.
             var pair = this.Expression(source, PlaceUseKind.Read);
             if (pair >= 0 && !ReferenceTypes.IsBorrow(this.body.Places[pair].Type))
             {
@@ -162,7 +213,7 @@ public sealed partial class OwnershipAnalysis
             return root;
         }
 
-        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) || ReferenceTypes.IsDynamicArray(source.BoundType) || ReferenceTypes.IsDictionary(source.BoundType) || FormattingTypes.IsSliceBorrow(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        return this.Expression(source, ReferenceTypes.IsArray(source.BoundType) || ReferenceTypes.IsDynamicArray(source.BoundType) || ReferenceTypes.IsDictionary(source.BoundType) || FormattingTypes.IsSliceBorrow(source.BoundType) || ReferenceTypes.IsSlice(source.BoundType) ? PlaceUseKind.Read : PlaceUseKind.Consume);
     }
 
     private int SequenceMember(MemberAccessKoto source)
@@ -200,65 +251,23 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        var shared = source.SharedIterable;
-        var exclusive = source.Mode == SubjectMode.Exclusive && shared is not null;
-
-        // SPEC 14.6.2: a borrowed Copy iterable such as ref/Slice<T> is read as its value; Binding recorded that read.
+        // SPEC 4.6.3.4: a ResolvedRange loop enumerates its isize positions directly; every other Subject iterates through
+        // its entry conformance. A borrowed interval is read as its Copy value; Binding recorded that read.
         var iterableType = this.compilation.Binding.TryGetAdaptation(source.Iterable, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead
             ? read.Type : source.Iterable.BoundType;
-        var dictionary = iterableType?.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(iterableType);
-        var array = shared is null && iterableType?.Kind == BoundTypeKind.FixedArray;
-        var dynamicArray = shared is null && iterableType?.Kind == BoundTypeKind.Array;
-        var slice = !dictionary && (shared is not null || iterableType?.Kind == BoundTypeKind.Slice);
-        if (!dictionary && !array && !dynamicArray && !slice && !ReferenceTypes.IsResolvedRange(iterableType))
+        if (!ReferenceTypes.IsResolvedRange(iterableType))
         {
             this.Unsupported(source);
             return;
         }
 
-        var element = slice ? source.Bindings[0].BoundType! : array || dynamicArray ? iterableType!.Components[0] : BoundType.ISize;
-        if (dynamicArray && (source.IsTupleBinding || !this.SupportsType(element) || this.compilation.Binding.ProveOwned(element, source) != ConstraintProof.Proven))
-        {
-            this.Unsupported(source);
-            return;
-        }
-
-        if (array && (!this.SupportsType(element) || this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven))
-        {
-            this.Unsupported(source);
-            return;
-        }
-
-        int iterable;
-        if (shared is not null && (dictionary || exclusive))
-        {
-            // SPEC 14.6.2: a Dictionary and an exclusively enumerated array are borrowed for the loop in the Subject mode.
-            iterable = this.BorrowStruct(source.Iterable, shared);
-        }
-        else if (shared is not null)
-        {
-            // SPEC 14.6.2: a bare array Place is borrowed for the loop as its implicit whole-range Slice.
-            var depth = this.comparisonDepth++;
-            var receiver = this.SequenceReceiver(source.Iterable, out var projection);
-            iterable = receiver < 0 ? -1 : this.SequenceValue(source, shared, SequenceOperation.Slice, receiver, projection);
-            this.EndComparisonLoans(depth, source);
-            this.comparisonDepth = depth;
-        }
-        else
-        {
-            iterable = this.Expression(source.Iterable);
-        }
-
+        var iterable = this.Expression(source.Iterable);
         if (iterable < 0)
         {
             return;
         }
 
         var localMark = this.locals.Count;
-        if (dynamicArray)
-        {
-            this.SequenceValue(source, BoundType.Unit, SequenceOperation.ArrayIterator, iterable);
-        }
 
         var cursor = this.Place(source, BoundType.ISize, OwnershipPlaceKind.Local, true);
         this.locals.Add(new(cursor, source, this.registrationSequence++));
@@ -269,7 +278,7 @@ public sealed partial class OwnershipAnalysis
         var head = this.Emit(OwnershipOperationKind.Branch, source);
         var exit = this.New(OwnershipOperationKind.Branch, source);
         var current = this.Use(source, cursor, PlaceUseKind.Read);
-        var testValue = this.ComputeUpdate(source, BoundType.Boolean, this.Value(current), this.Value(end), dictionary ? KotoKind.ExclamationEquals : KotoKind.LessThan);
+        var testValue = this.ComputeUpdate(source, BoundType.Boolean, this.Value(current), this.Value(end), KotoKind.LessThan);
         var test = this.Emit(OwnershipOperationKind.Branch, source);
         this.SetValue(test, OwnershipValueKind.Alias, [this.Value(testValue)]);
         var enter = this.New(OwnershipOperationKind.Branch, source.Body);
@@ -278,54 +287,22 @@ public sealed partial class OwnershipAnalysis
         this.current = enter;
         var bindingMark = this.locals.Count;
         this.loops.Add(new(source, head, exit, bindingMark, this.temporaries.Count, Comparisons: this.comparisonDepth));
-        // SPEC 14.6.2: a borrowed Dictionary reads its next link before the entry's components are borrowed;
-        // the advance touches no component, so exclusive component Loans never conflict with it.
-        var next = dictionary && shared is not null ? this.SequenceValue(source, BoundType.ISize, SequenceOperation.DictionaryNext, iterable, index: this.Value(current)) : -1;
         // Each slot has the ordinary iteration lifetime, including unnamed slots.
-        // Fixed-array elements are Copy; the owning Array iterator instead transfers
-        // one element before the body and keeps responsibility only for its remaining tail.
         for (var slot = 0; slot < source.Bindings.Count; slot++)
         {
             var name = source.Bindings[slot];
-            var slotType = name.BoundType!;
-            var binding = this.LocalPlace(name.BoundSymbol, name, slotType, source.IsMutableSlot(slot));
+            var binding = this.LocalPlace(name.BoundSymbol, name, name.BoundType!, source.IsMutableSlot(slot));
             this.locals.Add(new(binding, name, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, name, binding);
-            int item;
-            if (dictionary)
-            {
-                item = this.SequenceValue(source, slotType, shared is null ? SequenceOperation.DictionaryMoveRead : SequenceOperation.DictionaryRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
-            }
-            else if (dynamicArray)
-            {
-                item = this.SequenceValue(source, slotType, SequenceOperation.ArrayMoveRead, iterable, index: this.Value(current));
-            }
-            else if (array)
-            {
-                item = this.SequenceValue(source, slotType, SequenceOperation.ArrayRead, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
-            }
-            else if (slice)
-            {
-                // SPEC 14.6.2: every borrowed item and Tuple component is a reference into the backing storage.
-                item = this.SequenceValue(source, slotType, SequenceOperation.Borrow, iterable, index: this.Value(current), element: source.IsTupleBinding ? slot : -1);
-            }
-            else
-            {
-                item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
-                var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
-                this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
-                this.RegisterTemporary(item);
-            }
-
+            var item = this.Place(name, BoundType.ISize, OwnershipPlaceKind.Temporary, true);
+            var itemOp = this.Emit(OwnershipOperationKind.Produce, name, item);
+            this.SetValue(itemOp, OwnershipValueKind.Alias, [this.Value(current)]);
+            this.RegisterTemporary(item);
             this.Emit(OwnershipOperationKind.Write, name, binding, item);
         }
 
-        if (next < 0)
-        {
-            // The last advance reaches end (at most maximum isize), never end + 1.
-            next = dictionary ? this.SequenceValue(source, BoundType.ISize, SequenceOperation.DictionaryTakeNext, iterable, index: this.Value(current))
-                : this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
-        }
+        // The last advance reaches end (at most maximum isize), never end + 1.
+        var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
 
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);
         var seeds = this.terminalSeeds.Count;

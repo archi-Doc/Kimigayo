@@ -22,13 +22,13 @@ public class ArrayArgumentEmissionTest
     [InlineData("Wide", "func use(x: [1 of u128]) -> u128 => x[0]\nif use([340282366920938463463374607431768211455]) > 0 => Console.writeLine(\"ok\")")]
     [InlineData("Unit", "func use(x: [2 of ()]) => Console.writeLine(\"ok\")\nuse([(), ()])")]
     [InlineData("TypedNested", "func use(x: [1 of [1 of u8]]) => Console.writeLine(\"ok\")\nlet row: [1 of u8] = [1]\nuse([row])")]
+    [InlineData("LiteralOnly", "func use(x: [1 of u8]) -> u8 => x[0]\nif use([1 + 2]) == 3 => Console.writeLine(\"ok\")")]
     public void FixedParameterTypesFitArrayLiterals(string name, string source)
         => ScalarEmissionTest.EmitFixture("ArrayArgument" + name, source, "ok\n");
 
     [Theory]
     [InlineData("func use(x: [1 of i32]) => ()\nuse([])")]
     [InlineData("func use(x: [1 of u8]) => ()\nlet n: i32 = 1\nuse([n])")]
-    [InlineData("func use(x: [1 of u8]) => ()\nuse([1 + 2])")]
     [InlineData("func use(x: [1 of i32]) => ()\nfunc use(x: [1 of i64]) => ()\nuse([1])")]
     [InlineData("func use(x: [0 of i32]) => ()\nfunc use(x: [0 of string]) => ()\nuse([])")]
     [InlineData("func use(x: [1 of i32]) => ()\nuse([null])")]
@@ -95,6 +95,7 @@ public class ArrayArgumentEmissionTest
         ScalarEmissionTest.EmitFixture("ArrayArgumentReload", Source, "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCandidateProbingAllocatesNothing()
     {

@@ -68,6 +68,11 @@ public sealed class BoundCall
     // Selected from source syntax, never inferred again after generic substitution.
     internal bool TupleOperator { get; set; }
 
+    // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
+    // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
+    // (SPEC 8.4.9). Null for calls of other functions.
+    internal BindingSymbol? RequirementContract { get; set; }
+
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Target = target;
@@ -75,6 +80,7 @@ public sealed class BoundCall
         this.Receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
+        this.RequirementContract = null;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
         this.ReceiverOperation = receiverOperation;
@@ -137,6 +143,25 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // Gets the first written Type of a bound header that did not resolve.
+    private static Koto? IncompleteSignature(FunctionKoto function)
+    {
+        if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
+        {
+            return result;
+        }
+
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type is { BindingState: not BindingState.Resolved } type)
+            {
+                return type;
+            }
+        }
+
+        return null;
+    }
+
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
         if (member.Right.Akind == KotoKind.ConstructorReference)
@@ -176,7 +201,7 @@ public sealed partial class Binding
             {
                 if (groupType.OriginArguments.Count != (qualifier.Schema?.Origins.Count ?? 0) || groupType.OriginArguments.Contains(null!))
                 {
-                    Fail(member.Left, BindingFailure.InvalidOrigin);
+                    this.Fail(member.Left, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
@@ -224,7 +249,7 @@ public sealed partial class Binding
 
         if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
-            Fail(member, BindingFailure.Ambiguous, true);
+            this.Fail(member, BindingFailure.Ambiguous, true);
             return null;
         }
 
@@ -246,7 +271,7 @@ public sealed partial class Binding
 
             if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
             {
-                Fail(member, BindingFailure.Access);
+                this.Fail(member, BindingFailure.Access);
                 return null;
             }
 
@@ -313,7 +338,10 @@ public sealed partial class Binding
         }
         else if (callee is MemberAccessKoto member)
         {
+            // The callee is checked in its own frame: what its lookup consults is its prerequisite, not the call's.
+            var frame = this.BeginConsultation(member);
             group = this.Member(member, scope, expected);
+            this.EndConsultation(member, frame);
         }
         else if (callee is SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred)
         {
@@ -329,7 +357,7 @@ public sealed partial class Binding
         {
             return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
                 ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
-                : Fail(call, BindingFailure.NotCallable);
+                : this.Fail(call, BindingFailure.NotCallable);
         }
 
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
@@ -362,17 +390,28 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!IsUnfittedLiteral(argument) && this.BindNode(argument, scope) is null)
+            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
+            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindNode(argument, scope) is null)
             {
+                if (argument is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
+                {
+                    // A function group resolves for call selection only; passing it as a value is not yet implemented (P26).
+                    this.Fail(argument, BindingFailure.Unsupported, true);
+                }
+
                 unknownArgument = true;
             }
         }
 
         if (group is null)
         {
-            if (!this.ReportUnavailableQualifier(callee, scope))
+            if (this.ReportUnavailableQualifier(callee, scope) is { } qualifier)
             {
-                Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : BindingFailure.MissingName, true);
+                this.CompleteDependent(callee, qualifier);
+            }
+            else
+            {
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);
@@ -380,7 +419,7 @@ public sealed partial class Binding
 
         if (group.Kind != BindingSymbolKind.Function)
         {
-            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : Fail(call, BindingFailure.NotCallable);
+            return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
         if (unknownArgument)
@@ -435,6 +474,14 @@ public sealed partial class Binding
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
+
+        // SPEC 10.2.2: among several candidates, the Copy proof of a bare Place's by-value acquisition is held until the
+        // conflict check; each candidate's plan per argument and one proof per argument are kept for it.
+        var holdCopies = candidateCount > 1 && argumentCount != 0;
+        var plans = this.acquisitionScratch.Rent(holdCopies ? candidateCount * argumentCount : 0);
+        var proofTypes = this.typeScratch.Rent(holdCopies ? argumentCount : 0);
+        var proven = this.flagScratch.Rent(holdCopies ? argumentCount : 0);
+        proofTypes.AsSpan(0, holdCopies ? argumentCount : 0).Clear();
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -457,7 +504,7 @@ public sealed partial class Binding
                         foreach (var candidate in candidates)
                         {
                             if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
-                                this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
+                                (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
                             {
                                 lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
                                 typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
@@ -468,7 +515,7 @@ public sealed partial class Binding
                         {
                             // Both namespaces can supply this spelling. Do not silently choose
                             // a kind before candidate-local dual-namespace binding is available.
-                            return Fail(call, BindingFailure.Unsupported, true);
+                            return this.Fail(call, BindingFailure.Unsupported, true);
                         }
 
                         isLength = !typeSlot;
@@ -484,9 +531,11 @@ public sealed partial class Binding
 
             var count = 0;
             var applicable = 0;
+            var held = 0;
             var winnerIndex = -1;
             var pending = false;
             var error = false;
+            Koto? incompleteSignature = null;
             this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
             {
@@ -496,10 +545,14 @@ public sealed partial class Binding
                 }
 
                 var index = count++;
+                operations.AsSpan(index * operationStride, operationStride).Clear();
+                var candidatePlans = holdCopies ? plans.AsSpan(index * argumentCount, argumentCount) : default;
+                candidatePlans.Clear();
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
-                if (this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
+                // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
+                if (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
                     this.BindHeader(candidate);
                     if (function.IsConstructor)
@@ -508,15 +561,17 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), candidatePlans, proofTypes, proven, out defaultsUsed);
                     this.activeRequirementContract = null;
                 }
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
                 pending |= state == CandidateApplicability.Pending;
                 error |= state == CandidateApplicability.Error;
+                held += state == CandidateApplicability.CopyUnproven ? 1 : 0;
                 if (state != CandidateApplicability.Applicable)
                 {
+                    incompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;
                     continue;
                 }
 
@@ -534,18 +589,53 @@ public sealed partial class Binding
 
             if (error)
             {
-                return Fail(call, BindingFailure.InvalidConstraint);
+                return this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (pending)
             {
-                return Fail(call, BindingFailure.UnprovenConstraint, true);
+                return this.Fail(call, BindingFailure.UnprovenConstraint, true);
+            }
+
+            if (applicable + held > 1 && this.CheckAcquisitionConflicts(call, evaluated.AsSpan(0, count), plans, argumentCount, operations, operationStride, proofTypes, proven))
+            {
+                return this.Fail(call, BindingFailure.AcquisitionRequired, true);
+            }
+
+            // SPEC 10.2.2 step 3: a candidate whose held Copy proof failed is excluded; a call left without one names @move.
+            this.transferRequired |= held != 0;
+            if (applicable == 0 && incompleteSignature is not null)
+            {
+                // A candidate whose signature failed cannot be judged, so the selection rests on that failure.
+                return this.CompleteDependent(call, incompleteSignature);
             }
 
             if (applicable == 0)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                return Fail(call, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate, true);
+                var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate;
+                if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
+                {
+                    // The candidates that were considered explain the failed selection; recorded only when it fails.
+                    var rejected = new RejectedCandidate[count];
+                    for (var i = 0; i < count; i++)
+                    {
+                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                        for (var a = 0; a < argumentCount; a++)
+                        {
+                            var operation = operations[(i * operationStride) + a];
+                            if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
+                            {
+                                rejected[i] = rejected[i] with { Actual = actual, Expected = parameter };
+                                break;
+                            }
+                        }
+                    }
+
+                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
+                }
+
+                return this.Fail(call, failure, true);
             }
 
             if (applicable > 1)
@@ -553,7 +643,7 @@ public sealed partial class Binding
                 winnerIndex = SelectBest(evaluated.AsSpan(0, count), operations, operationStride);
                 if (winnerIndex < 0)
                 {
-                    return Fail(call, BindingFailure.Ambiguous, true);
+                    return this.Fail(call, BindingFailure.Ambiguous, true);
                 }
             }
 
@@ -574,14 +664,14 @@ public sealed partial class Binding
             {
                 if (selected.GenericArguments[i] is LengthParameterKoto ? lengthArguments[i] is null : scratch[i] is null)
                 {
-                    return Fail(call, BindingFailure.MissingType, true);
+                    return this.Fail(call, BindingFailure.MissingType, true);
                 }
             }
 
             var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
             if (result is null)
             {
-                return Fail(call, BindingFailure.MissingType, true);
+                return this.Fail(call, BindingFailure.MissingType, true);
             }
 
             var selectedOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
@@ -595,7 +685,7 @@ public sealed partial class Binding
                     // Pending effect verification is an implementation boundary, not a
                     // completed public NotProven guarantee (SPEC 12.4.4.1).
                     var pendingEffects = receiverOperation.ObjectCompatibility == ConstraintProof.Unknown;
-                    return Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
+                    return this.Fail(call, pendingEffects ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, pendingEffects);
                 }
             }
 
@@ -639,7 +729,7 @@ public sealed partial class Binding
                         if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
                             this.CallType(pattern, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) is not { } parameterType)
                         {
-                            return Fail(call, BindingFailure.MissingType, true);
+                            return this.Fail(call, BindingFailure.MissingType, true);
                         }
 
                         defaults[defaultIndex++] = new(expression, this.ParameterSymbol(selected, i), parameterType);
@@ -668,6 +758,14 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            if (selected.IsRequirement)
+            {
+                // A requirement reached through a receiver's Contracts names the reference that supplied it; a comparison
+                // callee names its Contract directly, and Equatable and Comparable take no Type arguments.
+                call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } ? RequirementReference(requirementShape, winner) :
+                    callee is ComparisonCalleeKoto ? winner.Scope.Owner.BoundSymbol : null;
+            }
+
             if (selected.ReturnType is PlaceResultKoto && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
             {
                 // SPEC 7.1.1: the call designates the published Place; its Type is the stored Type, and the plan keeps the reference.
@@ -684,6 +782,9 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
+            this.flagScratch.Return(proven);
+            this.typeScratch.Return(proofTypes, clearArray: true);
+            this.acquisitionScratch.Return(plans);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
@@ -763,10 +864,13 @@ public sealed partial class Binding
         return proof;
     }
 
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
+    // A non-empty plans span holds the Copy proofs of bare by-value arguments for the conflict check (SPEC 10.2.2); proofTypes and
+    // proven share one proof per argument across candidates.
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, Span<ArgumentAcquisition> plans, BoundType?[] proofTypes, bool[] proven, out int defaultsUsed)
     {
         defaultsUsed = 0;
-        operations.Clear();
+        var holdCopy = !plans.IsEmpty;
+        var copyUnproven = false;
         if (function.IsConstructor && declaringType is null)
         {
             return CandidateApplicability.Inapplicable;
@@ -831,7 +935,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee }))
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -891,6 +995,13 @@ public sealed partial class Binding
 
             if (call.ArgumentNodes[i].BoundType is { } actual && !InferInput(type, actual, call.ArgumentNodes[i]))
             {
+                // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
+                // applies; a successful overload selection publishes no repair advice from rejected alternatives.
+                if (DifferentRangeShapes(actual, type))
+                {
+                    operations[i] = new(call.ArgumentNodes[i], actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+                }
+
                 return CandidateApplicability.Inapplicable;
             }
         }
@@ -988,14 +1099,18 @@ public sealed partial class Binding
                 if (type is null)
                 {
                     // Default only otherwise unconstrained literals; all established inputs were processed above.
-                    var literal = argument is NumberLiteralKoto number ? number : argument is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)argument).Operand as NumberLiteralKoto : null;
-                    if (literal is null)
+                    if (this.LiteralDefault(argument) is not { } literalDefault)
                     {
                         return CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                     }
 
-                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64, argument))
+                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literalDefault, argument))
                     {
+                        if (DifferentRangeShapes(literalDefault, function.Parameters[mapping[i]].Type.BoundType!))
+                        {
+                            operations[i] = new(call.ArgumentNodes[i], literalDefault, function.Parameters[mapping[i]].Type.BoundType!, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                        }
+
                         return CandidateApplicability.Inapplicable;
                     }
 
@@ -1038,7 +1153,7 @@ public sealed partial class Binding
                 }
 
                 if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
-                    ScalarTypes.Supports(borrowed.Components[0]) && this.FitsInputLiteral(argument, borrowed.Components[0]))
+                    (ScalarTypes.Supports(borrowed.Components[0]) || this.IsSyntaxPositionType(borrowed.Components[0])) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
                 {
                     // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
                     // its Place Origin binds the parameter's input Origin like any other borrowed temporary.
@@ -1051,8 +1166,13 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.FitsInputLiteral(argument, type))
+                if (!this.FitsInputLiteral(argument, type, scope))
                 {
+                    if (this.LiteralDefault(argument) is { } literalType && DifferentRangeShapes(literalType, type))
+                    {
+                        operations[i] = new(call.ArgumentNodes[i], literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                    }
+
                     return CandidateApplicability.Inapplicable;
                 }
 
@@ -1070,9 +1190,20 @@ public sealed partial class Binding
 
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
-                if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsTypeAt(adapted, type, call)))
+                if (argument.BoundType is { } actual)
                 {
-                    return CandidateApplicability.Inapplicable;
+                    var fits = this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind, holdCopy: holdCopy);
+                    var plan = this.argumentAcquisition;
+                    if (!fits || !this.FitsTypeAt(adapted, type, call))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+
+                    if (holdCopy)
+                    {
+                        plans[i] = plan;
+                        copyUnproven |= plan == ArgumentAcquisition.Copy && !this.HeldCopyProven(i, adapted, argument, proofTypes, proven);
+                    }
                 }
 
                 operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
@@ -1159,7 +1290,7 @@ public sealed partial class Binding
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
         return proof switch
         {
-            ConstraintProof.Proven => CandidateApplicability.Applicable,
+            ConstraintProof.Proven => copyUnproven ? CandidateApplicability.CopyUnproven : CandidateApplicability.Applicable,
             ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
@@ -1206,7 +1337,7 @@ public sealed partial class Binding
             }
 
             pattern = this.ContractType(memberPattern, scope, self);
-            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver))
+            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver, holdCopy: holdCopy && !receiver))
             {
                 return false;
             }
@@ -1298,11 +1429,26 @@ public sealed partial class Binding
                 this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins);
         }
 
+        // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
+        // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
+        if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
+        {
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins);
+        }
+
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
         {
             if ((uint)slot >= (uint)arguments.Length)
             {
                 return false;
+            }
+
+            // SPEC 10.2.1: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
+            // argument is then value-read.
+            if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, function))
+            {
+                actual = referent;
             }
 
             if (arguments[slot] is { } previous)

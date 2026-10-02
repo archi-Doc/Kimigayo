@@ -127,7 +127,7 @@ public sealed partial class Binding
             source.GetArgumentLabel(0) is not null || source.GetArgumentLabel(1) is not null ||
             source.ArgumentNodes[1] is not (StringLiteralKoto or InterpolatedStringKoto))
         {
-            return Fail(syntax, BindingFailure.Unsupported);
+            return this.Fail(syntax, BindingFailure.Unsupported);
         }
 
         var actual = this.BindNode(source.ArgumentNodes[0], scope);
@@ -139,7 +139,7 @@ public sealed partial class Binding
 
         if (writerType?.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer)
         {
-            return Fail(syntax, BindingFailure.TypeMismatch);
+            return this.Fail(syntax, BindingFailure.TypeMismatch);
         }
 
         var plan = BoundFormatting.Begin(syntax);

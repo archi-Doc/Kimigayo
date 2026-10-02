@@ -101,14 +101,14 @@ public class CharLiteralParseTest
     [InlineData("'\u2028'")]
     [InlineData("'\u2029'")]
     public void RejectsMalformedLiteralDuringParsing(string literal)
-        => Assert.NotEmpty(Parse("let value = " + literal).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse("let value = " + literal)));
 
     [Fact]
     public void RequiresEscapesForEveryControlCodePoint()
     {
         foreach (var scalar in Enumerable.Range(0, 32).Concat(Enumerable.Range(0x7F, 33)))
         {
-            Assert.NotEmpty(Parse("let value = '" + (char)scalar + "'").DiagnosticCollection.GetArray());
+            Assert.NotEmpty(TestDiagnostics.Of(Parse("let value = '" + (char)scalar + "'")));
             AssertValid(Parse($"let value = '\\u({scalar:X})'"));
         }
     }
@@ -121,9 +121,9 @@ public class CharLiteralParseTest
     {
         // Only LF, CRLF, and CR are physical line endings (SPEC 2.2); other excluded scalars are content errors (SPEC 2.8.1).
         var parsed = Parse("let value = '" + (char)scalar + "'\nlet next = '😀'");
-        var diagnostics = parsed.DiagnosticCollection.GetArray();
-        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.InvalidCharLiteral_Kd));
-        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.MissingCharLiteralEnd_Kd));
+        var diagnostics = TestDiagnostics.Of(parsed);
+        Assert.Contains(diagnostics, x => x.Code == nameof(DiagnosticCode.InvalidCharLiteral_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Code == nameof(DiagnosticCode.MissingCharLiteralEnd_Kd));
         var last = Assert.IsType<FieldKoto>(parsed.GeneratedFunction!.Body!.Items.Last());
         Assert.Equal(0x1F600, Assert.IsType<CharLiteralKoto>(last.InitializerKoto).Value!.Value.Value);
     }
@@ -136,7 +136,7 @@ public class CharLiteralParseTest
     public void UnterminatedLiteralDoesNotConsumeNextDeclaration(string broken)
     {
         var parsed = Parse("let bad = " + broken + "let next = '😀'");
-        Assert.Contains(parsed.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.MissingCharLiteralEnd_Kd));
+        Assert.Contains(TestDiagnostics.Of(parsed), x => x.Code == nameof(DiagnosticCode.MissingCharLiteralEnd_Kd));
         var last = Assert.IsType<FieldKoto>(parsed.GeneratedFunction!.Body!.Items.Last());
         Assert.Equal(0x1F600, Assert.IsType<CharLiteralKoto>(last.InitializerKoto).Value!.Value.Value);
     }
@@ -168,7 +168,7 @@ public class CharLiteralParseTest
         Assert.True(TokenKind.Char.IsPrimitiveType());
         Assert.Equal("char", TokenKind.Char.ToText());
         AssertValid(Parse("func f() -> char\n    return'😀'"));
-        Assert.NotEmpty(Parse("let char = 'A'").DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(Parse("let char = 'A'")));
     }
 
     [Fact]

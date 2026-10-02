@@ -15,7 +15,7 @@ public class OriginSyntaxRevisionTest
     public void EmbeddedLibraryUsesCurrentOriginSyntax()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1");
-        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Library.Kotonoha.DiagnosticCollection.GetArray().Select(x => $"{x.SourceDocument?.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
     }
 
     [Theory]
@@ -66,7 +66,7 @@ public class OriginSyntaxRevisionTest
     [InlineData("func f {a, b}(value: View<i32>{a, b}) => ()")]
     [InlineData("func f {a}(value: View<i32>{a}{a}) => ()")]
     public void RejectsOldAndWrongRoleSyntax(string declaration)
-        => Assert.NotEmpty(ParseTestHelper.Parse(View + declaration).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(View + declaration)));
 
     [Theory]
     [InlineData("struct S\n    init(! value: ref/i32 during a) => ()")]
@@ -83,7 +83,7 @@ public class OriginSyntaxRevisionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
 
@@ -111,7 +111,7 @@ public class OriginSyntaxRevisionTest
         var implementation = implementationStatic ? "\n        origin value.source == static" : string.Empty;
         var source = View + $"contract C\n    func inspect(self, value: View<i32>) -> (){required}\nstruct S\n    Self is C\n    public func inspect(self, value: View<i32>) -> (){implementation}\n        ()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
@@ -147,6 +147,7 @@ public class OriginSyntaxRevisionTest
         ScalarEmissionTest.EmitFixture("AnonymousOriginSpecialization", Source, string.Empty);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AnonymousAggregateBorrowExecutesAndKeepsItsLoan()
     {

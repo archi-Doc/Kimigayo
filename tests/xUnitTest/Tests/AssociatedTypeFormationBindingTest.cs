@@ -12,11 +12,11 @@ public class AssociatedTypeFormationBindingTest
     [InlineData("Box<string>")]
     [InlineData("(Box<string>, i32)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("(unsafe/Box<string>, i32)")]
+    [InlineData("(raw/Box<string>, i32)")]
     public void InvalidAssociatedDefinitionCannotCertifyConformance(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + type);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
@@ -47,7 +47,7 @@ public class AssociatedTypeFormationBindingTest
     public void FixedInheritedAndConditionalDefinitionsValidateFormation(string declaration)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\n" + declaration);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
     }
@@ -90,6 +90,7 @@ public class AssociatedTypeFormationBindingTest
         Assert.True(definition.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAssociatedFormationChecksAllocateNothing()
     {

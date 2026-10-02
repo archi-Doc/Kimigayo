@@ -45,9 +45,5 @@ public sealed class EnumKoto : DeclarationContainerKoto
     public override void Parse(ref TokenReader reader)
     {
         this.ParseMembers(ref reader, true, false);
-        if (this.Members.Count == 0)
-        {
-            this.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-        }
     }
 }

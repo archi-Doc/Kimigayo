@@ -9,4 +9,4 @@ public func toString<T>(value: ref/T) -> string
     T is Utf8Format
 public func tryFormat<T, length N>(value: ref/T, destination: uniq/[N of u8]) -> Result<Utf8Slice during destination, BufferFull>
     T is Utf8Format
-private func release(data: unsafe/u8)
+private func release(data: raw/u8)

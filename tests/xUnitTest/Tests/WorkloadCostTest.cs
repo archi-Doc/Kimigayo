@@ -16,12 +16,14 @@ public class WorkloadCostTest
     // Observed 2026-09-27: the order Array's growth and the category totals Dictionary; nothing else reaches the heap.
     private const int Bound = 3;
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ProcessingWorkloadAllocationsAreBounded()
         => WriteWorkload("WorkloadCostProcessing", Program(), Expected, Bound);
 
     // The workload's functions over N generated orders: the allocations grow with the Array's geometric growth only, so they stay
     // logarithmic in N while the processing is linear (the Dictionary holds three categories).
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(64)]
     [InlineData(1024)]

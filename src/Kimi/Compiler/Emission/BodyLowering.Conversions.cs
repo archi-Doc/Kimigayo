@@ -8,12 +8,26 @@ internal sealed partial class BodyLowering
     private int[] conversionIndices = [];
     private int[] physicalValues = [];
 
+    // SPEC 4.6.8: positions resolved at compile time. A folded value is an isize constant that its consumers read in place of
+    // the operation, which emits nothing.
+    private bool[] folded = [];
+    private Int128[] foldedValues = [];
+
+    // SPEC 13.5.4.3: a wrapping conversion keeps the low bits or extends by the operand's signedness, without a check.
+    internal static ConversionPlan PlanWrap(BoundType source, BoundType target, int pointerWidth)
+    {
+        var sourceWidth = ScalarTypes.Width(source, pointerWidth);
+        var targetWidth = ScalarTypes.Width(target, pointerWidth);
+        return new(sourceWidth == targetWidth ? null : sourceWidth > targetWidth ? "trunc" : ScalarTypes.Signed(source) ? "sext" : "zext", null, null, 0, 0);
+    }
+
     internal static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
     {
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
         {
-            // SPEC 5.4-5.5: one address space and a usize-wide address, so pointer casts keep the value.
-            return ReferenceTypes.IsPointer(source) == ReferenceTypes.IsPointer(target) ? default : new(ReferenceTypes.IsPointer(source) ? "ptrtoint" : "inttoptr", null, null, 0, 0);
+            // SPEC 5.4-5.5: one address space and a usize-wide address, so pointer casts, and the address of a borrow, keep the value.
+            var address = ReferenceTypes.IsPointer(source) || ReferenceTypes.IsReference(source);
+            return address == ReferenceTypes.IsPointer(target) ? default : new(address ? "ptrtoint" : "inttoptr", null, null, 0, 0);
         }
 
         if (FloatingTypes.Supports(source))
@@ -71,20 +85,40 @@ internal sealed partial class BodyLowering
     // Semantic aliases remain separate: a conversion's Type and dominance identity
     // are checked before resolving the physical bits used by every IR consumer.
     private EmissionOperand PhysicalOperand(OwnershipBody body, int id)
-        => this.referenceRoots[id] >= 0 && ReferenceTypes.IsString(ValueType(body, id))
-            ? this.ReferenceOperand(body, id) : Operand(body, this.physicalValues[id]);
+        => this.folded[id] ? new(EmissionOperandKind.Integer, this.foldedValues[id]) :
+            this.referenceRoots[id] >= 0 && ReferenceTypes.IsString(ValueType(body, id)) ? this.ReferenceOperand(body, id) : Operand(body, this.physicalValues[id]);
+
+    // Records that the value `id` is the isize constant `value`.
+    private void Fold(int id, Int128 value)
+    {
+        this.folded[id] = true;
+        this.foldedValues[id] = value;
+    }
 
     private void PrepareConversions(OwnershipBody body)
     {
         var count = body.Values.Count;
         Grow(ref this.physicalValues, count);
+        Grow(ref this.folded, count);
+        Grow(ref this.foldedValues, count);
+        this.folded.AsSpan(0, count).Clear();
         this.conversions.Clear();
 
         for (var id = 0; id < count; id++)
         {
             var kind = body.Values[id].Kind;
-            var plan = kind == OwnershipValueKind.Convert
-                ? PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth) : default;
+            var plan = kind != OwnershipValueKind.Convert ? default
+                : body.Values[id].Constant == OwnershipValue.WrapConversion ? PlanWrap(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth)
+                : body.Values[id].Constant == OwnershipValue.BitConversion ? new("bitcast", null, null, 0, 0) // SPEC 13.5.4.4: the same bits, no check.
+                : body.Values[id].Constant == OwnershipValue.RawPlaceBorrow ? default // SPEC 5.2.2: the address itself.
+                : PlanConversion(ValueType(body, Input(body, id, 0))!, ValueType(body, id)!, this.pointerWidth);
+            if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && plan.Operator is null)
+            {
+                // SPEC 4.6.9: an unsigned position of the same width reinterpreted as isize is negative exactly when isize
+                // cannot hold it, so the bounds check of its use rejects it without a conversion check.
+                plan = default;
+            }
+
             if (kind == OwnershipValueKind.Convert)
             {
                 Grow(ref this.conversionIndices, count);
@@ -92,11 +126,47 @@ internal sealed partial class BodyLowering
                 this.conversions.Add(plan);
             }
 
-            this.checks[id] = ClassifyCheck(body.Values[id], ValueType(body, id), plan);
+            this.checks[id] = this.LiteralOperandCheck(body, id, ClassifyCheck(body.Values[id], ValueType(body, id), plan));
             var input = kind is OwnershipValueKind.Alias or OwnershipValueKind.Convert ? Input(body, id, 0) : -1;
+            if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && (uint)input < (uint)id &&
+                (this.folded[input] ? new EmissionOperand(EmissionOperandKind.Integer, this.foldedValues[input]) : Operand(body, this.physicalValues[input])) is { Kind: EmissionOperandKind.Integer } position)
+            {
+                // SPEC 4.6.9: a literal position is converted at compile time; a value isize cannot hold becomes -1.
+                var limit = this.pointerWidth == 32 ? (Int128)int.MaxValue : long.MaxValue;
+                this.Fold(id, position.Value >= -limit - 1 && position.Value <= limit ? position.Value : -1);
+                this.checks[id] = ArithmeticCheckKind.None;
+                this.physicalValues[id] = id;
+                continue;
+            }
+
             this.physicalValues[id] = (uint)input < (uint)id && ((kind == OwnershipValueKind.Alias && IsScalar(ValueType(body, input))) || (kind == OwnershipValueKind.Convert && plan.Operator is null))
                 ? this.physicalValues[input] : id;
         }
+    }
+
+    // IMPL 21.5.3: a check whose success follows from a literal right operand is not generated even at O0: the zero check of a
+    // literal nonzero divisor, the minimum / -1 check of a quotient by a literal other than -1, and the count check of a literal
+    // in-range shift count. An integer quotient by a literal -1 keeps its minimum check; the writer negates instead of dividing.
+    private ArithmeticCheckKind LiteralOperandCheck(OwnershipBody body, int id, ArithmeticCheckKind check)
+    {
+        if (check is not (ArithmeticCheckKind.Division or ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision or ArithmeticCheckKind.Shift))
+        {
+            return check;
+        }
+
+        var input = Input(body, id, 1);
+        if ((uint)input >= (uint)body.Values.Count || body.Values[Definition(body, input)].Kind != OwnershipValueKind.Constant)
+        {
+            return check;
+        }
+
+        var constant = body.Values[Definition(body, input)].Constant;
+        if (check == ArithmeticCheckKind.Shift)
+        {
+            return constant >= 0 && constant < ScalarTypes.Width(ValueType(body, Input(body, id, 0)), this.pointerWidth) ? ArithmeticCheckKind.None : check;
+        }
+
+        return constant == 0 || (constant == -1 && check == ArithmeticCheckKind.Division) ? check : ArithmeticCheckKind.None;
     }
 
     private bool LowerConversion(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
@@ -104,7 +174,7 @@ internal sealed partial class BodyLowering
         failure = null;
         var plan = this.conversions[this.conversionIndices[id]];
         var check = this.checks[id];
-        if (plan.Operator is null && check == ArithmeticCheckKind.None)
+        if (this.folded[id] || (plan.Operator is null && check == ArithmeticCheckKind.None))
         {
             return true;
         }

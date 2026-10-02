@@ -1,0 +1,21 @@
+# Ranges
+
+Build and run `Ranges.kimi` with the Windows LLVM backend:
+
+```powershell
+kimi build docs/examples/Ranges/Ranges.kimi
+kimi run docs/examples/Ranges/Ranges.kimi
+```
+
+Expected output:
+
+```text
+Sum of 1..=4 is 10.
+Last byte is 255.
+Middle has 3 values.
+Tail starts at 40.
+Resolved range covers 3 positions.
+Window 3..9 is out of range.
+```
+
+Range syntax constructs `Range<S, E>` or `ClosedRange<S, E>` from independently typed boundaries: integers, `^x` from-end positions, or omitted boundaries (`Start`, `End`). Every range selects from a target; only a range whose two boundaries have one integer Type is iterable. `resolve` turns a range into a `ResolvedRange` of validated positions, and `Slice.trySlice` returns `None` for boundaries from external input that are negative, reversed or out of range. See [SPEC §4.6.3](../../spec/04-arrays-indexing-and-slices.md#463-ranges) and [§4.6.4](../../spec/04-arrays-indexing-and-slices.md#464-resolution-evaluation-and-failure).

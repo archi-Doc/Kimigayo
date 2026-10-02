@@ -20,7 +20,10 @@ public class NominalLengthRecoveryTest
         for (var i = 0; i < 3; i++)
         {
             Assert.False(c.Bind().IsComplete);
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidTypeFormation_Kd);
+
+            // The parser reports the slot (SPEC 4.4); the formation failure of the header rests on that Error and is not published again.
+            Assert.Contains(c.Binding.DerivedIssues, node => node.BindingFailure == BindingFailure.InvalidTypeFormation);
+            Assert.DoesNotContain(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidTypeFormation_Kd);
             Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         }
     }

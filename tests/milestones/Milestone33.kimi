@@ -2,7 +2,7 @@
 struct Resource
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit
+    drop
         match self.id
             1 => Console.writeLine("Original resource destroyed.")
             2 => Console.writeLine("Replacement resource destroyed.")
@@ -11,7 +11,7 @@ struct Resource
 open struct Base
     public var baseValue: i32
     protected init(value: i32) => self.baseValue = value
-    deinit => Console.writeLine("Base deinit.")
+    drop => Console.writeLine("Base drop.")
 
 struct Leaf : Base
     let resource: Resource
@@ -19,7 +19,7 @@ struct Leaf : Base
     public init(value: i32, extra: i32, resourceId: i32) : base(value)
         self.resource = Resource.init(resourceId)
         self.extra = extra
-    deinit => Console.writeLine("Leaf deinit.")
+    drop => Console.writeLine("Leaf drop.")
 
 struct Other : Base
     public init() : base(-1) => ()

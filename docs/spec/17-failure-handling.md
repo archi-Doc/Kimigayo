@@ -127,7 +127,7 @@ The normalized outer operand Type must be an owned compiler-recognized Kimi Opti
 
 Only one layer is extracted. The normal result is a value of complete Type T, not a payload Place. Existing borrowed payloads retain permissions, Origins and Loans; try creates no borrow. T and U need not agree. Failure constructs the return target's enum, never reinterprets the original storage. Multiple error Types are not automatically combined; explicitly adapt errors when ordinary fitting cannot return them. `.Some(.None)` continues with the inner None; mixed nested Option/Result does not bypass either try's checks.
 
-**Target and cleanup.** The semantics correspond to a match with ordinary `return .None`/`return .Err(error)` at the same position, without textual duplication or a hidden Closure. Reuse that return's lexical target and barriers; do not search an outer target after a Type mismatch. Functions, Closures and getters have their own targets. Selections, loops, do and unsafe introduce none. Outward transfers forbidden from defer, defaults or verification messages remain forbidden. Main, init, set and deinit have Unit targets; source top-level items have no return target. Separate nested functions keep their own boundaries. Check targets and Types even in unreachable code or for known Some/Ok.
+**Target and cleanup.** The semantics correspond to a match with ordinary `return .None`/`return .Err(error)` at the same position, without textual duplication or a hidden Closure. Reuse that return's lexical target and barriers; do not search an outer target after a Type mismatch. Functions, Closures and getters have their own targets. Selections, loops, do and unsafe introduce none. Outward transfers forbidden from defer, defaults or verification messages remain forbidden. Main, init, set and drop have Unit targets; source top-level items have no return target. Separate nested functions keep their own boundaries. Check targets and Types even in unreachable code or for known Some/Ok.
 
 Secure the successful payload or return value before ordinary temporary and Scope Exit cleanup. Transferred payloads are not destroyed twice; sources retain ordinary Moved states and are not reset to None. Failure during argument or aggregate evaluation skips the remaining evaluation and cleans up acquired parts in ordinary order (§16.2.1). Abort, divergence and other transfers keep their rules, and pending return delivery follows §16.2.3. Returning a borrowed payload cannot let dependencies escape cleanup.
 
@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: integer overflow; invalid integer division or remainder; invalid indices or Range boundaries; invalid conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 
@@ -211,7 +211,7 @@ Abort itself is not a control transfer and produces no [Completion](14-control-f
 
 Once Abort Termination begins, ordinary program execution never resumes and no Scope Exit is performed before the entire process terminates. This rule sets no wall-clock bound on argument evaluation or termination. Abort cannot be caught, recovered from or resumed, and performs no stack unwinding.
 
-If Abort begins during Scope Exit, that processing stops immediately: the remaining Deferred Blocks, automatic destruction, and the rest of an executing Deferred Block or `deinit` do not run. Completed cleanup effects are not rolled back. Pending `return`, `exit`, `continue` and `yield` are abandoned, secured results are not delivered, and no additional cleanup destroys them.
+If Abort begins during Scope Exit, that processing stops immediately: the remaining Deferred Blocks, automatic destruction, and the rest of an executing Deferred Block or `drop` do not run. Completed cleanup effects are not rolled back. Pending `return`, `exit`, `continue` and `yield` are abandoned, secured results are not delivered, and no additional cleanup destroys them.
 
 ```kimi
 func process()
@@ -232,7 +232,7 @@ Failures in required compile-time evaluation are compile-time errors. This adds 
 
 Language-defined static checks, including literal fitting and the exact Dictionary duplicate-key subset of §12.3.4, apply independently of optimization. Outside required constant-evaluation contexts, knowledge obtained only by constant propagation or folding must not turn a specified runtime Abort into a compile-time error, even when the failing value is statically known.
 
-These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above; wrapping or saturating integer arithmetic requires separate explicit library APIs.
+These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above. Arithmetic that wraps instead of Aborting is selected by the wrapping integer Types ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)) and the wrapping conversion `@wrap` (§13.5.4.3), never by a build setting or an enclosing context; saturating arithmetic is not defined.
 
 ## 17.4. Warnings
 
@@ -309,6 +309,24 @@ Use existing Value/Discard Context propagation, including parentheses and branch
 | _ = try save() | Explicit Unit discard | None; discard marker optional |
 
 A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. Fixes target the actual discard site, preserve Body form/Context/ownership, and are not applied automatically.
+
+### 17.4.4. Positions and ranges that always fail
+
+A warning is issued for a position or range built only from literal-only expressions (§12.3.1), `^` applied to one, and omitted boundaries, when its use is certain to fail resolution (§4.6.2, §4.6.4):
+
+- for every length `L`, as for an element position `-1` or `^0`, a closed end `^0` (`..=^0`), or the reversed ranges `2..=1` and `^3..^5`;
+- or, when it indexes a fixed array or is passed to a fixed-array operation, for that array's length `N`, as for `fixed[5..2]`, or `fixed[3]` when `N = 3`.
+
+The judgment evaluates linear inequalities over the literal values and `L` exactly, so every implementation reports the same occurrences independently of optimization. A literal position or range that resolves for some length is not reported, and neither is a value whose Type or boundaries come from other expressions. The warning changes neither Type fitting, execution nor overload choice: an aborting operation still Aborts only when executed (§17.3.4), and a try-prefixed operation returns `None`. The diagnostic should state the failing condition and, for a fixed array, its length.
+
+```kimi
+let fixed: [3 of i32] = [1, 2, 3]
+let a = fixed[3]          // Warning: the element position 3 fails for length 3.
+let b = values[^0]        // Warning: ^0 is never an element position.
+let c = values[2..=1]     // Warning: reversed for every length.
+let d = values[1..^1]     // No warning: resolves when the length is at least 2.
+let e = values.remove(^0) // Warning: an operation's element position is judged the same way.
+```
 
 ## 17.5. Test verification operations
 

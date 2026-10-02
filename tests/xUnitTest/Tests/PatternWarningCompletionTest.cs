@@ -58,6 +58,7 @@ public class PatternWarningCompletionTest
         Assert.Single(c.Binding.PatternWarnings);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmWarningCompletionAllocatesNothing()
     {

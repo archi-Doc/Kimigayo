@@ -120,6 +120,7 @@ public class FloatConversionEmissionTest
         ScalarEmissionTest.WriteFixture("FloatConvertRoundTrip", writer.ToString(), "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFloatConversionPlansAllocateNothing()
     {

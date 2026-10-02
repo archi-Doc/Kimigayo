@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedReborrowTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SharedMatchReborrowsStoredExclusiveReferences()
     {
@@ -24,6 +25,7 @@ public class SharedReborrowTest
         NativeAllocationAudit.WriteFixture("SharedReborrowMatch", Source, 0, 0, 0, "hello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -40,6 +42,7 @@ public class SharedReborrowTest
         NativeAllocationAudit.WriteFixture("SharedReborrowIteration" + dynamic, source, dynamic ? 1 : 0, dynamic ? 1 : 0, dynamic ? 64 : 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -49,7 +52,7 @@ public class SharedReborrowTest
             struct Item
                 public let value: i32
                 public init(value: i32) => self.value = value
-                deinit => Console.writeLine("drop")
+                drop => Console.writeLine("drop")
             var owner = Kimi.Intrinsics.makeObj<Item>(Item.init(42))
             let value = (owner@move, 1)
             match value

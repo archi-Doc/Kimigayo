@@ -61,7 +61,7 @@ public sealed partial class Binding
             var type = this.BindType(syntax, scope);
             if (syntax.BindingState == BindingState.Invalid || type is not { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Symbol.Declaration: StructKoto parent } || (parent.Modifier & ModifierKind.Open) == 0 || !this.Accessible(parent.BoundSymbol!, scope) || !TypeAccessCovers(type, symbol, symbol) || !this.ValidateBaseDeclaration(parent))
             {
-                Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 valid = false;
             }
             else if (valid && !this.ValidateInheritedNames(structure, type, scope))
@@ -73,7 +73,7 @@ public sealed partial class Binding
         this.inheritanceStates[symbol] = valid ? (byte)2 : (byte)3;
         if (!valid)
         {
-            Fail(structure, BindingFailure.InvalidTypeFormation);
+            this.Fail(structure, BindingFailure.InvalidTypeFormation);
         }
 
         return valid;
@@ -85,8 +85,8 @@ public sealed partial class Binding
         {
             if (this.LookupTypeMember(baseType, nested.Name, scope, typeRole: true).Member is not null)
             {
-                Fail(nested, BindingFailure.Duplicate);
-                Fail(structure, BindingFailure.Duplicate);
+                this.Fail(nested, BindingFailure.Duplicate);
+                this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
         }
@@ -108,7 +108,7 @@ public sealed partial class Binding
             // The original derived receiver supplies protected access, including Properties.
             if (this.LookupTypeMember(baseType, entry.Key, scope, this.SelfType(structure.BoundSymbol!)).Member is not null)
             {
-                Fail(structure, BindingFailure.Duplicate);
+                this.Fail(structure, BindingFailure.Duplicate);
                 return false;
             }
         }
@@ -119,6 +119,14 @@ public sealed partial class Binding
     // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.
     private MemberSelection LookupTypeMember(BoundType type, string name, BindingScope use, BoundType? receiver = null, BoundMemberPath? path = null, bool typeRole = false)
     {
+        // SPEC 22.1 (PLAN G32): a fixed array has no declaration; its members are the functions of the Kimi member group.
+        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !typeRole && this.Library.FixedArrayMembers is { } fixedMembers &&
+            this.scopes.TryGetValue(fixedMembers, out var fixedScope))
+        {
+            return fixedScope.Values.TryGetValue(name, out var fixedMember) && this.Accessible(fixedMember, use, receiverType: receiver)
+                ? new(fixedMember, null, path) : new(null, type, path); // Group functions substitute no declaring Type.
+        }
+
         if (type.Symbol is not { } symbol || !this.scopes.TryGetValue(symbol.Declaration, out var scope))
         {
             return default;

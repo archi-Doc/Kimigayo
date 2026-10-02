@@ -23,7 +23,7 @@ public class RefinementNameBindingTest
     public void RefinementParentsAreContractNames(string parent, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
         if (valid)
@@ -45,7 +45,7 @@ public class RefinementNameBindingTest
     public void EmptyGenericListsRemainSyntaxErrors(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
-        Assert.NotEmpty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
     }
@@ -57,11 +57,12 @@ public class RefinementNameBindingTest
     public void MissingNamesDoNotMakeGenericParentsDeferrable(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public group Api\npublic contract Child: " + parent);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmRootQualifiedParentBindingAllocatesNothing()
     {

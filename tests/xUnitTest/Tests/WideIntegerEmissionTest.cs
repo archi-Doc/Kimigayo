@@ -182,6 +182,7 @@ public class WideIntegerEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmWidePlansAndFormattingAllocateNothing()
     {

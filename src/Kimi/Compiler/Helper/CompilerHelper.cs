@@ -58,7 +58,7 @@ public static class CompilerHelper
     /// <returns><see langword="true"/> for reference semantics; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsReference(this SemanticsKind kind)
-        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Unsafe;
+        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Raw;
 
     /// <summary>Parses a built-in semantics name without allocating.</summary>
     /// <param name="text">The semantics name.</param>
@@ -72,10 +72,10 @@ public static class CompilerHelper
             3 when text.SequenceEqual(Constants.RefKeyword) => SemanticsKind.Ref,
             3 when text.SequenceEqual(Constants.ObjKeyword) => SemanticsKind.Obj,
             3 when text.SequenceEqual(Constants.ArcKeyword) => SemanticsKind.Arc,
+            3 when text.SequenceEqual(Constants.RawKeyword) => SemanticsKind.Raw,
             4 when text.SequenceEqual(Constants.UniqKeyword) => SemanticsKind.Uniq,
             5 when text.SequenceEqual(Constants.OwnerKeyword) => SemanticsKind.Owner,
             6 when text.SequenceEqual(Constants.ObjRefKeyword) => SemanticsKind.ObjRef,
-            6 when text.SequenceEqual(Constants.UnsafeKeyword) => SemanticsKind.Unsafe,
             7 when text.SequenceEqual(Constants.ObjUniqKeyword) => SemanticsKind.ObjUniq,
             _ => SemanticsKind.Parameter,
         };
@@ -97,7 +97,7 @@ public static class CompilerHelper
             SemanticsKind.Arc => Constants.ArcKeyword,
             SemanticsKind.ObjRef => Constants.ObjRefKeyword,
             SemanticsKind.ObjUniq => Constants.ObjUniqKeyword,
-            SemanticsKind.Unsafe => Constants.UnsafeKeyword,
+            SemanticsKind.Raw => Constants.RawKeyword,
             _ => string.Empty,
         };
 }

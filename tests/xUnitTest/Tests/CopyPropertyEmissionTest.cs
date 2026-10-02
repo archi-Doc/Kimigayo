@@ -17,9 +17,22 @@ public class CopyPropertyEmissionTest
         => ScalarEmissionTest.EmitFixture("CopyPropertyProjection" + name, "struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct S\n    public var point: Point = Point.init()\n        get() -> Point\n            Console.writeLine(\"get\")\n            var result = storage\n            result.x = 9\n            return result\n" + body, "get\n");
 
     [Fact]
-    public void CompoundRightSideCanInspectReceiverAfterGetterReturns()
+    public void CompoundRightSideCanInspectReceiverBeforeTheUpdate()
         => ScalarEmissionTest.EmitFixture("CopyPropertyCompoundInspect", Meter + "var m = Meter.init()\nm.level += m.level\nrequire m.level == 6 else => $abort(\"value\")", "get\nget\nset\nget\n");
 
+    [Theory]
+    [InlineData("Owned", "var m = Meter.init()\nm.level += input(m@uniq)")]
+    [InlineData("Borrowed", "func update(m: uniq/Meter) => m.level += input(m)\nvar m = Meter.init()\nupdate(m@uniq)")]
+    public void CompoundInputRunsBeforeTheGetterAndMayReplaceItsValue(string name, string update)
+        => ScalarEmissionTest.EmitFixture("CopyPropertyCompoundInput" + name, Meter + "func input(m: uniq/Meter) -> i32\n    Console.writeLine(\"input\")\n    m.level = 10\n    return 2\n" + update + "\nrequire m.level == 12 else => $abort(\"updated value\")", "input\nset\nget\nset\nget\n");
+
+    [Theory]
+    [InlineData("Owned", "func test() -> i32\n    var m = Meter.init()\n    m.level += do\n        return 5\nrequire test() == 5 else => $abort(\"result\")", "")]
+    [InlineData("Borrowed", "func test(m: uniq/Meter) -> i32\n    m.level += do\n        return 5\nvar m = Meter.init()\nrequire test(m@uniq) == 5 and m.level == 3 else => $abort(\"result\")", "get\n")]
+    public void AbruptCompoundInputDoesNotCallTheGetterOrSetter(string name, string source, string output)
+        => ScalarEmissionTest.EmitFixture("CopyPropertyCompoundAbrupt" + name, Meter + source, output);
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCopyAccessorPipelineAllocatesNothing()
     {

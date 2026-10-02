@@ -11,6 +11,7 @@ public class Utf8TryWriteTest
     private const string Setup = "var bytes = [64 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)\nvar writer = Text.writer(buffer@uniq)\n";
     private const string Print = "match buffer.text()@move\n    .Ok(let text) => Console.writeLine(text)\n    .Err(_) => $abort(\"utf8\")\n";
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Plain", "\"abc\"", "abc\n")]
     [InlineData("Empty", "\"\"", "\n")]
@@ -36,7 +37,7 @@ public class Utf8TryWriteTest
     [Theory]
     [InlineData("buffer.length")]
     [InlineData("bytes[0]")]
-    [InlineData("read: do\n    _ = writer.status()\n    exit to read: 1@i32")]
+    [InlineData("label read: do\n    _ = writer.status()\n    exit to read 1@i32")]
     public void RootBorrowIsActiveBeforeTheFirstEmbeddedExpression(string expression)
     {
         var c = MinimalEmissionTest.Analyze(Setup + "_ = $tryWrite(writer@uniq, \"\\(" + expression + ")\")");
@@ -44,6 +45,7 @@ public class Utf8TryWriteTest
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void FailureSkipsLaterEvaluationAndRetainsTheWrittenPrefix()
     {
@@ -61,6 +63,7 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteFailure", Source + "\n" + Print, 0, 0, 0, "a\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowedWriterAndUserFormatterReuseTheSameRoot()
     {
@@ -77,6 +80,7 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteNested", Prefix + "\n" + Setup + "_ = append(writer@uniq, Value.init())\n" + Print, 0, 0, 0, "[v=42]\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmbeddedReturnTargetsTheOriginalFunction()
     {
@@ -108,13 +112,14 @@ public class Utf8TryWriteTest
     {
         var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(42)\")");
         var warnings = c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings;
-        Assert.Contains(warnings, x => x.Message.Contains("$tryWrite", StringComparison.Ordinal));
+        Assert.Contains(warnings, x => x.Code == DiagnosticCode.OwningWriteArgument_Kd);
         Assert.Equal(2, warnings.Count);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Exit", "work: do", "exit to work: 7")]
-    [InlineData("Yield", "work: if true", "yield to work: 7")]
+    [InlineData("Exit", "label work: do", "exit to work 7")]
+    [InlineData("Yield", "label work: if true", "yield to work 7")]
     public void EmbeddedTransferKeepsItsEnclosingTarget(string name, string boundary, string transfer)
     {
         var source = Setup + "let value: i32 = " + boundary + "\n    _ = $tryWrite(writer@uniq, \"a\\(do => " + transfer + ")b\")\n    " + transfer +
@@ -130,7 +135,7 @@ public class Utf8TryWriteTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, Setup + use);
-        Assert.Contains(c.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.ExpectedSyntax_Kd));
     }
 
     [Fact]
@@ -140,6 +145,7 @@ public class Utf8TryWriteTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowedWriterExpressionEvaluatesOnce()
     {
@@ -155,6 +161,7 @@ public class Utf8TryWriteTest
         NativeAllocationAudit.WriteFixture("Utf8TryWriteAcquire", source, 0, 0, 0, "acquire\n42true\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RootPreservesOuterPendingLiteralAndCapacityHint()
     {

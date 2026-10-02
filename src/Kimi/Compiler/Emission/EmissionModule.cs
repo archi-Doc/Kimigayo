@@ -92,6 +92,10 @@ internal enum EmissionOperandKind : byte
     /// <summary>The UTF-8 byte length of a pooled constant.</summary>
     ConstantLength,
 
+    /// <summary>The current standard source entry's forwarded diagnostic context.</summary>
+    CallerLocation,
+    CallerLocationLength,
+
     /// <summary>An integer of the parameter's ABI Type.</summary>
     Integer,
 
@@ -117,12 +121,18 @@ internal enum ArithmeticCheckKind : byte
 {
     None,
     Overflow,
+
+    /// <summary>Signed quotient: a zero divisor and the minimum / −1 pair Abort.</summary>
     Division,
-    UnsignedDivision,
+
+    /// <summary>Unsigned quotient, or any remainder: only a zero divisor Aborts; a signed remainder by −1 is 0 (SPEC 13.3).</summary>
+    DivisionZero,
+
+    /// <summary>Signed quotient of a wrapping integer Type: only a zero divisor Aborts, and the minimum / −1 wraps to the minimum.</summary>
+    WrappingDivision,
     Shift,
     Conversion,
     Bounds,
-    MissingKey,
     Argument,
     FloatingConversion,
 }
@@ -238,9 +248,13 @@ internal sealed class EmissionModule
 
     internal bool NeedsDictionaryRuntime { get; set; }
 
-    internal FunctionAbi? DictionaryUnlink { get; set; }
-
     internal FunctionAbi? DictionaryAppendSlot { get; set; }
+
+    internal FunctionAbi? DictionaryRequireAbsent { get; set; }
+
+    internal FunctionAbi? DictionaryReserveStorage { get; set; }
+
+    internal FunctionAbi? DictionaryAppend { get; set; }
 
     internal FunctionAbi? DictionaryInitialize { get; set; }
 
@@ -268,6 +282,8 @@ internal sealed class EmissionModule
     /// <summary>Gets the foreign functions (SPEC 22.3), one per external symbol; each call shares its physical signature.</summary>
     internal List<ExternalFunction> Externals { get; } = new();
 
+    internal List<StaticScalarEntry> Statics { get; } = new();
+
     internal bool IsComplete { get; private set; }
 
     internal string? TestRuntime { get; set; }
@@ -291,8 +307,10 @@ internal sealed class EmissionModule
         this.DictionaryHelpers.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
-        this.DictionaryUnlink = null;
         this.DictionaryAppendSlot = null;
+        this.DictionaryRequireAbsent = null;
+        this.DictionaryReserveStorage = null;
+        this.DictionaryAppend = null;
         this.DictionaryInitialize = null;
         this.DictionaryClearLinks = null;
         this.DictionaryFind = null;
@@ -305,6 +323,7 @@ internal sealed class EmissionModule
         this.Objects.Clear();
         this.NeedsObjectRuntime = false;
         this.Externals.Clear();
+        this.Statics.Clear();
     }
 
     internal EmissionFunction AddFunction(FunctionAbi abi, bool exported)
@@ -349,35 +368,49 @@ internal enum ArrayHelperKind : byte
 {
     Append,
     Insert,
-    InsertIndex,
     Pop,
     Remove,
-    RemoveIndex,
     Place,
     Clear,
     Drop,
-    Take,
-    IteratorDrop,
     Swap,
 
     // SPEC 22.1.2.5: the storage boundary over an Array handle and its remainder records.
     BorrowStorage,
     OwnStorage,
+
+    // PLAN G33: a consumed fixed array moves into the inline storage of its owning remainder.
+    OwnFixedStorage,
 }
 
 /// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null);
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null)
+{
+    /// <summary>Gets a value indicating whether the element has no bytes (Unit or a zero-sized aggregate); its helpers take
+    /// no value or result pointer, because zero-sized values have no slot.</summary>
+    internal bool ElementIsZeroSized => this.Element.Layout.Size == 0;
+
+    /// <summary>Gets a value indicating whether the element travels as a scalar value rather than through a slot.</summary>
+    internal bool ElementIsScalar => this.ElementLayout is null && !this.ElementIsString && !this.ElementIsZeroSized;
+}
 
 internal enum DictionaryHelperKind : byte
 {
+    CheckKey,
+    Place,
     Find,
-    TryInsert,
-    InsertOrReplace,
-    Remove,
-    TryGet,
     Clear,
     Drop,
 }
 
 /// <summary>Physical Dictionary entry helper; bound Types and Origins never escape lowering.</summary>
 internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, AggregateLayout? Result, FunctionAbi? Related);
+
+// SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
+internal static class SliceShape
+{
+    internal const long EndOmitted = 1;
+    internal const long StartFromEnd = 2;
+    internal const long EndFromEnd = 4;
+    internal const long Closed = 8;
+}

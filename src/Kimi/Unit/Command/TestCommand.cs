@@ -325,7 +325,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 file.Flush(true);
             }
 
-            File.Move(temporary, Path.Combine(runDirectory!, "result.json"), true);
+            ArtifactFiles.Replace(temporary, Path.Combine(runDirectory!, "result.json"));
         }
 
         void WriteJson(Stream destination)

@@ -33,7 +33,7 @@ Kimigayo is a pre-alpha programming language for AI, with a C# compiler, a core 
 | `draft/` | Proposals. Integrated proposals remain frozen. |
 | `.github/` | CI and package publishing workflows. |
 | `.vscode/` | Shared VS Code tasks and extension debugging configuration. |
-| `toolchain/` | Locally installed LLVM tools and the verified native backend library. |
+| `toolchain/` | Locally installed LLVM tools, backend and shared kernel32 import library. |
 | `temp/` | Disposable scripts, shared fixtures and intermediate build or test files. |
 | `artifacts/` | Retained verification evidence, measurements and distribution packages. |
 
@@ -189,19 +189,26 @@ For building Kimi applications (`kimi build`), include:
 
 ```text
 toolchain/
+  clang.exe
   opt.exe
   llc.exe
   lld-link.exe
   llvm-nm.exe
   llvm-readobj.exe
   llvm-dlltool.exe
+  llvm-lib.exe
+  llvm-objdump.exe
   <supporting LLVM DLLs, if required>
+  installation.json
   windows_x64/
     kimi_backend_windows_x64_v1.lib
+    kernel32.def
+    kernel32.lib
+    kernel32.json
 ```
 
-To also build the native backend library, add `clang.exe`, `llvm-lib.exe`, and
-`llvm-objdump.exe` to `toolchain/`. No Windows SDK or extra Clang headers are required.
+Setup and explicit verification use the complete tool set above. Ordinary builds
+need only the build tools and installed libraries. No Windows SDK or extra Clang headers are required.
 The backend archive and `llvm-dlltool.exe` must match the hashes in `profile.json`.
 
 From the repository root, copy the tools and supporting DLLs from an existing LLVM
@@ -212,6 +219,8 @@ installation, then build, test, and install the backend library with:
 ```
 
 To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
+Setup also installs `windows_x64/kernel32.lib` and its generation metadata. Ordinary builds reuse it without tool identity probes or regeneration; a missing library requires setup. To recheck an installation, run `kimi toolchain verify`.
+
 Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain.
 
 ### Toolchain path resolution
@@ -253,7 +262,7 @@ It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes t
 `artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled.
 Both build scripts resolve paths from their own location and stop on command failures.
 
-Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. Use the verification script for changes; a direct `dotnet build` is not verification evidence.
+Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. During edits, use an incremental test-project build and selected methods for feedback. Use the verification script at Unit completion; a direct `dotnet build` is not completion evidence. Unit builds Kimi + tests, while Session builds the whole solution. See [the verification workflow](docs/dev/VERIFICATION.md) for commands and the three test purposes.
 
 ```powershell
 # Focused verification for one change.
@@ -262,11 +271,19 @@ Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout 
 # Include the related native fixtures and milestone when needed.
 ./scripts/verify.ps1 -Class XunitTest.ContainerNestingTest -Fixtures 'ContainerNestingExample.ll' -Milestone 1
 
-# Once at session end: Debug and Release builds and all managed tests.
+# Once at session end: Release build and all managed tests.
 ./scripts/verify.ps1 -Mode Session
+
+# Debug is opt-in in either mode.
+./scripts/verify.ps1 -Configuration Debug -Class XunitTest.ToolchainResolverTest
+./scripts/verify.ps1 -Mode Session -Configuration Debug
 ```
 
-Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain. NativeAOT tests are separate and are not run by these commands.
+Milestones use only original checked-in programs, building and directly executing each once at O0 and O2. Dedicated feature tests cover variants/rejections; CLI tests cover `run` and `--no-build`. Toolchain identity is checked at setup/update or by `kimi toolchain verify` (`--Report <path>` saves evidence). Add `-VerifyToolchain` to run it once before tests; ordinary verification records it as not performed.
+
+Both modes default to Release and use one compiler configuration for the build, tests, fixtures and milestone harnesses. Add `-Fixtures` and `-Milestone` to a session run for the native checks relevant to the change. These checks require the LLVM toolchain and retain O0/O2 coverage regardless of the compiler configuration. NativeAOT tests are separate and are not run by these commands.
+
+Functional and allocation/reuse regressions both run in every Session. Unit defaults to both; `-TestPurpose Functional` or `Allocation` narrows a focused check. Timing measurements live in Benchmark and run explicitly. Native fixtures run up to four at a time (`-NativeParallel 1` for serial execution), retaining per-fixture logs and completed O0/O2 results.
 
 LSP tests require directory-listing access from the OS temporary directory through every
 ancestor to the filesystem root: project discovery must distinguish an unreadable directory
@@ -307,12 +324,11 @@ The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check
 
    ```json
    {
-     "kimi.serverPath": "C:/path/to/Kimigayo/src/Kimi/bin/Release/net10.0/Kimi.exe",
-     "kimi.runBuilds": true
+     "kimi.serverPath": "C:/path/to/Kimigayo/src/Kimi/bin/Release/net10.0/Kimi.exe"
    }
    ```
 
-   Current Kimi builds sources in `run`, so enable `kimi.runBuilds` to avoid a separate build. Leave it `false` only for older executables whose `run` requires an existing build.
+   Current Kimi builds sources in `run`. The default `kimi.runBuilds: true` invokes it once, avoiding a duplicate build. Set this option to `false` only for older executables whose `run` requires an existing build. If you previously set it to `false`, remove that override or enable it when using current Kimi.
 
 4. Open a trusted source folder and a saved `.kimi` or `.kimiproj`. Press **Ctrl+F5** or **F1 > Kimi: Build and Run**. If asked, choose **Kimi (Run Without Debugging)**. An unambiguous target runs without a picker; `.kimiproj` is optional. Diagnostics appear in the editor and Problems panel.
 
@@ -338,7 +354,7 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 ### Settings and troubleshooting
 
 - **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and server errors offer **Open Settings** and **Show Output** once per unchanged setting during an extension session, shared by diagnostics and build/run/check commands. Repeated failures remain in the **Kimi** Output channel. Changing the setting allows a new notification and restarts the server; **Kimi: Restart Language Server** retries the same setting without repeating the popup. A failed connection does not automatically restart in a loop.
-- **`kimi.runBuilds`**: enable for current Kimi. The compatibility default is `false`, which uses `build` then `run` for Build and Run and leaves Run's behavior to the executable.
+- **`kimi.runBuilds`**: `true` by default for current Kimi; Run and Build and Run save inputs and invoke `run` once. Set `false` only for older run-only executables: Build and Run uses `build` then `run`, while Run invokes `run` without saving inputs.
 - **`kimi.trace.server`**: `off` (default), `messages`, or `verbose`; see the **Kimi** Output channel.
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.
@@ -354,6 +370,7 @@ The `vsce` 4.0.0 message that `extension.js` is **large** means that this one fi
 Run from the repository root:
 
 ```powershell
+npm --prefix src/kimi-ext ci
 npm --prefix src/kimi-ext test
 $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe).Path
 npm --prefix src/kimi-ext run test:integration
@@ -363,4 +380,4 @@ Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to
 
 The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 
-Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once, update `src/kimi-ext/CHANGELOG.md`, test and package. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](AGENTS.md#vs-code-extension-srckimi-ext).
+Edit this README section and the root `LICENSE`; packaging generates ignored copies under `src/kimi-ext/`. For a new release, run `npm --prefix src/kimi-ext run version:patch` once (updates the package and lockfile without a Git tag), update `src/kimi-ext/CHANGELOG.md`, test and package with `npm --prefix src/kimi-ext run package`. Only the final number increments automatically; major/minor changes require explicit user instruction. See [maintenance rules](src/kimi-ext/AGENTS.md).

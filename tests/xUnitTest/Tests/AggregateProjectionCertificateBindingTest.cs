@@ -18,7 +18,7 @@ public class AggregateProjectionCertificateBindingTest
     public void LateInvalidWitnessCannotCertifyAggregate(int form, bool reverse)
     {
         var c = MinimalEmissionTest.Analyze(Source(form, reverse, "internal"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         CheckConstruction(c, form, false);
@@ -78,13 +78,14 @@ public class AggregateProjectionCertificateBindingTest
     public void InvalidProjectedBasePropagatesToDescendants(int form)
     {
         var c = MinimalEmissionTest.Analyze(Source(form, false, "internal").Replace("struct S:", "open struct S:", StringComparison.Ordinal) + "contract D\nstruct Child: S\n    Self is D");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "D");
         Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -14,21 +14,21 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 {
     [Theory]
     [InlineData("/// d\ngroup G")]
-    [InlineData("/// d\nstruct S {}")]
+    [InlineData("/// d\nstruct S")]
     [InlineData("/// d\nenum E\n    A")]
     [InlineData("/// d\ncontract C")]
     [InlineData("/// d\npublic func main() => ()")]
     [InlineData("/// d\n#Test func f() => ()")]
-    [InlineData("struct S {}\n    /// d\n    init() => ()")]
-    [InlineData("struct S {}\n    /// d\n    deinit => ()")]
+    [InlineData("struct S\n    /// d\n    init() => ()")]
+    [InlineData("struct S\n    /// d\n    drop => ()")]
     [InlineData("contract C\n    /// d\n    func f(self)")]
     [InlineData("contract C\n    /// d\n    property value: i32 has get")]
-    [InlineData("struct S {}\n    /// d\n    var value: i32 = 0")]
+    [InlineData("struct S\n    /// d\n    var value: i32 = 0")]
     [InlineData("group G\n    /// d\n    computed value: i32\n        get() -> i32 => 0")]
     [InlineData("func f()\n    /// d\n    let value = 0")]
     [InlineData("enum E\n    /// d\n    A(i32)")]
     [InlineData("contract C\n    /// d\n    associate Item")]
-    [InlineData("struct S {}\n    /// d\n    associate C.Item is i32")]
+    [InlineData("struct S\n    /// d\n    associate C.Item is i32")]
     [InlineData("/// d\nspecialize func f<i32>(value: i32) => ()")]
     public void CoversEveryDeclarationTarget(string source)
     {
@@ -45,7 +45,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void SelectsSwitchArmsAndNestedExclusions()
     {
-        var tree = DocumentationCommentTest.Parse("#switch\n    #case false\n        /// other\n        func a() => ()\n    #case true\n        #if false\n            /// excluded\n            let broken =\n        /// chosen\n        func b() => ()\n    #case _\n        /// fallback\n        func c() => ()\n/// after\nfunc d() => ()");
+        var tree = DocumentationCommentTest.Parse("#switch\n    #case false\n        /// other\n        func a() => ()\n    #case true\n        #if false\n            /// excluded\n            let excluded = 1\n        /// chosen\n        func b() => ()\n    #case _\n        /// fallback\n        func c() => ()\n/// after\nfunc d() => ()");
         var docs = Assert.Single(tree.DocumentationSources);
         Assert.Equal(new[] { "chosen", "after" }, docs.Comments.Where(x => x.IsSelected && x.Declaration is not null).Select(x => x.GetText().Text));
         Assert.Empty(docs.GetDiagnostics());
@@ -67,10 +67,10 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         c.CollectDocumentation = true;
         var tree = c.Kotonoha;
         var context = tree.CreateCodeContext();
-        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", "/// z\npublic struct S {}"));
-        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated2\npublic struct S {}"), "b", 2);
-        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", "/// a\npublic struct S {}"));
-        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated1\npublic struct S {}"), "b", 1);
+        context.Parse(tree.RootKoto, new SourceDocument("z.kimi", "/// z\npublic struct S"));
+        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated2\npublic struct S"), "b", 2);
+        context.Parse(tree.RootKoto, new SourceDocument("a.kimi", "/// a\npublic struct S"));
+        context.Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated1\npublic struct S"), "b", 1);
         ParseTestHelper.AssertValid(tree);
         Assert.True(c.Bind().IsComplete);
         var target = tree.DocumentationSources.First().Comments[0].Declaration!;
@@ -81,7 +81,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void UsesOriginalSpecializationContractAndEffectiveAccess()
     {
-        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden {}\n    /// private container\n    public func f() => ()");
+        var tree = DocumentationCommentTest.Parse("/// original\npublic func weight<T>(value: ref/T) -> i32 => 1\n/// implementation\nspecialize func weight<i32>(value: ref/i32) -> i32 => 2\nstruct Hidden\n    /// private container\n    public func f() => ()");
         var c = tree.RootKoto.CodeContext.Compilation;
         Assert.True(c.Bind().IsComplete);
         var comments = Assert.Single(tree.DocumentationSources).Comments;
@@ -109,7 +109,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void AssociatedSpecificationsDoNotCopyRequirementDocumentation()
     {
-        var tree = DocumentationCommentTest.Parse("public contract C\n    /// requirement\n    associate Item\npublic struct S {}\n    Self is C\n    /// implementation\n    associate C.Item is i32");
+        var tree = DocumentationCommentTest.Parse("public contract C\n    /// requirement\n    associate Item\npublic struct S\n    Self is C\n    /// implementation\n    associate C.Item is i32");
         Assert.True(tree.Compilation.Bind().IsComplete);
         foreach (var comment in Assert.Single(tree.DocumentationSources).Comments)
         {
@@ -120,7 +120,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
     [Fact]
     public void PrivateImplementationsDoNotExposeAssociatedDocumentation()
     {
-        var tree = DocumentationCommentTest.Parse("public contract C\n    associate Item\nstruct Hidden {}\n    Self is C\n    /// private implementation\n    associate C.Item is i32");
+        var tree = DocumentationCommentTest.Parse("public contract C\n    associate Item\nstruct Hidden\n    Self is C\n    /// private implementation\n    associate C.Item is i32");
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         Assert.Empty(tree.Compilation.Binding.GetDocumentation(comment.Declaration!, true));
@@ -164,6 +164,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CollectionWithoutCandidatesAllocatesNoExtraStorage()
     {
@@ -175,19 +176,18 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         var off = Measure(false);
         var on = Measure(true);
-        output.WriteLine($"32 parses without documentation: disabled={off.Bytes} bytes/{off.Milliseconds:F2} ms; enabled={on.Bytes} bytes/{on.Milliseconds:F2} ms");
-        Assert.Equal(off.Bytes, on.Bytes);
+        output.WriteLine($"32 parses without documentation: disabled={off} bytes; enabled={on} bytes");
+        Assert.Equal(off, on);
 
-        (long Bytes, double Milliseconds) Measure(bool collect)
+        long Measure(bool collect)
         {
-            var start = Stopwatch.GetTimestamp();
             var before = GC.GetAllocatedBytesForCurrentThread();
             for (var i = 0; i < 32; i++)
             {
                 DocumentationCommentTest.Parse(source, collect);
             }
 
-            return (GC.GetAllocatedBytesForCurrentThread() - before, Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            return GC.GetAllocatedBytesForCurrentThread() - before;
         }
     }
 
@@ -197,7 +197,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         var tree = c.Kotonoha;
-        tree.CreateCodeContext().Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated\npublic struct S {}"), "mod", 3);
+        tree.CreateCodeContext().Parse(tree.RootKoto, new SourceDocument("generated.kimi", "/// generated\npublic struct S"), "mod", 3);
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(tree))!;
         restored.OnDeserialized(c);
         var old = Assert.Single(restored.DocumentationSources);
@@ -218,7 +218,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S {}\n    #case _\n        /// other\n        public struct S {}"));
+        c.Kotonoha.AddSource(new SourceDocument("platform.kimi", "#switch\n    #case windows\n        /// windows\n        public struct S\n    #case _\n        /// other\n        public struct S"));
         var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
         var target = Compilation.CreateForTest();
         target.CollectDocumentation = true;
@@ -227,7 +227,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         restored.OnDeserialized(target);
         Assert.Equal("other", Assert.Single(Assert.Single(restored.DocumentationSources).Comments, x => x.IsSelected).GetText().Text);
         Assert.Equal("windows", Assert.Single(Assert.Single(c.Kotonoha.DocumentationSources).Comments, x => x.IsSelected).GetText().Text);
-        var edited = DocumentationCommentTest.Parse("/// edited\nstruct S {}");
+        var edited = DocumentationCommentTest.Parse("/// edited\nstruct S");
         Assert.Equal("edited", Assert.Single(Assert.Single(edited.DocumentationSources).Comments).GetText().Text);
     }
 
@@ -237,7 +237,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         var c = Compilation.CreateForTest();
         c.CollectDocumentation = true;
         c.Kotonoha.AddSource(new SourceDocument("broken.kimi", "/// broken\nfunc f(\n/// following\nfunc g() => ()"));
-        Assert.True(c.Kotonoha.HasSourceErrors);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         var source = Assert.Single(c.Kotonoha.DocumentationSources);
         Assert.All(source.Comments, x => Assert.Null(x.Declaration));
         Assert.Empty(source.GetDiagnostics());
@@ -268,12 +268,12 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
 
         (Token[] Tokens, string[] Errors) Lex(bool collect)
         {
-            var diagnostics = c.Kimigayo.GetOrAddDiagnosticCollection(collect.ToString());
-            var tokenizer = new Tokenizer(diagnostics, source) { CollectDocumentation = collect };
+            var owner = new DiagnosticOwner();
+            var tokenizer = new Tokenizer(owner.GetOrAddCollection(collect.ToString()), source) { CollectDocumentation = collect };
             try
             {
                 tokenizer.ReadAll();
-                return (tokenizer.Tokens.ToArray(), diagnostics.GetArray().Select(x => x.ToString()).ToArray());
+                return (tokenizer.Tokens.ToArray(), owner.Finalize().Diagnostics.Select(x => $"{x.Code}{x.Span}: {x.Message}").ToArray());
             }
             finally
             {
@@ -282,6 +282,7 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void DisabledCollectionAddsNoAllocationsWithDocumentation()
     {
@@ -296,37 +297,13 @@ public class DocumentationIntegrationTest(ITestOutputHelper output)
             Lex(ordinary, false);
         }
 
-        Assert.Empty(diagnostics.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(ordinary, false);
-        }
-
-        var baseline = GC.GetAllocatedBytesForCurrentThread() - before;
-        before = GC.GetAllocatedBytesForCurrentThread();
-        start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(source, false);
-        }
-
-        var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Each measurement retires the allocation context first, so a runtime pause cannot charge its unused tail to one side.
+        var baseline = AllocationMeasurement.Measure(() => Lex(ordinary, false), 64);
+        var bytes = AllocationMeasurement.Measure(() => Lex(source, false), 64);
         Assert.Equal(baseline, bytes);
-        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes/{elapsed:F2} ms");
-        before = GC.GetAllocatedBytesForCurrentThread();
-        start = Stopwatch.GetTimestamp();
-        for (var i = 0; i < 64; i++)
-        {
-            Lex(source, true);
-        }
-
-        elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        output.WriteLine($"64 lexical passes, 256 documented declarations: enabled={bytes} bytes/{elapsed:F2} ms");
+        output.WriteLine($"64 lexical passes, 256 declarations: ordinary={baseline} bytes; documentation disabled={bytes} bytes");
 
         void Lex(SourceDocument input, bool collect)
         {

@@ -17,7 +17,7 @@ public class AssociatedSpecificationAccessBindingTest
             ? "public struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element"
             : "public struct Api\n    Self is Export\n    associate Export.Item is Source.Hidden.Element";
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\n" + declaration);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
@@ -89,6 +89,7 @@ public class AssociatedSpecificationAccessBindingTest
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmSpecificationChecksAllocateNothing()
     {
@@ -110,7 +111,7 @@ public class AssociatedSpecificationAccessBindingTest
     private static Compilation Check(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Export");

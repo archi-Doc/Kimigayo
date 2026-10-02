@@ -16,7 +16,7 @@ public class ConditionalMemberAccessBindingTest
     public void PublicConditionalMemberCannotExposeRestrictedPremise(bool property, string requirement)
     {
         var c = MinimalEmissionTest.Analyze(Source(property, requirement, "public"));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         AssertMember(c, property, false);
@@ -116,6 +116,7 @@ public class ConditionalMemberAccessBindingTest
         AssertMember(c, property, false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

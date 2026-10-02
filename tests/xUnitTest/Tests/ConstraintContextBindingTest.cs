@@ -13,11 +13,11 @@ public class ConstraintContextBindingTest
     [InlineData("#Layout(\"C\")", "Invalid.S")]
     [InlineData("#Unknown", "Box<Invalid.S>")]
     [InlineData("#Unknown", "(i32, Invalid.S)")]
-    [InlineData("#Unknown", "unsafe/Invalid.S")]
+    [InlineData("#Unknown", "raw/Invalid.S")]
     public void InvalidTypeContextCannotProveIdentity(string attribute, string argument)
     {
         var c = MinimalEmissionTest.Analyze(attribute + "\ngroup Invalid\n    public struct S\nstruct Box<T>\ngroup Consumer\n    func query<T>()\n        T is " + argument + "\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
         var proposition = ((IsKoto)function.TypeConstraints[0]).BoundConstraint!;
@@ -37,7 +37,7 @@ public class ConstraintContextBindingTest
     public void InvalidContractContextCannotSupplyAnAssumption(string requirement)
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public contract Marker\ngroup Consumer\n    func query<T>()\n        T is " + requirement + "\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var function = Query(c);
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
@@ -69,6 +69,7 @@ public class ConstraintContextBindingTest
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(proposition, function, [proposition.RequiredType], c.Kotonoha.RootKoto));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmContextProofsAllocateNothing()
     {

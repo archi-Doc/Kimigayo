@@ -28,6 +28,22 @@ public sealed partial class Binding
     public ConstraintProof ProveOwned(BoundType type, Koto context)
         => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), this.ConstraintScope(context));
 
+    /// <summary>Queries compiler-intrinsic PrimitiveInteger (SPEC 8.4.7.3) under lexical Constraints.</summary>
+    /// <param name="type">The complete Type.</param>
+    /// <param name="context">The use site providing assumptions.</param>
+    /// <returns>The proof result; a proven Type is an owner integer scalar in every instance.</returns>
+    public ConstraintProof ProvePrimitiveInteger(BoundType type, Koto context)
+        => this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), this.ConstraintScope(context));
+
+    /// <summary>Determines whether a Type is <c>Wrapping&lt;T&gt;</c> over a symbolic Type proven PrimitiveInteger (SPEC 3.1.1.1,
+    /// 8.4.7.3), whose every instance is a wrapping integer Scalar.</summary>
+    /// <param name="type">The Type.</param>
+    /// <param name="context">The use site providing assumptions.</param>
+    /// <returns>True for a generic wrapping integer Type.</returns>
+    public bool IsGenericWrappingInteger(BoundType type, Koto context)
+        => type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping &&
+            type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.ProvePrimitiveInteger(type.Components[0], context) == ConstraintProof.Proven;
+
     /// <summary>Queries complete owner Core evidence without inspecting stored fields.</summary>
     /// <param name="type">The normalized complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
@@ -38,6 +54,18 @@ public sealed partial class Binding
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
+        if (kind == IntrinsicKind.PrimitiveInteger)
+        {
+            // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            {
+                return false;
+            }
+
+            result = type.Kind == BoundTypeKind.Primitive && type.Semantics == SemanticsKind.Owner && type.IsInteger ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
         if (kind == IntrinsicKind.ObjectPayload)
         {
             if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
@@ -46,9 +74,8 @@ public sealed partial class Binding
                 return true;
             }
 
-            // SPEC 8.4.7.2: symbolic targets and a Contract's Self are decided by their premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
-                type.Symbol?.Declaration is ContractKoto)
+            // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
+            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
             {
                 return false;
             }
@@ -73,7 +100,6 @@ public sealed partial class Binding
             }
 
             result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) ||
-                type.Symbol?.Declaration is ContractKoto ||
                 (type.Symbol?.Declaration is StructKoto structure && (structure.Modifier & ModifierKind.Open) != 0)
                 ? ConstraintProof.Refuted : ConstraintProof.Proven;
             return true;
@@ -110,7 +136,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && kind == IntrinsicKind.Copy)
         {
-            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Unsafe ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Raw ? ConstraintProof.Proven : ConstraintProof.Refuted;
             return true;
         }
 
@@ -294,10 +320,10 @@ public sealed partial class Binding
             return leaf;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection ||
-            (work.Intrinsic.Intrinsic == IntrinsicKind.ObjectPayload && type.Symbol?.Declaration is ContractKoto))
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
         {
-            // A Contract's Self has no structure of its own; its ObjectPayload evidence is the Contract's clause (SPEC 8.4.7.2).
+            // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
+            // (SPEC 8.4.7.2).
             return this.SymbolicCapability(work);
         }
 
@@ -454,6 +480,8 @@ public sealed partial class Binding
     {
         var positive = false;
         var negative = false;
+        var parameterIdentity = HasParameterIdentity(work.Scope);
+        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true) : work.Type;
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { } environment)
@@ -466,15 +494,16 @@ public sealed partial class Binding
                 return ConstraintProof.Error;
             }
 
-            foreach (var fact in environment.Facts)
+            foreach (var available in environment.Facts)
             {
-                if (!this.AvailableConstraintFact(environment, fact))
+                if (!this.AvailableConstraintFact(environment, available))
                 {
                     continue;
                 }
 
+                var fact = parameterIdentity ? this.NormalizeProofConstraint(available, work.Scope) : available;
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
-                if (!this.FactStates(fact, work.Type, out var stated) && !appliedSemantics)
+                if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
                 {
                     continue;
                 }
@@ -488,9 +517,13 @@ public sealed partial class Binding
                 {
                     evidence = ConstraintProof.Proven;
                 }
+                else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
+                {
+                    evidence = ConstraintProof.Proven; // SPEC 8.4.7.3: every admitted integer Type is Copy and Owned.
+                }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {
-                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Unsafe;
+                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
                     const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
                     if (fact.Mask == SemanticsMask.Owner)
                     {
@@ -508,7 +541,7 @@ public sealed partial class Binding
                     {
                         evidence = ConstraintProof.Refuted;
                     }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Unsafe)
+                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Raw)
                     {
                         var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
                         if (target is not null && !ReferenceEquals(target, work.Type))

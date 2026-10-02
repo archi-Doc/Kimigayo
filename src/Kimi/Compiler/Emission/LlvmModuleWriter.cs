@@ -71,6 +71,7 @@ internal static partial class LlvmModuleWriter
         output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
         output.Write(module.TestRuntime);
         WriteExternals(module, output);
+        WriteStatics(module, output);
         output.Write(OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
         if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)
@@ -97,7 +98,7 @@ internal static partial class LlvmModuleWriter
 
         if (module.NeedsDictionaryRuntime)
         {
-            output.Write(DictionaryRuntime);
+            WriteDictionaryCapacity(module, output, append: false);
             WriteDictionaryShrink(module, output);
             WriteDictionaryStorage(module, output);
             WriteDictionaryHelpers(module, output);
@@ -603,6 +604,8 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:
                 case EmissionOperandKind.NullAddress:
+                case EmissionOperandKind.CallerLocation:
+                case EmissionOperandKind.CallerLocationLength:
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:

@@ -21,21 +21,27 @@ The table is the minimal set that language rules name, not a promise of a genera
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
 | `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
-| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; `UniqIndexable<isize>` and `UniqIndexable<Index>` (§4.6.9), §4.7 mutation/capacity APIs, literals, and the `Iterable`/`UniqIterable`/`IntoIterable` conformances with the items of §14.6.2 |
-| `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
-| `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not enumerable |
-| `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and the three iteration conformances with item `isize` under §4.6.3 |
-| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` and `Indexable<Index>` publishing `place ref/T during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
+| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; `UniqIndexable<isize>` (§4.6.9), §4.7 mutation/capacity APIs, the read operations of §4.6.6, literals, and the `Iterable`/`UniqIterable`/`IntoIterable` conformances with the items of §14.6.2 |
+| `Position: Equatable, Utf8Format` | Closed Contract (§8.4.7) with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<isize>`; conforming Types exactly the twelve integer Types, `FromEnd<T>`, `Start` and `End`. The integer conformance is built in and bound to a Kimi internal function; integers gain no members (§4.6.2) |
+| `PositionRange: Equatable, Utf8Format` | Closed Contract with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`; conforming Types exactly `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.4) |
+| `FromEnd<T>`, `Start`, `End` | Copy, Owned, Equatable positions; `FromEnd<T>` requires `T is PrimitiveInteger` and stores only a read-only `offset: T`, and `Start` and `End` store nothing; construction by `^x` and omitted range boundaries only; `tryResolve`, `resolve` and formatting under §4.6.2 |
+| `Wrapping<T>` | The wrapping integer Scalar of §3.1.1.1 over an integer Type `T`: a fieldless public struct declaration with `T is PrimitiveInteger`, no public constructor and no members, whose instantiations the compiler represents exactly as `T` with wrapping arithmetic (§13.3), the conversions of §13.5.4.1 and the built-in Copy, Owned, Equatable, Comparable and Utf8Format conformances of `T`; it satisfies neither PrimitiveInteger nor Position |
+| `Range<S, E>`, `ClosedRange<S, E>` | Copy, Owned, Equatable intervals requiring `S is Position` and `E is Position`, storing only read-only `start: S` and `end: E`; syntax construction only, `tryResolve`, `resolve`, formatting, and the three iteration conformances under `S is PrimitiveInteger, E is S` returning `RangeIterator<S>` or `ClosedRangeIterator<S>` (§4.6.3, §4.6.4) |
+| `ResolvedRange` | Copy, Owned, Equatable validated interval produced by `indices` and resolution; read-only fields, `length`, `isEmpty`, `tryResolve`, `resolve`, formatting, and the three iteration conformances returning `RangeIterator<isize>` (§4.6.3.3) |
+| `RangeIterator<T>`, `ClosedRangeIterator<T>` | Owned, Non-Copy Iterators with `Item` `T`, requiring `T is PrimitiveInteger`; no public constructor or entry conformance (§4.6.3.4) |
+| `Slice<T> {source}` | Copy shared view with all public operations in §4.6.6; `Indexable<isize>` publishing `place ref/T during self.source`; the three iteration conformances with item `ref/T during source`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, `UniqIndexable<K>` existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and the three iteration conformances with the pair items of §14.6.2 |
-| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, intrinsic Origin/Loan/variance metadata and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
+| UTF-8 formatting declarations | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` at the root, and the `Text` group: exact signatures, shape, `Loan<T>` Fields and operations in the [formatting profile](utf8-formatting.md#1-contracts-and-declarations) |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
-| `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and the effect bound of §22.1.2.4 |
+| `LendingIterator`, `Iterator: LendingIterator` | The exact declarations of §22.1.2.1: LendingIterator's `LentItem(step)` and `next`; Iterator's step-independent `Item` and its `preserves results` bound for `next` (§8.4.10, §22.1.2.4) |
 | `Iterable`, `UniqIterable`, `IntoIterable` | The exact declarations of §22.1.2.2: `IteratorType(source)` or `IteratorType` bound to a LendingIterator, and `iterate`, `iterateUniq` or `intoIterator` |
 | `Indexable<Key>`, `UniqIndexable<Key>: Indexable<Key>` | `associate Element`; `index(self: ref/Self, key: ref/Key) -> place ref/Element during self` and `indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self` (§4.6.9) |
 | `Iteration` group | `OwningIterator<I>`, `BorrowingIterator<I>` and `owning`, `borrowing` under §22.1.2.3 |
 | `Storage` internal group | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`, `borrowStorage`, `ownStorage`, `splitFirst`, `takeFirst` under §22.1.2.5; usable only inside the Kimi Kotonoha |
-| Copy, Owned, Callable, Sealed, ObjectPayload | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed and ObjectPayload); not ordinary user-implementable replacements |
+| `Raw` group | `allocate`, `release`, `initialize` and `slice` with the signatures and contracts of §5.6 |
+| `Loan<T>` | Compiler-managed zero-sized struct over a complete borrow Type `T` whose outer Semantics is `ref`, `uniq`, `objref` or `objuniq`; safe `init(value: T)`; analyzed as storing `T`, Copy exactly when `T` is Copy (§15.3.5) |
+| Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership and call rules (§8.4.7 for Sealed, ObjectPayload and PrimitiveInteger); not ordinary user-implementable replacements |
 | Object ownership intrinsics | Kimi.Intrinsics.makeObj / makeRc / makeArc, strong and Weak Kimi.Intrinsics.clone, Kimi.Intrinsics.downgrade / upgrade, Kimi.Intrinsics.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts; every creation declares `T is ObjectPayload` (§8.4.7.2) |
 | Whole-value update intrinsics | Ordinary generic declarations `Intrinsics.replace`, `Intrinsics.exchange`, `Intrinsics.swap`, with §15.7 signatures and acquisition/destruction contracts; their signatures impose no Sealed requirement, and completeness is checked at each actual storage target |
 | `Console.writeLine` | Overloads `(text: ref/string) -> ()` and `(text: Text.Utf8Slice) -> ()`; §22.4 and the [formatting profile](utf8-formatting.md#61-console-output) |
@@ -43,7 +49,7 @@ The table is the minimal set that language rules name, not a promise of a genera
 
 The iteration and indexing Contracts are static Contracts. Their associated Types are complete Types and may take Origin parameters (§8.4.3.1). Table signatures follow the normal associated-Type, receiver, result-Origin and lifetime rules.
 
-Fixed arrays conform to the three iteration entries with the items of §14.6.2. The standard iterators are concrete Kimi Types with the item Types and dependencies of §4.6 and §14.6.2, and they have the common guarantees of §22.1.2.3. A ResolvedRange iterator stores a position and an end; a Slice iterator stores a copied handle, a position and the external source Loan; neither owns the elements it yields. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving the result of `next` extends no lifetime. These requirements add no public iterator constructors.
+Fixed arrays conform to `UniqIndexable<isize>` and to the three iteration entries with the items of §14.6.2, and provide the read operations of §4.6.6. The standard iterators are concrete Kimi Types with the item Types and dependencies of §4.6 and §14.6.2, and they have the common guarantees of §22.1.2.3. A range iterator stores only integer state; a Slice iterator stores a copied handle, a position and the external source Loan; neither owns the elements it yields. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving the result of `next` extends no lifetime. These requirements add no public iterator constructors.
 
 The primitive keyword `string` denotes the compiler's UTF-8 string Core, not a shadowable alias. It supports literal and interpolation construction, concatenation, comparison and Utf8Format. The [formatting profile](utf8-formatting.md) defines separate mutable buffers, validated views and `Text.toString` for string copying; it adds no character indexer or formatting options. Fixed-array syntax and layout follow [sequence Types](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices); metadata, indexed Place acquisition and shared reading follow [indexing and slicing](04-arrays-indexing-and-slices.md#46-indexing-and-slicing).
 
@@ -55,7 +61,7 @@ Array and Dictionary contents, generic enum payloads and fixed-array elements pr
 
 ### 22.1.1. Declaration placement and function reference
 
-`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, `Sealed` and `ObjectPayload` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. The default Kimi alias does not recursively open the `Console`, `Intrinsics`, `Test`, `Text` or `Iteration` groups or the internal `Storage` group. Use `Intrinsics.replace(...)` or `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
+`Kimi.Intrinsics` is a public, non-generic group with no Origin parameters. It contains the whole-value update and object ownership operations as one family. `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload` and `PrimitiveInteger` remain directly under `Kimi`; `writeLine` remains under `Kimi.Console`. The default Kimi alias does not recursively open the `Console`, `Intrinsics`, `Test`, `Text` or `Iteration` groups or the internal `Storage` group. Use `Intrinsics.replace(...)` or `Console.writeLine(...)`, a fully qualified path, or an explicit alias that opens the group. A named alias such as `alias Memory => Kimi.Intrinsics` preserves the original declarations' Identities. There are no root-level compatibility declarations such as `Kimi.replace` or `Kimi.makeObj`.
 
 The following reference collects the public function names. Types are abbreviated relative to `Kimi`; the linked sections own all constraints, overload requirements, Origins, acquisition and failure behavior.
 
@@ -94,14 +100,15 @@ contract LendingIterator
 contract Iterator: LendingIterator
     associate Item
     associate LendingIterator.LentItem(step) is Item
+    effect LendingIterator.next preserves results
 ```
 
-Every enumeration calls `LendingIterator.next`, which delivers the next item as a value. Each call binds `step` to the receiver borrow of that call and keeps the actual Loan dependencies. An **Iterator** is the ordinary case: its `Item` is one complete Type that names no Origin of `next`, so generic code may retain its items across later calls (§22.1.2.4). A conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`; the inherited `LentItem(step)` is `Item` for every `step`. A **LendingIterator** that is not an Iterator may instead lend items that borrow the Iterator. A general LendingIterator may return `Some` after `None`; `for` stops at the first `None`, and §22.1.2.3 states the guarantees of standard iterators. `None` carries no Loan.
+Every enumeration calls `LendingIterator.next`, which delivers the next item as a value. `LendingIterator.next` itself declares no effect bound. Each call binds `step` to the receiver borrow of that call and keeps the actual Loan dependencies. An **Iterator** is the ordinary case: its `Item` is one complete Type that names no Origin of `next`, so generic code may retain its items across later calls (§22.1.2.4). A conforming Type writes `associate Iterator.Item is T` and `func next(self: uniq/Self) -> Option<T>`; the inherited `LentItem(step)` is `Item` for every `step`. A **LendingIterator** that is not an Iterator may instead lend items that borrow the Iterator. A general LendingIterator may return `Some` after `None`; `for` stops at the first `None`, and §22.1.2.3 states the guarantees of standard iterators. `None` carries no Loan.
 
 | `LentItem(step)` of a LendingIterator | Retention and the next `next` |
 | --- | --- |
 | `ref/E during step`, `uniq/E during step` | Depends on that call's receiver borrow and conflicts with the next `next` while retained |
-| A Type without `step`, such as `E` or `ref/E during source` | Retained under the ordinary Loan rules (§15.6.3); only an Iterator publishes the effect bound that lets generic code keep it across the next `next` (§22.1.2.4) |
+| A Type without `step`, such as `E` or `ref/E during source` | Retained under the ordinary Loan rules (§15.6.3); generic code keeps it across the next `next` only under a Contract that declares `preserves results` for `next`, such as Iterator (§8.4.10, §22.1.2.4) |
 
 #### 22.1.2.2. Iteration entries
 
@@ -178,21 +185,21 @@ for item in iterator@uniq
 
 An Iterator's `Item` names no Origin parameter of `next`, so its items satisfy the [independence of published results](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) (§15.6.3): an item depends neither on the receiver Loan of that call nor on the Iterator's own Storage. An exclusive item is either a child split from the Iterator's authority (§22.1.2.5) or a value the Iterator transfers out, such as a stored `uniq` reference, so moving or freeing the Iterator's Storage invalidates no returned item. Consequently, an item of an Iterator `J` stored behind a borrow `s/J during o` keeps no Loan of `o`: a wrapper may reach and step `J` through `o` while earlier items of `J` are retained.
 
-`Self is Iterator` also publishes the **effect bound** of `next`: the effects of `next` conflict with no Loan kept by an item that the same Iterator returned earlier, including Loans kept through ordinary transfer or Reborrow of that item. These effects include reads, writes, borrows, the Loans of the result, access to statics and captures, and cleanup inside the call. A Move of the Iterator carries the bound. Conformance verification checks the bound as an effect upper bound of §8.4.5, with the common root, Loan and effect summaries and the region-splitting rules. Every implementation, including specializations and callees, must satisfy it, or the conformance is rejected. User Types that declare `Self is Iterator` undergo the same verification; nothing is derived from `LendingIterator` automatically. Generic callers use the published bound (§15.6.4, §21.3.4). An implementation that stores an Iterator `J` in exactly one Field `f`, as `J` or as a borrow of `J`, stores no other value whose Type names `J`, and has `J`'s `Item` as its own `Item` returns only items of `J` obtained through `f`; every call of `f`'s `next` in its body is then covered by `J`'s bound, however often it is called. Steps of another Iterator, or of `J` reached otherwise, are not covered, so composite adapters that step several Iterators, such as `zip` or `chain`, are not Iterators under this bound. The bound promises no purity; Loans unrelated to items, other operations and result lifetimes are checked as usual. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
+`Iterator` declares `effect LendingIterator.next preserves results` (§8.4.10.3): the effects of `next` conflict with no Loan kept by an item that the same Iterator returned earlier, including Loans kept through ordinary transfer or Reborrow of that item. A Move of the Iterator carries the bound. Its declaration, verification, use by generic and erased callers and delegation are those of §8.4.10 (§8.4.10.5); every implementation, including specializations and callees, must satisfy it, user Types that declare `Self is Iterator` undergo the same verification, and nothing is derived from `LendingIterator` automatically. The `next` of a standard collection iterator only traverses, splits and transfers; it calls no user comparison, destructor or callback.
 
 ```kimi
 func nextPair<I>(iterator: uniq/I) -> (Option<I.Item>, Option<I.Item>)
     I is Iterator
     let first = iterator.next()
-    let second = iterator.next() // The published effect bound permits retaining first.
+    let second = iterator.next() // The preserves results bound permits retaining first.
     return (first@move, second@move)
 ```
 
-Destroying or replacing the whole Iterator is an effect separate from `next`: a remainder destructor that conflicts with a retained item is rejected. Standard borrowing iterators end only their handle; owning iterators follow the destruction summary of the remaining element Type. Generic code may accumulate the items of a borrowing Iterator. An owning `collect<I>(it: I)` must also prove that results and cleanup do not conflict. Unknown effects are never treated as empty, and no hidden call condition postpones the check to instantiation. Dependencies that a user adds after an item was returned, and the protection of the original collection, are checked ordinarily. A delegating wrapper that borrows itself for its result cannot declare a step-independent `Item`, so it is a LendingIterator; a wrapper that adds conflicting effects to `next` fails the effect bound. For a LendingIterator that is not an Iterator, a lent item is used up before the next call, or non-conflict is proven case by case from its published contract.
+Destroying or replacing the whole Iterator is an effect separate from `next`: a remainder destructor that conflicts with a retained item is rejected. Standard borrowing iterators end only their handle; owning iterators follow the destruction summary of the remaining element Type. Generic code may accumulate the items of a borrowing Iterator. An owning `collect<I>(it: I)` must also prove that results and cleanup do not conflict. Unknown effects are never treated as empty, and no hidden call condition postpones the check to instantiation. Dependencies that a user adds after an item was returned, and the protection of the original collection, are checked ordinarily. A delegating wrapper that borrows itself for its result cannot declare a step-independent `Item`, so it is a LendingIterator; a wrapper that adds conflicting effects to `next` fails the bound. For a LendingIterator that is not an Iterator, a lent item is used up before the next call, or non-conflict is proven case by case from its published contract.
 
 #### 22.1.2.5. Standard storage boundary
 
-The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to the standard declaration identities: no alias, re-export or same-spelled declaration grants it. Public Iterators keep these Types in private Fields and never expose them in results or associated Types. No public exclusive Slice or raw-pointer conversion is added.
+The internal group `Kimi.Storage` holds the operations that split standard collection Storage into non-overlapping regions. The group, its Types and its operations are `internal`, so only the Kimi Kotonoha uses them (§9.3). Their capability is bound to the standard declaration identities: no alias, re-export or same-spelled declaration grants it. Public Iterators keep these Types in private Fields and never expose them in results or associated Types. No public exclusive Slice is added. The operations are ordinary Kimigayo built on raw pointers (§5); only the representations of Array and Dictionary stay compiler-managed.
 
 | Type | Responsibility |
 | --- | --- |
@@ -200,7 +207,7 @@ The internal group `Kimi.Storage` holds the operations that split standard colle
 | `UniqRemainder<E>` | The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements |
 | `OwnedRemainder<E>` | Heap Storage transferred from `Array<E>` and the destruction responsibility for unreturned elements, retaining `E`'s internal dependencies |
 
-The contiguous remainders are parameterized by the complete element Type `E`, with `storage: unsafe/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder holds the Loan of the Array or fixed-array source from which it was constructed. Its safe results keep that source and `E`'s internal dependencies; the raw pointer field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads.
+The contiguous remainders are parameterized by the complete element Type `E`, with `storage: raw/E`, a traversal position and an untaken count; the heap-owning remainder also keeps its allocation capacity. A borrowing remainder keeps the Loan of the Array or fixed-array source from which it was constructed in a `Loan<ref/E during source>` or `Loan<uniq/E during source>` Field (§15.3.5); the Dictionary remainders use `Loan<ref/(K, V) during source>` and `Loan<uniq/(K, V) during source>`. Their safe results keep that source and the element Types' internal dependencies; the raw pointer Field grants no independent safe capability. In the borrowing signatures below, `S` is `Array<E>` or `[N of E]`, with `length N` on the fixed-array overloads.
 
 | Signature template | Contract |
 | --- | --- |
@@ -224,9 +231,11 @@ internal func takeFirst<E>(state: uniq/OwnedRemainder<E>)
 
 Borrowed results depend on `source`, never on the `state` borrow or slot. The shared form needs no non-overlap proof but still delivers each element once, in order.
 
-The contiguous owning remainder's `takeFirst` and `deinit` bodies use ordinary Kimigayo Copy/Move and cleanup. The internal unsafe `release<E>(storage: unsafe/E)` primitive releases the original heap region after the caller has transferred or destroyed every initialized element. It accepts null for an empty region, accesses no element and invokes no element destructor. The caller retains the raw-pointer validity and unique-release obligations; failures follow Runtime.Free (§22.5.2). It is confined to `Kimi.Storage`, with no public raw deallocation API.
+The contiguous owning remainder's `takeFirst` and `drop` bodies use ordinary Kimigayo: they take or destroy elements as raw Places (§5.2.3) and release the original heap region with `Raw.release` (§5.6) after every initialized element is transferred or destroyed.
 
-The contiguous `splitFirst` bodies are ordinary Kimigayo. Two internal unsafe primitives provide their capability boundary: `lend<E>(state: ref/RefRemainder<E>, element: unsafe/E) -> ref/E during state.source` and `split<E>(state: uniq/UniqRemainder<E>, element: unsafe/E) -> uniq/E during state.source`. The caller proves that the aligned, initialized element belongs to the live source region; for `split`, it removes exactly that element from the untaken remainder before the call and never splits it again. The primitives neither advance state nor access the element's contents, allocate or call user code. They grant only the shared or split-child capability and the stated source dependency. A raw pointer alone grants neither capability, and these compiler-known internal declarations cannot be replaced by user declarations or reached from user source.
+The `splitFirst` bodies are ordinary Kimigayo. They lend an element by borrowing its raw Place, `@ref` for a shared remainder and `@uniq` for an exclusive one, and return it under `during state.source` (§5.2.2, §15.6.3); the Dictionary forms borrow the raw Places that `keyAt` and `valueAt` address. Before an exclusive element is published, the body removes exactly that element from the untaken remainder and never lends it again. The range, non-overlap and initialization guarantees are unsafe obligations (§5.2.1) that the Kimi library bears. `InlineStorage<A>` places `A` at offset 0, so `storage@follow@raw@raw/E` addresses the first element of a fixed-array owning remainder. The compiler-known internal operations that remain are `borrowStorage`, `ownStorage`, `dictionaryStorage`, `keyAt`, `valueAt` and `placeEntry`, because the Array and Dictionary representations are compiler-managed; they cannot be replaced by user declarations or reached from user source.
+
+The Kimigayo implementation of `tryGetPairUniq` (§4.6.10) consumes an exclusive contiguous remainder. It validates and orders the two logical positions, relinquishes skipped prefixes, and splits each selected element once before discarding the remainder. It splits with the same raw Place borrow; field updates only restrict the original authority and never grant access outside it. Returning the two children in argument order does not change their source dependencies or non-overlap.
 
 The following also hold for empty and zero-sized Storage:
 
@@ -235,9 +244,9 @@ The following also hold for empty and zero-sized Storage:
 3. an `OwnedRemainder` remains a complete handle over the unreturned part; it publishes neither a reference to the whole `S` with holes nor Take through a borrow;
 4. destroying a `RefRemainder` or `UniqRemainder` ends only the capabilities it holds; destroying an `OwnedRemainder` destroys the unreturned part once in the ordinary cleanup order and frees the region, ending no returned Loan or responsibility and publishing the external effects of that destruction.
 
-The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and a count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check. Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". This built-in boundary guarantees Storage validity, dynamic non-overlap and initialization state. Everything else an Iterator does, including user delegation, is checked ordinarily, and no user Storage can register with the boundary.
+The internal operations obey the complexity bounds of §4.6.8. Array and fixed-array traversal keeps the valid untaken range as a start and a count, so a nonempty check proves the next element valid without a public `index` call or a second bounds check. Dictionary traversal uses the ordering information of live entries, distinct from hash-probe tombstones, and never charges a capacity scan to "amortization". The Kimi library guarantees Storage validity, dynamic non-overlap and initialization state as unsafe obligations. Everything else an Iterator does, including user delegation, is checked ordinarily.
 
-**Published effects.** Result anchors, parent Loans, remainder non-overlap and the effects on statics, captures and cleanup enter the public summary of each operation (§15.6.4). Generic, separately compiled and indirect calls compose those summaries without reanalyzing private bodies and treat unknown effects conservatively. They never erase an existing Loan because a conversion or erasure dropped a guarantee. An Unsafe designation grants neither independence nor a longer Origin. The effect bound of an Iterator's `next` (§22.1.2.4) is checked at each use, separately from the whole-value destruction summary; element-dependent cleanup uses the symbolic summaries of §4.7.5. No general effect syntax or runtime tag is added.
+**Published effects.** Result anchors, parent Loans, remainder non-overlap and the effects on statics, captures and cleanup enter the public summary of each operation (§15.6.4). Generic, separately compiled and indirect calls compose those summaries without reanalyzing private bodies and treat unknown effects conservatively. They never erase an existing Loan because a conversion or erasure dropped a guarantee. An Unsafe designation grants neither independence nor a longer Origin. The effect bound of an Iterator's `next` (§22.1.2.4) is checked at each use, separately from the whole-value destruction summary; element-dependent cleanup uses the symbolic summaries of §4.7.5. No runtime tag is added; the only effect declarations are the bounds of §8.4.10.
 
 ## 22.2. Program startup and static initialization
 
@@ -349,17 +358,30 @@ Shared code reaches a key through a supplied initialize-and-address operation (�
 
 ### 22.3.1. Declaration and call contract
 
-`#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independent of the source function name. §20.8.2 validates the actual supply, kind and member closure; that validation does not replace the source and ABI obligations below.
+`#LibraryImport("library", "symbol")` on a bodyless func, safe or unsafe, selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independent of the source function name. §20.8.2 validates the actual supply, kind and member closure; that validation does not replace the source and ABI obligations below.
 
-Imports are allowed only directly in a group or rootgroup, or as receiverless struct type functions. Receivers, generic or Origin parameters, parameter defaults, varargs, specializations and executable bodies are rejected. Ordinary parameter-name rules apply, including the `!` boundary and external/internal renaming; name contracts change source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+Imports are allowed only directly in a group or rootgroup, or as receiverless struct type functions. Receivers, generic parameters, Origin parameters inherited from an enclosing Container, parameter defaults, varargs, specializations and executable bodies are rejected; borrow annotations introduce signature Origins as usual (§22.3.2). Ordinary parameter-name rules apply, including the `!` boundary and external/internal renaming; name contracts change source argument matching only, not the foreign ABI. Every argument value is required. Calls are direct only; imported functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+
+**Declaration promise.** An import declaration promises that, for every call satisfying its signature and its `- safety:` conditions, the foreign implementation behaves as a Kimigayo function with the same signature would:
+
+- it accesses only what its arguments permit: reads through `ref`, and exclusive access through `uniq` for the duration of the call;
+- when it writes a borrowed Field of a received value, the new value satisfies that Field's Type, Origin and authority;
+- it retains no borrow beyond the Origins of its result;
+- it returns a valid value of its result Type;
+- it keeps the unwinding restrictions below.
+
+A false promise is undefined behavior, and the author of the declaration is responsible for it. An import is an `unsafe func` only when its callers have obligations that its Types cannot express, which its `- safety:` item states (§7.5). The effects of a call are the accesses its signature permits through its arguments and an environment effect (§8.4.10.2); no declaration form states other effects.
 
 ```kimi
 group Native
     #LibraryImport("observer", "observe_record")
-    public unsafe func observe(record: unsafe/NativeRecord) -> ()
+    public func observe(record: uniq/NativeRecord) -> ()
+
+    #LibraryImport("observer", "observe_raw")
+    public unsafe func observeRaw(record: raw/NativeRecord) -> ()
 ```
 
-NativeRecord can be the C-layout example in §21.1.3; the corresponding C declaration is `void observe_record(NativeRecord *record);`. The raw pointer is not read-only. Layout, validity, lifetime, writes, retention, ownership, and active Loans remain the caller's contract; this example supplies no new pointer-acquisition or raw-storage construction API.
+NativeRecord can be the C-layout example in §21.1.3; the corresponding C declarations are `void observe_record(NativeRecord *record);` and `void observe_raw(NativeRecord *record);`. `observe` is safe: the exclusive borrow states that the record is written only during the call and not retained. `observeRaw` is unsafe because a raw pointer states nothing; its `- safety:` item must give the layout, validity, lifetime, write, retention and ownership conditions, and the absence of conflicting Loans.
 
 Arguments are acquired once, from left to right, and then passed under the selected ABI. No automatic marshalling, retention, allocation, freeing or ownership acquisition occurs. Normal return resumes ordinary cleanup. C++ exceptions, SEH unwind, longjmp, callbacks and reentry must not cross Kimigayo frames; control handled entirely inside the foreign code is allowed. Violations carry no result or cleanup guarantee. The FP boundary contract of §21.5.4 applies, and §21.5.5 governs `nounwind` and `landingpad` generation.
 
@@ -376,7 +398,10 @@ The physical signature is computed once and shared between declaration and call:
 | i32 / u32 | int32_t / uint32_t | i32 |
 | i64 / u64 | int64_t / uint64_t | i64 |
 | f32 / f64 | float / double | float / double |
-| unsafe/T | Corresponding data pointer | ptr, address space 0 |
+| raw/T | Corresponding data pointer | ptr, address space 0 |
+| ref/T | `const T *`, non-null | ptr, address space 0 |
+| uniq/T | `T *`, non-null | ptr, address space 0 |
+| Option<ref/T>, Option<uniq/T> | Pointer that may be null | ptr, address space 0 |
 | Unit, result only | void | void |
 
 These entries use ccc with no signext, zeroext, inreg, byval or sret. i8 and i16 are not widened to i32, and vararg default promotions are not applied. Other numeric conversions are separate language operations. LLVM handles registers, stack arguments beyond the fourth, shadow space and stack alignment; unused upper bits are not meaningful. Additional optimization attributes need independent proof.
@@ -386,7 +411,9 @@ declare dllimport i8 @native_i8(i8)
 declare dllimport i16 @native_u16(i16)
 ```
 
-All other parameter and result Types are excluded, including bool, char, string, borrows, object handles, aggregates (even C-exchangeable structs and arrays), function and Closure values, i128/u128 and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs a separate argument and result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
+In the borrow rows, `T` is C-exchangeable storage (impl §21.1.6). A borrow annotation introduces signature Origins as usual (§15.3.4), and result Origins follow §15.4; Origin parameters inherited from an enclosing Container remain rejected. An argument passes the address of its referent: the Scalar by-value optimization of `ref` parameters (impl §21.5.5) does not apply. An Option uses the one-word nonnull representation (impl §21.1.5), with None as the null pointer.
+
+All other parameter and result Types are excluded, including bool, char, string, object handles and borrows of other Types, aggregates (even C-exchangeable structs and arrays), function and Closure values, i128/u128 and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs a separate argument and result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
 
 ## 22.4. Minimal console output
 
@@ -478,7 +505,7 @@ Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
 
 Catalog codes are unique. They include KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), KIMI_E_INT_SHIFT_COUNT (Shift count out of range), KIMI_E_INT_CONVERSION (Integer conversion out of range) and KIMI_E_INDEX_BOUNDS (Index out of bounds). The codes are used as follows:
 
-- Integer division or remainder by zero uses KIMI_E_INT_DIV_ZERO; signed minimum with divisor -1 uses KIMI_E_INT_OVERFLOW for both operations.
+- Integer division or remainder by zero uses KIMI_E_INT_DIV_ZERO; the signed minimum divided by -1 uses KIMI_E_INT_OVERFLOW, while its remainder is 0 and does not Abort (§13.3). Wrapping integer Types raise neither code for an unrepresentable result.
 - A shift count outside `0 <= count < left operand bit width` uses KIMI_E_INT_SHIFT_COUNT. Discarded left-shift bits do not trigger overflow.
 - A runtime integer conversion outside the target range uses KIMI_E_INT_CONVERSION, as does a float-to-integer failure, including NaN and infinities. A conversion of a finite source that rounds to floating infinity uses `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range`. These codes identify the failures required by §13.5.4; direct literal fitting failures remain compile-time errors.
 - Ordinary element indexing outside the receiver bounds uses KIMI_E_INDEX_BOUNDS, including constant indices and zero-length arrays. Dictionary indexing with an absent key uses `KIMI_E_MISSING_KEY: Dictionary key was not found`; an absent result from a try-prefixed operation is not an Abort.
@@ -604,3 +631,69 @@ Per-case and whole-run budgets limit diagnostic counts and bytes, covering failu
 Intentional detail omission is not an extra execution error. Missing or corrupt required control data, or a failed write of retained data, is an execution error. A storage budget does not bound allocations performed by the user's own message expression.
 
 Verification lowering is shared; only the failure continuation changes (§17.5). Static expression, location and Type tables and compact ID/value events are used, with formatting in the parent. Parent worker slots and buffers are reused, and per-case state is reset. The immutable artifact snapshot is validated once at run startup instead of being copied or revalidated per case, while each child's ID handshake is retained. Reflective registration, per-verification UUIDs and heap objects are not required. Measurements must cover empty or short, I/O-heavy and failure-heavy cases, including startup and recovery, time, parent and child memory, communication and generated code size; no unmeasured speedup is promised.
+
+## 22.7. Windows APIs and elapsed time
+
+### 22.7.1. Windows native counter functions
+
+The public group `Kimi.Windows` exposes Windows-specific APIs through ordinary §22.3 imports:
+
+```kimi
+public group Windows
+    #LibraryImport("kernel32", "QueryPerformanceCounter")
+    public func queryPerformanceCounter(value: uniq/i64) -> i32
+
+    #LibraryImport("kernel32", "QueryPerformanceFrequency")
+    public func queryPerformanceFrequency(value: uniq/i64) -> i32
+```
+
+They preserve the native success flag: nonzero is success and zero is failure. Counter output is a count; frequency output is counts per second. The exclusive borrow supplies live, writable, aligned i64 storage without conflicting access for the call; neither function retains it, so both declarations are safe (§22.3.1). These functions do not allocate or convert errors into Abort themselves. They belong to the Windows x64 profile, not a cross-platform native ABI.
+
+```kimi
+func readCounter() -> i64
+    var value: i64 = 0
+    require Windows.queryPerformanceCounter(value@uniq) != 0 else
+        $abort("Performance counter query failed")
+    return value
+```
+
+### 22.7.2. Duration
+
+`Kimi.Time` is the public group for elapsed-time facilities. `Time.Duration` is Copy and stores a nonnegative whole number of microseconds. Its required declarations are:
+
+| Declaration | Meaning |
+| --- | --- |
+| `init(! microseconds: u64)` | Creates the exact duration. |
+| `rawMicroseconds: u64` | Immutable exact storage. |
+| `seconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000000.0`. |
+| `milliseconds: f64` | Shared computed getter: `rawMicroseconds@f64 / 1000.0`. |
+| `microseconds: f64` | Shared computed getter: `rawMicroseconds@f64`. |
+
+All u64 inputs, including its maximum value, are representable in rawMicroseconds. Floating-point conversions may round under §13.5; they never replace the integer storage. Duration denotes an interval, not a date, time zone or civil timestamp. Construction and getters allocate nothing.
+
+### 22.7.3. Stopwatch
+
+`Time.Stopwatch` is Non-Copy. It stores accumulated whole microseconds as u64 and an optional platform start counter. Its read-only `isRunning: bool` getter reports whether that counter is present. Required functions are:
+
+| Declaration | Behavior |
+| --- | --- |
+| `init()` | Zero accumulated time, stopped; no clock access. |
+| `start(self: uniq/Self) -> ()` | No effect if running; otherwise reads the clock and starts a new interval, retaining accumulated time. |
+| `stop(self: uniq/Self) -> ()` | No effect if stopped; otherwise adds the current interval's whole microseconds and stops. |
+| `reset(self: uniq/Self) -> ()` | Zero accumulated time, stopped; no clock access. |
+| `restart(self: uniq/Self) -> ()` | Reads the clock, replaces accumulated time with zero and starts a new interval. |
+| `elapsed(self: ref/Self) -> Duration` | Returns accumulated time plus the running interval's whole microseconds, without mutation. A stopped snapshot reads no clock. |
+
+For nonnegative counter difference d and positive frequency f, one interval contributes exactly floor(d × 1,000,000 / f) microseconds. Accumulation is integer arithmetic. Each stop discards that interval's sub-microsecond fraction; snapshots discard the running fraction only in their returned value. No discarded fraction is carried between intervals. Conversion must not overflow an intermediate when the mathematical result fits u64; no 128-bit representation is required. Adding an interval beyond u64 Aborts under ordinary checked arithmetic.
+
+The Windows adapter uses §22.7.1. It caches a positive i64 counter frequency in an immutable static Field initialized once on first use (§22.2.3), before the first start/restart counter read. Clock failure, nonpositive frequency, a negative counter or a counter preceding the interval start Aborts. Time is monotonic elapsed time; no civil-clock adjustment is applied. A microsecond storage unit does not promise microsecond hardware resolution. Operations allocate no heap storage. Synchronization follows the single-thread execution boundary of §22.2.3.
+
+```kimi
+var watch = Kimi.Time.Stopwatch.init()
+watch.start()
+// Measured work.
+watch.stop()
+let elapsed = watch.elapsed()
+let seconds: f64 = elapsed.seconds
+let exact: u64 = elapsed.rawMicroseconds
+```

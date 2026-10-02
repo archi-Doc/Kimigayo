@@ -42,6 +42,17 @@ internal sealed class TestCatalog
         return prefix + Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
+    /// <summary>Gets the test project identity, a part of the test configuration that test preparation validates before the front end.</summary>
+    /// <param name="project">The project.</param>
+    /// <returns>The identity.</returns>
+    /// <exception cref="InvalidDataException">The identity is empty or contains NUL.</exception>
+    internal static string ProjectIdOf(Project project)
+    {
+        var id = (project.ProjectFile.TestProjectId ?? project.ProjectFile.PackageId ??
+            (project.FilePath is { } file ? Path.GetFileName(file) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
+        return string.IsNullOrWhiteSpace(id) || id.Contains('\0') ? throw new InvalidDataException("TestProjectId must be nonempty text without NUL.") : id;
+    }
+
     internal void Discover(Compilation compilation)
     {
         this.Cases.Clear();
@@ -52,12 +63,7 @@ internal sealed class TestCatalog
         }
 
         var project = compilation.Project;
-        this.ProjectId = (project.ProjectFile.TestProjectId ?? project.ProjectFile.PackageId ??
-            (project.FilePath is { } file ? Path.GetFileName(file) : project.Name + ".kimi")).Normalize(NormalizationForm.FormC);
-        if (string.IsNullOrWhiteSpace(this.ProjectId) || this.ProjectId.Contains('\0'))
-        {
-            throw new InvalidDataException("TestProjectId must be nonempty text without NUL.");
-        }
+        this.ProjectId = ProjectIdOf(project);
 
         new Collector(this, project).Visit(compilation.Kotonoha.RootKoto);
         this.Cases.Sort(static (a, b) => Compare(a.Name, a.File, a.CaseId, b.Name, b.File, b.CaseId));

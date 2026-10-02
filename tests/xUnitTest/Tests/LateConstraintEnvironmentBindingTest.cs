@@ -17,7 +17,7 @@ public class LateConstraintEnvironmentBindingTest
     public void ContractConditionsControlExpandedConsumerPremises(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    " + clause + Consumers);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         AssertConsumers(c, valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         AssertConsumers(c, valid);
@@ -38,7 +38,7 @@ public class LateConstraintEnvironmentBindingTest
         const string marker = "public contract Marker: Copy\n    string is Copy\n";
         var target = "public " + kind + " Target<T>\n    T is Marker\n    Self is C\n" + (kind == "enum" ? "    A\n" : string.Empty);
         var c = MinimalEmissionTest.Analyze("public contract C\n" + (reverse ? target + marker : marker + target));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var container = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -78,6 +78,7 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(c, false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEnvironmentRevalidationAllocatesNothing()
     {

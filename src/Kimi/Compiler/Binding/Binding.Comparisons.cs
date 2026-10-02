@@ -44,13 +44,13 @@ public sealed partial class Binding
         var proof = tupleOperator ? this.ComparisonProof(self, contract, scope, true) : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, self, contract: contract)), scope);
         if (proof != ConstraintProof.Proven)
         {
-            return Fail(binary, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+            return this.Fail(binary, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
         }
 
         var name = equality ? "equals" : "compare";
         if (contract.Contract is not { } shape || !shape.MembersByName.TryGetValue(name, out var members) || members.Count != 1)
         {
-            return Fail(binary, BindingFailure.InvalidConstraint);
+            return this.Fail(binary, BindingFailure.InvalidConstraint);
         }
 
         var call = binary.ComparisonStorage;
@@ -87,7 +87,7 @@ public sealed partial class Binding
             var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);
             if (resolved is null)
             {
-                return Fail(binary, BindingFailure.Unsupported, true);
+                return this.Fail(binary, BindingFailure.Unsupported, true);
             }
 
             call.CallStorage = resolved;

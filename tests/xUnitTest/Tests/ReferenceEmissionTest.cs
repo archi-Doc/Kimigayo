@@ -35,7 +35,7 @@ public class ReferenceEmissionTest
     [InlineData("Literal", "\"a\"")]
     [InlineData("Call", "echo(\"a\")")]
     [InlineData("If", "(if true => \"a\" else => \"b\")")]
-    [InlineData("Do", "(work: do\n    exit to work: \"a\"\n)")]
+    [InlineData("Do", "(label work: do\n    exit to work \"a\"\n)")]
     [InlineData("Loop", "(loop\n    exit \"a\"\n)")]
     [InlineData("Match", "(match 1\n    1 => \"a\"\n    _ => \"b\"\n)")]
     public void TemporaryBorrowUsesAcquiredStorage(string name, string expression)
@@ -113,7 +113,7 @@ public class ReferenceEmissionTest
     [InlineData("defer => _ = a@move")]
     public void LaterArgumentEffectsSeeTheActiveLoan(string effect)
     {
-        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nvar a = \"a\"\ntest(a, (work: do\n    " + effect + "\n    exit to work: true\n))";
+        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nvar a = \"a\"\ntest(a, (label work: do\n    " + effect + "\n    exit to work true\n))";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
@@ -134,7 +134,7 @@ public class ReferenceEmissionTest
     [Fact]
     public void AbandonedLoansAreNotRestoredInCheckingContinuations()
     {
-        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (work: do\n        return \"ok\"\n        _ = a@move\n        exit to work: true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
+        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (label work: do\n        return \"ok\"\n        _ = a@move\n        exit to work true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         ScalarEmissionTest.EmitFixture("ReferenceUnreachableContinuation", source, "ok\n");
@@ -164,6 +164,7 @@ public class ReferenceEmissionTest
         StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", Source, ir, "a\n", "a=1");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndEmissionAllocateNothing()
     {

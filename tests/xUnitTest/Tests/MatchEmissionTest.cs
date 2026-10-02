@@ -82,6 +82,7 @@ public class MatchEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("regular")]
     [InlineData("covered")]

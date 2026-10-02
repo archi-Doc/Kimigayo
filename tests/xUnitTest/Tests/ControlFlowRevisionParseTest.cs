@@ -28,16 +28,16 @@ public class ControlFlowRevisionParseTest
         var parsed = Parse(
             """
             func run() -> i32
-                work: do
+                label work: do
                     exit to work
-                outer: for item in values
-                    retry: while ready
+                label outer: for item in values
+                    label retry: while ready
                         continue to outer
                         exit to retry
-                return (search: loop
-                    block: do
+                return (label search: loop
+                    label block: do
                         exit value
-                        exit to search: value + 1
+                        exit to search value + 1
                 )
             """);
         foreach (var tree in Versions(parsed))
@@ -177,7 +177,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void DistinguishesDictionaryKeysAndConversionTypesFromLabels()
     {
-        foreach (var tree in Versions(Parse("func run()\n    let map = [key: 1, other: 2]\n    return (outer: loop\n        exit to outer: value@i32\n    )")))
+        foreach (var tree in Versions(Parse("func run()\n    let map = [key: 1, other: 2]\n    return (label outer: loop\n        exit to outer value@i32\n    )")))
         {
             var body = Function(tree).Body!;
             Assert.IsType<DictionaryLiteralKoto>(Assert.IsType<FieldKoto>(body.Items[0]).InitializerKoto);
@@ -202,7 +202,7 @@ public class ControlFlowRevisionParseTest
         var compilation = Compilation.CreateForTest();
         var tree = compilation.Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, "func run()\n    " + malformed + "\n    return ()");
-        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(tree));
         Assert.IsType<ReturnKoto>(Function(tree).Body!.Items[^1]);
     }
 
@@ -222,7 +222,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void PreservesExplicitLabelAfterACompoundOperand()
     {
-        foreach (var tree in Versions(Parse("func run() => outer: loop => exit to outer: (if flag => 1 else => 2)")))
+        foreach (var tree in Versions(Parse("func run() => label outer: loop => exit to outer (if flag => 1 else => 2)")))
         {
             var labeled = Assert.IsType<LabeledKoto>(Function(tree).ExpressionBody);
             var loop = Assert.IsType<LoopKoto>(labeled.Target);
@@ -268,7 +268,7 @@ public class ControlFlowRevisionParseTest
     {
         var tree = Compilation.CreateForTest().Kotonoha;
         tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        var diagnostics = tree.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(tree);
         Assert.True(diagnostics.Length == 0, source + "\n" + string.Join("\n", diagnostics.Select(x => x.Message)));
         return tree;
     }

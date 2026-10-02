@@ -9,6 +9,9 @@ internal sealed class OriginNameList : List<string>
 {
     internal List<SourceSpan> Spans { get; } = new();
 
+    /// <summary>Gets or sets the written header, braces included, of a struct or enum Origin header.</summary>
+    internal SourceSpan HeaderSpan { get; set; }
+
     /// <summary>Compares names and order, which fragments must repeat (SPEC 6.1.2, 15.3).</summary>
     /// <param name="a">The first parameter list.</param>
     /// <param name="b">The second parameter list.</param>
@@ -31,13 +34,12 @@ internal sealed class OriginNameList : List<string>
         return true;
     }
 
-    /// <summary>Writes <c> {a, b}</c>, retaining explicitly empty headers.</summary>
+    /// <summary>Writes <c> {a, b}</c>; nothing when no slot is declared, since a Type without own slots omits the header (SPEC 15.3.2).</summary>
     /// <param name="origins">Declared Origin parameters.</param>
     /// <param name="builder">The destination builder.</param>
-    /// <param name="explicitHeader">Whether an empty closed header must be written.</param>
-    internal static void WriteTo(IReadOnlyList<string> origins, ref IndentedStringBuilder builder, bool explicitHeader = false)
+    internal static void WriteTo(IReadOnlyList<string> origins, ref IndentedStringBuilder builder)
     {
-        if (origins.Count == 0 && !explicitHeader)
+        if (origins.Count == 0)
         {
             return;
         }
@@ -66,6 +68,11 @@ internal sealed class OriginNameList : List<string>
     /// <param name="source">The parsed parameters.</param>
     internal void AppendFrom(IReadOnlyList<string> source)
     {
+        if (source is OriginNameList header)
+        {
+            this.HeaderSpan = header.HeaderSpan;
+        }
+
         for (var i = 0; i < source.Count; i++)
         {
             this.Add(source[i], source is OriginNameList located && i < located.Spans.Count ? located.Spans[i] : default);

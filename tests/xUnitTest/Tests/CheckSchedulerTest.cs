@@ -26,14 +26,14 @@ public sealed class CheckSchedulerTest : IDisposable
     [Fact]
     public async Task EditsWithinTheQuietPeriodStartOneCheck()
     {
-        await using var harness = new SchedulerHarness();
+        await using var harness = new SchedulerHarness(quietPeriod: null);
         var path = this.PathOf("A.kimi");
         harness.At(0).Open(path, "error");
         harness.At(90).Change(path, 2, "error error");
         harness.At(180).Change(path, 3, "error");
-        harness.At(429);
+        harness.At(1179);
         Assert.Equal(0, harness.Starts);
-        harness.At(430);
+        harness.At(1180);
         Assert.Equal(1, harness.Starts);
 
         await harness.RunCheckAsync();
@@ -45,15 +45,15 @@ public sealed class CheckSchedulerTest : IDisposable
     [Fact]
     public async Task AnEditAfterTheBaseDiscardsTheResultAndSchedulesTheNextCheck()
     {
-        await using var harness = new SchedulerHarness();
+        await using var harness = new SchedulerHarness(quietPeriod: null);
         var path = this.PathOf("A.kimi");
         harness.At(0).Open(path, "error");
-        harness.At(250);
-        await harness.RunCheckAsync(block: true, whileBlocked: () => harness.At(460).Change(path, 2, "error error"));
+        harness.At(1000);
+        await harness.RunCheckAsync(block: true, whileBlocked: () => harness.At(1210).Change(path, 2, "error error"));
         Assert.Empty(await harness.PublishesAsync(path));
-        Assert.Equal(710, harness.Session.Deadline);
+        Assert.Equal(2210, harness.Session.Deadline);
 
-        harness.At(710);
+        harness.At(2210);
         await harness.RunCheckAsync();
         var publish = Assert.Single(await harness.PublishesAsync(path));
         Assert.Equal(2, publish.GetProperty("version").GetInt32());
@@ -183,7 +183,8 @@ public sealed class CheckSchedulerTest : IDisposable
                 CheckOutcome.Completed,
                 false,
                 TestPresence.No,
-                [new("Fake_Kd", DiagnosticSeverity.Error, "common", identity, default), new("Fake_Kd", DiagnosticSeverity.Error, text, identity, default)]);
+                [Fake("common", 0, default), Fake(text, 0, default)],
+                [new(identity.Value, true)]);
         };
         var first = this.PathOf("A.kimi");
         var second = this.PathOf("B.kimi");
@@ -192,19 +193,20 @@ public sealed class CheckSchedulerTest : IDisposable
         harness.At(251);
         await harness.RunCheckAsync();
         var published = await harness.PublishesAsync(shared);
-        Assert.Equal(["A", "B", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+        // SPEC 23.4.7: range, then contributor (A before B), then result order; a value both send appears once.
+        Assert.Equal(["common", "A", "B"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
 
         harness.At(300).Change(first, 2, "C");
         harness.At(550);
         await harness.RunCheckAsync();
         published = await harness.PublishesAsync(shared);
-        Assert.Equal(["B", "C", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+        Assert.Equal(["common", "C", "B"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
 
         harness.At(600).Close(second);
         harness.At(850);
         await harness.RunCheckAsync();
         published = await harness.PublishesAsync(shared);
-        Assert.Equal(["C", "common"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
+        Assert.Equal(["common", "C"], published[^1].GetProperty("diagnostics").EnumerateArray().Select(static x => x.GetProperty("message").GetString()));
     }
 
     [Fact]
@@ -292,7 +294,7 @@ public sealed class CheckSchedulerTest : IDisposable
         var source = this.PathOf("Lib/Nested/Test.kimi");
         Directory.CreateDirectory(Path.GetDirectoryName(source)!);
         await using var harness = new SchedulerHarness();
-        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, []);
+        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, DiagnosticResult.Empty);
         harness.At(0).Open(app, File.ReadAllText(app));
         harness.At(1).Open(source, "test");
         harness.At(251);
@@ -306,7 +308,7 @@ public sealed class CheckSchedulerTest : IDisposable
     {
         var project = this.WriteProject("App");
         await using var harness = new SchedulerHarness();
-        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, []);
+        harness.Session.Runner = static (_, _, _, _, _) => new(CheckOutcome.Completed, true, TestPresence.No, DiagnosticResult.Empty);
         harness.At(0).Open(project, File.ReadAllText(project));
         harness.At(250);
         await harness.RunCheckAsync(beforeCommit: () => harness.At(260).Open(this.PathOf("App/New.kimi"), "new"));
@@ -350,11 +352,13 @@ public sealed class CheckSchedulerTest : IDisposable
         private int blockNext;
         private int runs;
 
-        public SchedulerHarness()
+        // A null quiet period leaves the server default in effect.
+        public SchedulerHarness(int? quietPeriod = 250)
         {
             this.Sender = new(this.output);
             this.Session = new(this.Sender, this.Start, item => this.posted.Writer.TryWrite(item)) { Runner = this.Run };
-            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{\"target\":\"{WindowsProfile.Target}\"}}}}}}");
+            var period = quietPeriod is { } value ? $"\"checkQuietPeriodMs\":{value}," : string.Empty;
+            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{{period}\"target\":\"{WindowsProfile.Target}\"}}}}}}");
             this.Message("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}");
         }
 
@@ -477,13 +481,17 @@ public sealed class CheckSchedulerTest : IDisposable
             {
                 for (var index = lines[line].IndexOf("error", StringComparison.Ordinal); index >= 0; index = lines[line].IndexOf("error", index + 5, StringComparison.Ordinal))
                 {
-                    diagnostics.Add(new("Fake_Kd", DiagnosticSeverity.Error, "error", SourceIdentity.FromPath(path), new SourceRange(new(line, index), new(line, index + 5))));
+                    diagnostics.Add(Fake("error", 0, new SourceRange(new(line, index), new(line, index + 5))));
                 }
             }
 
-            return new(CheckOutcome.Completed, diagnostics.Count == 0, text.Contains("test", StringComparison.Ordinal) ? TestPresence.Yes : TestPresence.No, diagnostics.ToArray());
+            return new(CheckOutcome.Completed, diagnostics.Count == 0, text.Contains("test", StringComparison.Ordinal) ? TestPresence.Yes : TestPresence.No, diagnostics.ToArray(), [new(SourceIdentity.FromPath(path).Value, true)]);
         }
     }
+
+    // A published record at one source of the result's table, with the given display range.
+    private static CheckDiagnostic Fake(string message, int source, SourceRange range)
+        => new("Fake_Kd", DiagnosticSeverity.Error, DiagnosticCategory.Language, message, source, new SourceSpan(0, 1)) { Display = new(range, []) };
 
     private sealed class RunnerEntered
     {

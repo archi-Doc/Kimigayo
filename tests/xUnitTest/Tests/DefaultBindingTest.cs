@@ -11,7 +11,7 @@ public class DefaultBindingTest
     [Theory]
     [InlineData("do => 1")]
     [InlineData("loop => exit 1")]
-    [InlineData("choice: do => exit to choice: 1")]
+    [InlineData("label choice: do => exit to choice 1")]
     [InlineData("if true => 1 else => 2")]
     public void DefaultControlFlowUsesValueContextAndInternalTargets(string expression)
     {
@@ -31,7 +31,7 @@ public class DefaultBindingTest
     [InlineData("func outer() -> i32\n    func f(x: i32 = (return 1)) => ()\n    f(3)\n    return 2", "return")]
     [InlineData("func outer()\n    loop\n        func f(x: () = (exit)) => ()\n        exit", "exit")]
     [InlineData("func outer()\n    loop\n        func f(x: () = (continue)) => ()\n        exit", "continue")]
-    [InlineData("func outer()\n    outer: loop\n        func f(x: () = (exit to outer)) => ()\n        exit", "exit")]
+    [InlineData("func outer()\n    label outer: loop\n        func f(x: () = (exit to outer)) => ()\n        exit", "exit")]
     [InlineData("func f(x: i32 = (if false => return 1 else => 2)) => ()\nf(3)", "return")]
     public void DefaultsCannotTransferOutsideTheirOwnExpression(string source, string keyword)
     {
@@ -64,6 +64,7 @@ public class DefaultBindingTest
         Assert.True(flow.Nodes[function].CanCompleteNormally);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDefaultFlowAnalysisReusesStorage()
     {
@@ -216,6 +217,7 @@ public class DefaultBindingTest
         Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 1), restoredPlan.DefaultArguments[0].Parameter);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOmittedDefaultPlansReuseTheirStorage()
     {
@@ -302,6 +304,7 @@ public class DefaultBindingTest
         Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 0), restoredFunction.Parameters[1].DefaultValue!.BoundSymbol);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmDefaultBindingAllocatesNothing()
     {

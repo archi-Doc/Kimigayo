@@ -81,9 +81,23 @@ public sealed partial class Binding
         value = 0;
         var signed = ScalarTypes.Signed(type);
         var minimum = unchecked(-(Int128)((UInt128)1 << (width - 1)));
-        if (operation is KotoKind.Slash or KotoKind.Percent && (right == 0 || (signed && (Int128)left == minimum && (Int128)right == -1)))
+        if (operation is KotoKind.Slash or KotoKind.Percent && right == 0)
         {
             return false;
+        }
+
+        if (signed && (Int128)right == -1)
+        {
+            // SPEC 13.3: a % -1 is 0 for every a, and only the minimum / -1 quotient is unrepresentable.
+            if (operation == KotoKind.Percent)
+            {
+                return true;
+            }
+
+            if (operation == KotoKind.Slash && (Int128)left == minimum)
+            {
+                return false;
+            }
         }
 
         try
@@ -358,7 +372,7 @@ public sealed partial class Binding
         if (!this.LengthTypeEvidence(syntax, scope, ref type) ||
             !this.EvaluateLength(syntax, scope, type ?? BoundType.ISize, out var value, out var symbolic))
         {
-            Fail(syntax, BindingFailure.InvalidTypeFormation);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
         }
 
@@ -366,7 +380,7 @@ public sealed partial class Binding
         {
             if (scope.Function is { } function && !IsSignatureLength(syntax, function) && !this.ProveLength(symbolic, function))
             {
-                Fail(syntax, BindingFailure.InvalidTypeFormation);
+                this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                 return null;
             }
 
@@ -377,7 +391,7 @@ public sealed partial class Binding
         var maximum = ((UInt128)1 << (this.compilation.PointerWidth - 1)) - 1;
         if (value > maximum)
         {
-            Fail(syntax, BindingFailure.InvalidTypeFormation);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
         }
 

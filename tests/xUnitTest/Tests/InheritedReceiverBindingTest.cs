@@ -251,7 +251,7 @@ public class InheritedReceiverBindingTest
     [Theory]
     [InlineData("self: i32")]
     [InlineData("self: ref/ref/Self")]
-    [InlineData("self: unsafe/Self")]
+    [InlineData("self: raw/Self")]
     public void InvalidReceiverDeclarationsCannotSupplyCalls(string parameter)
     {
         var c = CompilationTestHelper.ParseSuccess($"struct S\n    func f({parameter}) => ()");
@@ -452,6 +452,7 @@ public class InheritedReceiverBindingTest
         Assert.Same(Call(c).BoundCall!.DeclaringType, Call(c).BoundCall!.BasePath!.Type);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

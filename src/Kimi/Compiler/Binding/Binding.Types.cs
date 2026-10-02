@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 5.2: the canonical raw pointer Type of a projected pointee subplace; raw pointers carry no Origin.
-    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Unsafe, [referent]);
+    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent]);
 
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
@@ -17,7 +17,7 @@ public sealed partial class Binding
 
     private static Koto UnwrapTypeSyntax(Koto node)
     {
-        while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
+        while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
         {
             node = inner;
         }
@@ -154,7 +154,7 @@ public sealed partial class Binding
             {
                 if (this.importedContainerEnvironments.TryGetValue(use, out var previous) && !ReferenceEquals(previous, importedEnvironment))
                 {
-                    Fail(use, BindingFailure.Ambiguous, true);
+                    this.Fail(use, BindingFailure.Ambiguous, true);
                     return null;
                 }
 
@@ -221,7 +221,7 @@ public sealed partial class Binding
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
-                    Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                    this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                     return null;
                 }
 
@@ -231,7 +231,7 @@ public sealed partial class Binding
                 reference = alias.BoundType!;
                 if (reference.OriginArguments.Count != (symbol.Schema?.Origins.Count ?? 0) || reference.OriginArguments.Contains(null!))
                 {
-                    Fail(alias, BindingFailure.InvalidOrigin);
+                    this.Fail(alias, BindingFailure.InvalidOrigin);
                     return null;
                 }
 
@@ -250,19 +250,19 @@ public sealed partial class Binding
             var symbol = i == 0 && name == "Kimi" ? this.Library.Module : this.SelectTypeCandidate(scope.Types.GetValueOrDefault(name), declarationScope, alias, false) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
             if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
-                Fail(alias, BindingFailure.MissingName, true);
+                this.Fail(alias, BindingFailure.MissingName, true);
                 return null;
             }
 
             if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 } or DeclarationContainerKoto { OriginNames.Count: > 0 })
             {
-                Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                 return null;
             }
 
             if (symbol.Declaration is DeclarationContainerKoto { HasIncompatibleBindingHeader: true })
             {
-                Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
                 return null;
             }
 
@@ -272,7 +272,7 @@ public sealed partial class Binding
 
         if (alias.QualifiedName.Count == 0 || (alias.Name is not null && scope.Owner is not GroupKoto))
         {
-            Fail(alias, BindingFailure.InvalidTypeFormation, true);
+            this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
             return null;
         }
 
@@ -407,9 +407,11 @@ public sealed partial class Binding
 
         if (!this.resolvingTypes.Add(syntax))
         {
-            return Fail(syntax, BindingFailure.Cycle, true);
+            return this.Fail(syntax, BindingFailure.Cycle, true);
         }
 
+        // A Type expression is checked like an expression: the components that failed are its prerequisites.
+        var frame = this.BeginConsultation(syntax);
         try
         {
             var owner = OriginOwner(syntax);
@@ -429,6 +431,8 @@ public sealed partial class Binding
         finally
         {
             this.resolvingTypes.Remove(syntax);
+            this.EndConsultation(syntax, frame);
+            this.Consulted(syntax);
         }
     }
 
@@ -440,7 +444,7 @@ public sealed partial class Binding
                 scope.Owner is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol: { ReceiverIndex: >= 0 } functionSymbol } function &&
                 ReferenceEquals(function.Parameters[functionSymbol.ReceiverIndex].Type, syntax):
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
-                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.SelfType(functionSymbol.Scope.Owner.BoundSymbol!)]);
+                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
                 var rootDefinition = this.RootTypeName(rootedGeneric, true);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
@@ -463,7 +467,7 @@ public sealed partial class Binding
                 // Function Types and anonymous functions with Place results remain a boundary).
                 if (place.Parent is not FunctionKoto { IsAnonymous: false } owner || !ReferenceEquals(owner.ReturnType, place))
                 {
-                    return Fail(place, BindingFailure.Unsupported);
+                    return this.Fail(place, BindingFailure.Unsupported);
                 }
 
                 return this.BindType(place.Type, scope, context);
@@ -510,7 +514,7 @@ public sealed partial class Binding
                         var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
-                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
 
                         syntax.BoundSymbol = parameter;
@@ -544,13 +548,13 @@ public sealed partial class Binding
                     {
                         // SPEC 8.4.7.2: the target must be an Object Target. Generic targets and a Contract's
                         // Self are proven from their premises at the definition deadline.
-                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection || inner.Symbol?.Declaration is ContractKoto)
+                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }
                         else if (inner.Semantics != SemanticsKind.Owner || ReferenceEquals(inner, BoundType.Never))
                         {
-                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
                         }
                         else if (inner.Symbol?.ObjectPayloadOptOut is { } renounced)
                         {
@@ -581,7 +585,7 @@ public sealed partial class Binding
                 var length = this.BindLength(array.Length, scope);
                 if (length is null)
                 {
-                    return Fail(array, BindingFailure.InvalidTypeFormation);
+                    return this.Fail(array, BindingFailure.InvalidTypeFormation);
                 }
 
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
@@ -602,7 +606,7 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol is null && EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
+        if (symbol is null && this.EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
         {
             var name = syntax is IdentifierNameKoto identifier ? identifier.IdentifierName : ((TypeSemanticsKoto)syntax).Identifier;
             symbol = this.FindAssociated(contractSelf, scope, name, null, syntax);
@@ -610,30 +614,30 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return Fail(syntax, BindingFailure.MissingType, true);
+            return this.FailMissingType(syntax, scope);
         }
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
         if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
         {
-            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+            return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
 
         if (symbol.Kind == BindingSymbolKind.AssociatedType)
         {
             if (this.UnappliedFamily(symbol.Declaration, applyingOrigins))
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
-            var self = EnclosingContractSelf(scope);
+            var self = this.EnclosingContractSelf(scope);
             if (self is null)
             {
-                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+                return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
             }
 
-            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax);
+            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax, out var reference);
             if (symbol is null)
             {
                 return null;
@@ -641,7 +645,7 @@ public sealed partial class Binding
 
             syntax.BoundSymbol = symbol;
 
-            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self]);
+            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self, this.ProjectionContract(symbol, reference)]);
             return this.NormalizedProjection(projected, scope, applyingOrigins);
         }
 
@@ -654,7 +658,7 @@ public sealed partial class Binding
 
         if (isSelf)
         {
-            return this.SelfType(symbol);
+            return this.DeclarationSelf(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto
@@ -664,20 +668,40 @@ public sealed partial class Binding
 
     private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
     {
-        if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        if (definition is null)
         {
-            return Fail(generic, BindingFailure.InvalidTypeFormation);
+            // The generic's Name is what is missing; the application is not formed from it.
+            return this.FailMissingType(generic.Identifier!, scope);
+        }
+
+        if (definition.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        {
+            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
         }
 
         if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            return Fail(generic, BindingFailure.TypeMismatch);
+            return this.Fail(generic, BindingFailure.TypeMismatch);
         }
 
         generic.Identifier!.BoundSymbol = definition;
         generic.Identifier.BindingState = BindingState.Resolved;
         generic.BoundSymbol = definition;
         var own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
+        if (own is { IsWrappingInteger: true })
+        {
+            // SPEC 3.1.1.1: Wrapping<T> over an integer Type is already the interned Scalar, and that argument satisfies the
+            // declaration's only Constraint, so no container reference or obligation is formed.
+            return Complete(generic, own);
+        }
+
+        // SPEC 15.3.5: Loan<T> is formed only over a complete ref, uniq, objref or objuniq borrow Type.
+        if (definition.LibraryDeclaration == KimiDeclarationId.Loan && own is { Components: [var borrowed] } &&
+            borrowed is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
+        {
+            return this.Fail(generic, BindingFailure.InvalidTypeFormation);
+        }
+
         var bound = own is null ? null : Complete(generic, this.BindContainerReference(generic, definition, scope, context, (BoundType[])own.Components));
         if (bound is not null && container is StructKoto { AttributeChain: not null } structure && HasCLayout(structure))
         {
@@ -710,6 +734,14 @@ public sealed partial class Binding
 
     private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
     {
+        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
+        // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
+            semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
+        {
+            return BoundType.WrappingOf(components[0]);
+        }
+
         // SPEC 4.5: Array<T> is the compiler-managed owning dynamic sequence behind the library declaration.
         if (kind == BoundTypeKind.Array || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.DynamicArray.Declaration)))
         {

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -23,7 +24,7 @@ public class ClosedTypeConstraintBindingTest
     public void ClosedSubjectsAreDeclarationObligations(string kind, string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source(kind, clause));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
         if (!valid)
@@ -71,7 +72,7 @@ public class ClosedTypeConstraintBindingTest
         const string source = "public struct Source\n    string is Copy\n    Self is Origin\n";
         const string target = "public struct Target\n    Source is Origin\n    Self is Origin\n    public computed value: i32\n        get(self: ref/Self) -> i32 => 1\n    public func read() -> i32 => 1\n";
         var c = MinimalEmissionTest.Analyze("public contract Origin\n" + (reverse ? target + source : source + target) + "let x = Target.read()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
         Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);
@@ -100,7 +101,11 @@ public class ClosedTypeConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic struct Source\n    Self is Origin\nfunc f<T>()\n    " + clause + "\n    ()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+
+        // The parser reports the prefix whose subject the function does not permit (SPEC 7.4); Binding's own restriction rests on that Error.
+        Assert.Contains(c.Binding.DerivedIssues, x => x.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
     }
 
     [Fact]
@@ -118,6 +123,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.Equal(BindingState.Invalid, Target(c).BindingState);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmClosedObligationChecksAllocateNothing()
     {

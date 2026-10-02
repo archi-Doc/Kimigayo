@@ -25,6 +25,7 @@ public partial class Project
         }
 
         this.ProjectFile.Test.Validate();
+        _ = Testing.TestCatalog.ProjectIdOf(this); // SPEC 23.3.3: an invalid configuration blocks the check before the front end.
         var target = this.KimiOptions.Target;
         if (string.IsNullOrEmpty(target))
         {

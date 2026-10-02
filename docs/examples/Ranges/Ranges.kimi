@@ -1,0 +1,34 @@
+// Ranges of one integer Type iterate; any range selects from a target; a resolved range holds validated positions.
+func tryWindow<T, I>(values: Slice<T> ! start: I, end: I) -> Option<Slice<T> during values.source>
+    I is PrimitiveInteger
+    return values.trySlice(start..end) // None for negative, reversed or out-of-range boundaries.
+
+var total = 0
+for number in 1..=4 // ClosedRange<i32, i32>: 1 through 4.
+    total += number
+Console.writeLine("Sum of 1..=4 is \(total).")
+
+var last: u8 = 0
+for byte in 250@u8..=255 // Stops at the maximum of u8 without overflow.
+    last = byte
+Console.writeLine("Last byte is \(last).")
+
+let values: [5 of i32] = [10, 20, 30, 40, 50]
+let inner = 1..^1 // Range<i32, FromEnd<i32>>: resolved against each target it selects from.
+let middle = values[inner]
+Console.writeLine("Middle has \(middle.length) values.")
+
+let count: i32 = 2
+let tail = values[^count..] // `^x` takes an integer of any Type.
+let first = tail[0]
+Console.writeLine("Tail starts at \(first).")
+
+let resolved = inner.resolve(values.length) // ResolvedRange [1, 4).
+var positions = 0
+for _ in resolved
+    positions += 1
+Console.writeLine("Resolved range covers \(positions) positions.")
+
+match tryWindow(values[..], start: 3@u64, end: 9@u64)
+    .Some(_) => $abort("window accepted")
+    .None => Console.writeLine("Window 3..9 is out of range.")

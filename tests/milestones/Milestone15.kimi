@@ -2,7 +2,7 @@
 struct Item
     public var value: i32
     public init(value: i32) => self.value = value
-    deinit => Console.writeLine("Item destroyed.")
+    drop => Console.writeLine("Item destroyed.")
 
 func consume(item: Item, expected: i32)
     require item.value == expected else => $abort("Unexpected consumed value")

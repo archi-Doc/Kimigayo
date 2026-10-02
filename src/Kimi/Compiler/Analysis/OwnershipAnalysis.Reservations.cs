@@ -6,8 +6,76 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private const string RetainedLoanLabel = "value retaining the conflicting loan";
+    private const string ReservationLabel = "conflicting exclusive call reservation";
+
     private static bool IsDirectExclusiveBorrow(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
+
+    // SPEC 15.6.7: the value retaining a conflicting Loan and the lending point of a conflicting reservation are shown.
+    private static (string Role, Koto At, string? Label)[]? RelatedLocations(OwnershipIssue issue) => (issue.LoanSource, issue.ConflictingReservation) switch
+    {
+        ({ } loan, { } reserved) => [("loan", loan, RetainedLoanLabel), ("reservation", reserved.Input, ReservationLabel)],
+        ({ } loan, null) => [("loan", loan, RetainedLoanLabel)],
+        (null, { } reserved) => [("reservation", reserved.Input, ReservationLabel)],
+        _ => null,
+    };
+
+    // SPEC 15.6.7: a conflict at an implicit lending point names the acquisition; when two implicit acquisitions overlap, both,
+    // once when they read alike. Formatted only for a published record.
+    private static string? AcquisitionNote(OwnershipIssue issue)
+    {
+        var input = ImplicitAcquisition(issue.Input);
+        var reserved = ImplicitAcquisition(issue.ConflictingReservation);
+        return input is null || input == reserved ? reserved : reserved is null ? input : input + "; " + reserved;
+    }
+
+    private static string? ImplicitAcquisition(OwnershipLending? lending)
+    {
+        if (lending is not { Input: var input, Call: var call })
+        {
+            return null;
+        }
+
+        // A borrow value is Reborrowed; an owned Place, including an object payload reached by a follow, is borrowed.
+        var acquired = input.BoundType?.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq ? "reborrowed" : "borrowed";
+        if (call.BoundValueCall is { } value)
+        {
+            return Contains(value.Receiver, input) && !IsDirectExclusiveBorrow(value.Receiver) ? $"`{input}` implicitly {acquired} exclusively as the receiver of its call" : null;
+        }
+
+        if (call.BoundCall is not { } bound)
+        {
+            return null;
+        }
+
+        if (bound.Receiver is { } receiver && Contains(receiver, input))
+        {
+            return IsDirectExclusiveBorrow(receiver) ? null : $"`{input}` implicitly {acquired} exclusively as the receiver of `{bound.Target.Name}`";
+        }
+
+        for (var i = 0; i < call.ArgumentNodes.Count && i < bound.ArgumentOperations.Length; i++)
+        {
+            if (Contains(call.ArgumentNodes[i], input))
+            {
+                if (IsDirectExclusiveBorrow(call.ArgumentNodes[i]))
+                {
+                    return null;
+                }
+
+                var index = bound.ArgumentOperations[i].ParameterIndex;
+                return bound.Target.Declaration is FunctionKoto function && (uint)index < (uint)function.Parameters.Count && function.Parameters[index] is { } parameter
+                    ? $"`{input}` implicitly {acquired} exclusively for parameter `{(parameter.ExternalName.Length > 0 ? parameter.ExternalName : parameter.InternalName)}` of `{bound.Target.Name}`"
+                    : $"`{input}` implicitly {acquired} exclusively as an argument of `{bound.Target.Name}`";
+            }
+        }
+
+        return null;
+
+        static bool Contains(Koto node, Koto input)
+            => node.Span.Start <= input.Span.Start && input.Span.Start + input.Span.Length <= node.Span.Start + node.Span.Length &&
+                ReferenceEquals(node.CodeContext.SourceDocument, input.CodeContext.SourceDocument);
+    }
 
     private bool HasCallInspection(int place)
     {

@@ -150,6 +150,7 @@ public class LengthCallBindingTest
         Assert.Equal(2, call.BoundCall!.LengthArguments[0]!.Value);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmRebindingRetainSeparateSubstitutions()
     {

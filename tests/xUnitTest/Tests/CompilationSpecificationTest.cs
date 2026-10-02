@@ -5,6 +5,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -35,7 +36,7 @@ public class CompilationSpecificationTest
         foreach (var condition in new[] { expression, $"false and ({expression})", $"true or ({expression})" })
         {
             var compilation = CompilationTestHelper.Parse($"#if {condition}\nvar excluded = 1");
-            Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+            Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
             Assert.Null(compilation.Kotonoha.GeneratedFunction);
         }
     }
@@ -50,7 +51,7 @@ public class CompilationSpecificationTest
     public void AllowedScalarConditionsEvaluateWithoutBinding(string condition)
     {
         var compilation = CompilationTestHelper.Parse($"#if {condition}\nvar selected = 1");
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
@@ -62,17 +63,18 @@ public class CompilationSpecificationTest
     public void TypeDependentConditionsAreRejectedWithoutBinding(string requirement)
     {
         var compilation = CompilationTestHelper.Parse($"#if false and ({requirement})\nvar incomplete =");
-        Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+        Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
     [Fact]
-    public void ExclusionDoesNotRetractGrammarErrorsFromAlreadyParsedBodies()
+    public void ExcludedSyntaxReportsGrammarErrors()
     {
-        Assert.Empty(CompilationTestHelper.Parse("#if false\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(CompilationTestHelper.Parse("#if pendingName\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(CompilationTestHelper.Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar complete = 1")));
+        Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar incomplete =")));
+        Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if pendingName\nvar incomplete =")));
+        Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =")));
+        Assert.NotEmpty(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\nvar text = \"unterminated")));
     }
 
     [Theory]
@@ -128,7 +130,7 @@ public class CompilationSpecificationTest
         compilation.Kotonoha.CreateCodeContext().Parse(
             compilation.Kotonoha.RootKoto,
             "#if feature and limit == -2 and flavor == \"vanilla\"\nvar selected = 1");
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
         Assert.NotNull(compilation.Kotonoha.GeneratedFunction);
         Assert.Empty(Compilation.CreateForTest().Project.ProjectFile.CompileTimeSettings);
         Assert.Throws<InvalidOperationException>(() => compilation.Prepare("x86_64-unknown-linux-gnu"));
@@ -167,7 +169,7 @@ public class CompilationSpecificationTest
                 """;
             compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
 
-            Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(compilation));
             Assert.Collection(
                 compilation.Kotonoha.GeneratedFunction!.Body!.Items,
                 node => Assert.Equal("builtinSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName),
@@ -196,7 +198,7 @@ public class CompilationSpecificationTest
         Assert.True(compilation.BuildMetadata!.CompileTimeValues[first].Bool);
         Assert.False(compilation.BuildMetadata.CompileTimeValues[second].Bool);
         Assert.False(compilation.Variables.ContainsKey("feature"));
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
     }
 
     [Theory]
@@ -221,7 +223,7 @@ public class CompilationSpecificationTest
         Assert.Empty(compilation.Variables);
         Assert.Same(TargetTriple.Invalid, compilation.TargetTriple);
         Assert.Null(compilation.BuildMetadata);
-        Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd));
+        Assert.Contains(TestDiagnostics.Of(compilation), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd));
     }
 
     [Fact]
@@ -263,7 +265,6 @@ public class CompilationSpecificationTest
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Empty(project.BuildMetadata);
         project.ProjectFile.LangVersion = Compilation.CurrentLanguageVersion;
-        compilation.Kimigayo.GetOrAddDiagnosticCollection(project.Name).ClearDiagnostic();
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.Equal(Compilation.CurrentLanguageVersion, Assert.Single(project.BuildMetadata).LanguageVersion);
     }
@@ -284,7 +285,7 @@ public class CompilationSpecificationTest
         Assert.Same(second, items[1].CodeContext.SourceDocument);
         Assert.Null(entryPoint.SourceDocument);
         items[0].AddDiagnostic(DiagnosticCode.TypeMismatch_Kd);
-        Assert.Same(first, Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).SourceDocument);
+        Assert.Equal(first.Path, Assert.Single(TestDiagnostics.Of(compilation)).Path);
         Assert.Throws<InvalidOperationException>(() => items[0].CodeContext.Parse(root, second));
     }
 
@@ -313,7 +314,7 @@ public class CompilationSpecificationTest
             c.Kotonoha.CreateCodeContext().Parse(
                 c.Kotonoha.RootKoto,
                 "#if windows and not WINDOWS and Feature and not FEATURE and 機能 == -9223372036854775808 and é == \"Vanilla\"\nvar selected = 1");
-            Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(c));
             Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items);
         }
         finally
@@ -368,9 +369,9 @@ public class CompilationSpecificationTest
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         var source = new SourceDocument("case-sensitive.kimi", $"#if {condition}\nvar excluded = 1");
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        var diagnostic = Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Entry.Name);
-        Assert.Same(source, diagnostic.SourceDocument);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Code);
+        Assert.Equal(source.Path, diagnostic.Path);
         var name = condition.Contains("WINDOWS", StringComparison.Ordinal) ? "WINDOWS" : condition.StartsWith("POINTERWIDTH", StringComparison.Ordinal) ? "POINTERWIDTH" : "feature";
         Assert.Equal(4 + condition.IndexOf(name, StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(name.Length, diagnostic.Span.Length);
@@ -383,8 +384,8 @@ public class CompilationSpecificationTest
     public void UnselectedSwitchConditionsStillRejectMisspelledNames(string source)
     {
         var c = CompilationTestHelper.Parse(source);
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(c.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
-        Assert.Empty(CompilationTestHelper.Parse("#if false\n    #if WINDOWS\n        ()").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse("#if false\n    #if WINDOWS\n        ()"))).Code);
     }
 
     [Fact]
@@ -409,12 +410,13 @@ public class CompilationSpecificationTest
         Assert.Null(c.BuildMetadata);
         Assert.Same(TargetTriple.Invalid, c.TargetTriple);
         settings.Remove("windows");
-        c.Kotonoha.DiagnosticCollection.ClearDiagnostic();
+        c.Diagnostics.Invalidate(DiagnosticPartition.Input);
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         Assert.False(c.Variables["Feature"].Bool);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmCaseSensitiveLookupDoesNotAllocate()
     {

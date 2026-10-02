@@ -9,8 +9,9 @@ public class LengthStorageEmissionTest
 {
     private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value@move\n";
     private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a@move else => b@move\n";
-    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(Keep + "let a = keep<2, i32>([4, 9])")]
     [InlineData(Keep + "let a: [2 of i32] = [4, 9]\nlet b = keep(a)")]
@@ -121,6 +122,7 @@ public class LengthStorageEmissionTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmVerificationPreserveSharedLengthPlans()
     {

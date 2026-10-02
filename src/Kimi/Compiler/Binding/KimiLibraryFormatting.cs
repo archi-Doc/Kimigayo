@@ -43,9 +43,9 @@ public sealed partial class KimiLibrary
     {
         var expected = id switch
         {
-            KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer => index switch { 0 => "data", 1 => "capacity", 2 => "length", 3 => "validated", _ => null },
-            KimiDeclarationId.WriteWindow => index switch { 0 => "state", 1 => "start", 2 => "written", 3 => "remaining", _ => null },
-            KimiDeclarationId.Utf8Writer => index switch { 0 => "destination", 1 => "dispatch", 2 => "kind", 3 => "failed", 4 => "hint", 5 => "pending", 6 => "pendingLength", 7 => "logicalLength", _ => null },
+            KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer => index switch { 0 => "data", 1 => "capacity", 2 => "length", 3 => "validated", 4 when id == KimiDeclarationId.FixedBuffer => "loan", _ => null },
+            KimiDeclarationId.WriteWindow => index switch { 0 => "state", 1 => "start", 2 => "written", 3 => "remaining", 4 => "loan", _ => null },
+            KimiDeclarationId.Utf8Writer => index switch { 0 => "destination", 1 => "dispatch", 2 => "kind", 3 => "failed", 4 => "hint", 5 => "pending", 6 => "pendingLength", 7 => "logicalLength", 8 => "loan", _ => null },
             KimiDeclarationId.Utf8Slice when index == 0 => "value",
             _ => null,
         };
@@ -53,7 +53,9 @@ public sealed partial class KimiLibrary
         var exposed = expected is "capacity" or "length" or "written" or "remaining";
         return expected is not null && field.NameKoto.IdentifierName == expected && field.DeclarationKind == PropertyDeclarationKind.Let &&
             field.Modifier == (exposed ? ModifierKind.Public : ModifierKind.NoModifier) && field.AttributeChain is null && field.InitializerKoto is null && field.Accessors.Count == 0 &&
-            (pointer ? FormattingBorrow(field.TypeKoto, SemanticsKind.Unsafe, "u8") : expected == "value" ? FormattingValue(field.TypeKoto, "Slice") : BareName(field.TypeKoto, expected == "failed" ? "bool" : "isize"));
+            (expected == "loan" ? BareType(field.TypeKoto) is GenericsKoto { TypeArguments: [TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null } lent] } loan &&
+                BareName(loan.Identifier, "Loan") && BareName(lent.Type, "u8") && lent.OriginName == (id == KimiDeclarationId.Utf8Writer ? "target" : "source") :
+                pointer ? FormattingBorrow(field.TypeKoto, SemanticsKind.Raw, "u8") : expected == "value" ? FormattingValue(field.TypeKoto, "Slice") : BareName(field.TypeKoto, expected == "failed" ? "bool" : "isize"));
     }
 
     private static bool ValidFormattingFunction(FunctionKoto function, KimiDeclarationId id)
@@ -77,7 +79,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.TextValidateUtf8 => FormattingValue(first, "Slice") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
             KimiDeclarationId.TextToString => FormattingBorrow(first, SemanticsKind.Ref, "T") && BareName(result, "string") && FormattingPremise(function, "T", "Utf8Format"),
             KimiDeclarationId.TextTryFormat => FormattingBorrow(first, SemanticsKind.Ref, "T") && FormattingBytes(second) && FormattingResult(result, "Utf8Slice", "BufferFull") && FormattingPremise(function, "T", "Utf8Format"),
-            KimiDeclarationId.TextRelease => first is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } && result is null,
+            KimiDeclarationId.TextRelease => first is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } && result is null,
             KimiDeclarationId.FixedBufferBytes or KimiDeclarationId.HeapBufferBytes => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingValue(result, "Slice"),
             KimiDeclarationId.FixedBufferText or KimiDeclarationId.HeapBufferText => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
             KimiDeclarationId.FixedBufferValidate or KimiDeclarationId.HeapBufferValidate => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingResult(result, "()", "InvalidUtf8"),
@@ -143,10 +145,12 @@ public sealed partial class KimiLibrary
                 return false;
             }
 
+            // SPEC 8.4.10.2, utf8-formatting 1.2: reserve declares confined; format declares no bound.
             return rule.Id == KimiDeclarationId.BufferWriter
-                ? requirement.Name == "reserve" && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Uniq, "Self") &&
+                ? requirement.Name == "reserve" && requirement.EffectBounds is [{ Bound: EffectBoundKind.Confined, IsSpecification: false }] &&
+                    FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Uniq, "Self") &&
                     BareName(requirement.Parameters[1].Type, "isize") && FormattingResult(requirement.ReturnType, "WriteWindow", "BufferFull")
-                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Ref, "Self") &&
+                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && requirement.EffectBounds.Count == 0 && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Ref, "Self") &&
                     FormattingBorrow(requirement.Parameters[1].Type, SemanticsKind.Uniq, "Utf8Writer") && FormattingResult(requirement.ReturnType, "()", "BufferFull");
         }
 
@@ -207,8 +211,9 @@ public sealed partial class KimiLibrary
         {
             KimiDeclarationId.BufferFull or KimiDeclarationId.InvalidUtf8 => fields == 0 && constructors == 1 && container.ConstraintNodes.Count == 1 &&
                 BareName(container.ConstraintNodes[0].Left, "Self") && BareName(container.ConstraintNodes[0].Right, "Copy"),
-            KimiDeclarationId.FixedBuffer or KimiDeclarationId.HeapBuffer or KimiDeclarationId.WriteWindow => fields == 4 && constructors == 0,
-            KimiDeclarationId.Utf8Writer => fields == 8 && constructors == 0,
+            KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow => fields == 5 && constructors == 0,
+            KimiDeclarationId.HeapBuffer => fields == 4 && constructors == 0,
+            KimiDeclarationId.Utf8Writer => fields == 9 && constructors == 0,
             KimiDeclarationId.Utf8Slice => fields == 1 && constructors == 0,
             _ => false,
         };

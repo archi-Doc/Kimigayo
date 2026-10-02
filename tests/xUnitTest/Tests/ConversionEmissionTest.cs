@@ -90,6 +90,7 @@ public class ConversionEmissionTest
     [InlineData("ConversionParenthesizedSign", "-(128)@u8", 1, 1)]
     [InlineData("ConversionChainFirst", "let x = 65536\nx@u16@u8", 2, 1)]
     [InlineData("ConversionChainSecond", "let x = 256\nx@u16@u8", 2, 1)]
+    [InlineData("ConversionChainTruncated", "1e10@i64@i32", 1, 1)] // The folded i64 constant is checked at the second @.
     [InlineData("ConversionBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    let x = 256\n    return x@u8\nf()", 4, 12)]
     [InlineData("ConversionDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    let x = -1\n    x@u8", 4, 5)]
     public void InvalidConversionsAbortWithoutCleanup(string name, string source, int line, int column)
@@ -104,10 +105,11 @@ public class ConversionEmissionTest
     [InlineData("let x: i128 = 1\nx@f64", "Unsupported")]
     [InlineData("let x: u128 = 5000000000\nx@f64", "Unsupported")]
     [InlineData("let x = 1\nx@obj", "BareOwningShorthand")]
-    [InlineData("3.9@i128", "Unsupported")]
+    [InlineData("let x: f64 = 3.9\nx@i128", "Unsupported")]
     [InlineData("let flag = true\nflag@char", "TypeMismatch")]
     [InlineData("let s = \"x\"\ns@bool", "TypeMismatch")]
     [InlineData("256@owner/u8", "InvalidLiteral")]
+    [InlineData("1.5@Wrapping<i32>", "TypeMismatch")] // SPEC 13.5.4.2: a floating literal never enters a wrapping Type.
     [InlineData("func f(x: i32) => ()\nf(1@u8)", "NoApplicableCandidate")]
     public void InvalidAndUnimplementedAdaptationsHaveDistinctFailures(string source, string failure)
     {
@@ -124,12 +126,26 @@ public class ConversionEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    // IMPL 21.5.3: a conversion whose source range lies within the destination range carries no check even at O0; a range that
+    // exceeds the destination on one side keeps that side's check only.
+    [Fact]
+    public void ContainedRangesOmitTheCheck()
+    {
+        var c = MinimalEmissionTest.Analyze("var a: u8 = 1\nvar b: i8 = -1\nvar w: Wrapping<i16> = 1\nlet c = a@u32\nlet d = b@i64\nlet e = a@i16\nlet f = b@u32\nlet g = w@i16\nlet h = a@i8\nlet i = f@i8");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
+        var conversions = module.GetFunction(0).Instructions.Where(x => x.Opcode == EmissionOpcode.Convert).Select(x => $"{x.ScalarOperator ?? "-"}:{x.Check}:{x.LowerPredicate ?? "-"}:{x.UpperPredicate ?? "-"}");
+        Assert.Equal("zext:None:-:- sext:None:-:- zext:None:-:- sext:Conversion:slt:- -:Conversion:-:ugt trunc:Conversion:-:ugt", string.Join(" ", conversions));
+    }
+
     [Fact]
     public void UnresolvedConversionTargetReportsItsCause()
     {
+        // SPEC 13.5: a grouped target is a Type, so (ref) names no Type; the missing Type is reported where it is written.
         var c = MinimalEmissionTest.Analyze("let x = 1\nx@(ref)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal("UnresolvedBinding_Kd", Assert.Single(c.Binding.Issues).Code.ToString());
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal("UnresolvedBinding_Kd", issue.Code.ToString());
+        Assert.Equal("ref", issue.Node.ToString());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
@@ -154,6 +170,7 @@ public class ConversionEmissionTest
         Assert.DoesNotContain(" = add i32", writer.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConversionAnalysisAndWritingAllocateNothing()
     {
@@ -176,6 +193,7 @@ public class ConversionEmissionTest
         Assert.True(valid);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void OperandInferenceIsIndependentAndRebindingResetsClassification()
     {

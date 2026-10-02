@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class StructEmissionTest
 {
-    internal const string Resource = "struct Resource\n    public var value: i32\n    public init()\n        self.value = 7\n        Console.writeLine(\"created\")\n    deinit => Console.writeLine(\"destroyed\")\n";
+    internal const string Resource = "struct Resource\n    public var value: i32\n    public init()\n        self.value = 7\n        Console.writeLine(\"created\")\n    drop => Console.writeLine(\"destroyed\")\n";
 
     [Theory]
     [InlineData("Local", "let value = Resource.init()\nif value.value == 7 => Console.writeLine(\"ok\")", "created\nok\ndestroyed\n")]
@@ -26,23 +26,23 @@ public class StructEmissionTest
     }
 
     [Theory]
-    [InlineData("Arguments", "struct S\n    public var value: i32\n    public init(value: i32) => self.value = value\n    deinit\n        if self.value == 9 => Console.writeLine(\"nine\")\nlet s = S.init(9)", "nine\n")]
+    [InlineData("Arguments", "struct S\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 9 => Console.writeLine(\"nine\")\nlet s = S.init(9)", "nine\n")]
     [InlineData("LetField", "struct S\n    public let value: i32\n    public init() => self.value = 8\nlet s = S.init()\nif s.value == 8 => Console.writeLine(\"eight\")", "eight\n")]
-    [InlineData("EarlyReturn", "struct S\n    public var value: i32\n    public init(flag: bool)\n        self.value = 8\n        defer => self.value = 9\n        if flag => return\n    deinit\n        if self.value == 9 => Console.writeLine(\"nine\")\nlet a = S.init(true)\nlet b = S.init(false)", "nine\nnine\n")]
-    [InlineData("Empty", "struct S\n    public init() => Console.writeLine(\"create\")\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()", "create\ndrop\n")]
-    [InlineData("Nested", "struct Inner\n    public var value: i32\n    public init() => self.value = 1\n    deinit => Console.writeLine(\"inner\")\nstruct Outer\n    public var child: Inner\n    public init() => self.child = Inner.init()\n    deinit => Console.writeLine(\"outer\")\nlet s = Outer.init()", "outer\ninner\n")]
-    [InlineData("DistinctDestructors", "struct A\n    public var value: i32\n    public init() => self.value = 0\n    deinit => Console.writeLine(\"A\")\nstruct B\n    public var value: i32\n    public init() => self.value = 0\n    deinit => Console.writeLine(\"B\")\nlet a = A.init()\nlet b = B.init()", "B\nA\n")]
-    [InlineData("DestructorReturn", "struct Inner\n    public init() => ()\n    deinit => Console.writeLine(\"inner\")\nstruct S\n    var child: Inner\n    public init() => self.child = Inner.init()\n    deinit\n        defer => Console.writeLine(\"defer\")\n        return\nlet s = S.init()", "defer\ninner\n")]
-    [InlineData("StringField", "struct S\n    public var text: string\n    public init(text: string) => self.text = text@move\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init(\"held\")", "drop\n")]
+    [InlineData("EarlyReturn", "struct S\n    public var value: i32\n    public init(flag: bool)\n        self.value = 8\n        defer => self.value = 9\n        if flag => return\n    drop\n        if self.value == 9 => Console.writeLine(\"nine\")\nlet a = S.init(true)\nlet b = S.init(false)", "nine\nnine\n")]
+    [InlineData("Empty", "struct S\n    public init() => Console.writeLine(\"create\")\n    drop => Console.writeLine(\"drop\")\nlet s = S.init()", "create\ndrop\n")]
+    [InlineData("Nested", "struct Inner\n    public var value: i32\n    public init() => self.value = 1\n    drop => Console.writeLine(\"inner\")\nstruct Outer\n    public var child: Inner\n    public init() => self.child = Inner.init()\n    drop => Console.writeLine(\"outer\")\nlet s = Outer.init()", "outer\ninner\n")]
+    [InlineData("DistinctDestructors", "struct A\n    public var value: i32\n    public init() => self.value = 0\n    drop => Console.writeLine(\"A\")\nstruct B\n    public var value: i32\n    public init() => self.value = 0\n    drop => Console.writeLine(\"B\")\nlet a = A.init()\nlet b = B.init()", "B\nA\n")]
+    [InlineData("DestructorReturn", "struct Inner\n    public init() => ()\n    drop => Console.writeLine(\"inner\")\nstruct S\n    var child: Inner\n    public init() => self.child = Inner.init()\n    drop\n        defer => Console.writeLine(\"defer\")\n        return\nlet s = S.init()", "defer\ninner\n")]
+    [InlineData("StringField", "struct S\n    public var text: string\n    public init(text: string) => self.text = text@move\n    drop => Console.writeLine(\"drop\")\nlet s = S.init(\"held\")", "drop\n")]
     public void ExecutesConstructionAndDestruction(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(!c.Kotonoha.DiagnosticCollection.HasErrors, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray()));
+        Assert.True(!c.Diagnostics.HasErrors, string.Join("\n", TestDiagnostics.Of(c)));
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         Assert.True(
-            c.Library.IsValid && !c.Kotonoha.HasSourceErrors && c.Ownership.Result.IsVerified &&
+            c.Library.IsValid && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha) && c.Ownership.Result.IsVerified &&
                 !c.Binding.Obligations.Any(x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha)),
-            $"Core={c.Library.IsValid}; SourceErrors={c.Kotonoha.HasSourceErrors}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
+            $"Core={c.Library.IsValid}; SourceErrors={c.Diagnostics.HasSyntaxErrors(c.Kotonoha)}; ownership={c.Ownership.Result}; obligations={string.Join(';', c.Binding.Obligations)}");
         ScalarEmissionTest.EmitFixture("Struct" + name, source, stdout);
     }
 
@@ -58,17 +58,17 @@ public class StructEmissionTest
     [InlineData(Resource + "let value = Resource.init()\nvalue.value = 1")]
     [InlineData("struct S\n    public let value: i32 = 1\n    public init() => ()\nvar s = S.init()\ns.value = 2")]
     [InlineData("struct S\n    var value: i32\n    init() => self.value = 1\nlet s = S.init()")]
-    [InlineData(Resource + "let value = Resource.init()\nvalue.deinit()")]
+    [InlineData(Resource + "let value = Resource.init()\nvalue.drop()")]
     [InlineData(Resource + "let value = Resource.init()\nvalue.init()")]
     [InlineData(Resource + "let ctor = Resource.init")]
-    [InlineData("struct S\n    Self is Copy\n    public init() => ()\n    deinit => ()\nlet s = S.init()")]
-    [InlineData("struct S\n    public init() => ()\n    deinit => ()\n    deinit => ()\nlet s = S.init()")]
-    [InlineData("struct S\n    public var text: string\n    public init() => self.text = \"held\"\n    deinit => ()\nlet s = S.init()\nlet taken = s.text@move")]
+    [InlineData("struct S\n    Self is Copy\n    public init() => ()\n    drop => ()\nlet s = S.init()")]
+    [InlineData("struct S\n    public init() => ()\n    drop => ()\n    drop => ()\nlet s = S.init()")]
+    [InlineData("struct S\n    public var text: string\n    public init() => self.text = \"held\"\n    drop => ()\nlet s = S.init()\nlet taken = s.text@move")]
     [InlineData("struct S\n    var value: i32\n    public init()\n        let escaped = self\n        self.value = 1\nlet s = S.init()")]
     public void RejectsInvalidStructOperations(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
@@ -82,7 +82,7 @@ public class StructEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    var value: i32\n    public init()\n        " + body + "\nlet s = S.init()");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Kotonoha.HasSourceErrors);
+        Assert.False(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
     }
 
@@ -97,15 +97,15 @@ public class StructEmissionTest
     [Fact]
     public void FieldCleanupReleasesItsOwnedStringExactlyOnce()
     {
-        const string Source = "struct S\n    var text: string\n    public init(text: string) => self.text = text@move\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init(\"held\")";
+        const string Source = "struct S\n    var text: string\n    public init(text: string) => self.text = text@move\n    drop => Console.writeLine(\"drop\")\nlet s = S.init(\"held\")";
         var ir = ScalarEmissionTest.EmitFixture("StructStringRelease", Source, "drop\n");
         StringEmissionTest.WriteAuditedFixture("StructStringRelease", Source, ir, "drop\n", "held=1;drop=1");
     }
 
     [Fact]
-    public void ConstructorAbortSkipsPartialStorageAndDeinit()
+    public void ConstructorAbortSkipsPartialStorageAndDrop()
     {
-        const string Source = "struct S\n    var text: string\n    public init()\n        self.text = \"held\"\n        $abort(\"stop\")\n    deinit => Console.writeLine(\"drop\")\nlet s = S.init()";
+        const string Source = "struct S\n    var text: string\n    public init()\n        self.text = \"held\"\n        $abort(\"stop\")\n    drop => Console.writeLine(\"drop\")\nlet s = S.init()";
         const string Stderr = "Hello.kimi:5:9: abort KIMI_E_ABORT: stop\n";
         var ir = ScalarEmissionTest.EmitFixture("StructConstructorAbort", Source, string.Empty, 1, Stderr);
         StringEmissionTest.WriteAuditedFixture("StructConstructorAbort", Source, ir, string.Empty, "held=0;stop=0;drop=0", 1, Stderr);
@@ -119,6 +119,7 @@ public class StructEmissionTest
         Assert.Contains("{ i32 }", ir);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPassesPreserveStructPlans()
     {
@@ -132,15 +133,15 @@ public class StructEmissionTest
             Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var success = true;
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(success);
         Assert.Equal(0, allocated);
     }

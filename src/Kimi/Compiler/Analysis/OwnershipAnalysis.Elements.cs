@@ -6,6 +6,54 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // SPEC 13.7: secure the RHS, select one exclusive element address, then destroy/store through the same replacement
+    // used by followed references and Place calls. Fixed and dynamic arrays share the element borrow and replacement.
+    private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
+    {
+        var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
+        var type = this.Concrete(target.BoundType);
+        if (type is null || operation == KotoKind.Invalid || (operation != KotoKind.Equals && !type.IsNumeric))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var right = source is BinaryKoto binary ? this.Expression(binary.Right) : -1;
+        if (source is BinaryKoto && right < 0)
+        {
+            return -1;
+        }
+
+        var address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, target.Left.BoundType!.Origin));
+        var pointer = this.Value(address);
+        if (pointer < 0)
+        {
+            return -1;
+        }
+
+        var value = right;
+        var previous = -1;
+        if (operation != KotoKind.Equals)
+        {
+            var loaded = this.Place(target, type, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, target, loaded);
+            this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [pointer]);
+            this.RegisterTemporary(loaded);
+            previous = this.Value(loaded);
+            var operand = source is BinaryKoto ? this.Value(right) : this.IncrementOne(source);
+            value = operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+                ? this.ComputeUpdate(source, type, previous, operand, operation) : -1;
+        }
+
+        if (value < 0)
+        {
+            return -1;
+        }
+
+        this.StorePointer(target, pointer, value);
+        return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, value);
+    }
+
     private int BorrowStringElement(BinaryKoto source, InvocationKoto? call, BoundType? type, out int loan)
     {
         loan = -1;
@@ -142,9 +190,14 @@ public sealed partial class OwnershipAnalysis
         this.body.ComparisonLoans.Add(new(plan.Operation, plan.Root, access.Parent, access.Depth, LoanRequirement.Uniq, Access: true, Projection: projection));
         this.body.Projections[projection] = plan with { Exclusive = loan };
         this.body.LoanStates[plan.Operation] = loan;
-        if (this.body.ElementWriteLoanConflicts(loan))
+        if (this.body.ElementWriteLoanConflicts(loan, reservations: false))
         {
             this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
+        }
+        else if (this.body.ElementWriteLoanConflicts(loan))
+        {
+            // Only call reservations enclose the write; the completed plan decides whether it reports it against one.
+            this.body.HoldReservedElementWrite(projection, new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
         }
     }
 
@@ -170,7 +223,16 @@ public sealed partial class OwnershipAnalysis
                 this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
             }
 
-            if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
+            if (allowMove && acquisition == AcquisitionKind.Move && this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
+                (this.body.Projections[projection].Path != projection || !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
+            {
+                // SPEC 15.1.3: an explicit Move of an element without a static Move Path is rejected. The element is then not
+                // taken, so later uses of the array are explained by this failure rather than by a Move.
+                this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+                var produce = this.body.Operations.Count - 1;
+                this.body.OperationStorage[produce] = this.body.OperationStorage[produce] with { Acquisition = AcquisitionKind.None };
+            }
+            else if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
                 (!allowMove || this.body.Places[result].Acquisition is not (AcquisitionKind.Move or AcquisitionKind.CopyOrMove) || this.body.Projections[projection].Path != projection ||
                     !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
             {
@@ -186,7 +248,7 @@ public sealed partial class OwnershipAnalysis
                     this.body.Operations[this.body.Projections[ancestor].Operation].Source is BinaryKoto path &&
                     path.Left.BoundType is { } owner && StructStorage.Destructor(owner) is not null)
                 {
-                    this.Unsupported(source); // No partial Move through any deinit-bearing ancestor.
+                    this.Unsupported(source); // No partial Move through any drop-bearing ancestor.
                 }
             }
 
@@ -224,8 +286,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var index = source is IndexKoto { DictionaryKeyReference: { } keyReference } ? this.Value(this.BorrowStruct(source.Right, keyReference))
-            : source is IndexKoto keyed ? this.Value(this.Expression(ElementAccess.KeySyntax(keyed), PlaceUseKind.Read)) : -1;
+        var index = source is IndexKoto keyed ? this.Value(this.SelectionKey(keyed, root, parent, PlaceUseKind.Read)) : -1;
         if (this.defaultFunction is not null && source is IndexKoto keyedRead &&
             this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead))))
         {

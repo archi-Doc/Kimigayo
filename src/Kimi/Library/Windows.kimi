@@ -1,0 +1,10 @@
+/// Windows x64 native APIs. Each import promises to access only what its arguments permit (SPEC 22.3.1).
+public group Windows
+    /// Writes the current performance-counter value through `value` and returns nonzero on success; the borrow is not retained.
+    #LibraryImport("kernel32", "QueryPerformanceCounter")
+    public func queryPerformanceCounter(value: uniq/i64) -> i32
+
+    /// Writes the counter frequency in counts per second through `value` and returns nonzero on success; the borrow is not
+    /// retained.
+    #LibraryImport("kernel32", "QueryPerformanceFrequency")
+    public func queryPerformanceFrequency(value: uniq/i64) -> i32

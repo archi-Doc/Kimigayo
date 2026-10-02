@@ -2,3 +2,120 @@
 // Ordered storage algorithms are ordinary source in DictionaryStorage.kimi.
 public struct Dictionary<K, V>
     K is Equatable
+    Self is UniqIndexable<K>
+    associate Element is V
+    Self is Iterable
+    associate Iterable.IteratorType(source) is DictionaryIterator<K, V> during source
+    Self is UniqIterable
+    associate UniqIterable.IteratorType(source) is DictionaryUniqIterator<K, V> during source
+    Self is IntoIterable
+    associate IntoIterable.IteratorType is DictionaryOwningIterator<K, V>
+
+    /// Publishes the matching value Place for shared access; absence Aborts at the caller's access.
+    public func index(self: ref/Self, key: ref/K) -> place ref/V during self
+        match self.tryGet(key)
+            .Some(let value) => return value@follow
+            .None => Storage.missingDictionaryKey()
+
+    /// Publishes the matching value Place for exclusive access; keys remain shared during lookup.
+    public func indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self
+        var state = Storage.borrowStorage(self)
+        loop
+            match Storage.splitFirst(state@uniq)
+                .Some((let storedKey, let value))
+                    if storedKey.equals(key) => return value@follow
+                .None => Storage.missingDictionaryKey()
+
+    /// Secures capacity for `additional` more entries without touching the stored entries; a negative or unrepresentable
+    /// amount Aborts at the caller.
+    public func reserve(self: uniq/Self, additional: isize)
+        Storage.reserveEntries(self, additional)
+
+    /// Releases unused capacity, compacting the live entries in insertion order; an allocation failure keeps the storage.
+    public func shrinkToFit(self: uniq/Self)
+        Storage.shrinkEntries(self)
+
+    /// Appends the pair when no equal key is stored; otherwise returns both inputs unchanged as `Err`.
+    public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
+        unsafe
+            let layout = Storage.dictionaryStorage(self)
+            var state = Storage.borrowStorage(self@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            require link == 0 else => return .Err((key@move, value@move))
+            Storage.placeEntry<K, V>(layout.0, key@move, value@move)
+            return .Ok(())
+
+    /// Appends the pair when no equal key is stored; otherwise stores `value` at the stored key's position, destroys the
+    /// unused input key and returns the old value.
+    public func insertOrReplace(self: uniq/Self, key: K, value: V) -> Option<V>
+        unsafe
+            let layout = Storage.dictionaryStorage(self)
+            var state = Storage.borrowStorage(self@follow@ref)
+            let link = Storage.findDictionaryLink(state@uniq, key)
+            if link == 0
+                Storage.placeEntry<K, V>(layout.0, key@move, value@move)
+                return .None
+            // The old value is secured before the new one is placed; the unused input key is destroyed before delivery.
+            let slot = state.storage + (link - 1) * state.stride
+            let previous = (*Storage.valueAt<K, V>(slot))@move
+            Raw.initialize(Storage.valueAt<K, V>(slot), value@move)
+            return .Some(previous@move)
+
+    /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.
+    public func clear(self: uniq/Self)
+        DictionaryStorage.clearEntries(self)
+
+    /// Removes the matching stored pair, or returns None. The returned pair retains only its stored dependencies.
+    public func remove(self: uniq/Self, key: ref/K) -> Option<(K, V)>
+        return DictionaryStorage.removeEntry(self, key)
+
+    /// Borrows the matching value, or returns None. Only the collection, not the search key, is a result dependency.
+    public func tryGet(self: ref/Self, key: ref/K) -> Option<ref/V during self>
+        var state = Storage.borrowStorage(self)
+        let link = Storage.findDictionaryLink(state@uniq, key)
+        require link != 0 else => return .None
+        unsafe
+            let slot = state.storage + (link - 1) * state.stride
+            return .Some((*Storage.valueAt<K, V>(slot))@ref)
+
+    /// Starts a shared enumeration of the entries in insertion order.
+    public func iterate(self: ref/Self during source) -> DictionaryIterator<K, V> during source
+        return DictionaryIterator<K, V>.init(Storage.borrowStorage(self))
+
+    /// Starts an exclusive enumeration in insertion order: keys stay shared and each value is lent exclusively once.
+    public func iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source
+        return DictionaryUniqIterator<K, V>.init(Storage.borrowStorage(self))
+
+    /// Starts an owning enumeration: each entry is transferred out once as (key, value), and the unreturned entries are
+    /// destroyed with the iterator in reverse insertion order, each value before its key (SPEC 4.7.6).
+    public func intoIterator(self: Self) -> DictionaryOwningIterator<K, V>
+        return DictionaryOwningIterator<K, V>.init(Storage.ownStorage(self@move))
+
+/// The standard shared Dictionary iterator: each `next` lends the key and value of the next live entry in insertion order
+/// (SPEC 14.6.2, 22.1.2.3).
+public struct DictionaryIterator<K, V> {source}
+    Self is Iterator
+    associate Iterator.Item is (ref/K during source, ref/V during source)
+    var state: Storage.DictionaryRefRemainder<K, V> during source
+    internal init(state: Storage.DictionaryRefRemainder<K, V> during source) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<(ref/K during source, ref/V during source)>
+        return Storage.splitFirst(self.state@uniq)
+
+/// The standard exclusive Dictionary iterator: each `next` lends the next live key for shared access and splits its
+/// value off as a child Loan, so earlier items stay valid (SPEC 14.6.2, 15.6.3, 22.1.2.5).
+public struct DictionaryUniqIterator<K, V> {source}
+    Self is Iterator
+    associate Iterator.Item is (ref/K during source, uniq/V during source)
+    var state: Storage.DictionaryUniqRemainder<K, V> during source
+    internal init(state: Storage.DictionaryUniqRemainder<K, V> during source) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<(ref/K during source, uniq/V during source)>
+        return Storage.splitFirst(self.state@uniq)
+
+/// The standard owning Dictionary iterator: each `next` transfers the next unreturned entry out (SPEC 22.1.2.3).
+public struct DictionaryOwningIterator<K, V>
+    Self is Iterator
+    associate Iterator.Item is (K, V)
+    var state: Storage.DictionaryOwnedRemainder<K, V>
+    internal init(state: Storage.DictionaryOwnedRemainder<K, V>) => self.state = state@move
+    public func next(self: uniq/Self) -> Option<(K, V)>
+        return Storage.takeFirst(self.state@uniq)

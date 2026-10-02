@@ -44,6 +44,20 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     [Fact]
+    public async Task ExplicitVerificationRetainsFailureWithoutInstallingAnything()
+    {
+        var report = Path.Combine(this.directory, "evidence", "toolchain.json");
+        await Assert.ThrowsAsync<FileNotFoundException>(() => NativeToolchain.Verify(this.directory, null, report, (_, _) => { }, TestContext.Current.CancellationToken));
+        using var record = JsonDocument.Parse(File.ReadAllText(report));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        Assert.Equal("failed", record.RootElement.GetProperty("toolchainVerification").GetString());
+        Assert.Equal(JsonValueKind.Null, record.RootElement.GetProperty("reportedVersionsMatched").ValueKind);
+        Assert.True(record.RootElement.GetProperty("unverifiedToolchain").GetBoolean());
+        Assert.Contains("setup.ps1", record.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(this.directory, "windows_x64")));
+    }
+
+    [Fact]
     public async Task EmitDoesNotRequireLlvmButBuildDoesAndInvalidatesPreviousSuccess()
     {
         var project = this.Create();

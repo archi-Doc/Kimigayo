@@ -6,7 +6,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class LocalLoopContinuationTest
 {
     private const string Loop = "loop\n    var n = 1\n    n = 2\n";
@@ -29,9 +28,23 @@ public class LocalLoopContinuationTest
     [InlineData("Nested", "var x = 1\ndo\n    loop\n        var n = 1\n        while n < 3\n            n += 1\n        if n == 3 => continue else => ()\nlet y = x")]
     [InlineData("Default", "func value(y: i32 = (loop\n    var n = 1\n    n = 2\n)) -> i32 => y\nvar x = 1\nvalue()\nlet y = x")]
     [InlineData("Checking", "func f()\n    return\n    var x: i32 = loop\n        var n = 1\n        n = 2\n    x = 3\n    let y = x\nf()\nloop => continue")]
-    [InlineData("ContainedExit", "let x = 1\nloop\n    var n = work: do\n        exit to work: 1\n    n += 1\nlet y = x")]
+    [InlineData("ContainedExit", "let x = 1\nloop\n    var n = label work: do\n        exit to work 1\n    n += 1\nlet y = x")]
     public void EmitsLoopsWhoseEffectsStayLocal(string name, string source)
         => ScalarEmissionTest.EmitFixture("NeverLocalLoop" + Configuration + name, "Console.writeLine(\"begin\")\n" + source, "begin\n", timeoutMilliseconds: 200);
+
+    // A Subject that never completes leaves its arms as dead source, checked from the state that reached the Subject. After a
+    // divergent loop with enclosing effects no such state exists, so the arms are guarded like any later use instead of being
+    // checked from the dead region's original seed, which would restore the earlier Move.
+    [Theory]
+    [InlineData("return", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("loop => work()", OwnershipFailure.Unsupported)]
+    public void AbandonedArmsNeverRestoreAnEarlierMove(string subject, OwnershipFailure failure)
+    {
+        var c = MinimalEmissionTest.Analyze("func work() => ()\nfunc f(s: string)\n    return\n    let t = s@move\n    match (" + subject + ")\n        _ => Console.writeLine(s)\nf(\"s\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
+    }
 
     [Theory]
     [InlineData("var x = 1\nloop\n    x = 2\nlet y = x")]
@@ -45,25 +58,6 @@ public class LocalLoopContinuationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-    }
-
-    [Theory]
-    [InlineData(Loop)]
-    [InlineData("loop\n    var n = 1\n    if x == 1 => n += 1 else => n = 3\n    while n < 4\n        n++\n")]
-    [InlineData("loop\n    var n = work: do\n        exit to work: 1\n    n += 1\n")]
-    public void ReloadAndWarmProofReuseAllocateNothing(string loop)
-    {
-        var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
     }
 
     [Theory]
@@ -82,4 +76,28 @@ public class LocalLoopContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(Loop)]
+        [InlineData("loop\n    var n = 1\n    if x == 1 => n += 1 else => n = 3\n    while n < 4\n        n++\n")]
+        [InlineData("loop\n    var n = label work: do\n        exit to work 1\n    n += 1\n")]
+        public void ReloadAndWarmProofReuseAllocateNothing(string loop)
+        {
+            var c = MinimalEmissionTest.Analyze("var x = 1\n" + loop + "let y = x");
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

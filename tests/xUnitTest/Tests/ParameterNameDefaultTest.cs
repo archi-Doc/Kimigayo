@@ -55,7 +55,7 @@ public class ParameterNameDefaultTest
     [InlineData("contract C\n    func f(! x: i32 = 1)")]
     [InlineData("specialize func f<i32>(! x: i32) => ()")]
     public void RejectsMarkersAndDefaultsInInvalidContexts(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Theory]
     [InlineData("! a: i32 = 1, b: i32", "f(3)", false)]
@@ -142,6 +142,7 @@ public class ParameterNameDefaultTest
         Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmBindingPreserveIndependentFlags()
     {
@@ -191,6 +192,7 @@ public class ParameterNameDefaultTest
         ScalarEmissionTest.EmitFixture("ParameterNameOmittedAbort", Source, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmOwnershipAndEmissionReuseDefaultStorage()
     {

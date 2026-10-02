@@ -27,6 +27,7 @@ public class Utf8ConsoleTest
     public void AnUntypedConsoleFunctionReferenceCannotChooseAnOverload()
         => Assert.False(MinimalEmissionTest.Analyze("let print = Console.writeLine").Binding.Result.IsComplete);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BoundedConsoleInterpolationUsesExactlyThirtyThreeStackBytes()
     {
@@ -37,6 +38,7 @@ public class Utf8ConsoleTest
         Assert.Contains("%formatBytes0 = alloca [33 x i8], align 1", outputIr);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1023, 0)]
     [InlineData(1024, 0)]
@@ -48,6 +50,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + bound, source, allocations, allocations, allocations * bound, "once\n" + text + "7\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReturningDuringStackFormattingDoesNotFreeTheStackOrPrintThePrefix()
     {
@@ -60,6 +63,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleReturn", Source, 0, 0, 0, "done\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void StackFormattingPreservesUserTemporaryDestruction()
     {
@@ -67,12 +71,13 @@ public class Utf8ConsoleTest
             struct Value
                 public init() => Console.writeLine("create")
                 public func get(self: ref/Self) -> i32 => 42
-                deinit => Console.writeLine("destroy")
+                drop => Console.writeLine("destroy")
             Console.writeLine("n=\(Value.init().get())")
             """;
         NativeAllocationAudit.WriteFixture("Utf8ConsoleLifetime", Source, 0, 0, 0, "create\nn=42\ndestroy\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericConcreteBoundedValuesUseTheStack()
     {
@@ -86,6 +91,7 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleGeneric", Source, 1, 1, 9, "value=42\nvalue=abc\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedAndConditionalStackFormattingDoesNotAllocate()
     {

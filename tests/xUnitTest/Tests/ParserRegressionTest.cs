@@ -159,7 +159,7 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.True(
             diagnostics.Length == 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
@@ -225,7 +225,7 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.AddSource(new SourceDocument("modifier.kimi", "public open struct TestStruct<s/C, D>"));
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var type = Assert.IsType<StructKoto>(
             kotonoha.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
         Assert.True(type.Modifier.HasFlag(ModifierKind.Public));
@@ -428,7 +428,7 @@ public class ParserRegressionTest
             diagnostics,
             diagnostic => Assert.Equal(
                 nameof(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd),
-                diagnostic.Entry.Name));
+                diagnostic.Code));
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.Equal(["first", "shared"], type.Origins);
         var constraint = Assert.Single(type.TypeConstraints);
@@ -462,7 +462,7 @@ public class ParserRegressionTest
 
                 #Example
                 var item: obj/Container<C> = value
-                var converted = item@unsafe/C
+                var converted = item@raw/C
                 var called = transform(item, "text")
 
                 private func map<s/T>(value: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T
@@ -472,7 +472,7 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var context = kotonoha.CreateCodeContext();
         context.Parse(kotonoha.RootKoto, source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         var expectedBuilder = default(IndentedStringBuilder);
         var actualBuilder = default(IndentedStringBuilder);
@@ -529,7 +529,7 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
@@ -550,7 +550,7 @@ public class ParserRegressionTest
 
         var (root, diagnostics) = Parse(source);
 
-        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Code == nameof(DiagnosticCode.DeclarationOrderWarning_Kd));
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Ordered", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
         Assert.Collection(
@@ -575,10 +575,10 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var warnings = diagnostics
-            .Where(x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
+            .Where(x => x.Code == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
             .ToArray();
         Assert.Equal(2, warnings.Length);
-        Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Entry.Severity));
+        Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Severity));
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
@@ -600,7 +600,7 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), diagnostic.Code);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.IsType<PropertyKoto>(Assert.Single(GetChildren(type)));
     }
@@ -664,7 +664,7 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        Assert.NotEmpty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(kotonoha));
         AssertInvocation(kotonoha);
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
@@ -727,21 +727,52 @@ public class ParserRegressionTest
         Assert.Equal("target.method", Source.AsSpan(member.Span.Start, member.Span.Length).ToString());
     }
 
+    // A block, a match arm list, a property accessor block and a conditional conformance body end at their last written token:
+    // the blank and comment lines and the indentation before the dedented line belong to none of them (DIAGNOSTICS.md §4.4).
+    [Fact]
+    public void BodiesEndAtTheirLastWrittenToken()
+    {
+        const string Source = "struct S<T>\n    Self is C when T is Copy\n        public func f() => ()\n\n    // after the conformance\n" +
+            "    public computed w: i32\n        get(self: ref/Self) -> i32\n            return 1\n\n    // after the accessor block\n" +
+            "    public var v: i32 = 0\nfunc g(a: i32) -> i32\n    let k = match a\n        1 => 10\n        _ => 20\n\n    // after the match\n" +
+            "    let h = func () -> i32\n        return 2\n\n    // after the closure\n    return k\n\n// after the function\n\n";
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+        var nodes = KotoTree.Walk(root).ToArray();
+        Assert.Equal("Self is C when T is Copy\n        public func f() => ()", Text(nodes.OfType<SyntaxFormKoto>().Single(x => x.Akind == KotoKind.ConditionalConformance && x.Parent is DeclarationContainerKoto)));
+        Assert.EndsWith("i32\n        get(self: ref/Self) -> i32\n            return 1", Text(nodes.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == "w")));
+        Assert.Equal("match a\n        1 => 10\n        _ => 20", Text(nodes.OfType<MatchKoto>().Single()));
+        Assert.Equal("func () -> i32\n        return 2", Text(nodes.OfType<FunctionKoto>().Single(x => x.IsAnonymous)));
+        var function = nodes.OfType<FunctionKoto>().Single(x => x.Name == "g");
+        Assert.EndsWith("    return k", Text(function));
+        Assert.StartsWith("let k = match a", Text(function.Body!));
+        Assert.EndsWith("    return k", Text(function.Body!));
+
+        static string Text(Koto node) => Source.AsSpan(node.Span.Start, node.Span.Length).ToString();
+    }
+
     [Fact]
     public void DiagnosesAndRecoversChainedAttributePostfixExpressions()
     {
-        var (root, diagnostics) = Parse("#Example<T>(value)\nvar result = 0");
+        // A malformed attribute is consumed with its chained postfix syntax and attaches to nothing; the declaration after it is checked on its own.
+        var (root, diagnostics) = Parse("#Example<T>(value)\nfunc run() => ()");
 
-        Assert.NotEmpty(diagnostics);
-        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
-        var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
+        Assert.Equal("<", diagnostic.Text);
+        var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        Assert.Null(function.AttributeChain);
+
+        // A well-formed attribute keeps its operand tree with every parent link.
+        (root, diagnostics) = Parse("#Example(value)\nfunc run() => ()");
+        Assert.Empty(diagnostics);
+        function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        var attribute = Assert.IsType<AttributeKoto>(function.AttributeChain);
         var invocation = Assert.IsType<InvocationKoto>(attribute.Operand);
-        var generic = Assert.IsType<GenericsKoto>(invocation.Method);
-        Assert.Single(generic.TypeArguments);
         Assert.Same(attribute, invocation.Parent);
-        Assert.Same(invocation, generic.Parent);
-        Assert.Same(generic, generic.Identifier!.Parent);
-        Assert.Same(generic, generic.TypeArguments[0].Parent);
+        Assert.Same(invocation, invocation.Method.Parent);
     }
 
     [Fact]
@@ -752,7 +783,7 @@ public class ParserRegressionTest
         var context = kotonoha.CreateCodeContext();
         context.Parse(kotonoha.RootKoto, "var result = \"Kimigayo\" == \"kimigayo\"");
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var field = Assert.IsType<FieldKoto>(GetChildren(kotonoha.RootKoto).Single());
         Assert.Equal(CompileTimeConditionResult.False, CompileTimeConditionEvaluator.Evaluate(compilation, field.InitializerKoto!));
     }
@@ -780,7 +811,7 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var names = GetChildren(kotonoha.RootKoto)
             .OfType<FieldKoto>()
             .Select(x => x.NameKoto.IdentifierName)
@@ -798,7 +829,7 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if debug\nvar debugOnly = 1");
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         Assert.Equal("debugOnly", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
     }
 
@@ -808,7 +839,7 @@ public class ParserRegressionTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if genericCondition\nvar specialized = 1");
-        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(TestDiagnostics.Of(kotonoha)).Code);
         Assert.Empty(GetChildren(kotonoha.RootKoto));
     }
 
@@ -825,7 +856,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void EarlyFalseCompileTimeIfDoesNotParseItsTargetKoto()
+    public void EarlyFalseCompileTimeIfParsesItsTargetAsExcludedSyntax()
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
@@ -838,7 +869,8 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        // The excluded target is parsed with the ordinary grammar but contributes nothing (SPEC 19.5).
+        Assert.Equal(nameof(DiagnosticCode.MissingSyntax_Kd), Assert.Single(TestDiagnostics.Of(kotonoha)).Code);
         Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
     }
 
@@ -858,7 +890,7 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var structure = Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers);
         Assert.Equal("retained", Assert.IsType<PropertyKoto>(Assert.Single(structure.Members)).NameKoto.IdentifierName);
     }
@@ -880,18 +912,17 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Contains(kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+        Assert.Contains(TestDiagnostics.Of(kotonoha), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
-        Assert.Contains(restored.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+        Assert.Contains(TestDiagnostics.Of(restored), x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
-        Assert.Equal(2, restoredGroup.Arms.Count);
-        Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
+        Assert.Empty(restoredGroup.ChildNodes);
     }
 
     [Fact]
@@ -916,7 +947,7 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        var names = kotonoha.DiagnosticCollection.GetArray().Select(x => x.Entry.Name).ToArray();
+        var names = TestDiagnostics.Of(kotonoha).Select(x => x.Code).ToArray();
         Assert.Contains(nameof(DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd), names);
         Assert.Contains(nameof(DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd), names);
         Assert.Contains(nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd), names);
@@ -952,14 +983,14 @@ public class ParserRegressionTest
     [InlineData("func f(value: i32)\n    require value is Dog else => return\n    ()", 0)]
     [InlineData("func f<T>(value: T)\n    T is Copy\n    ()", 0)]
     [InlineData("struct Box<T>\n    var item: T\n    public init(item: T)\n        T is Copy\n        self.item = item\n", 0)]
-    [InlineData("struct Box<T>\n    var item: T\n    deinit\n        T is Copy\n        ()\n", 1)]
+    [InlineData("struct Box<T>\n    var item: T\n    drop\n        T is Copy\n        ()\n", 1)]
     [InlineData("struct Box<T>\n    var item: T\n    public computed first: i32\n        get() -> i32\n            T is Copy\n            return 0\n", 1)]
     [InlineData("struct Plain\n    var item: i32 = 0\n    public func f(self)\n        item is i32\n        ()\n", 1)]
     public void EveryBodyBeginsWithItsConstraintPrefix(string source, int unexpected)
     {
         var (_, diagnostics) = Parse(source);
         Assert.True(unexpected == diagnostics.Length, string.Join("; ", diagnostics.Select(x => x.ToString())));
-        Assert.Equal(unexpected, diagnostics.Count(x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd)));
+        Assert.Equal(unexpected, diagnostics.Count(x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd)));
     }
 
     // SPEC 8.4.3: a Contract-qualified projection names its Contract in parentheses, also in Constraint subjects and
@@ -973,9 +1004,9 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
     }
 
-    private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)
+    private static (GroupKoto Root, TestDiagnostic[] Diagnostics) Parse(string source)
     {
         var kotonoha = ParseTestHelper.Parse(source);
-        return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
+        return (kotonoha.RootKoto, TestDiagnostics.Of(kotonoha));
     }
 }

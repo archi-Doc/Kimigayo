@@ -109,7 +109,7 @@ public static partial class TokenHelper
         Set(TokenKind.Defer, "defer");
         Set(TokenKind.Self, "Self");
         Set(TokenKind.Init, "init");
-        Set(TokenKind.Deinit, "deinit");
+        Set(TokenKind.Drop, "drop");
         Set(TokenKind.Base, "base");
         Set(TokenKind.ColonColon, "::");
 
@@ -384,6 +384,7 @@ public static partial class TokenHelper
             },
             4 => c0 switch
             {
+                'd' => Match(text, "drop", TokenKind.Drop),
                 'n' => Match(text, "null", TokenKind.Null),
                 'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool, "base", TokenKind.Base),
                 'c' => Match(text, Constants.CaseKeyword, TokenKind.Case, Constants.CharKeyword, TokenKind.Char),
@@ -411,7 +412,6 @@ public static partial class TokenHelper
             },
             6 => c0 switch
             {
-                'd' => Match(text, "deinit", TokenKind.Deinit),
                 's' => text[1] == 'w' ? Match(text, Constants.SwitchKeyword, TokenKind.Switch) :
                     Match(text, Constants.StringKeyword, TokenKind.String, Constants.StructKeyword, TokenKind.Struct, Constants.StaticKeyword, TokenKind.Static),
                 'r' => Match(text, Constants.ReturnKeyword, TokenKind.Return),

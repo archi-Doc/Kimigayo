@@ -50,9 +50,11 @@ internal static partial class LlvmModuleWriter
             WriteArithmeticFailure(output, constants, instruction, condition);
         }
 
+        // SPEC 4.6.9: an unchecked conversion with bounds is a position; a value isize cannot hold becomes -1.
+        var saturate = instruction.Check == ArithmeticCheckKind.None && (instruction.LowerPredicate is not null || instruction.UpperPredicate is not null);
         if (instruction.ScalarOperator is { } op)
         {
-            Name(output, "  %v", id);
+            Name(output, saturate ? "  %conv" : "  %v", id);
             output.Write(" = ");
             output.Write(op);
             output.Write(' ');
@@ -61,6 +63,32 @@ internal static partial class LlvmModuleWriter
             WriteOperand(output, operands[0]);
             output.Write(" to ");
             output.Write(instruction.ScalarType);
+            output.Write('\n');
+        }
+
+        if (saturate)
+        {
+            var condition = instruction.LowerPredicate is null ? "%upper" : "%lower";
+            if (instruction.LowerPredicate is not null && instruction.UpperPredicate is not null)
+            {
+                Name(output, "  %invalid", id);
+                Name(output, " = or i1 %lower", id);
+                Name(output, ", %upper", id);
+                output.Write('\n');
+                condition = "%invalid";
+            }
+
+            // All ones for an invalid value, without a branch or select.
+            Name(output, "  %mask", id);
+            output.Write(" = sext i1 ");
+            Name(output, condition, id);
+            output.Write(" to ");
+            output.Write(instruction.ScalarType);
+            Name(output, "\n  %v", id);
+            output.Write(" = or ");
+            output.Write(instruction.ScalarType);
+            Name(output, " %conv", id);
+            Name(output, ", %mask", id);
             output.Write('\n');
         }
     }

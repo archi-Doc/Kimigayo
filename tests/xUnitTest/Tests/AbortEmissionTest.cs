@@ -17,11 +17,11 @@ public class AbortEmissionTest
         { "AbortOwned", "let text = \"owned\"\n$abort(text@move)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: owned\n" },
         { "AbortShadow", "func abort(text: string) => Console.writeLine(text)\n$abort(\"builtin\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: builtin\n" },
         { "AbortNested", "$abort($abort(\"inner\"))", string.Empty, 1, "Hello.kimi:1:8: abort KIMI_E_ABORT: inner\n" },
-        { "AbortOnce", "$abort((message: do\n    Console.writeLine(\"once\")\n    exit to message: \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
+        { "AbortOnce", "$abort((label message: do\n    Console.writeLine(\"once\")\n    exit to message \"message\"\n))", "once\n", 1, "Hello.kimi:1:1: abort KIMI_E_ABORT: message\n" },
         { "AbortSkipCleanup", "defer => Console.writeLine(\"cleanup\")\n$abort(\"stop\")\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
-        { "AbortArgumentReturn", "func f()\n    defer => Console.writeLine(\"cleanup\")\n    $abort((message: do\n        return\n        exit to message: \"unused\"\n    ))\nf()\nConsole.writeLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
+        { "AbortArgumentReturn", "func f()\n    defer => Console.writeLine(\"cleanup\")\n    $abort((label message: do\n        return\n        exit to message \"unused\"\n    ))\nf()\nConsole.writeLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
         { "AbortCondition", "if $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:4: abort KIMI_E_ABORT: condition\n" },
-        { "AbortArgumentOverflow", "$abort((message: do\n    var x: i32 = 2147483647\n    x = x + 1\n    exit to message: \"outer\"\n))", string.Empty, 1, "Hello.kimi:3:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
+        { "AbortArgumentOverflow", "$abort((label message: do\n    var x: i32 = 2147483647\n    x = x + 1\n    exit to message \"outer\"\n))", string.Empty, 1, "Hello.kimi:3:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
         { "AbortUnreachableLocal", "let text = \"kept\"\n$abort(\"stop\")\nConsole.writeLine(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
         { "AbortConditionalResult", "var flag = false\nlet text = if flag => $abort(\"bad\") else => \"ok\"\nConsole.writeLine(text)", "ok\n", 0, string.Empty },
         { "AbortWhileCondition", "while $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:7: abort KIMI_E_ABORT: condition\n" },
@@ -95,6 +95,7 @@ public class AbortEmissionTest
         Assert.DoesNotContain("ret void", runtime);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
     {

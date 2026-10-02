@@ -45,15 +45,27 @@ public class ProductTestMembershipTest
     [InlineData("struct Box<T>\n    #Test\n    func test() => ()")]
     [InlineData("func outer()\n    #Test\n    func test() => ()\n    ()")]
     [InlineData("#Test\ngroup Invalid")]
-    [InlineData("#Test\nlet invalid = 1")]
     [InlineData("func ordinary(#Test value: i32) => ()")]
     [InlineData("#Test\nfunc outer()\n    #Test\n    func nested() => ()\n    ()")]
-    [InlineData("#Test\nfunc outer()\n    #Test\n    let value = 1\n    ()")]
     public void InvalidSelectedTestDefinitionsRemainErrors(string source)
     {
         var compilation = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"product\")");
         Assert.False(compilation.Binding.Result.IsComplete);
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
+    }
+
+    // DIAGNOSTICS.md §4.4: a Test marker before a binding is a misplaced attribute. The parser reports it once, it attaches to
+    // nothing, and the binding is an ordinary product item, so no test definition remains to be judged.
+    [Theory]
+    [InlineData("#Test\nlet invalid = 1")]
+    [InlineData("#Test\nfunc outer()\n    #Test\n    let value = 1\n    ()")]
+    public void ATestMarkerOnABindingIsMisplacedSyntax(string source)
+    {
+        var compilation = MinimalEmissionTest.Analyze(source + "\nConsole.writeLine(\"product\")");
+        var error = Assert.Single(TestDiagnostics.Of(compilation), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), error.Code);
+        Assert.Equal("#Test", error.Text);
+        Assert.DoesNotContain(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
     }
 
     [Theory]
@@ -131,6 +143,7 @@ public class ProductTestMembershipTest
         Assert.False(compilation.Ownership.Result.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmProductMembershipAllocatesNothing()
     {

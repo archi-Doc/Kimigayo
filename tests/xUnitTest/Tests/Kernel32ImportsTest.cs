@@ -96,6 +96,28 @@ public sealed class Kernel32ImportsTest
         Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateManifest(invalid.RootElement));
     }
 
+    [Theory]
+    [InlineData("generator")]
+    [InlineData("generatorSha256")]
+    [InlineData("target")]
+    [InlineData("dll")]
+    [InlineData("definitionSha256")]
+    [InlineData("sha256")]
+    public void InstallationRejectsChangedGenerationConditions(string field)
+    {
+        var entry = new JsonObject
+        {
+            ["generator"] = Kernel32Imports.Generator, ["generatorSha256"] = Kernel32Imports.DlltoolSha256,
+            ["target"] = WindowsProfile.Target, ["dll"] = Kernel32Imports.Dll,
+            ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["sha256"] = "actual library hash",
+        };
+        using var valid = JsonDocument.Parse(entry.ToJsonString());
+        Kernel32Imports.ValidateInstallation(valid.RootElement, "actual library hash");
+        entry[field] = "changed";
+        using var invalid = JsonDocument.Parse(entry.ToJsonString());
+        Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash"));
+    }
+
     [Fact]
     public void InspectionRejectsWrongDllArchitectureMissingAndExtraImports()
     {

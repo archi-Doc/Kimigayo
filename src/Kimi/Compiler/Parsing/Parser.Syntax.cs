@@ -115,7 +115,7 @@ public static partial class Parser
             var token = reader.CurrentToken;
             if (!token.Kind.IsIdentifierOrContextualKeyword() || !reader.TryGetIdentifier(token, out var name))
             {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Expect(SyntaxForm.Name);
                 break;
             }
 
@@ -127,14 +127,15 @@ public static partial class Parser
                 var op = reader.Read();
                 operation = reader.GetSpan(op) switch
                 {
-                    "move" => Constants.MoveOperation,
-                    "ref" when !mutable => "ref",
-                    "uniq" when !mutable => "uniq",
+                    // SPEC 7.6.2: var changes only the mutability of the environment binding, with every operation.
+                    Constants.MoveOperation => Constants.MoveOperation,
+                    Constants.RefKeyword => Constants.RefKeyword,
+                    Constants.UniqKeyword => Constants.UniqKeyword,
                     _ => null,
                 };
                 if (operation is null)
                 {
-                    reader.Diagnostic.Add(op.Span, DiagnosticCode.UnexpectedToken_Kd, "capture operation");
+                    reader.Expect(SyntaxForm.CaptureOperation, op);
                 }
 
                 end = op.Span.End;
@@ -176,16 +177,18 @@ public static partial class Parser
                 continue;
             }
 
-            if (hasReceiver || parameter.ExternalName != "self" || parameter.DefaultValue is not null)
+            // A repeated self is already a duplicate external name; a renamed or defaulted one is a misplaced receiver, and the
+            // function's own checks rest on it.
+            if (!hasReceiver && (parameter.ExternalName != "self" || parameter.DefaultValue is not null) && parameter.Type.Unexpected(SyntaxForm.ReceiverParameter) is { } cause)
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "receiver parameter");
+                function.CodeContext.RecordRecovery(function, cause);
             }
 
             hasReceiver = true;
             if (function.NameBoundaryIndex >= 0 && function.NameBoundaryIndex == function.Parameters.Count - 1 &&
                 ReferenceEquals(parameter, function.Parameters[^1]))
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "named section requires an ordinary parameter");
+                parameter.Type.AddDiagnostic(DiagnosticCode.EmptyNamedParameterSection_Kd);
             }
         }
     }
@@ -195,20 +198,20 @@ public static partial class Parser
         function.IsRequirement = true;
         if (function.Modifier is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
         {
-            function.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement modifiers");
+            function.Unexpected(SyntaxForm.Decoration);
         }
 
         foreach (var parameter in function.Parameters)
         {
             if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
             {
-                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement parameter");
+                parameter.Type.Unexpected(SyntaxForm.RequirementParameterDefault);
             }
         }
 
         if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement body");
+            reader.Unexpected(SyntaxForm.RequirementBody);
             reader.Advance();
             _ = ParseRequiredExpression(ref reader);
         }
@@ -238,10 +241,16 @@ public static partial class Parser
                 continue;
             }
 
+            if (IsEffectStart(ref reader, specification: true))
+            {
+                function.AddEffectBound(ParseEffectBound(ref reader));
+                continue;
+            }
+
             if (!IsTypeConstraintStart(ref reader, declarationContext: true))
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "constraint");
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                reader.Expect(SyntaxForm.Constraint);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 continue;
             }
 
@@ -262,13 +271,16 @@ public static partial class Parser
             return name;
         }
 
-        reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
-        if (reader.CanRead && !IsExpressionBoundary(ref reader))
+        // A Name missing at a boundary stands at an insertion point after the preceding token; any other token is consumed for recovery.
+        var cause = reader.Expect(SyntaxForm.Name);
+        var boundary = !reader.CanRead || IsExpressionBoundary(ref reader);
+        var missing = boundary ? new SourceSpan(reader.PreviousSyntaxEnd, 0) : token.Span;
+        if (!boundary)
         {
             reader.Advance();
         }
 
-        return new ErrorKoto(ref reader, token.Span);
+        return new ErrorKoto(ref reader, missing) { Cause = cause };
     }
 
     private static Koto ParseRootName(ref TokenReader reader, bool type)
@@ -288,7 +300,7 @@ public static partial class Parser
         }
         else
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "of");
+            reader.Expect(SyntaxForm.OfKeyword);
         }
 
         Koto element;
@@ -434,10 +446,10 @@ public static partial class Parser
         {
             reader.Advance();
             var name = ParseName(ref reader);
-            if (name is IdentifierNameKoto { IdentifierName: "_" })
+            if (name is ErrorKoto)
             {
-                // let _ and var _ are invalid; use the wildcard Pattern instead (SPEC 14.8.2).
-                name.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "_");
+                // '_' is not a Name (SPEC 2.5): 'let _' and 'var _' are reported as a missing Name, and the arm's Pattern rests on it.
+                return name;
             }
 
             return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind == TokenKind.Let ? "let " : "var ", [name]);
@@ -477,7 +489,8 @@ public static partial class Parser
             var literal = ParsePrimaryExpression(ref reader);
             if ((negative && literal is not NumberLiteralKoto { IsInteger: true }) || literal is NumberLiteralKoto { IsInteger: false })
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Pattern literal");
+                // The value matches nothing; the arm's Pattern rests on the Error.
+                return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, literal.Span.End)) { Cause = reader.Expect(SyntaxForm.PatternLiteral, token) };
             }
 
             return negative ? KotoHelper.NewUnaryKoto(ref reader, token, literal) : literal;
@@ -489,6 +502,7 @@ public static partial class Parser
         }
 
         Koto reference;
+        DiagnosticKey? cause = null; // A malformed case Pattern is read to its end and then rests on the Error.
         if (token.Kind == TokenKind.Dot)
         {
             reference = ParseInferredCase(ref reader);
@@ -517,13 +531,15 @@ public static partial class Parser
 
             if (!qualified)
             {
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Case Pattern");
+                cause = reader.Expect(SyntaxForm.CasePattern, token); // A bare Name names no case.
             }
         }
 
         if (!reader.TryConsume(TokenKind.OpenParenthesis))
         {
-            return new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
+            return cause is { } bare
+                ? new ErrorKoto(ref reader, reference.Span) { Cause = bare }
+                : new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
         }
 
         var patterns = default(TemporaryKotoList);
@@ -538,12 +554,14 @@ public static partial class Parser
 
         if (patterns.Count == 0)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            cause ??= reader.Expect(SyntaxForm.Pattern);
         }
 
         reader.TryConsume(TokenKind.CloseParenthesis, out var end, true);
         var payload = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End)), KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
-        return new SyntaxFormKoto(ref reader, payload.Span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);
+        return cause is { } malformed
+            ? new ErrorKoto(ref reader, payload.Span) { Cause = malformed }
+            : new SyntaxFormKoto(ref reader, payload.Span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);
     }
 
     internal static Koto ParseEnumCase(ref TokenReader reader)
@@ -577,7 +595,7 @@ public static partial class Parser
         var start = reader.Read().Span.Start;
         var condition = ParseHeaderExpression(ref reader);
         reader.TrySkipSeparatorsTo(TokenKind.Else);
-        reader.TryConsume(TokenKind.Else, out _, true);
+        reader.Expect(TokenKind.Else);
         var parsedBody = ParseRequiredBody(ref reader);
         Koto body = parsedBody.IsExpressionBody ? parsedBody.Items[0] : parsedBody;
         return new RequireKoto(ref reader, SourceSpan.FromBounds(start, body.Span.End), condition, body);
@@ -587,18 +605,8 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.NumericLiteral)
         {
-            var token = reader.Read();
-            var text = reader.GetSpan(token);
-            foreach (var c in text)
-            {
-                if (c is < '0' or > '9')
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "Tuple index");
-                    break;
-                }
-            }
-
-            return new NumberLiteralKoto(ref reader, token);
+            // The tokenizer ends a numeric literal after '.' at its digits, so the index is a digit sequence.
+            return new NumberLiteralKoto(ref reader, reader.Read());
         }
 
         if (reader.CurrentTokenKind == TokenKind.Init)
@@ -606,7 +614,8 @@ public static partial class Parser
             var token = reader.Read();
             if (reader.CurrentTokenKind != TokenKind.OpenParenthesis)
             {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                // The reference is not a call; the member rests on the Error.
+                return new ErrorKoto(ref reader, token.Span) { Cause = reader.Expect(SyntaxForm.OpenParenthesis) };
             }
 
             return new SyntaxFormKoto(ref reader, token.Span, KotoKind.ConstructorReference, "init", []);

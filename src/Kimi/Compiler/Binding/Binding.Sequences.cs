@@ -6,6 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // A Range<S, E> or ClosedRange<S, E>, whose iteration condition is `S is PrimitiveInteger` and `E is S` (SPEC 4.6.3.4).
+    private static bool IsRangeShape(BoundType subject)
+        => subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 };
+
     private bool BindSequenceMember(MemberAccessKoto source, BindingScope scope, out BoundType? result)
     {
         result = null;
@@ -15,7 +19,7 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
+        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
         {
             receiver = receiver!.Components[0]; // SPEC 4.6.1: metadata shares access through a reference to the sequence.
         }
@@ -38,7 +42,7 @@ public sealed partial class Binding
         };
         if (!valid)
         {
-            result = Fail(source, BindingFailure.MissingName);
+            result = this.Fail(source, BindingFailure.MissingName);
             return true;
         }
 
@@ -52,59 +56,22 @@ public sealed partial class Binding
     {
         var iterable = this.BindNode(source.Iterable, scope);
         source.Iteration?.Decomposition.Reset(null);
-        source.SharedIterable = null;
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
         source.Mode = SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Slice } or { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
+        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
-            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy handle or
-            // interval is the entry receiver and is read once for the loop. Exclusive enumeration of a
-            // Slice lends only the handle, so its elements stay shared.
+            // SPEC 14.6.2, 3.4.1: the iteration entry is selected through the reference; the Copy interval is the
+            // entry receiver and is read once for the loop.
             this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
             iterable = iterable.Components[0];
         }
 
-        var exclusive = source.Mode == SubjectMode.Exclusive;
-        // Dynamic Array uses its ordinary Kimigayo entry and iterator; fixed arrays retain the sequence boundary.
-        var sequence = iterable?.Kind == BoundTypeKind.FixedArray && IsBarePlace(source.Iterable) ? iterable :
-            ReferenceTypes.IsArray(iterable) ? iterable!.Components[0] : null;
-        if (sequence is not null)
-        {
-            // SPEC 14.6.2 subject rule: a bare array Place is shared-borrowed and a shared borrow value of an array is
-            // reborrowed; both iterate as the Slice values[..], yielding ref/T during source. values@uniq and an
-            // exclusive borrow value lend the array exclusively and yield uniq/T; values@move or a temporary
-            // consumes the array instead.
-            var origin = followed?.Origin ?? this.PlaceOrigin(source.Iterable);
-            source.SharedIterable = exclusive
-                ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [sequence], origin: origin)
-                : this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [sequence.Components[0]], origin: origin);
-        }
-
-        var dictionary = ReferenceTypes.IsDictionary(iterable) ? iterable!.Components[0] : iterable?.Kind == BoundTypeKind.Dictionary ? iterable : null;
-        if (dictionary is not null && (ReferenceTypes.IsDictionary(iterable) || IsBarePlace(source.Iterable)))
-        {
-            source.SharedIterable = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [dictionary], origin: iterable!.Origin ?? this.PlaceOrigin(source.Iterable));
-        }
-
-        var view = source.SharedIterable ?? iterable;
-        var element = view is null ? null : view.Kind == BoundTypeKind.FixedArray ? view.Components[0] : view.Kind == BoundTypeKind.Slice
-            ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [view.Components[0]], origin: view.Origin) : ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize
-            : exclusive && ReferenceTypes.IsArray(view) ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [view.Components[0].Components[0]], origin: view.Origin) : null;
-        if (dictionary is not null)
-        {
-            // SPEC 14.6.2: shared Dictionary iteration yields (ref/K, ref/V) and exclusive iteration (ref/K, uniq/V),
-            // including for Copy components; owned iteration yields a pair of values.
-            var key = dictionary.Components[0];
-            var value = dictionary.Components[1];
-            if (source.SharedIterable is { } shared)
-            {
-                key = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [key], origin: shared.Origin);
-                value = this.InternType(BoundTypeKind.Semantics, null, shared.Semantics, [value], origin: shared.Origin);
-            }
-
-            element = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [key, value]);
-        }
+        // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
+        // 22.1.2.5). SPEC 4.6.3.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
+        // directly; a validated interval never Aborts, so no iterator value is formed.
+        var view = iterable;
+        var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
 
         var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
@@ -153,7 +120,7 @@ public sealed partial class Binding
         this.BindNode(source.Body, scope);
         if (duplicate)
         {
-            return Fail(source, BindingFailure.Duplicate);
+            return this.Fail(source, BindingFailure.Duplicate);
         }
 
         if (iterable is null)
@@ -161,32 +128,69 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (source.IsTupleBinding && (tuple?.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count))
+        if (!userEntry && !ReferenceTypes.IsResolvedRange(view))
         {
-            return Fail(source, BindingFailure.TypeMismatch);
+            return this.FailIterationSubject(source, scope, iterable);
         }
 
-        if (!userEntry && dictionary is null && !ReferenceTypes.IsResolvedRange(view) && view?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice) &&
-            !(exclusive && ReferenceTypes.IsArray(view)))
+        if (source.IsTupleBinding && (tuple?.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count))
         {
-            return Fail(source, BindingFailure.Unsupported);
+            return this.Fail(source, BindingFailure.TypeMismatch);
         }
 
         return this.FinishResult(source, result);
     }
 
+    // SPEC 14.6.2: a missing entry conformance is an error of the Subject, decided like any other Contract requirement:
+    // refuted for a Type that lacks it, unproven for one whose conformance is not established, such as an unconstrained Type
+    // parameter. A proven conformance whose entry or step did not bind remains an implementation boundary of the loop.
+    private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
+    {
+        var entry = this.IterationEntry(source, ref subject);
+        var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
+        if (proof == ConstraintProof.Proven)
+        {
+            return this.Fail(source, BindingFailure.Unsupported);
+        }
+
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && source.Iterable.BindingFailure == BindingFailure.None && IsRangeShape(subject))
+        {
+            (this.rangeIterationFailures ??= new(ReferenceEqualityComparer.Instance))[source.Iterable] = (subject, entry);
+        }
+
+        this.Fail(source.Iterable, proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : proof == ConstraintProof.Error ? BindingFailure.InvalidConstraint : BindingFailure.UnprovenConstraint);
+        return Complete(source, null);
+    }
+
+    // SPEC 14.6.2, 3.4.1: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
+    // reference layer.
+    private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
+    {
+        if (source.Mode == SubjectMode.ByValue)
+        {
+            return this.Library.IntoIterable;
+        }
+
+        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        {
+            subject = subject.Components[0];
+        }
+
+        return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
+    }
+
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = source.Mode == SubjectMode.ByValue ? this.Library.IntoIterable :
-            source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
+        var entry = this.IterationEntry(source, ref subject);
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
-        while (source.Mode != SubjectMode.ByValue && subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            subject = subject.Components[0]; // SPEC 3.4.1: the entry is selected at the referent of every reference layer.
-        }
-
-        var nominal = subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null;
+        // SPEC 8.4.8.2: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
+        // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
+        // (SPEC 4.6.3.4).
+        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
+                this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
+                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
+            (IsFixedArrayEntry(subject, entry) && this.FixedArrayWitness(entry) is not null);
         if (!nominal && !this.HasContractFact(subject, entry, scope))
         {
             return false;
@@ -234,7 +238,7 @@ public sealed partial class Binding
             if (loop.EntryCall?.BoundCall is { } call && loop.Iteration?.Next.BoundCall is { } next &&
                 !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
             {
-                Fail(loop, BindingFailure.Ambiguous);
+                this.Fail(loop, BindingFailure.Ambiguous);
             }
         }
     }
@@ -244,6 +248,11 @@ public sealed partial class Binding
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
             return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+        }
+
+        if (IsFixedArrayEntry(self, contract))
+        {
+            return ReferenceEquals(this.FixedArrayWitness(contract), target);
         }
 
         if (self.Symbol is not { } type || !this.conformancesByType.TryGetValue(type, out var identities))
@@ -300,7 +309,7 @@ public sealed partial class Binding
         if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
             option.Components.Count != 1 || !ReferenceEquals(option.Components[0], item))
         {
-            Fail(source, BindingFailure.TypeMismatch);
+            this.Fail(source, BindingFailure.TypeMismatch);
             return;
         }
 

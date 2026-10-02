@@ -207,13 +207,13 @@ public sealed partial class Binding
                 case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
                     index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                     return SemanticsKind.Ref; // SPEC 4.6.6: a Slice element Place is shared.
-                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType):
+                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
                     next = index.Left;
                     layer = index.Left.BoundType!.Semantics;
                     break;
                 case MemberAccessKoto member when ElementAccess.BorrowedPathRoot(member) is { } root:
                     next = root;
-                    layer = ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
+                    layer = ElementAccess.IsUserIndex(root) ? null : ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
                     break;
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
@@ -249,6 +249,16 @@ public sealed partial class Binding
 
     private static bool IsTransfer(Koto source) => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Transfer };
 
+    // SPEC 15.1.5, 13.5.5.1: only an owned path offers Take; a guard candidate, a followed referent or payload and a followed
+    // pair layer never do, even when the layer admits owner.
+    private static bool OffersTake(Koto source)
+    {
+        var place = KotoHelper.UnwrapParentheses(source);
+        return place.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate &&
+            place is not ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } &&
+            (!IsBarePlace(place) || PathAuthority(place) == SemanticsKind.Owner);
+    }
+
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
     // acquisition is restricted by the lending rule; a temporary transfers its ownership freely.
     private static bool IsBarePlace(Koto source)
@@ -261,9 +271,9 @@ public sealed partial class Binding
             MemberAccessKoto member => ElementAccess.AccessType(member.Left) is var receiver &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && StructStorage.IsStruct(receiver?.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver)) ||
                 ReferenceTypes.IsTuple(receiver) || receiver?.Kind == BoundTypeKind.Tuple), // SPEC 3.4.1: also through the receiver's recorded reference.
-            IndexKoto index => index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+            IndexKoto index => !ElementAccess.IsSlicing(index) && (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType) ||
-                ElementAccess.IsUserIndex(index), // SPEC 4.6.9, including a Place published by a user index
+                ElementAccess.IsUserIndex(index)), // SPEC 4.6.9, including a Place published by a user index; a range selection is a value
             InvocationKoto call => ElementAccess.IsPlaceCall(call), // SPEC 7.1.1: a published Place.
             _ => false,
         };
@@ -271,7 +281,10 @@ public sealed partial class Binding
 
     // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
     // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
-    private static bool IsExclusivePlaceResultSource(Koto node)
+    private static bool IsExclusivePlaceResultSource(Koto node) => ResultFunction(node) is { ReturnType: PlaceResultKoto { IsExclusive: true } };
+
+    // The function whose result the expression is: the operand of a return, or the single-item body.
+    private static FunctionKoto? ResultFunction(Koto node)
     {
         var parent = node.Parent;
         while (parent is ParenthesizedKoto)
@@ -279,20 +292,22 @@ public sealed partial class Binding
             parent = parent.Parent;
         }
 
-        var function = parent switch
+        return parent switch
         {
             ReturnKoto jump => KotoHelper.ResolveTransferTarget(jump) as FunctionKoto,
             CodeBlockKoto { IsExpressionBody: true, Parent: FunctionKoto owner } => owner,
             FunctionKoto owner when ReferenceEquals(owner.ExpressionBody, node) => owner,
             _ => null,
         };
-        return function is { ReturnType: PlaceResultKoto { IsExclusive: true } };
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
     // so a call without applicable candidates names the required spelling (SPEC 15.1.5).
     private bool transferRequired;
     private bool lendingRequired;
+
+    // The plan the last AdaptInput chose for a bare Place, read by candidate evaluation right after the call (SPEC 10.2.2).
+    private ArgumentAcquisition argumentAcquisition;
 
     // SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
@@ -327,6 +342,18 @@ public sealed partial class Binding
     // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
+        if (ElementAccess.PlaceCallReference(left) is { } published)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, published);
+            return;
+        }
+
+        if (ElementAccess.IsUserIndex(left) && element is not null)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(element, this.PlaceOrigin(left)));
+            return;
+        }
+
         // An owned Array element that stores a reference or handle is not an inline part either: its member is reached
         // through the stored view.
         // A Non-Copy element published by a user index (SPEC 4.6.9) is likewise read through one shared borrow of its Place.
@@ -396,7 +423,7 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (ScalarReferent(actual) is { } referent && Compatible(referent, expected))
+        if (this.ReadTypeReferent(actual, node) is { } referent && Compatible(referent, expected))
         {
             return new(ExpectedAdaptationKind.ReferentRead, referent);
         }
@@ -503,8 +530,8 @@ public sealed partial class Binding
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
-    // SPEC 3.5.3 Scalar read: the safe value-reference layers of an operand are followed to their terminal Type, which
-    // is read only when it is a Scalar; a non-Scalar referent, Copy or not, is never read implicitly. The node keeps its
+    // SPEC 3.5.3 value read: the safe value-reference layers of an operand are followed to their terminal Type, which is
+    // read only when it is a read Type; any other referent, Copy or not, is never read implicitly. The node keeps its
     // reference Type.
     private BoundType? ReadReferent(Koto node, BoundType? type)
     {
@@ -513,6 +540,12 @@ public sealed partial class Binding
             // A qualifying pair layer is one of the followed layers (SPEC 3.4.1), also below another one (s/(t/U)): the read is
             // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
             var scope = this.ConstraintScope(node);
+            if (this.ReadTypeReferent(type, scope) is { } read)
+            {
+                this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read); // SPEC 3.5.3, 8.4.7.3: a read Type.
+                return read;
+            }
+
             if (type is not null &&
                 this.FollowablePair(type, scope, out var target) is var admitted && admitted != SemanticsMask.None &&
                 this.PairTerminal(target, scope) is { } terminal &&
@@ -582,7 +615,7 @@ public sealed partial class Binding
             return !exclusive;
         }
 
-        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType)))
+        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType)))
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }
@@ -607,6 +640,13 @@ public sealed partial class Binding
 
             if (source is MemberAccessKoto access)
             {
+                // SPEC 16.3.1: the destruction receiver has access equivalent to uniq/Self, so its initialized fields
+                // may be borrowed exclusively although the receiver itself is not an assignable binding.
+                if (IsSpecialField(access, out var special) && special.IsDestructor)
+                {
+                    return true;
+                }
+
                 return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
                     ? !exclusive || receiver.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
                     : this.BorrowablePlace(access.Left, scope, exclusive);
@@ -628,9 +668,12 @@ public sealed partial class Binding
     /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
     /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
     /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
+    /// <paramref name="holdCopy"/> holds the Copy proof of a bare Place's by-value acquisition for overload resolution's
+    /// conflict check (SPEC 10.2.2); <see cref="argumentAcquisition"/> names the plan chosen for a bare Place.
     /// </summary>
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false)
+    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool holdCopy = false)
     {
+        this.argumentAcquisition = ArgumentAcquisition.Other;
         actual = this.ContractType(actual, scope);
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
@@ -662,18 +705,23 @@ public sealed partial class Binding
             }
 
             // SPEC 10.2: where the reference does not fit but its Copy referent does, the referent is read.
-            if (!this.FitsTypeAt(actual, pattern, source) && ScalarReferent(actual) is { } read && this.FitsTypeAt(read, pattern, source))
+            if (!this.FitsTypeAt(actual, pattern, source) && this.ReadTypeReferent(actual, scope) is { } read && this.FitsTypeAt(read, pattern, source))
             {
                 adapted = read;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source) && this.ProveCopy(actual, source) != ConstraintProof.Proven)
+            else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source))
             {
-                // SPEC 3.5, 10.2: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not
-                // applicable by value; overload selection never transfers a bare Place.
-                this.transferRequired = true;
-                return false;
+                // SPEC 3.5, 10.2: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value;
+                // overload resolution decides this held proof after its conflict check (SPEC 10.2.2).
+                if (!holdCopy && this.ProveCopy(actual, source) != ConstraintProof.Proven)
+                {
+                    this.transferRequired = true;
+                    return false;
+                }
+
+                this.argumentAcquisition = ArgumentAcquisition.Copy;
             }
 
             return true;
@@ -776,6 +824,11 @@ public sealed partial class Binding
                 {
                     this.lendingRequired = true;
                     return false;
+                }
+
+                if (!exclusive && !explicitBorrow && !receiver && !projected && IsBarePlace(source))
+                {
+                    this.argumentAcquisition = ArgumentAcquisition.SharedBorrow; // SPEC 10.2.2: a new shared borrow of the Place.
                 }
             }
             else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||

@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class EnumOwnershipTest
 {
     [Theory]
@@ -222,23 +221,31 @@ public class EnumOwnershipTest
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
+        var originalCases = body.Places[body.Constructions[0].Place].Type.StoredCases!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        var rebuilt = body.Places[Assert.Single(body.Constructions).Place].Type;
+        Assert.Single(originalCases);
+        Assert.NotSame(originalCases, rebuilt.StoredCases);
+        Assert.Equal(2, rebuilt.StoredCases!.Length);
+        var reference = Assert.Single(rebuilt.StoredCases[1].Components);
+        Assert.Equal(SemanticsKind.Ref, reference.Semantics);
+        Assert.Equal(OriginKind.Static, reference.Origin!.Kind);
     }
 
-    // Static borrowed payload storage remains outside this low-level ownership profile.
+    // SPEC 12.2, 15.2: complete shared-reference payloads retain their Origin, including Static.
     [Theory]
     [InlineData("func f(x: ref/i32 during static) -> Option<ref/i32 during static> => .Some(x)")]
-    public void UnsupportedPayloadTypesCannotBeHiddenByAnEmptyCase(string source)
+    [InlineData("func f() -> Option<ref/i32 during static> => .None")]
+    public void StaticReferencePayloadsUseCompleteEnumStorage(string source)
     {
         var c = Parse(source);
         var result = c.Ownership.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.True(result.UnsupportedCount > 0, Describe(c));
+        Assert.True(result.IsVerified, Describe(c));
+        Assert.Equal(0, result.UnsupportedCount);
     }
 
     // SPEC 10.2, 12.2: implicit borrowed payloads use the ordinary borrow/reborrow acquisition and retain their Loans.
@@ -263,33 +270,6 @@ public class EnumOwnershipTest
     {
         var c = Parse("func f<T>(x: T) -> Option<T> => .Some(x@move)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-    }
-
-    [Theory]
-    [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(128)]
-    public void WarmEnumAnalysisReusesStateAndPlans(int count)
-    {
-        var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
-        var c = Parse(source);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var body = Body(c, "use");
-        var plans = body.Constructions;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        }));
-        Assert.Same(body, Body(c, "use"));
-        Assert.Same(plans, body.Constructions);
-        Assert.Equal(count * 2, plans.Count);
-        c.Bind();
-        Assert.False(body.IsVerified);
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        Assert.Equal(count * 2, body.Constructions.Count);
     }
 
     private static void CheckConstruction(string declarations, string type, string expression, int count)
@@ -330,7 +310,7 @@ public class EnumOwnershipTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         return c;
     }
@@ -339,4 +319,36 @@ public class EnumOwnershipTest
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(1)]
+        [InlineData(32)]
+        [InlineData(128)]
+        public void WarmEnumAnalysisReusesStateAndPlans(int count)
+        {
+            var source = "func use(c: bool)\n" + string.Join('\n', Enumerable.Range(0, count).Select(i => $"    var x{i} = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let y{i} = x{i}@move"));
+            var c = Parse(source);
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            var body = Body(c, "use");
+            var plans = body.Constructions;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Ownership.Analyze()));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            }));
+            Assert.Same(body, Body(c, "use"));
+            Assert.Same(plans, body.Constructions);
+            Assert.Equal(count * 2, plans.Count);
+            c.Bind();
+            Assert.False(body.IsVerified);
+            Assert.False(c.Ownership.Result.IsVerified);
+            Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+            Assert.Equal(count * 2, body.Constructions.Count);
+        }
+    }
 }

@@ -21,8 +21,8 @@ public class FuncDeclarationParseTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.MissingReturnType_Kd), diagnostic.Entry.Name);
+        var diagnostic = Assert.Single(TestDiagnostics.Of(kotonoha));
+        Assert.Equal(nameof(DiagnosticCode.MissingReturnType_Kd), diagnostic.Code);
         Assert.Equal(source.IndexOf("->", StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(2, diagnostic.Span.Length);
         Assert.Contains("remove '->'", diagnostic.Message);
@@ -51,7 +51,7 @@ public class FuncDeclarationParseTest
                 atomicObject: arc/T,
                 sharedObjectBorrow: objref/T,
                 exclusiveObjectBorrow: objuniq/T,
-                raw: unsafe/T !
+                raw: raw/T !
                 in => collection: Collection<s/T>,
                 using => comparer: (s/T, T2) -> ref/Bool
                 ) -> owner/i32
@@ -62,7 +62,7 @@ public class FuncDeclarationParseTest
             """;
         context.Parse(kotonoha.RootKoto, source);
 
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        var diagnostics = TestDiagnostics.Of(kotonoha);
         Assert.True(
             diagnostics.Length == 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
@@ -73,7 +73,7 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<s/T, T2>(value: T = fallback, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T ! in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
+                "private func find<s/T, T2>(value: T = fallback, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: raw/T ! in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
                 text);
             Assert.Contains("public func Main() -> ()", text);
         }
@@ -92,7 +92,7 @@ public class FuncDeclarationParseTest
     [InlineData("arc", SemanticsKind.Arc)]
     [InlineData("objref", SemanticsKind.ObjRef)]
     [InlineData("objuniq", SemanticsKind.ObjUniq)]
-    [InlineData("unsafe", SemanticsKind.Unsafe)]
+    [InlineData("raw", SemanticsKind.Raw)]
     public void ClassifiesBuiltInSemantics(string text, SemanticsKind expected)
     {
         Assert.True(CompilerHelper.TryParse(text, out var actual));
@@ -126,7 +126,7 @@ public class FuncDeclarationParseTest
     [InlineData(SemanticsKind.Arc, SemanticsMask.Arc)]
     [InlineData(SemanticsKind.ObjRef, SemanticsMask.ObjRef)]
     [InlineData(SemanticsKind.ObjUniq, SemanticsMask.ObjUniq)]
-    [InlineData(SemanticsKind.Unsafe, SemanticsMask.Unsafe)]
+    [InlineData(SemanticsKind.Raw, SemanticsMask.Raw)]
     public void ConvertsSemanticsKindToMask(SemanticsKind kind, SemanticsMask expected)
     {
         Assert.Equal(expected, kind.ToMask());
@@ -152,12 +152,12 @@ public class FuncDeclarationParseTest
             SemanticsMask.Value | SemanticsMask.Object,
             SemanticsMask.Owning);
         Assert.Equal(
-            SemanticsMask.ValueBorrow | SemanticsMask.Object | SemanticsMask.ObjectBorrow | SemanticsMask.Unsafe,
+            SemanticsMask.ValueBorrow | SemanticsMask.Object | SemanticsMask.ObjectBorrow | SemanticsMask.Raw,
             SemanticsMask.Reference);
         Assert.Equal(
             SemanticsMask.Value | SemanticsMask.ValueBorrow | SemanticsMask.Object | SemanticsMask.ObjectBorrow,
             SemanticsMask.Safe);
-        Assert.Equal(SemanticsMask.Safe | SemanticsMask.Unsafe, SemanticsMask.All);
+        Assert.Equal(SemanticsMask.Safe | SemanticsMask.Raw, SemanticsMask.All);
     }
 
     [Fact]

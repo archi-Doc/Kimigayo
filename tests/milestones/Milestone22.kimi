@@ -2,12 +2,12 @@
 struct Red
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit => Console.writeLine("Red destroyed.")
+    drop => Console.writeLine("Red destroyed.")
 
 struct Blue
     public let id: i32
     public init(id: i32) => self.id = id
-    deinit => Console.writeLine("Blue destroyed.")
+    drop => Console.writeLine("Blue destroyed.")
 
 func relay<T>(value: T) -> T => value@move
 

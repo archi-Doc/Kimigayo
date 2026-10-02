@@ -23,7 +23,7 @@ public class ElementBorrowOwnerEmissionTest
         { "CallArguments", "if same(make().0, make().0) => Console.writeLine(\"ok\")", "ok\n" },
         { "CallArray", "func names() -> [2 of string] => [\"first\", \"last\"]\nif names()[0] < names()[1] => Console.writeLine(\"ok\")", "ok\n" },
         { "If", "func f(flag: bool) -> bool => same((if flag => (\"held\", 1) else => (\"held\", 2)).0, \"held\")\nif f(true) and f(false) => Console.writeLine(\"ok\")", "ok\n" },
-        { "Do", "if (work: do\n    exit to work: (\"held\", 42)\n).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
+        { "Do", "if (label work: do\n    exit to work (\"held\", 42)\n).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "LoopResult", "if same((loop\n    exit (\"held\", 42)\n).0, \"held\") => Console.writeLine(\"ok\")", "ok\n" },
         { "MatchResult", "if (match true\n    true => (\"held\", 42)\n    false => (\"other\", 0)\n).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "NestedResult", "func nested() -> (i32, (string, i32)) => (0, (\"held\", 42))\nif same(nested().1.0, (if true => nested() else => nested()).1.0) => Console.writeLine(\"ok\")", "ok\n" },
@@ -33,10 +33,10 @@ public class ElementBorrowOwnerEmissionTest
         { "NestedGuard", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nmatch \"other\"\n    let s if three(make().0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")", "ok\n" },
         { "IndependentResult", "func inspect(a: ref/string) -> (string, i32) => (\"held\", 0)\nif inspect(make().0).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "MixedLocal", "let a = (\"held\", 0)\nif same(a.0, make().0) and same(make().0, a.0) => Console.writeLine(\"ok\")\nlet moved = a@move", "ok\n" },
-        { "DeferClones", "func f(flag: bool)\n    defer\n        if same((work: do\n            exit to work: (\"held\", 0)\n        ).0, make().0) => Console.writeLine(\"ok\")\n    if flag => return\nf(true)\nf(false)", "ok\nok\n" },
+        { "DeferClones", "func f(flag: bool)\n    defer\n        if same((label work: do\n            exit to work (\"held\", 0)\n        ).0, make().0) => Console.writeLine(\"ok\")\n    if flag => return\nf(true)\nf(false)", "ok\nok\n" },
         { "Repeated", "var n = 0\nloop\n    if not same(make().0, (\"held\", 0).0) => exit\n    n += 1\n    if n < 3 => continue\n    exit\nif n == 3 => Console.writeLine(\"ok\")", "ok\n" },
         { "Unreachable", "func f()\n    return\n    let equal = same(make().0, (\"held\", 0).0)\nf()\nConsole.writeLine(\"ok\")", "ok\n" },
-        { "Covered", "match true\n    _ => Console.writeLine(\"ok\")\n    true => (work: do\n        let equal = same(make().0, (\"held\", 0).0)\n    )", "ok\n" },
+        { "Covered", "match true\n    _ => Console.writeLine(\"ok\")\n    true => (label work: do\n        let equal = same(make().0, (\"held\", 0).0)\n    )", "ok\n" },
     };
 
     [Theory]
@@ -164,7 +164,7 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData(OwnershipOperationKind.Cleanup)]
     public void SecuredSelectionStorageIsUnavailableDuringItsCleanup(OwnershipOperationKind kind)
     {
-        const string Source = "let equal = (work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work: (\"held\", 0)\n).0 == \"held\"";
+        const string Source = "let equal = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (\"held\", 0)\n).0 == \"held\"";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies[0];
@@ -194,10 +194,11 @@ public class ElementBorrowOwnerEmissionTest
 
     [Theory]
     [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nforever((\"held\", 0).0)")]
-    [InlineData("ResultCleanup", "let equal = (work: do\n    defer => loop => ()\n    exit to work: (\"held\", 0)\n).0 == \"held\"")]
+    [InlineData("ResultCleanup", "let equal = (label work: do\n    defer => loop => ()\n    exit to work (\"held\", 0)\n).0 == \"held\"")]
     public void NonterminationCannotReleaseOrDeliverAnOwner(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementBorrowOwnerDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBindingAndOwnerBorrowEmissionAllocateNothing()
     {

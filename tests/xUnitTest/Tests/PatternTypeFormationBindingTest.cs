@@ -10,7 +10,7 @@ public class PatternTypeFormationBindingTest
 {
     [Theory]
     [InlineData("Box<string>", "_")]
-    [InlineData("unsafe/Box<string>", "_")]
+    [InlineData("raw/Box<string>", "_")]
     [InlineData("Option<Box<string>>", ".Some(_)\n    .None")]
     [InlineData("Option<Box<string>>", ".Some(_)")]
     [InlineData("Box<string>", "_\n    _")]
@@ -18,7 +18,7 @@ public class PatternTypeFormationBindingTest
     public void InvalidSubjectTypesCannotPublishCoverage(string type, string pattern)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nfunc f(value: " + type + ") => match value\n    " + pattern.Replace("\n", " => ()\n", StringComparison.Ordinal) + " => ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
         Assert.Empty(c.Binding.PatternWarnings);
@@ -34,14 +34,14 @@ public class PatternTypeFormationBindingTest
     public void InvalidEnumContextCannotPublishWildcardCoverage()
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public enum E\n        A\nfunc f(value: Invalid.E) => match value\n    _ => ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
     }
 
     [Theory]
     [InlineData("Box<i32>", "_")]
-    [InlineData("unsafe/Box<i32>", "_")]
+    [InlineData("raw/Box<i32>", "_")]
     [InlineData("Option<Box<i32>>", ".Some(_)\n    .None")]
     public void ValidSubjectTypesRetainCoverage(string type, string pattern)
     {
@@ -82,7 +82,7 @@ public class PatternTypeFormationBindingTest
     public void LateEnumApiFailureInvalidatesEarlierCoverage()
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nfunc f(value: E<Source>) => match value\n    _ => ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
@@ -96,6 +96,7 @@ public class PatternTypeFormationBindingTest
         Assert.Equal(MatchCoverageState.Exhaustive, Plan(c).Coverage.State);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPatternFormationChecksAllocateNothing()
     {

@@ -10,12 +10,12 @@ public class PropertyCompletionBindingTest
 {
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void LateInvalidPropertyTypeCannotRemainVerified(string type)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nstruct S\n    var value: " + type);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
         Assert.False(Property(c).IsVerified);
@@ -28,7 +28,7 @@ public class PropertyCompletionBindingTest
 
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void ValidApiTypesRemainVerified(string type)
     {
@@ -84,6 +84,7 @@ public class PropertyCompletionBindingTest
         Assert.True(property.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPropertyCompletionAllocatesNothing()
     {

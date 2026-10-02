@@ -26,7 +26,7 @@ public sealed partial class Binding
 
         if (!supported)
         {
-            return Fail(conversion, BindingFailure.TypeMismatch);
+            return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
         if (!ReferenceEquals(core, target.Components[0]))
@@ -44,7 +44,7 @@ public sealed partial class Binding
         {
             if (!ObjectTypes.IsOwner(actual) || KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
             {
-                return Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
             result = target;
@@ -53,7 +53,7 @@ public sealed partial class Binding
         {
             if (!this.AdaptObjectBorrow(conversion.Left, target, actual, scope, true, out var borrowed, out _, out _))
             {
-                return Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
             result = this.InternType(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
@@ -61,7 +61,7 @@ public sealed partial class Binding
             {
                 if (!this.CheckTypeUse(result, target, conversion))
                 {
-                    return Fail(conversion, BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, BindingFailure.InvalidAssignment);
                 }
 
                 result = target;

@@ -1,0 +1,12 @@
+// Signatures implemented by the compiler; loaded into Kimi.Raw (SPEC 5.6).
+/// Allocates uninitialized storage for `count` elements. A negative count, an overflow of `count * stride(T)` or an
+/// allocation failure Aborts. A zero-byte request allocates nothing and returns a nonnull address aligned for `T`.
+public func allocate<T>(count: isize) -> raw/T
+/// Releases storage that `allocate` returned, at its start address and without destroying any element; null and
+/// zero-byte results are ignored. Every pointer derived from the allocation becomes invalid.
+public unsafe func release<T>(storage: raw/T)
+/// Moves `value` into live, aligned, writable storage that holds no initialized value, destroying nothing.
+public unsafe func initialize<T>(storage: raw/T, value: T)
+/// Forms a shared Slice of `length` elements starting at `storage`; the caller fixes the result Origin `s`. When `length` is
+/// positive, `storage` is nonnull and aligned and the elements are initialized and valid, and they are not written for `s`.
+public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s

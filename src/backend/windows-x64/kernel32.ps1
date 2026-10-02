@@ -1,4 +1,10 @@
 # Shared import definition, identity checks and generation for all PowerShell builders.
+function Get-KimiInstalledKernel32([string] $ToolchainRoot) {
+    $path = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 for the selected toolchain." }
+    return @{ path = $path; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
+}
+
 function Get-KimiKernel32Definition {
     $definition = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'kernel32.def')).Replace("`r`n", "`n").TrimEnd() + "`n"
     $hash = [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($definition)))
@@ -43,7 +49,7 @@ function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {
         if ($LASTEXITCODE -ne 0 -or $dll.Trim() -cne 'KERNEL32.dll') { throw 'Unexpected generated kernel32 DLL name' }
         $inspection = & $readobj --file-headers kernel32.lib | Out-String
         if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect generated kernel32 library' }
-        $symbols = @('GetProcessHeap','HeapAlloc','HeapFree','GetStdHandle','WriteFile','GetLastError','ExitProcess','VirtualAlloc','VirtualProtect','VirtualFree','GetEnvironmentVariableA','SetHandleInformation')
+        $symbols = @((Get-KimiKernel32Definition).Split("`n") | Select-Object -Skip 2 | ForEach-Object { $_.Trim() } | Where-Object { $_ })
         $expected = @($symbols) + @($symbols | ForEach-Object { "__imp_$_" })
         $actual = @([regex]::Matches($inspection, '(?m)^Symbol: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
         $formats = @([regex]::Matches($inspection, '(?m)^Format: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })

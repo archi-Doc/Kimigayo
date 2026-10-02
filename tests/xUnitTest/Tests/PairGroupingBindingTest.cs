@@ -29,7 +29,7 @@ public class PairGroupingBindingTest
     [InlineData("(s/(T))")]
     [InlineData("owner/(s/((T)))")]
     [InlineData("ref/(s/(T)) during static")]
-    [InlineData("unsafe/(s/((T)))")]
+    [InlineData("raw/(s/((T)))")]
     [InlineData("[2 of s/(T)]")]
     [InlineData("(s/(T), s/((T)))")]
     [InlineData("Box<s/(T)>")]
@@ -76,12 +76,13 @@ public class PairGroupingBindingTest
     }
 
     [Theory]
-    [InlineData("s/(T{static})")]
-    [InlineData("s/((T{missing}))")]
-    [InlineData("s/(T{wrong => static})")]
-    public void GroupingNeverErasesTargetOriginAnnotations(string type)
+    // A Type suffix names one binding set and Origin mappings were removed (SPEC 15.3), so two annotations are also syntax errors.
+    [InlineData("s/(T{static})", true)]
+    [InlineData("s/((T{missing}))", false)]
+    [InlineData("s/(T{wrong => static})", true)]
+    public void GroupingNeverErasesTargetOriginAnnotations(string type, bool syntaxError)
     {
-        var c = Parse($"func f<s/T>(value: {type}) => ()");
+        var c = Parse($"func f<s/T>(value: {type}) => ()", syntaxError);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
         Assert.False(Reload(c).Bind().IsComplete);
@@ -128,6 +129,7 @@ public class PairGroupingBindingTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGroupedPairBindingAllocatesNothing()
     {
@@ -157,12 +159,12 @@ public class PairGroupingBindingTest
         return restored;
     }
 
-    private static Compilation Parse(string source)
+    private static Compilation Parse(string source, bool syntaxError = false)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("pair.kimi", source));
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(syntaxError, TestDiagnostics.Of(c).Length != 0);
         return c;
     }
 

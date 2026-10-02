@@ -31,7 +31,7 @@ public sealed partial class Binding
         var element = this.BindNode(fill.Elements[0], scope, expected?.Kind == BoundTypeKind.FixedArray ? expected.Components[0] : null);
         if (length is null || element is null)
         {
-            return Fail(fill, BindingFailure.InvalidTypeFormation);
+            return this.Fail(fill, BindingFailure.InvalidTypeFormation);
         }
 
         if (this.ProveCopy(element, fill) != ConstraintProof.Proven)
@@ -63,7 +63,7 @@ public sealed partial class Binding
                 var common = element is null ? actual : this.CommonOriginType(element, actual);
                 if (common is null)
                 {
-                    Fail(literal.Elements[i], BindingFailure.TypeMismatch);
+                    this.Fail(literal.Elements[i], BindingFailure.TypeMismatch);
                     complete = false;
                 }
                 else
@@ -75,7 +75,7 @@ public sealed partial class Binding
 
         if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || expected.Length != literal.Elements.Count))
         {
-            return Fail(literal, BindingFailure.TypeMismatch);
+            return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
         return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Length) : null);
@@ -107,7 +107,7 @@ public sealed partial class Binding
         }
         else
         {
-            Fail(hole, BindingFailure.MissingType, true);
+            this.Fail(hole, BindingFailure.MissingType, true);
         }
     }
 
@@ -120,41 +120,15 @@ public sealed partial class Binding
         BoundType? literalDefault = null;
         for (var i = 0; i < literal.Elements.Count; i++)
         {
-            var source = KotoHelper.UnwrapParentheses(literal.Elements[i]);
-            if (IsUnfittedLiteral(source))
-            {
-                var number = source as NumberLiteralKoto ?? (source as UnaryKoto)?.Operand as NumberLiteralKoto;
-                if (number is not null)
-                {
-                    literalDefault ??= DefaultLiteralType(number, null);
-                }
-
-                continue;
-            }
-
-            var actual = this.BindNode(literal.Elements[i], scope);
-            if (actual is null)
+            if (!this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault))
             {
                 return Complete(literal, null);
             }
-
-            if (ReferenceEquals(actual, BoundType.Never))
-            {
-                continue;
-            }
-
-            var common = established is null ? actual : this.CommonOriginType(established, actual);
-            if (common is null)
-            {
-                return Fail(literal, BindingFailure.TypeMismatch);
-            }
-
-            established = common;
         }
 
         if ((established ?? literalDefault) is not { } element)
         {
-            return Fail(literal, BindingFailure.MissingType, true);
+            return this.Fail(literal, BindingFailure.MissingType, true);
         }
 
         for (var i = 0; i < literal.Elements.Count; i++)
@@ -163,6 +137,39 @@ public sealed partial class Binding
         }
 
         return Complete(literal, this.InternType(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
+    }
+
+    // Arrays and Dictionary keys/values use the same bounded evidence rule: complete Types establish the expectation;
+    // unfitted literals supply only a default, and Never contributes no value Type. No temporary element list is needed.
+    private bool CollectLiteralElementEvidence(Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (IsUnfittedLiteral(unwrapped))
+        {
+            literalDefault ??= this.LiteralDefault(unwrapped);
+            return true;
+        }
+
+        var actual = this.BindNode(source, scope);
+        if (actual is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(actual, BoundType.Never))
+        {
+            return true;
+        }
+
+        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        if (common is null)
+        {
+            this.FailMismatch(source, source, actual, established!);
+            return false;
+        }
+
+        established = common;
+        return true;
     }
 
     private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)
@@ -184,12 +191,7 @@ public sealed partial class Binding
 
         if (shape is TypeSemanticsKoto { Type: null, Identifier: "_" } && IsUnfittedLiteral(source))
         {
-            var number = source as NumberLiteralKoto ?? (source as UnaryKoto)?.Operand as NumberLiteralKoto;
-            if (number is not null)
-            {
-                literalDefault ??= DefaultLiteralType(number, null);
-            }
-
+            literalDefault ??= this.LiteralDefault(source);
             return true;
         }
 
@@ -210,7 +212,7 @@ public sealed partial class Binding
         {
             if (actual.Kind != BoundTypeKind.FixedArray)
             {
-                Fail(source, BindingFailure.TypeMismatch);
+                this.Fail(source, BindingFailure.TypeMismatch);
                 return false;
             }
 
@@ -220,7 +222,7 @@ public sealed partial class Binding
 
         if (established is not null && !ReferenceEquals(established, actual))
         {
-            Fail(source, BindingFailure.TypeMismatch);
+            this.Fail(source, BindingFailure.TypeMismatch);
             return false;
         }
 

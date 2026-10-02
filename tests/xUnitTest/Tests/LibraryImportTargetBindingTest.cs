@@ -15,7 +15,7 @@ public class LibraryImportTargetBindingTest
     public void NonFunctionImportTargetCannotCertifyConformance(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
@@ -82,10 +82,10 @@ public class LibraryImportTargetBindingTest
     public void ValidImportDeclarationCompletesBinding()
     {
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"library\", \"symbol\")\n    public unsafe func imported(value: i32) -> i32", "library");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var import = Assert.Single(c.Binding.LibraryImports);
+        var import = Assert.Single(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
         Assert.Equal(("library", "symbol", "import"), (import.Library, import.Symbol, import.Kind));
     }
 
@@ -115,7 +115,6 @@ public class LibraryImportTargetBindingTest
     [InlineData("#LibraryImport(name: \"codec\", \"symbol\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(codec, \"symbol\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported() -> i32 => 1")]
-    [InlineData("#LibraryImport(\"codec\", \"symbol\")\n    public func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"memcpy\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"__chkstk\")\n    public unsafe func imported() -> i32")]
     [InlineData("#LibraryImport(\"codec\", \"_fltused\")\n    public unsafe func imported() -> i32")]
@@ -148,9 +147,9 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: unsafe/i32)", "()", false)]
+    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: raw/i32)", "()", false)]
     [InlineData("()", "u8", false)]
-    [InlineData("(value: unsafe/u8)", "unsafe/u8", false)]
+    [InlineData("(value: raw/u8)", "raw/u8", false)]
     [InlineData("()", "f64", false)]
     [InlineData("(value: bool)", "()", true)]
     [InlineData("(value: char)", "()", true)]
@@ -162,6 +161,12 @@ public class LibraryImportTargetBindingTest
     [InlineData("(value: ())", "i32", true)]
     [InlineData("()", "bool", true)]
     [InlineData("()", "u128", true)]
+    [InlineData("(value: uniq/i64)", "i32", false)]
+    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", false)]
+    [InlineData("(value: ref/string)", "()", true)]
+    [InlineData("(value: uniq/(i32, i32))", "()", true)]
+    [InlineData("(value: ref/bool)", "()", true)]
+    [InlineData("(value: Option<ref/i32 during a>)", "()", true)]
     public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, bool unsupported)
     {
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
@@ -172,7 +177,7 @@ public class LibraryImportTargetBindingTest
 
     [Theory]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: u32) -> u32", false)]
-    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: unsafe/f64) -> ()", false)]
+    [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/f64) -> ()", false)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i64) -> i32", true)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: f32) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> ()", true)]
@@ -186,16 +191,16 @@ public class LibraryImportTargetBindingTest
 
     [Theory]
     [InlineData("kernel32", "GetLastError", "()", "i32", null, false)]
-    [InlineData("kernel32", "GetProcessHeap", "()", "unsafe/u8", null, false)]
-    [InlineData("kernel32", "GetStdHandle", "(which: i32)", "unsafe/u8", null, false)]
-    [InlineData("kernel32", "WriteFile", "(handle: unsafe/u8, data: unsafe/u8, length: u32, written: unsafe/u32, overlapped: unsafe/u8)", "i32", null, false)]
+    [InlineData("kernel32", "GetProcessHeap", "()", "raw/u8", null, false)]
+    [InlineData("kernel32", "GetStdHandle", "(which: i32)", "raw/u8", null, false)]
+    [InlineData("kernel32", "WriteFile", "(handle: raw/u8, data: raw/u8, length: u32, written: raw/u32, overlapped: raw/u8)", "i32", null, false)]
     [InlineData("kernel32", "GetLastError", "()", "i64", null, true)]
     [InlineData("kernel32", "GetStdHandle", "(which: i32)", "()", null, true)]
     [InlineData("kernel32", "ExitProcess", "(code: i32)", "()", null, true)]
-    [InlineData("kernel32", "GetEnvironmentVariableA", "(name: unsafe/u8, buffer: unsafe/u8, size: u32)", "i32", null, false)]
-    [InlineData("kernel32", "SetHandleInformation", "(handle: unsafe/u8, mask: u32, flags: u32)", "u32", null, false)]
-    [InlineData("kernel32", "SetHandleInformation", "(handle: unsafe/u8, mask: u32, flags: u32)", "i64", null, true)]
-    [InlineData("kernel32", "VirtualAlloc", "()", "unsafe/u8", null, false)]
+    [InlineData("kernel32", "GetEnvironmentVariableA", "(name: raw/u8, buffer: raw/u8, size: u32)", "i32", null, false)]
+    [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "u32", null, false)]
+    [InlineData("kernel32", "SetHandleInformation", "(handle: raw/u8, mask: u32, flags: u32)", "i64", null, true)]
+    [InlineData("kernel32", "VirtualAlloc", "()", "raw/u8", null, false)]
     [InlineData("codec", "GetLastError", "()", "i32", "codec", true)]
     [InlineData("codec", "symbol", "()", "i32", "codec", false)]
     public void RuntimeDeclarationsAreSharedOnlyByAgreeingImports(string library, string symbol, string parameters, string result, string? requirement, bool conflict)
@@ -238,8 +243,8 @@ public class LibraryImportTargetBindingTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8\n" +
-            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> unsafe/u8";
+        var source = "group A\n    #LibraryImport(\"kernel32\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> raw/u8\n" +
+            "group B\n    #LibraryImport(\"codec\", \"VirtualAlloc\")\n    public unsafe func reserve(size: u64) -> raw/u8";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
 
@@ -329,7 +334,7 @@ public class LibraryImportTargetBindingTest
     {
         var source = "group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported(" + parameter + ") -> i32";
         var c = AnalyzeImport(source, "codec");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(invalid, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidLibraryImport_Kd));
     }
 

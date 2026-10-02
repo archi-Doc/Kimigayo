@@ -42,7 +42,7 @@ public class SpecReviewTest
 
     [Fact]
     public void ArrowContinuationDoesNotAuthorizeASeparateBodyArrowLine()
-        => Assert.NotEmpty(Parse("func f()\n    -> i32\n    => 1").DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse("func f()\n    -> i32\n    => 1")));
 
     [Theory]
     [InlineData("func store<T>(value: ref/T during b, other: ref/T during a)\n    origin b outlives a\n    ()")]
@@ -59,7 +59,7 @@ public class SpecReviewTest
     [InlineData("func bad<T> {a}:(value: ref/T during a) => ()")]
     [InlineData("func bad<T> {a}: 1(value: ref/T during a) => ()")]
     public void MissingOriginBoundTargetsAreSyntaxErrors(string source)
-        => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
 
     [Fact]
     public void ContainerFragmentsShareRelationsAndRepeatClosedHeaders()

@@ -61,6 +61,6 @@ public sealed partial class Binding
             valid &= ValidMessageTransfers(message, message);
         }
 
-        return valid ? Complete(node, BoundType.Unit) : Fail(node, BindingFailure.InvalidTestDefinition);
+        return valid ? Complete(node, BoundType.Unit) : this.Fail(node, BindingFailure.InvalidTestDefinition);
     }
 }

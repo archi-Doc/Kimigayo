@@ -5,27 +5,30 @@ public struct BufferFull
 
 public contract BufferWriter
     func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        effect confined
 
 public contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
 
 public struct WriteWindow {source}
     Self is not ObjectPayload
-    let state: unsafe/u8
+    let state: raw/u8
     let start: isize
     public let written: isize
     public let remaining: isize
+    let loan: Loan<uniq/u8 during source>
 
 public struct Utf8Writer {target}
     Self is not ObjectPayload
-    let destination: unsafe/u8
-    let dispatch: unsafe/u8
+    let destination: raw/u8
+    let dispatch: raw/u8
     let kind: isize
     let failed: bool
     let hint: isize
-    let pending: unsafe/u8
+    let pending: raw/u8
     let pendingLength: isize
     let logicalLength: isize
+    let loan: Loan<uniq/u8 during target>
 
 public group Text
     public struct InvalidUtf8
@@ -35,18 +38,19 @@ public group Text
     public struct FixedBuffer {source}
         Self is BufferWriter
         Self is not ObjectPayload
-        let data: unsafe/u8
+        let data: raw/u8
         public let capacity: isize
         public let length: isize
         let validated: isize
+        let loan: Loan<uniq/u8 during source>
 
     public struct HeapBuffer
         Self is BufferWriter
-        let data: unsafe/u8
+        let data: raw/u8
         public let capacity: isize
         public let length: isize
         let validated: isize
-        deinit => Text.release(self.data)
+        drop => Text.release(self.data)
 
     public struct Utf8Slice {source}
         Self is Copy

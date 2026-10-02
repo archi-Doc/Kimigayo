@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class DictionaryIterationTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -45,6 +46,7 @@ public class DictionaryIterationTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -56,11 +58,11 @@ public class DictionaryIterationTest
                 public let number: i32
                 public init(number: i32) => self.number = number
                 public func equals(self: ref/Self, other: ref/Self) -> bool => self.number == other.number
-                deinit => Console.writeLine("key")
+                drop => Console.writeLine("key")
             struct Item
                 public let name: string
                 public init(name: string) => self.name = name@move
-                deinit => Console.writeLine(self.name)
+                drop => Console.writeLine(self.name)
             var entries: Dictionary<Key, Item> = [:]
             _ = entries.tryInsert(Key.init(1), Item.init("one"))
             _ = entries.tryInsert(Key.init(2), Item.init("two"))
@@ -75,6 +77,7 @@ public class DictionaryIterationTest
         NativeAllocationAudit.WriteFixture("DictionaryIterationOwner" + earlyExit, source, 1, 1, 192, expected);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyOwningAndSharedIterationsAllocateNothing()
     {
@@ -86,6 +89,7 @@ public class DictionaryIterationTest
         NativeAllocationAudit.WriteFixture("DictionaryIterationEmpty", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void OwningPairBindingTransfersStrings()
     {
@@ -99,6 +103,7 @@ public class DictionaryIterationTest
         NativeAllocationAudit.WriteFixture("DictionaryIterationPair", Source, 1, 1, 256, "key\nvalue\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("ref")]
     [InlineData("uniq")]
@@ -117,6 +122,7 @@ public class DictionaryIterationTest
         NativeAllocationAudit.WriteFixture("DictionaryIterationBorrow" + semantics, source, 1, 1, 192, "value\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericOwningIteratorUsesConcreteComponents()
     {
@@ -133,6 +139,7 @@ public class DictionaryIterationTest
         NativeAllocationAudit.WriteFixture("DictionaryIterationGeneric", Source, 1, 1, 192);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void NonEmptyUnitPairsStillAdvance()
     {

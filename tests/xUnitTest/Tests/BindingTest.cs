@@ -25,7 +25,7 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Same(symbol, call.BoundSymbol);
         Assert.Same(plan, call.BoundCall);
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(compilation));
     }
 
     [Fact]
@@ -116,12 +116,13 @@ public class BindingTest
     [InlineData("i32", "-1")]
     [InlineData("i64", "3")]
     [InlineData("u32", "3")]
-    public void UntypedShiftCountsFitTheLeftType(string type, string count)
+    public void UntypedShiftCountsAreTypedIndependently(string type, string count)
     {
+        // SPEC 12.3.1: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
         var compilation = CompilationTestHelper.ParseSuccess($"let x: {type} = 1\nlet y = x << {count}");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<LessThanLessThanKoto>());
-        Assert.Equal(type, shift.Right.BoundType!.Name);
+        Assert.Equal("i32", shift.Right.BoundType!.Name);
         Assert.Same(shift.Left.BoundType, shift.BoundType);
     }
 
@@ -239,6 +240,7 @@ public class BindingTest
         Assert.Equal(KotoTree.Walk(compilation.Kotonoha.RootKoto), visitor.Nodes);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindingReusesScratchAndDoesNotAllocatePerNode()
     {
@@ -249,14 +251,7 @@ public class BindingTest
             Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         }
 
-        var start = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            compilation.Binding.Bind(BindingMode.Final);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - start;
-        Assert.Equal(0, allocated);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
     [Fact]

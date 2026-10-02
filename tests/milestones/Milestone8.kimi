@@ -7,7 +7,7 @@ struct Toolkit
             public init(value: T)
                 self.value = value@move
 
-            // No deinit: extracting a Non-Copy field is permitted.
+            // No drop: extracting a Non-Copy field is permitted.
             public func take(self: Self) -> T => self.value@move
 
     public group Selection

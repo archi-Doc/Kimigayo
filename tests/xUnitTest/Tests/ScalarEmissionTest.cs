@@ -50,6 +50,7 @@ public class ScalarEmissionTest
         FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmScalarAnalysisAndWritingAllocateNothing()
     {
@@ -137,10 +138,11 @@ public class ScalarEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
-        // Only the failure-block Abort reason may use select; source control flow still branches.
+        // Only the failure-block Abort reason and the divisor -1 substitutions of signed division (SPEC 13.3) may use select;
+        // source control flow still branches.
         var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i8|i16|i32|i64) @__kimi_(?:entry_body|f\d+)\(");
         Assert.True(bodyStart.Success);
-        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n)", ir[bodyStart.Index..]);
+        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n|%minusone\d+, i\d+ )", ir[bodyStart.Index..]);
         Assert.DoesNotMatch(@"store i1\b", ir);
         WriteFixture(name, ir, stdout, exit, stderr, timeoutMilliseconds);
         return ir;

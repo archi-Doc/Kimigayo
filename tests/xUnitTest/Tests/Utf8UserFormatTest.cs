@@ -17,12 +17,14 @@ public class Utf8UserFormatTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Concrete", "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"word\")\n", "Value.init()")]
     [InlineData("Generic", "struct Value<T>\n    Self is Utf8Format\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"word\")\n", "Value<i32>.init(42)")]
     public void UserFormatterCallsBuiltinWrites(string name, string declaration, string value)
         => NativeAllocationAudit.WriteFixture("Utf8UserFormat" + name, declaration + Program("try (writer@uniq).write(" + value + ")"), 0, 0, 0, "word\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericWriterWriteSelectsConcreteUserFormatter()
     {
@@ -39,6 +41,7 @@ public class Utf8UserFormatTest
         NativeAllocationAudit.WriteFixture("Utf8UserFormatForwarded", Prefix + "\n" + Program("try Helpers.append(Value.init(), writer@uniq)"), 0, 0, 0, "word\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Returned", "return .Err(BufferFull.init())")]
     [InlineData("Swallowed", "_ = writer.write(\"too large for destination\")\n        return .Ok(())")]
@@ -61,6 +64,7 @@ public class Utf8UserFormatTest
         NativeAllocationAudit.WriteFixture("Utf8UserFormat" + name, source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AGenericWriterReservesOnceAndStopsAfterFailure()
     {
@@ -92,6 +96,7 @@ public class Utf8UserFormatTest
         NativeAllocationAudit.WriteFixture("Utf8UserFormatGenericWriter", Source, 0, 0, 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Valid", "return self.buffer.reserve(minimum)", true, 3)]
     [InlineData("Short", "let window = try self.buffer.reserve(minimum)\n        return .Ok((window@move).limit(minimum - 1))", false, 3)]

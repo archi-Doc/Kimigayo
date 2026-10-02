@@ -20,6 +20,7 @@ public sealed partial class Binding
 
     private BoundType? CallDeclaringType(Koto callee, BindingSymbol member)
         => callee is FormattingKoto { DeclaringType: { } formattingType } ? formattingType
+            : callee is SyntheticKoto { DeclaringType: { } syntheticType } ? syntheticType
             : callee is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType
             : this.ImportedEnvironment(callee) is { } environment ? environment
             : member.Scope.Owner is StructKoto or EnumKoto || member.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;
@@ -60,14 +61,14 @@ public sealed partial class Binding
             };
             if (!allowed)
             {
-                Fail(member, BindingFailure.InvalidConstraint);
+                this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
         }
 
         if (!valid)
         {
-            Fail(syntax, BindingFailure.InvalidConstraint);
+            this.Fail(syntax, BindingFailure.InvalidConstraint);
             (this.scopes[syntax].Constraints ??= new()).Invalid = true;
         }
     }
@@ -94,7 +95,7 @@ public sealed partial class Binding
                     this.BindAssociatedSpecification(clause, scope, owner.BoundSymbol!);
                     if (scope.ConformancePath is not { } declaringPath || !declaringPath.RootContract.Contract!.AssociatedStorage.Contains(clause.BoundSymbol!))
                     {
-                        Fail(clause, BindingFailure.InvalidAssociatedType);
+                        this.Fail(clause, BindingFailure.InvalidAssociatedType);
                     }
                 }
             }

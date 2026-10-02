@@ -1,4 +1,5 @@
 .vscode-test/**
+AGENTS.md
 src/**
 scripts/**
 **/tsconfig.json

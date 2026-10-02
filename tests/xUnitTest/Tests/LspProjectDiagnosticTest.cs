@@ -58,6 +58,27 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         Assert.Equal(0, (await client.PublishAsync(main)).GetArrayLength());
     }
 
+    [Theory]
+    [MemberData(nameof(ContextualLabelTest.DiagnosticCases), MemberType = typeof(ContextualLabelTest))]
+    public async Task ContextualSyntaxPublishesItsRangeAndClearsAfterRepair(string source, string valid, string code, string token)
+    {
+        var path = Path.Combine(this.directory, "Labels.kimi");
+        await using var client = new LspTestClient();
+        await client.InitializeAsync($"{{\"checkQuietPeriodMs\":0,\"target\":\"{WindowsProfile.Target}\"}}");
+        await client.OpenAsync(path, source);
+        var diagnostics = await client.PublishAsync(path);
+        var error = Assert.Single(diagnostics.EnumerateArray(), x => x.GetProperty("severity").GetInt32() == 1);
+        Assert.Equal(code, error.GetProperty("code").GetString());
+        var start = token.Length == 0 ? source.Length : source.LastIndexOf(token, StringComparison.Ordinal);
+        var range = error.GetProperty("range");
+        Assert.Equal(0, range.GetProperty("start").GetProperty("line").GetInt32());
+        Assert.Equal(start, range.GetProperty("start").GetProperty("character").GetInt32());
+        Assert.Equal(start + token.Length, range.GetProperty("end").GetProperty("character").GetInt32());
+        Assert.Contains("advice:", error.GetProperty("message").GetString());
+        await client.ChangeAsync(path, 2, LspTestClient.Full(valid));
+        Assert.DoesNotContain((await client.PublishAsync(path)).EnumerateArray(), x => x.GetProperty("severity").GetInt32() == 1);
+    }
+
     [Fact]
     public async Task DesynchronizedDocumentsBlockTheirChecksUntilResynchronized()
     {

@@ -45,6 +45,7 @@ public class Utf8BorrowTest
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ViewMetadataAndBytesAreBorrowedWithoutAllocation()
     {

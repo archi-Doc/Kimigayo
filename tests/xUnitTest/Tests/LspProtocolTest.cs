@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
 
@@ -170,7 +171,7 @@ public sealed class LspProtocolTest
             try
             {
                 Task.Delay(Timeout.Infinite, token).GetAwaiter().GetResult();
-                return new(CheckOutcome.Completed, true, TestPresence.No, []);
+                return new(CheckOutcome.Completed, true, TestPresence.No, DiagnosticResult.Empty);
             }
             finally
             {

@@ -46,7 +46,7 @@ public class SiblingMoveBorrowTest
     [Fact]
     public void RemainingAndMovedValuesAreDestroyedOnce()
     {
-        const string Source = "struct Counter\n    public var value: i32 = 1\n    deinit => Console.writeLine(\"drop\")\nvar pair = (Counter.init(), Counter.init())\nlet a = pair.0@uniq\nlet moved = pair.1@move\na.value += moved.value\nrequire pair.0.value == 2 else => $abort(\"value\")";
+        const string Source = "struct Counter\n    public var value: i32 = 1\n    drop => Console.writeLine(\"drop\")\nvar pair = (Counter.init(), Counter.init())\nlet a = pair.0@uniq\nlet moved = pair.1@move\na.value += moved.value\nrequire pair.0.value == 2 else => $abort(\"value\")";
         ScalarEmissionTest.EmitFixture("SiblingMoveBorrowCleanup", Source, "drop\ndrop\n");
     }
 

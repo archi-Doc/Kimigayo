@@ -14,7 +14,7 @@ public class EnumInputFormationBindingTest
     public void NormalizedPayloadInputsControlConstructionCertificates(string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nenum E\n    A(Source<" + argument + ">.Origin.Item)\n    Self is C\ngroup G\n    func make() -> E => E.A(1)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
         Assert.Equal(valid, c.Binding.TryGetEnumConstruction(Construction(c), out _));
@@ -35,7 +35,7 @@ public class EnumInputFormationBindingTest
     public void UnusedNestedPayloadInputsAreChecked(string payload, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nenum E\n    A(" + payload + ")\n    Self is C");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
     }
@@ -48,6 +48,7 @@ public class EnumInputFormationBindingTest
         Assert.True(Definition(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPayloadInputChecksAllocateNothing()
     {

@@ -16,6 +16,8 @@ namespace Kimi.Compiler;
 /// </remarks>
 internal sealed partial class BodyLowering
 {
+    internal Dictionary<BoundProperty, FunctionAbi>? StaticGetters { get; set; }
+
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
     private const byte CleanupMark = 4;
@@ -35,8 +37,8 @@ internal sealed partial class BodyLowering
 
     internal BodyLowering()
     {
-        // Array fields are destroyed through the element-specific drop helper of this lowering (SPEC 16.3.2).
-        this.aggregateLayouts.CollectionDrop = this.ArrayFieldDrop;
+        // Stored collection handles keep their element-specific recursive destruction (SPEC 16.3.2).
+        this.aggregateLayouts.CollectionDrop = this.CollectionFieldDrop;
     }
 
     // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
@@ -237,6 +239,20 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (body.Values[index].Kind == OwnershipValueKind.StaticRead)
+        {
+            failure = null;
+            var property = operation.Source.BoundSymbol?.Property;
+            if (!StaticScalar.IsDynamic(property) || !ReferenceEquals(ValueType(body, index), property!.Type) ||
+                this.StaticGetters?.GetValueOrDefault(property) is not { } getter || operation.Kind != OwnershipOperationKind.Produce)
+            {
+                return Fail("Static read requires a verified initializer and matching scalar storage.", out failure);
+            }
+
+            function.AddCall(index, getter, []);
+            return true;
+        }
+
         if (body.Values[index].Kind == OwnershipValueKind.Formatting)
         {
             var valid = this.LowerFormatting(body, function, constants, projectDirectory, index, out failure);
@@ -285,6 +301,11 @@ internal sealed partial class BodyLowering
         if (body.Values[index].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.PointerStore)
         {
             return this.LowerPointer(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind is OwnershipOperationKind.CheckDictionaryKey or OwnershipOperationKind.StoreDictionaryEntry)
+        {
+            return this.LowerDictionaryLiteral(body, function, constants, projectDirectory, index, out failure);
         }
 
         if (body.Values[index].Kind == OwnershipValueKind.Sequence)

@@ -61,7 +61,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
   const executor = new TaskExecutor(message => output.appendLine(message));
   const runner = new CommandRunner({
-    runBuilds: () => workspace.getConfiguration('kimi').get('runBuilds', false),
+    runBuilds: () => workspace.getConfiguration('kimi').get('runBuilds', true),
     save: saveKimiDocuments,
     resolveExecutable: () => resolveServerPath(currentServerPath()),
     execute: (executable, command, target, signal) => executor.execute(executable, command, target, signal),
@@ -126,7 +126,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
           { scheme: 'file', language: 'kimi' },
           { scheme: 'file', language: 'kimiproj' }
         ],
-        initializationOptions: { checkQuietPeriodMs: 250 },
+        initializationOptions: { checkQuietPeriodMs: 1000 },
         uriConverters: { code2Protocol: toProtocolUri, protocol2Code: value => Uri.parse(value) },
         outputChannel: output,
         // ServerManager reports startup failures; avoid a second languageclient popup.

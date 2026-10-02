@@ -6,6 +6,7 @@ namespace XunitTest;
 
 public class DictionaryShrinkTest
 {
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -35,10 +36,12 @@ public class DictionaryShrinkTest
         NativeAllocationAudit.WriteFixture("DictionaryShrink" + fail, source, 2, fail ? 1 : 2, 240, failAllocation: fail ? 2 : 0);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ShrinkingAnEmptyCollectionReleasesItsBufferWithoutAllocation()
         => NativeAllocationAudit.WriteFixture("DictionaryShrinkEmpty", "var entries: Dictionary<i32, i32> = [:]\nentries.shrinkToFit()\nentries.reserve(8)\nentries.shrinkToFit()\nrequire entries.length == 0 and entries.capacity == 0 else => $abort(\"empty\")\nentries.shrinkToFit()", 1, 1, 192);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CompactionPreservesDestructionOrderWithoutCallingUserCode()
     {
@@ -46,7 +49,7 @@ public class DictionaryShrinkTest
             struct Item
                 public let id: i32
                 public init(id: i32) => self.id = id
-                deinit
+                drop
                     match self.id
                         1 => Console.writeLine("one")
                         2 => Console.writeLine("two")

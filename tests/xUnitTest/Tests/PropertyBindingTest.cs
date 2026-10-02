@@ -357,6 +357,7 @@ public class PropertyBindingTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmBorrowRequirementsAndInheritedWitnessesAllocateNothing()
     {
@@ -393,6 +394,7 @@ public class PropertyBindingTest
         Assert.Null(mapping.GetPropertyWitness(required, PropertyAccessorKind.Get));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

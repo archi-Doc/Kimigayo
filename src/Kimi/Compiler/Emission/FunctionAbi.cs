@@ -5,7 +5,7 @@ using System.Text;
 namespace Kimi.Compiler;
 
 /// <summary>A physical signature shared by definitions and calls (SPEC 21.4.2). ccc is LLVM's default; identity is by reference.</summary>
-internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters, bool noReturn = false, bool resultSlot = false)
+internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters, bool noReturn = false, bool resultSlot = false, bool callerLocation = false)
 {
     private string? internalDefinition;
     private string? exportedDefinition;
@@ -19,6 +19,8 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     internal bool NoReturn { get; } = noReturn;
 
     internal bool ResultSlot { get; } = resultSlot;
+
+    internal bool CallerLocation { get; } = callerLocation;
 
     // Passing mode and attributes are fixed by the implemented representation in this profile.
     // The pool caches physical shapes; current call plans separately validate complete Types and Origins.

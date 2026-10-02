@@ -34,7 +34,7 @@ public class DocumentationCommentTest
         var documented = Parse(source);
         Assert.Empty(normal.DocumentationSources);
         Assert.Equal(normal.RootKoto.ToString(), documented.RootKoto.ToString());
-        Assert.Empty(documented.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(documented));
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public class DocumentationCommentTest
     [Fact]
     public void ExcludedDeclarationsDoNotCaptureFollowingDocumentation()
     {
-        var tree = Parse("#if false\n    /// excluded\n    let invalid =\n/// kept\nfunc f() => ()");
+        var tree = Parse("#if false\n    /// excluded\n    let excluded = 1\n/// kept\nfunc f() => ()");
         var docs = Assert.Single(tree.DocumentationSources);
         Assert.Equal("kept", Assert.Single(docs.Comments, x => x.IsSelected && x.Declaration is not null).GetText().Text);
         Assert.Empty(docs.GetDiagnostics());

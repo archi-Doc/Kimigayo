@@ -3,7 +3,7 @@ struct Reading
     public let number: i64
 
     public init(number: i64) => self.number = number
-    deinit => Console.writeLine("reading destroyed")
+    drop => Console.writeLine("reading destroyed")
 
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return $tryWrite(writer, "Reading(\(self.number))")

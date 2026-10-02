@@ -95,13 +95,14 @@ public sealed partial class OwnershipAnalysis
     {
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
         {
-            this.CollectLibraryBody(this.compilation.Library.DictionaryUnlink);
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
             this.CollectLibraryBody(this.compilation.Library.DictionaryInitialize);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
             this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
             this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryReserveStorage);
+            this.CollectLibraryBody(this.compilation.Library.DictionaryAppend);
         }
 
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))
@@ -116,19 +117,16 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind == BoundTypeKind.Array)
         {
-            // SPEC 4.5: the handle owns its buffer; elements follow T. A nested handle would need element destruction
-            // to release inner buffers (PLAN P29), so it stays an explicit Unsupported form. A zero-sized element
-            // has no stride-based storage plan yet and is refused here rather than at generation.
-            // A generic element is checked again by each instance under its substitution.
+            // SPEC 4.5: a handle owns its buffer and recursively destroys its stored elements. A generic element is
+            // checked again by each instance under its substitution; zero-sized elements still need no allocation.
             var element = type.Components[0];
-            return element.Kind == BoundTypeKind.Parameter || (element.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && this.SupportsType(element) && !IsZeroSized(element));
+            return element.Kind == BoundTypeKind.Parameter || this.SupportsType(element);
         }
 
         if (type.Kind == BoundTypeKind.Dictionary)
         {
             return type.Components.Count == 2 && (type.Components[0].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[0])) &&
-                (type.Components[1].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[1])) &&
-                type.Components[0].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Components[1].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary);
+                (type.Components[1].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[1]));
         }
 
         if (type.Kind == BoundTypeKind.Primitive)
@@ -162,8 +160,8 @@ public sealed partial class OwnershipAnalysis
             for (var i = 0; i < StructStorage.Count(type) && supported; i++)
             {
                 var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
-                // An Array field is destroyed with the struct (SPEC 16.3.2); a Dictionary field waits for its own drop plan.
-                supported = field is not null && field.Kind is not BoundTypeKind.Dictionary && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
+                // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
+                supported = field is not null && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
                 type.StoredFields[i] = field!;
             }
 
@@ -176,7 +174,7 @@ public sealed partial class OwnershipAnalysis
             supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                supported &= type.Components[i].Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]));
+                supported &= type.Components[i].Kind == BoundTypeKind.Parameter || this.SupportsType(type.Components[i]);
             }
 
             this.supportedTypes[type] = supported;
@@ -212,7 +210,7 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < storage.Count && supported; i++)
         {
-            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && payload.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
+            supported = this.compilation.Binding.StoredType(storage[i], type) is { } payload && (payload.Kind == BoundTypeKind.Parameter || this.SupportsType(payload));
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);

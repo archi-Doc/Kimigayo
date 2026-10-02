@@ -12,6 +12,12 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
     {
+        if (operand.Kind is EmissionOperandKind.CallerLocation or EmissionOperandKind.CallerLocationLength)
+        {
+            output.Write(operand.Kind == EmissionOperandKind.CallerLocation ? "%location" : "%location_length");
+            return;
+        }
+
         if (operand.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64)
         {
             // LLVM's hexadecimal float spelling uses the exactly extended double bits.
@@ -209,7 +215,13 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        if (instruction.Check == ArithmeticCheckKind.Division)
+        if (instruction.Check == ArithmeticCheckKind.Division && IsLiteralMinusOne(operands[1]))
+        {
+            // IMPL 21.5.3: a literal -1 keeps only the minimum check; the quotient below is the negation.
+            WriteEquality(output, "%minimum", id, type!, operands[0], long.MinValue >> (64 - (instruction.Representation!.Layout.Size * 8)));
+            WriteArithmeticFailure(output, constants, instruction, "%minimum");
+        }
+        else if (instruction.Check == ArithmeticCheckKind.Division)
         {
             WriteEquality(output, "%zero", id, type!, operands[1], 0);
             WriteEquality(output, "%minimum", id, type!, operands[0], long.MinValue >> (64 - (instruction.Representation!.Layout.Size * 8)));
@@ -224,10 +236,32 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
         }
-        else if (instruction.Check == ArithmeticCheckKind.UnsignedDivision)
+        else if (instruction.Check == ArithmeticCheckKind.DivisionZero)
         {
             WriteEquality(output, "%zero", id, type!, operands[1], 0);
             WriteArithmeticFailure(output, constants, instruction, "%zero");
+            if (SubstitutesRemainderDivisor(instruction, operands))
+            {
+                // SPEC 13.3: a % -1 is 0 for every a, and srem must never see the minimum / -1 pair, so a divisor of -1
+                // becomes 1. A literal -1 is written as 1 directly below.
+                WriteEquality(output, "%minusone", id, type!, operands[1], -1);
+                Name(output, "  %safe", id);
+                Name(output, " = select i1 %minusone", id);
+                output.Write(", ");
+                output.Write(type);
+                output.Write(" 1, ");
+                output.Write(type);
+                output.Write(' ');
+                WriteOperand(output, operands[1]);
+                output.Write('\n');
+            }
+        }
+        else if (instruction.Check == ArithmeticCheckKind.WrappingDivision)
+        {
+            WriteEquality(output, "%zero", id, type!, operands[1], 0);
+            WriteArithmeticFailure(output, constants, instruction, "%zero");
+            WriteWrappingQuotient(output, instruction, operands, type!);
+            return;
         }
         else if (instruction.Check == ArithmeticCheckKind.Shift)
         {
@@ -258,6 +292,9 @@ internal static partial class LlvmModuleWriter
             throw new InvalidOperationException("Unknown arithmetic check.");
         }
 
+        // SPEC 13.3, IMPL 21.5.3: a signed quotient by a literal -1 is the negation, plain for a wrapping Type and after the
+        // minimum check above for an integer Type, so sdiv never sees the minimum / -1 pair.
+        var negated = op == "sdiv" && IsLiteralMinusOne(operands[1]);
         Name(output, "  %v", id);
         output.Write(" = ");
         if (instruction.IsComparison)
@@ -265,11 +302,19 @@ internal static partial class LlvmModuleWriter
             output.Write(type is "float" or "double" ? "fcmp " : "icmp ");
         }
 
-        output.Write(op);
+        output.Write(negated ? "sub" : op);
         output.Write(' ');
         output.Write(type);
         output.Write(' ');
-        WriteOperand(output, operands[0]);
+        if (negated)
+        {
+            output.Write('0');
+        }
+        else
+        {
+            WriteOperand(output, operands[0]);
+        }
+
         if (op == "fneg")
         {
             output.Write('\n');
@@ -277,9 +322,21 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write(", ");
-        if (instruction.Check == ArithmeticCheckKind.Shift && instruction.CountRepresentation!.Layout.Size != instruction.Representation!.Layout.Size)
+        if (negated)
+        {
+            WriteOperand(output, operands[0]);
+        }
+        else if (instruction.Check == ArithmeticCheckKind.Shift && instruction.CountRepresentation!.Layout.Size != instruction.Representation!.Layout.Size)
         {
             Name(output, "%shift", id);
+        }
+        else if (SubstitutesRemainderDivisor(instruction, operands))
+        {
+            Name(output, "%safe", id);
+        }
+        else if (IsLiteralMinusOneRemainder(instruction, operands))
+        {
+            output.Write('1');
         }
         else
         {
@@ -288,6 +345,53 @@ internal static partial class LlvmModuleWriter
 
         output.Write('\n');
     }
+
+    // SPEC 13.3: the minimum / -1 of a wrapping integer Type is the minimum, which sdiv cannot compute, so a dynamic divisor of
+    // -1 divides as 1 and the quotient is negated; a literal -1 carries no check and is the negation alone (IMPL 21.5.3).
+    private static void WriteWrappingQuotient(TextWriter output, in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands, string type)
+    {
+        var id = instruction.Operation;
+        WriteEquality(output, "%minusone", id, type, operands[1], -1);
+        Name(output, "  %safe", id);
+        Name(output, " = select i1 %minusone", id);
+        output.Write(", ");
+        output.Write(type);
+        output.Write(" 1, ");
+        output.Write(type);
+        output.Write(' ');
+        WriteOperand(output, operands[1]);
+        output.Write('\n');
+        Name(output, "  %q", id);
+        output.Write(" = sdiv ");
+        output.Write(type);
+        output.Write(' ');
+        WriteOperand(output, operands[0]);
+        Name(output, ", %safe", id);
+        output.Write('\n');
+        Name(output, "  %neg", id);
+        output.Write(" = sub ");
+        output.Write(type);
+        Name(output, " 0, %q", id);
+        output.Write('\n');
+        Name(output, "  %v", id);
+        Name(output, " = select i1 %minusone", id);
+        output.Write(", ");
+        output.Write(type);
+        Name(output, " %neg", id);
+        output.Write(", ");
+        output.Write(type);
+        Name(output, " %q", id);
+        output.Write('\n');
+    }
+
+    // A signed remainder by a dynamic divisor substitutes 1 for -1 (SPEC 13.3); a literal -1 needs no select.
+    private static bool SubstitutesRemainderDivisor(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+        => instruction.Check == ArithmeticCheckKind.DivisionZero && instruction.ScalarOperator == "srem" && operands[1].Kind != EmissionOperandKind.Integer;
+
+    private static bool IsLiteralMinusOneRemainder(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+        => instruction.ScalarOperator == "srem" && IsLiteralMinusOne(operands[1]);
+
+    private static bool IsLiteralMinusOne(in EmissionOperand operand) => operand.Kind == EmissionOperandKind.Integer && operand.Value == -1;
 
     private static void WriteAlignment(TextWriter output, int alignment)
     {
@@ -316,11 +420,22 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
+    // The condition of a check that the compiler proved: the failure block stays unreachable.
+    private const string ProvenValid = "false";
+
     private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition)
     {
         var id = instruction.Operation;
         output.Write("  br i1 ");
-        Name(output, condition, id);
+        if (ReferenceEquals(condition, ProvenValid))
+        {
+            output.Write(ProvenValid);
+        }
+        else
+        {
+            Name(output, condition, id);
+        }
+
         Name(output, ", label %abort", id);
         Name(output, ", label %b", instruction.Place);
         output.Write('\n');
@@ -329,18 +444,18 @@ internal static partial class LlvmModuleWriter
         var reasonId = instruction.Check switch
         {
             ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
-            ArithmeticCheckKind.UnsignedDivision => WindowsLowering.IntegerDivisionZeroReason,
+            ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision => WindowsLowering.IntegerDivisionZeroReason,
             ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,
             ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
-            ArithmeticCheckKind.MissingKey => WindowsLowering.MissingKeyReason,
             ArithmeticCheckKind.Argument => WindowsLowering.ArgumentReason,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
         var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);
-        if (instruction.Check == ArithmeticCheckKind.Division)
+        if (instruction.Check == ArithmeticCheckKind.Division && condition != "%minimum")
         {
+            // A dynamic divisor selects the reason by its zero test; a literal -1 fails only on the minimum dividend (IMPL 21.5.3).
             // The synthetic success-label ID is outside the ownership value ID range.
             // Labels use %b, so its %v name can hold this failure-only ABI argument.
             Name(output, "  %v", instruction.Place);

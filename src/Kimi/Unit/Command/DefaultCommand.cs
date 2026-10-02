@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using SimpleCommandLine;
 
@@ -19,7 +19,7 @@ public class DefaultCommand : ISimpleCommand
     {
         if (args.Length != 0)
         {
-            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, or lsp.");
+            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, toolchain verify, or lsp.");
             Environment.ExitCode = 1;
             return;
         }

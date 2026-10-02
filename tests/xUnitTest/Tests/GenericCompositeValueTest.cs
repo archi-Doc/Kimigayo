@@ -7,7 +7,7 @@ namespace XunitTest;
 
 public class GenericCompositeValueTest
 {
-    private const string Resource = "struct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
+    private const string Resource = "struct Resource\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
     private const string Delivery = "enum Delivery<T>\n    Ready(T)\n    Missing\n";
     private const string Relay = "func relay<T>(value: T) -> T\n    let pending: T = value@move\n    defer => Console.writeLine(\"secured\")\n    return pending@move\n";
     private const string Choose = "func choose<T>(first: T, second: T, useFirst: bool) -> T => if useFirst => first@move else => second@move\n";
@@ -26,12 +26,12 @@ public class GenericCompositeValueTest
         { "DiscardPayload", Resource + Delivery + "let value: Delivery<[2 of Resource]> = .Ready([Resource.init(1), Resource.init(2)])\nmatch value@move\n    .Ready(_) => Console.writeLine(\"discarded\")\n    .Missing => $abort(\"missing\")", "discarded\ntwo\none\n" },
         { "NestedPayload", Resource + Delivery + "let value: Delivery<(Resource, [2 of Resource])> = .Ready((Resource.init(1), [Resource.init(2), Resource.init(3)]))\nmatch value@move\n    .Ready((let first, let rest))\n        require first.id == 1 and rest[1].id == 3 else => $abort(\"nested\")\n        Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nthree\ntwo\none\n" },
         { "RemainingPayload", Resource + Delivery + "let value: Delivery<(Resource, Resource)> = .Ready((Resource.init(1), Resource.init(2)))\nmatch value@move\n    .Ready((_, let last)) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\ntwo\none\n" },
-        { "ZeroSizePayload", "struct Zero\n    deinit => Console.writeLine(\"zero\")\n" + Delivery + "let value: Delivery<[3 of Zero]> = .Ready([Zero.init(), Zero.init(), Zero.init()])\nmatch value@move\n    .Ready(let items) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nzero\nzero\nzero\n" },
-        { "ZeroSizeLocal", "struct Zero\n    deinit => Console.writeLine(\"zero\")\nlet items: [2 of Zero] = [Zero.init(), Zero.init()]\nConsole.writeLine(\"local\")", "local\nzero\nzero\n" },
-        { "ZeroSizeTuple", "struct Zero\n    deinit => Console.writeLine(\"zero\")\nlet items = (Zero.init(), Zero.init())\nConsole.writeLine(\"tuple\")", "tuple\nzero\nzero\n" },
-        { "ZeroSizeRelay", "struct Zero\n    deinit => Console.writeLine(\"zero\")\n" + Relay + "let items = relay<[3 of Zero]>([Zero.init(), Zero.init(), Zero.init()])\nConsole.writeLine(\"received\")", "secured\nreceived\nzero\nzero\nzero\n" },
+        { "ZeroSizePayload", "struct Zero\n    drop => Console.writeLine(\"zero\")\n" + Delivery + "let value: Delivery<[3 of Zero]> = .Ready([Zero.init(), Zero.init(), Zero.init()])\nmatch value@move\n    .Ready(let items) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nzero\nzero\nzero\n" },
+        { "ZeroSizeLocal", "struct Zero\n    drop => Console.writeLine(\"zero\")\nlet items: [2 of Zero] = [Zero.init(), Zero.init()]\nConsole.writeLine(\"local\")", "local\nzero\nzero\n" },
+        { "ZeroSizeTuple", "struct Zero\n    drop => Console.writeLine(\"zero\")\nlet items = (Zero.init(), Zero.init())\nConsole.writeLine(\"tuple\")", "tuple\nzero\nzero\n" },
+        { "ZeroSizeRelay", "struct Zero\n    drop => Console.writeLine(\"zero\")\n" + Relay + "let items = relay<[3 of Zero]>([Zero.init(), Zero.init(), Zero.init()])\nConsole.writeLine(\"received\")", "secured\nreceived\nzero\nzero\nzero\n" },
         { "EmptyPayload", Resource + Delivery + "let value: Delivery<[0 of Resource]> = .Ready([])\nmatch value@move\n    .Ready(let items) => Console.writeLine(\"empty\")\n    .Missing => $abort(\"missing\")", "empty\n" },
-        { "StructDestructor", Resource + Delivery + "struct Envelope\n    let items: [2 of Resource]\n    public init(items: [2 of Resource]) => self.items = items@move\n    deinit => Console.writeLine(\"envelope\")\nlet value: Delivery<Envelope> = .Ready(Envelope.init([Resource.init(1), Resource.init(2)]))\nmatch value@move\n    .Ready(let envelope) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nenvelope\ntwo\none\n" },
+        { "StructDestructor", Resource + Delivery + "struct Envelope\n    let items: [2 of Resource]\n    public init(items: [2 of Resource]) => self.items = items@move\n    drop => Console.writeLine(\"envelope\")\nlet value: Delivery<Envelope> = .Ready(Envelope.init([Resource.init(1), Resource.init(2)]))\nmatch value@move\n    .Ready(let envelope) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")", "received\nenvelope\ntwo\none\n" },
         { "EarlyReturn", Resource + Delivery + "func unwrap(value: Delivery<[2 of Resource]>) -> [2 of Resource]\n    match value@move\n        .Ready(let items) => return items@move\n        .Missing => $abort(\"missing\")\nlet input: Delivery<[2 of Resource]> = .Ready([Resource.init(1), Resource.init(2)])\nlet result = unwrap(input@move)\nConsole.writeLine(\"returned\")", "returned\ntwo\none\n" },
     };
 
@@ -57,10 +57,10 @@ public class GenericCompositeValueTest
     public void AbortingPayloadDestructorStopsRemainingCleanup()
         => ScalarEmissionTest.EmitFixture(
             "GenericCompositeAbortPayload",
-            "struct Stop\n    deinit => $abort(\"stop\")\n" + Resource + Delivery + "let value: Delivery<(Resource, Stop)> = .Ready((Resource.init(1), Stop.init()))\nmatch value@move\n    .Ready((let first, let last)) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")",
+            "struct Stop\n    drop => $abort(\"stop\")\n" + Resource + Delivery + "let value: Delivery<(Resource, Stop)> = .Ready((Resource.init(1), Stop.init()))\nmatch value@move\n    .Ready((let first, let last)) => Console.writeLine(\"received\")\n    .Missing => $abort(\"missing\")",
             "received\n",
             1,
-            "Hello.kimi:2:15: abort KIMI_E_ABORT: stop\n");
+            "Hello.kimi:2:13: abort KIMI_E_ABORT: stop\n");
 
     [Fact]
     public void AbortingDeferDoesNotDeliverOrDestroySecuredResult()
@@ -77,7 +77,7 @@ public class GenericCompositeValueTest
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nlet value = duplicate<i32>(1)")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value@move, value@move)\nConsole.writeLine(\"unused definition\")")]
     [InlineData("func duplicate<T>(value: T) -> (T, T) => (value, value)\nConsole.writeLine(\"unused definition\")")]
-    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    deinit => ()\nConsole.writeLine(\"unused definition\")")]
+    [InlineData("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    public func take(self: Self) -> T => self.value@move\n    drop => ()\nConsole.writeLine(\"unused definition\")")]
     [InlineData("func observe<T>(value: ref/T) => ()\nfunc relay<T>(value: T) -> T\n    let pending = value@move\n    defer => observe<T>(pending@ref/T)\n    return pending@move\nConsole.writeLine(\"unused definition\")")]
     public void RejectsInvalidOwnershipUniversally(string source)
     {

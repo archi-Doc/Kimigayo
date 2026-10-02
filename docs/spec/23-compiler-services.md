@@ -38,7 +38,9 @@ future CSP adapter ─────► check foundation (§23.3)
 | Term | Meaning | Defined in |
 | --- | --- | --- |
 | Check unit | One project, target, mode and `Debug` setting checked together | [§23.3.1](#2331-check-units-and-effective-configuration) |
-| Outcome | Completed, Blocked, Faulted or Cancelled | [§23.3.3](#2333-outcomes-and-diagnostic-records) |
+| Outcome, accepted | Completed, Blocked, Faulted or Cancelled; whether the checked program passes | [§23.3.3](#2333-outcomes-and-acceptance) |
+| Diagnostic record, category | One published problem with its explanation; the kind of problem a code reports | [§23.3.6](#2336-diagnostics) |
+| Problem, prerequisite, derived | One failed requirement of one subject; a requirement another depends on; a requirement left undecided by a failed prerequisite | [§23.3.6.4](#23364-problems-prerequisites-and-suppression) |
 | Input key, identity, established | What is read; what a check observes; readable and synchronized | [§23.3.4](#2334-inputs-and-identity) |
 | Revision, recorded input | Identity version; an input a result used, with its revision | [§23.3.5](#2335-revisions-and-recorded-inputs) |
 | Root, candidate, active, reach | Where discovery starts; projects that may own a document; projects that get units; an attempted load | [§23.4.3](#2343-discovery-membership-and-activity) |
@@ -62,26 +64,35 @@ A unit's **effective configuration** is its project inputs, target, mode and `De
 
 One check entry serves `kimi check`, test preparation and the server. For each unit it prepares and checks one compilation:
 
-1. **Reading.** It reads every file input before parsing and keeps each read's content or failure. It then consumes them in the command's order and reports a failure where the command would, so earlier syntax diagnostics and command output stay unchanged. Built-in `compiler://` sources are immutable and load on demand.
+1. **Reading.** It reads every file input before parsing and keeps each read's content or failure. It then consumes them in the command's order and reports a failure where the command would, so the check reports what the command reports. Built-in `compiler://` sources are immutable and load on demand.
 2. **Dependency content.** The *same-input comparison* of dependency nodes reached by several paths (§18.4.1), then lock validation (§18.5), both in command order.
 3. **Front end.** Parsing, Binding and its diagnostics, startup checks, ownership analysis with control-flow diagnostics, and acceptance across all source modules.
 
-Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. Machine-applicable edits are never inferred from `Fix` or `Note` prose.
+Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. Machine-applicable edits are never inferred from `Advice` or `Note` prose.
 
-### 23.3.3. Outcomes and diagnostic records
+### 23.3.3. Outcomes and acceptance
 
-One **diagnostic record** carries the code (the entry name), severity, message, an optional location (a source identity, optionally with a range) and the reporting unit. A result has one **outcome**:
+A result has one **outcome**:
 
 | Outcome | Meaning |
 | --- | --- |
-| Completed | Checked, with or without errors. |
-| Blocked | An input or the effective configuration could not be established, including every read failure. |
-| Faulted | An exception inside the compiler. Its recorded inputs may be incomplete; it is published but never reused, so the next check retries it. |
+| Completed | Checked, with or without errors. Language errors, unproven facts and unsupported forms reject a Completed result. |
+| Blocked | An input or the effective configuration could not be established, including every read failure. An `Input` Error explains it. |
+| Faulted | An exception inside the compiler, or a violation of the diagnostic contract (§23.3.6.7). Its recorded inputs may be incomplete; it is published but never reused, so the next check retries it. |
 | Cancelled | Command cancellation only; never published. |
 
-Blocked and Faulted results carry a diagnostic that explains them.
+The outcome follows from how the check ended, never from the categories of its diagnostics. A check that reports `InternalInvariant_Kd` where analysis can continue safely is Completed and rejected.
 
-**Diagnostic collection.** Diagnostic collections belong to one compilation. Records are attributed to documents by their source document's identity, never by a collection name. Acceptance uses the compiler's error state, never the displayed list, and per-collection start-offset suppression is unchanged. Commands render each diagnostic when it is added; the server renders none, and its standard output carries only protocol frames.
+**Faulted.** Exactly one `CheckFaulted_Kd` Error explains a Faulted result. Its Reason carries the fault kind, and its fixed text depends on no catalog. When analysis throws while diagnostic collection is intact, the result keeps its valid records and adds that Error. When a diagnostic contract is violated, or collection or finalization itself fails, the partial records are discarded.
+
+A result is **accepted** only when all of the following hold:
+
+1. Its inputs, effective configuration, dependency content and lock validation are established.
+2. Every check of §23.3.2 step 3 completed and succeeded for every source module.
+3. No Error was recorded, including suppressed ones.
+4. Its outcome is Completed.
+
+Display, suppression, limits and supplementary text never affect acceptance. Every rejected result publishes at least one Error that explains it. If a phase ends incomplete and neither that phase nor an earlier one recorded an Error, the check reports one **fallback** Error at the phase's first incomplete subject: `PrerequisiteUnavailable_Kd` without a known cause for front-end analysis, or `ProjectPreparationFailed_Kd` for input preparation. A fallback marks a missing report, which is a compiler defect to repair; a rejection that stays unexplained violates the diagnostic contract.
 
 ### 23.3.4. Inputs and identity
 
@@ -99,13 +110,102 @@ Preparation reads no source content, so a source edit needs only a new snapshot.
 
 - Whether it is **established**: readable and synchronized (§23.4.2). Any read failure leaves an input unestablished.
 - If established: the bytes of a file, the matching names of a listing, or the absence of a missing file.
-- If unestablished: the observed failure, that is, its kind and the message its diagnostic reports. A repeated failure keeps its identity, and a changed cause changes it.
+- If unestablished: the observed failure, that is, its kind and its unabridged failure text. A diagnostic may shorten that text for display; the identity never depends on display. A repeated failure keeps its identity, and a changed cause changes it.
 
 Every comparison uses the whole identity. The same-input comparison compares established inputs only; a read failure is reported first, where the command reads the file. An open document's bytes are its file's BOM (if any) followed by the UTF-8 text, so an unchanged overlay reproduces the disk bytes. Its identity is therefore compared by establishment, BOM and text. Text that cannot be encoded is reported as `InvalidSourceEncoding_Kd`, like invalid UTF-8 on disk.
 
 ### 23.3.5. Revisions and recorded inputs
 
 Every input has a globally monotonic **revision**, which changes exactly when a comparison finds a different identity. An input without a retained identity gets a new revision when it is compared. Every result records the inputs it used with their revisions, including the uncompiled path of a same-input comparison. Revisions and comparisons are session-local; durable content identity belongs to the CSP (§23.5).
+
+### 23.3.6. Diagnostics
+
+A check explains each independent problem with one primary record and the evidence it needs. Diagnostics belong to one check request, never to a compilation-wide or named collection, and every output converts the same finalized records.
+
+#### 23.3.6.1. Codes and categories
+
+Each diagnostic code has one severity and one **category**:
+
+| Category | Meaning |
+| --- | --- |
+| `Language` | The source violates a language rule. |
+| `Proof` | A required fact could not be established, including a requirement left undecided by a failed prerequisite. |
+| `Unsupported` | The form is valid but outside the implemented subset. |
+| `Input` | An input, the configuration, dependency content or a lock could not be established or is invalid. |
+| `Resource` | A finite compiler resource limit was reached. |
+| `Internal` | A compiler defect. |
+
+- A code accepts no free text. Its message, label and Reason come from its typed facts. A difference within one requirement is a Reason value; a different requirement or category is a different code, and wording alone never adds a code.
+- A form this specification permits but the implementation does not support is reported with an `Unsupported` code, never with a `Language` code.
+- Established facts are stated in the Reason; suggested intent is Advice, which states its conditions. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from Note or Advice prose.
+
+#### 23.3.6.2. Records
+
+A **diagnostic record** holds only the fields that have a basis:
+
+| Field | Content |
+| --- | --- |
+| Code, severity, category | The code's name, its severity and its category. |
+| Message | Explains the problem on its own. |
+| Primary location, label | The smallest range that shows the subject of the failed condition, and a short description of that range. |
+| Reason | The code's small typed facts. Numbers, enumeration values and Booleans are exact; Types, Constraints and long names are bounded display values with an elision mark. |
+| Related | Locations with roles, such as a declaration, an earlier Move or an opening delimiter, each optionally labeled. |
+| Note, Advice | Further explanation; conditional repair advice. |
+| Omissions | The parts that limits summarized or omitted, with counts when known. |
+| Display data | Lines and columns, a bounded source excerpt and the alternative text of related locations. Never used for semantic decisions. |
+
+A record whose primary location lies in [excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) has one related location with the role `excludedBy`, at the innermost excluding directive (the Condition of an `#if`, or the header of a `#case` arm); it is not a Reason fact, so a record keeps its code, primary location and Reason in every Compilation. A record holds no compiler object, analysis state or deferred computation. An essential fact is never placed only in an omissible supplement; differences between instantiations or conditions are explained with the parameter, use or Type argument that distinguishes them. The recorded inputs, configuration and reporting unit belong to the result and are not copied into records.
+
+#### 23.3.6.3. Locations and the source table
+
+A **location** is a source reference with an optional span: `start` and `length` in UTF-16 code units of the immutable source text the check read, excluding the end. A zero length is an insertion point, a location without a span is the whole input, and a location without a source is a problem outside every source. A span lies within its source. A record is attributed by its source, never by a collection name.
+
+The **source table** of a result lists every source its records name:
+
+- Each entry has a display path and, for a recorded input, the input and its revision. The same path read as different snapshots gives different entries.
+- Entries follow the order in which the check consumed their sources. A source without an input record (built-in, generated or parsed from text) takes its display path from its creator: its module, or its generating Mod and addition order.
+- An input that failed to read has an entry without content; records name it without a span.
+
+Lines, columns and excerpts are computed from the same immutable source when the result is finalized; the disk and editor contents are never read again.
+
+#### 23.3.6.4. Problems, prerequisites and suppression
+
+A **problem** is one failed requirement of one subject in one context, with one code. A context, such as an instantiation, belongs to a problem only when the requirement's outcome or facts depend on it.
+
+- Each problem is reported at most once. Repeated reports merge; two problems at the same position are both reported. A problem spanning several subjects is normalized before it is reported: for a duplicate declaration, each later declaration is a subject with the first one as a related location.
+- A check that cannot decide its requirement because another requirement failed names that **prerequisite** explicitly. It is a **derived** problem, reported as `PrerequisiteUnavailable_Kd` (Error, `Proof`); its Reason names the requirement and the missing condition.
+- A derived problem is suppressed only when every prerequisite leads, without an unresolved or cyclic link, to an Error of a directly established problem published in the same result. Otherwise it is published, and it never suppresses another record. A prerequisite without an Error, with only warnings or outside the result is unresolved.
+- A prerequisite identifies a check independently of its diagnostic codes and refers to every Error of that check. One directly established Error does not explain another unresolved or cyclic Error at the same check.
+- Causes are never inferred from positions, syntax ancestry, earlier diagnostics or text.
+- Syntax that failed to parse is a prerequisite of every check that depends on its recovered form.
+- Warnings are never derived: a warning check whose prerequisite failed is not reported. The nested parts a failed check skips are explained by its failure and produce no records of their own.
+
+#### 23.3.6.5. Explanation and limits
+
+Explanations are formed once, when the result is finalized, and only for published records. Limits apply per record, never per result:
+
+- Long Types, Constraints and names use one bounded form. A mismatch keeps the differing parts and elides the common ones.
+- Related locations and evidence are ordered by role, then location, then value; the first entries up to the limit are kept, with an omission count.
+- An excerpt is bounded in lines, characters and display width around the primary location.
+- The text of an input failure or exception comes from its code and failure kind; environment-dependent text is a bounded Note.
+
+Limits never change a problem's identity, category, survival, location or the acceptance of its result. Outputs arrange the finalized explanation in a fixed form; they neither add explanation nor truncate it again.
+
+#### 23.3.6.6. Order and equality
+
+The records of a result are ordered by source table order, then primary span, then an order defined by the problem's identity: its subject, code, requirement, condition and context, each compared by source position or by a fixed order. Within one source, a record without a span comes first; records without a source come last. Order never depends on arrival, threads, memory addresses, message text or Type display names. The same facts, definitions and limits give the same records in the same order, and record equality compares every field, including display data.
+
+#### 23.3.6.7. Diagnostic contract
+
+The following violate the diagnostic contract and make the result Faulted (§23.3.3): a catalog anomaly or an unknown code; an invalid location or argument; two reports of one problem with different primary locations or facts; a rejection without a published Error; two distinct problems without a defined order; and a failure of collection or finalization.
+
+#### 23.3.6.8. Rendering
+
+Every output converts finalized records; none decides meaning again or binds again.
+
+- **Commands** render a result once it is finalized, in its order: the message and code, the primary location as `path:line:column`, the bounded excerpt with the primary span underlined and labeled, related locations, omissions, Note and Advice. A later phase, such as emission, renders its own result. The order in which inputs are consumed and later work starts is unchanged. `kimi test` writes diagnostics to standard error, so its standard output stays machine-readable.
+- **JSON.** Records and their source table serialize to JSON with every field and a self-contained message, prepared for the CSP. No command emits this form, and it carries no public schema (§23.5).
+- **Language server:** §23.4.7. The server renders nothing, and its standard output carries only protocol frames.
 
 ## 23.4. Language Server Protocol
 
@@ -162,7 +262,7 @@ The **required units** are derived after discovery. Only adopted results change 
 
 ### 23.4.6. Scheduling and consistency
 
-- **Quiet period.** At most one workspace check is pending, eligible at `lastEvent + quietPeriod` (250 ms by default). Every input event resets the deadline, and there is no maximum wait. `initialized` also schedules a check when projects are selected.
+- **Quiet period.** At most one workspace check is pending, eligible at `lastEvent + quietPeriod` (1000 ms by default). Every input event resets the deadline, and there is no maximum wait. `initialized` also schedules a check when projects are selected.
 - **Base.** A workspace check is fixed to its **base**, the latest input event number when it starts. A unit is **pending** while one of its known inputs, or an input it read in the check, has an event after the base; its known inputs are its members and the inputs recorded by its prepared unit or previous result.
 - **Base rule.** Work that needs an input with an event after the base takes no effect: its comparison is not committed, discovery keeps that project's previous state, a pending unit is skipped, and a result that recorded such an input is discarded at adoption. The state owner decides this; the worker may skip early from a published set of changed inputs, and a stale view of that set only wastes work.
 - **Start.** (1) The state owner fixes the base, takes an immutable copy of every changed open document and routes later input to the next check. (2) The worker re-validates, and the state owner commits the comparisons. (3) The worker runs discovery, derives the required units and returns a Blocked result for each required unit without a prepared unit, unless its last result is still valid.
@@ -170,15 +270,17 @@ The **required units** are derived after discovery. Only adopted results change 
 - **Adoption.** The state owner adopts a result only if none of its recorded inputs has an event after the base and its unit is in the adopted required set; otherwise it discards the result. A test result is kept only if the adopted product results require the test unit.
 - **Retention.** Content and derived data are kept only while an open document, a current discovery, a required unit or the running check needs them; a project that discovery no longer reaches is released with the inputs only it retained.
 
-Example: edits at 0, 90 and 180 ms start one workspace check no earlier than 430 ms. An edit at 460 ms comes after that check's base. The unit running at 460 ms completes, and its result is discarded if it read the edited source; later units that need the source are skipped; URIs whose contributors all remain valid are published as each unit finishes. The next check starts at 710 ms or when the worker becomes free, whichever is later, and rechecks only the invalid and skipped units, starting with the edited project.
+Example: with the default quiet period, edits at 0, 90 and 180 ms start one workspace check no earlier than 1180 ms. An edit at 1210 ms comes after that check's base. The unit running at 1210 ms completes, and its result is discarded if it read the edited source; later units that need the source are skipped; URIs whose contributors all remain valid are published as each unit finishes. The next check starts at 2210 ms or when the worker becomes free, whichever is later, and rechecks only the invalid and skipped units, starting with the edited project.
 
 ### 23.4.7. Publication
 
 - **Report URIs.** A unit's report URIs are the `file:` sources it checked plus the display URIs of its diagnostics. A URI's **contributors** are the required units whose latest results report to it.
-- **Display placement.** A location without a range is shown at the start of its file. A missing or `compiler://` location is shown at the start of the unit's project file, or of the implicit source. The record keeps its original location.
+- **Ranges.** A record's span is sent as a range only when its source table entry is a recorded input of that result. This is decided once per result and entry and never adjusted to the current editor contents; any other record is shown without a range.
+- **Display placement.** A record without a range is shown at the start of its file. A record whose source is missing, `compiler://` or generated without an input record is shown at the start of the unit's project file, or of the implicit source, and its text names the original location. The record keeps its original location.
 - **Updates.** A URI is reconsidered when a contribution to it changes (a result is adopted or a unit retires) or when a contributor is released from a hold, and at no other time.
 - **Condition.** A URI is sent only when all its contributors have valid results. A pending unit keeps its last result, so its URIs keep the last sent diagnostics until it runs again. A Blocked result is not pending, so a failure replaces earlier diagnostics. A required unit without a result is not yet a contributor; its diagnostics can only extend a current set.
-- **Payload.** `textDocument/publishDiagnostics` carries a complete replacement: the union of the contributors' diagnostics for the URI, sorted by range, code, severity and message, without duplicates. Each diagnostic has a range, severity, code, `source: "kimigayo"` and message, and the notification carries the document version when the document is open. Version handling is optional for clients, so correctness never depends on it.
+- **Diagnostic.** Each diagnostic has a range, severity, code, `source: "kimigayo"` and message. The message is the record's message followed, on separate lines, by its label, the alternative text of related locations not sent as `relatedInformation`, omissions, and `note:` and `advice:` text. Related locations with a sendable range are sent as `relatedInformation` when the client declares `textDocument.publishDiagnostics.relatedInformation` at `initialize`; otherwise, and for every other related location, their alternative text is placed in the message.
+- **Payload.** `textDocument/publishDiagnostics` carries a complete replacement: the contributors' diagnostics for the URI, ordered by display range, then contributor (project identity, unit kind, target), then result order. Diagnostics with equal sent values from different contributors merge, keeping the largest count that one contributor sends; distinct problems of one result never merge. The notification carries the document version when the document is open. Version handling is optional for clients, so correctness never depends on it.
 - **Suppression.** A URI never sent counts as sent empty. A non-empty payload equal to the last send, with the same version, is not sent again, and an empty payload is sent only after a non-empty one.
 - Changes of an outcome are logged with `window/logMessage`, never shown with `window/showMessage`.
 
@@ -190,7 +292,7 @@ Example: edits at 0, 90 and 180 ms start one workspace check no earlier than 430
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `checkQuietPeriodMs` | `250` | Quiet period, 0–10000. |
+| `checkQuietPeriodMs` | `1000` | Quiet period, 0–10000. |
 | `selectedProjects` | `[]` | Absolute paths or `file:` URIs of `.kimiproj` files to treat as roots. |
 | `target` | none | The target of product units (§23.4.4). |
 | `allTargets` | `false` | Checks every configured target. |
@@ -224,7 +326,7 @@ The CSP will give programs, including AI agents, a structured interface to the c
 
 ### 23.5.2. Provided foundation
 
-The check foundation (§23.3) is the CSP's base: the check entry, check units with their effective configuration, outcomes, diagnostic records and recorded inputs. The CSP adapter uses them exactly as the language server does. They are session-local and carry no public schema.
+The check foundation (§23.3) is the CSP's base: the check entry, check units with their effective configuration, outcomes, diagnostic records with their source tables and recorded inputs. The CSP adapter uses them exactly as the language server does. They are session-local and carry no public schema.
 
 ### 23.5.3. Requirements
 
@@ -232,7 +334,9 @@ When the CSP is introduced, it must:
 
 - identify every source snapshot by durable content identity, so that edits, results and evidence name exactly the inputs they rest on;
 - apply edits only against an identified snapshot and return them as reviewable source changes, never as silent file writes;
-- offer repair candidates only as structured edits with stated preconditions and guarantees, never inferred from `Fix` or `Note` prose;
-- give stable handles to syntax and semantic nodes within a snapshot;
+- offer repair candidates only as structured edits with stated preconditions and guarantees, never inferred from `Advice` or `Note` prose;
+- report the diagnostic records of §23.3.6 unchanged, with a public schema for their JSON form;
+- give stable handles to syntax and semantic nodes within a snapshot; syntax handles include excluded syntax (§19.5) and state that the node is excluded and which innermost directive excludes it, while semantic handles cover selected syntax only;
 - bind every check, test and measurement to its exact source and configuration, and report its outcome and any remaining uncertainty;
+- list the places where unsafe promises are made, each with the obligations to satisfy (the conditions of §5 and the `- safety:` item): every Unsafe Block with the operations that use its permission, every call of an unsafe function, and every `#LibraryImport` declaration;
 - keep the principle of §23.2 and the outcomes of §23.3.3, and never narrow a language rule.

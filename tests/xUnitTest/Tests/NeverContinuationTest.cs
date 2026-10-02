@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class NeverContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
@@ -16,7 +15,7 @@ public class NeverContinuationTest
     [Theory]
     [InlineData("let n: i32 = do => loop => continue\nlet y = n", OwnershipFailure.UninitializedUse)]
     [InlineData("let s = \"s\"\n_ = s@move\ndo => loop => ()\nConsole.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f(y: i32 = (scope: do\n    let n: i32 = do => loop => continue\n    exit to scope: n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
+    [InlineData("func f(y: i32 = (label scope: do\n    let n: i32 = do => loop => continue\n    exit to scope n\n)) => ()\nf(3)", OwnershipFailure.UninitializedUse)]
     public void TransparentDivergentScopesPreserveOwnershipFacts(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -52,7 +51,7 @@ public class NeverContinuationTest
     [InlineData("f(3)")]
     public void DefaultOperatorCannotInitializeFromAMissingOperand(string call)
     {
-        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (scope: do\n    let n: i32 = 1 << (loop => continue)\n    exit to scope: n\n)) => ()\n" + call);
+        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (label scope: do\n    let n: i32 = 1 << (loop => continue)\n    exit to scope n\n)) => ()\n" + call);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -61,7 +60,7 @@ public class NeverContinuationTest
 
     [Fact]
     public void LaterOperandCheckingEffectsRemainAvailable()
-        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Effects", ScalarStop + "var x: i32\nvar n: i32 = value(stop()) + (scope: do\n    x = 2\n    exit to scope: 1\n)\nn = 3\nlet y = x", string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
+        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Effects", ScalarStop + "var x: i32\nvar n: i32 = value(stop()) + (label scope: do\n    x = 2\n    exit to scope 1\n)\nn = 3\nlet y = x", string.Empty, 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
 
     [Fact]
     public void DivergentOperatorSkipsCalleeAndLaterOutput()
@@ -164,7 +163,7 @@ public class NeverContinuationTest
     [InlineData("value(stop()) + 1")]
     [InlineData("do => loop => continue")]
     [InlineData("do => stop()")]
-    [InlineData("(scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope: x\n)")]
+    [InlineData("(label scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope x\n)")]
     public void NoResultArrivalOrRuntimeStateIsInvented(string initializer)
     {
         var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
@@ -185,34 +184,39 @@ public class NeverContinuationTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
-    [Theory]
-    [InlineData("stop()")]
-    [InlineData("loop => continue")]
-    [InlineData("value(stop())")]
-    [InlineData("value(stop()) + 1")]
-    [InlineData("do => loop => continue")]
-    [InlineData("do => stop()")]
-    [InlineData("(scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope: x\n)")]
-    public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
-    {
-        var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
-        c = CompilationTestHelper.Reload(c);
-        Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        var allocated = AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        });
-        Assert.Equal(0, allocated);
-        Assert.True(c.Ownership.Result.IsVerified);
-    }
-
 #if DEBUG
     private const string Configuration = "Debug";
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData("stop()")]
+        [InlineData("loop => continue")]
+        [InlineData("value(stop())")]
+        [InlineData("value(stop()) + 1")]
+        [InlineData("do => loop => continue")]
+        [InlineData("do => stop()")]
+        [InlineData("(label scope: do\n    var x: i32 = loop => continue\n    x = 1\n    exit to scope x\n)")]
+        public void ReloadAndWarmPassesRetainCheckingFacts(string initializer)
+        {
+            var c = MinimalEmissionTest.Analyze(Stop + "func value(x: i32) -> i32 => x\nvar n: i32 = " + initializer + "\nn = 2\nlet y = n");
+            c = CompilationTestHelper.Reload(c);
+            Assert.True(c.Bind().IsComplete);
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            var allocated = AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            });
+            Assert.Equal(0, allocated);
+            Assert.True(c.Ownership.Result.IsVerified);
+        }
+    }
 }

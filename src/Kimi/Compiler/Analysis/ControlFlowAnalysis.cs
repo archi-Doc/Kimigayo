@@ -9,10 +9,30 @@ namespace Kimi.Compiler;
 
 /// <summary>A control-flow diagnostic associated with source syntax.</summary>
 /// <param name="Node">The offending syntax.</param>
-/// <param name="Message">The diagnostic text.</param>
-public sealed record ControlFlowIssue(Koto Node, string Message)
+/// <param name="Code">The code of the requirement.</param>
+/// <param name="Argument">The first message argument.</param>
+/// <param name="Argument2">The second message argument.</param>
+public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Argument = null, object? Argument2 = null)
 {
+    /// <summary>Gets the part of the node that is the primary location, when it is not the whole node.</summary>
+    public SourceSpan? Span { get; init; }
+
+    /// <summary>Gets Advice formed from the facts.</summary>
+    public string? Advice { get; init; }
+
+    /// <summary>Gets the message formatted from the catalog.</summary>
+    public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, this.Argument2) : this.Code.ToString();
+
+    /// <summary>Gets the code's evidence facts, all of them or none.</summary>
+    public object?[]? Evidence { get; init; }
+
+    /// <summary>Gets a Note formed from the facts.</summary>
+    public string? Note { get; init; }
+
     internal int Priority { get; init; } = 4;
+
+    /// <summary>Gets the syntax whose normal completion, down to the node, decided a check of a discarded tail.</summary>
+    internal Koto? CompletionRoot { get; init; }
 }
 
 /// <summary>Separates normal-expression typing from the target's result contract.</summary>
@@ -45,7 +65,7 @@ public sealed class ControlFlowNodeInfo
 /// </remarks>
 public sealed class ControlFlowAnalysis
 {
-    private const string PointerPrefix = "unsafe/";
+    private const string PointerPrefix = "raw/";
     private static readonly ControlFlowType IsizeType = new("isize");
 
     private readonly ControlFlowTypeSystem types;
@@ -57,7 +77,7 @@ public sealed class ControlFlowAnalysis
     private readonly List<ControlFlowIssue> warnings = new();
     private readonly HashSet<Koto> warningNodes = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> pending = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<(Koto Node, string Message)> reported = new();
+    private readonly HashSet<(Koto Node, DiagnosticCode Code)> reported = new();
     private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, DefaultCompletion> defaultCompletions = new(ReferenceEqualityComparer.Instance);
@@ -79,10 +99,20 @@ public sealed class ControlFlowAnalysis
     private int transferCursor;
     private int registrationCursor;
 
+    // Created only after a parser recovery: completion that assumes the bodies the parser supplied never complete normally, and
+    // the syntax Errors of the supplied bodies it met.
+    private StructuralCompletion? writtenCompletion;
+    private List<DiagnosticKey>? suppliedCauses;
+
+    // SPEC 14.3.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
+    // need is unknown, such as an unresolved operation, may have.
+    private bool unsafeUsed;
+    private bool unsafeUncertain;
+
     private ControlFlowAnalysis(ControlFlowTypeSystem types)
     {
         this.types = types;
-        this.structural = new(node => this.types.GetExpressionType(node) == ControlFlowType.Never || this.nodes.GetValueOrDefault(node)?.ExpressionType == ControlFlowType.Never);
+        this.structural = new(this.IsNever);
         this.childCollector = new(this.childBuffer);
     }
 
@@ -132,20 +162,40 @@ public sealed class ControlFlowAnalysis
         this.arrivedTransfers.Clear();
         this.normalTransferArrivals.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
+        this.unsafeUsed = this.unsafeUncertain = false;
         this.Visit(root, true);
     }
 
-    /// <summary>Copies definite errors into their source diagnostic collections.</summary>
+    /// <summary>Records the definite errors and warnings; ownership analysis discards earlier ones when it analyzes again.</summary>
     public void ReportDiagnostics()
     {
+        // A check that reads Binding's result at a node that Binding failed, or left resting on a failure, is not decided on
+        // valid input: its Error is derived from those causes, which also covers Binding's own check of the same requirement,
+        // and its warning is dropped. Structural checks stay independent of Binding, but rest on a recovery that guessed what
+        // they read.
         foreach (var issue in this.issues)
         {
-            issue.Node.AddDiagnostic(DiagnosticCode.ControlFlow_Kd, issue.Message);
+            if (this.GuessedBy(issue) is { } syntax)
+            {
+                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, syntax);
+            }
+            else if (ReadsBinding(issue.Code) && Causes(issue) is { } causes)
+            {
+                issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, causes);
+            }
+            else
+            {
+                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence);
+            }
         }
 
         foreach (var warning in this.warnings)
         {
-            warning.Node.AddDiagnostic(DiagnosticCode.ControlFlowWarning_Kd, warning.Message);
+            if ((!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null) &&
+                this.GuessedBy(warning) is null)
+            {
+                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span);
+            }
         }
     }
 
@@ -154,6 +204,33 @@ public sealed class ControlFlowAnalysis
     // Assumes entry to the resolved target, independently of its outer runtime
     // reachability. Dead transfers still supply result Types, not normal arrivals.
     internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
+
+    // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
+    internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
+
+    // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
+    private static DiagnosticKey[]? Causes(ControlFlowIssue issue)
+    {
+        var binding = issue.Node.CodeContext.Compilation.Binding;
+        var causes = binding.FailureCauses(issue.Node);
+        if (causes is not null || issue.Code != DiagnosticCode.IncompatibleResult_Kd)
+        {
+            return causes;
+        }
+
+        var consumer = issue.Node.Parent;
+        while (consumer is ParenthesizedKoto or LabeledKoto or CodeBlockKoto { IsExpressionBody: true })
+        {
+            consumer = consumer.Parent;
+        }
+
+        return consumer is null ? null : binding.FailureCauses(consumer);
+    }
+
+    // Jump targets, labels, fallthrough, Unsafe Blocks and while true are judged from syntax alone.
+    private static bool ReadsBinding(DiagnosticCode code)
+        => code is not (DiagnosticCode.InvalidJumpTarget_Kd or DiagnosticCode.UnlabeledYieldTarget_Kd or DiagnosticCode.RequireFallthrough_Kd or
+            DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.OverlappingLabel_Kd or DiagnosticCode.UnsafeBlockRequired_Kd or DiagnosticCode.StaticWhileTrue_Kd);
 
     private static bool IsPointer(ControlFlowType? type)
         => type is BoundType bound ? ReferenceTypes.IsPointer(bound) : type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
@@ -178,12 +255,75 @@ public sealed class ControlFlowAnalysis
         return left;
     }
 
-    private void Warn(Koto node, string message, int priority = 4)
+    // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
+    private static bool IsBodyItem(Koto node) => node.Parent switch
+    {
+        CodeBlockKoto block => block.IsExpressionBody,
+        RequireKoto require => require.ElseBody == node,
+        MatchKoto match => KotoHelper.IsSelectionBody(match, node),
+        _ => false,
+    };
+
+    private bool IsNever(Koto node)
+        => this.types.GetExpressionType(node) == ControlFlowType.Never || this.nodes.GetValueOrDefault(node)?.ExpressionType == ControlFlowType.Never;
+
+    // The syntax Errors of the recoveries that guessed what a check reads, or null when it reads written syntax alone. A recovered
+    // operand does not invalidate independently parsed target syntax, so only the guessed target of an unlabeled jump or a label
+    // counts. A fallthrough or a discarded tail reads normal completion: it rests on the bodies the parser supplied for missing
+    // ones when the syntax completes normally only through them, since a written body might have returned or exited.
+    private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
+    {
+        var node = issue.Node;
+        if (!node.CodeContext.HasRecoveries)
+        {
+            return null;
+        }
+
+        if (node is LabeledKoto or JumpKoto { Label: "" })
+        {
+            return node.CodeContext.RecoveryCause(node) is { } syntax ? [syntax] : null;
+        }
+
+        return issue.Code is DiagnosticCode.FunctionFallthrough_Kd or DiagnosticCode.RequireFallthrough_Kd or DiagnosticCode.DiscardedTail_Kd
+            ? this.SuppliedCompletion(node, issue.CompletionRoot ?? node) : null;
+    }
+
+    // Each syntax from the node up to the root completed normally for the check; one that completes only through supplied bodies
+    // makes the check rest on their syntax Errors.
+    private DiagnosticKey[]? SuppliedCompletion(Koto node, Koto root)
+    {
+        var causes = this.suppliedCauses ??= new();
+        var written = this.writtenCompletion ??= new(this.IsNever, this.IsSuppliedBody);
+        causes.Clear();
+        written.Clear();
+        var guessed = false;
+        for (Koto? part = node; part is not null && !guessed; part = part == root ? null : part.Parent)
+        {
+            guessed = this.structural.CanComplete(part) && !written.CanComplete(part);
+        }
+
+        return guessed && causes.Count > 0 ? [.. causes] : null;
+    }
+
+    // A body the parser supplied for a missing one, a recovery: the empty block in place of an indented body, or the Error
+    // expression in place of a single-item body (other Error expressions stand for operands). Records its syntax Error.
+    private bool IsSuppliedBody(Koto node)
+    {
+        if ((node is CodeBlockKoto || (node is ErrorKoto && IsBodyItem(node))) && node.CodeContext.RecoveryCause(node) is { } cause)
+        {
+            this.suppliedCauses!.Add(cause);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void Warn(Koto node, DiagnosticCode code, int priority = 4, Koto? completionRoot = null)
     {
         node = KotoHelper.UnwrapParentheses(node);
         if (this.warningNodes.Add(node))
         {
-            this.warnings.Add(new(node, message) { Priority = priority });
+            this.warnings.Add(new(node, code) { Priority = priority, CompletionRoot = completionRoot });
             return;
         }
 
@@ -191,7 +331,7 @@ public sealed class ControlFlowAnalysis
         {
             if (this.warnings[i].Node == node && priority < this.warnings[i].Priority)
             {
-                this.warnings[i] = new(node, message) { Priority = priority };
+                this.warnings[i] = new(node, code) { Priority = priority, CompletionRoot = completionRoot };
                 break;
             }
         }
@@ -222,7 +362,8 @@ public sealed class ControlFlowAnalysis
         }
 
         var type = this.types.GetExpressionType(node) ?? this.nodes.GetValueOrDefault(node)?.ExpressionType;
-        var primitive = type?.Name is "bool" or "char" or "integer literal" or "float literal" or
+        var name = type is BoundType bound ? bound.Underlying.Name : type?.Name;
+        var primitive = name is "bool" or "char" or "integer literal" or "float literal" or
             "i8" or "i16" or "i32" or "i64" or "i128" or "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64";
         if (!primitive)
         {
@@ -253,7 +394,9 @@ public sealed class ControlFlowAnalysis
         return true;
     }
 
-    private void WarnUnitTail(Koto body)
+    // Descends from the root through syntax that completes normally; the warning keeps the root, so it can tell whether that
+    // completion passes only through bodies the parser supplied.
+    private void WarnUnitTail(Koto body, Koto root)
     {
         if (!this.structural.CanComplete(body))
         {
@@ -264,7 +407,7 @@ public sealed class ControlFlowAnalysis
         {
             if (block.Items.Count > 0)
             {
-                this.WarnUnitTail(block.Items[^1]);
+                this.WarnUnitTail(block.Items[^1], root);
             }
 
             return;
@@ -273,43 +416,43 @@ public sealed class ControlFlowAnalysis
         body = KotoHelper.UnwrapParentheses(body);
         if (body is LabeledKoto label)
         {
-            this.WarnUnitTail(label.Target);
+            this.WarnUnitTail(label.Target, root);
         }
         else if (body is DoKoto scoped)
         {
-            this.WarnUnitTail(scoped.Body);
+            this.WarnUnitTail(scoped.Body, root);
         }
         else if (body is IfKoto conditional)
         {
             for (var i = 0; i < conditional.Branches.Count; i++)
             {
-                this.WarnUnitTail(conditional.Branches[i].Body);
+                this.WarnUnitTail(conditional.Branches[i].Body, root);
             }
 
             if (conditional.ElseBody is { } other)
             {
-                this.WarnUnitTail(other);
+                this.WarnUnitTail(other, root);
             }
         }
         else if (body is MatchKoto match && body is not TryKoto)
         {
             for (var i = 0; i < match.Arms.Count; i++)
             {
-                this.WarnUnitTail(match.Arms[i].Body);
+                this.WarnUnitTail(match.Arms[i].Body, root);
             }
         }
         else if (body is ExpressionKoto and not (UnitLiteralKoto or JumpKoto or LoopKoto or ForKoto or WhileKoto) &&
             this.nodes.GetValueOrDefault(body)?.ExpressionType is { } type && type != ControlFlowType.Unit && type != ControlFlowType.Never)
         {
-            this.Warn(body, "Unit was inferred from this discarded tail; use yield, return, a named exit, or a single-item body to supply the value.", 1);
+            this.Warn(body, DiagnosticCode.DiscardedTail_Kd, 1, root);
         }
     }
 
-    private void Error(Koto node, string message)
+    private void Error(Koto node, DiagnosticCode code, object? argument = null, object? argument2 = null, object?[]? evidence = null, string? note = null)
     {
-        if (this.reported.Add((node, message)))
+        if (this.reported.Add((node, code)))
         {
-            this.issues.Add(new(node, message));
+            this.issues.Add(new(node, code, argument, argument2) { Evidence = evidence, Note = note });
         }
     }
 
@@ -323,6 +466,18 @@ public sealed class ControlFlowAnalysis
         var info = this.infoPool[this.infoCursor++];
         info.ExpressionType = info.TargetResultType = info.FunctionResultType = null;
         info.IsResultRequiring = info.CanCompleteNormally = info.IsCompletionPending = false;
+        return info;
+    }
+
+    // The info of a visited node. A declaration is not evaluated and records none of its own, so a construct sharing the info
+    // of a declaration it holds, such as a label or a branch body recovered over one (LabelTargetExpected_Kd), rents it here.
+    private ControlFlowNodeInfo NodeInfo(Koto node)
+    {
+        if (!this.nodes.TryGetValue(node, out var info))
+        {
+            this.nodes[node] = info = this.RentInfo();
+        }
+
         return info;
     }
 
@@ -364,15 +519,15 @@ public sealed class ControlFlowAnalysis
             var type = this.types.GetExpressionType(value);
             if (this.types.IsKimiResult(value))
             {
-                this.Warn(node, "The Result is discarded; propagate and use success (or write _ = try ...), handle it with match, or write _ = ... to ignore errors too.", 2);
+                this.Warn(node, DiagnosticCode.DiscardedResult_Kd, 2);
             }
             else if (value is TryKoto && type is not null && type != ControlFlowType.Unit && type != ControlFlowType.Never)
             {
-                this.Warn(node, "The extracted try success value is unused; use it or write _ = try ... .", 3);
+                this.Warn(node, DiagnosticCode.UnusedTrySuccess_Kd, 3);
             }
             else if (this.IsEffectFree(node))
             {
-                this.Warn(node, "This effect-free value is discarded; use its value or add the intended return type.");
+                this.Warn(node, DiagnosticCode.DiscardedValue_Kd);
             }
         }
 
@@ -393,13 +548,19 @@ public sealed class ControlFlowAnalysis
             }
             else
             {
-                this.Error(node, "An unsafe function can only be called directly; it cannot be taken as a function value.");
+                this.Error(node, DiagnosticCode.UnsafeFunctionValue_Kd);
             }
         }
 
-        if (this.types.RequiresUnsafeContext(node) == true)
+        var requiresUnsafe = this.types.RequiresUnsafeContext(node);
+        if (requiresUnsafe == true)
         {
             this.CheckUnsafePermission(node);
+        }
+        else if (requiresUnsafe is null && node is ExpressionKoto)
+        {
+            // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
+            this.unsafeUncertain = true;
         }
 
         Flow flow;
@@ -411,15 +572,20 @@ public sealed class ControlFlowAnalysis
             case IdentifierNameKoto or MemberAccessKoto when node.CodeContext.Compilation.Binding.PropertyCall(node, PropertyAccessorKind.Get) is { } getter:
                 flow = this.Visit(getter, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
-            case RangeKoto when node.CodeContext.Compilation.Binding.RangeValueCall(node) is { } rangeValue:
-                // SPEC 4.6.3: range syntax outside an index position is its synthesized Range construction, whose
-                // boundary arguments may themselves be synthesized Index constructions.
+            case RangeKoto or FromEndIndexKoto when node.CodeContext.Compilation.Binding.RangeValueCall(node) is { } rangeValue:
+                // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax that construct a value are their synthesized PositionSyntax
+                // calls, whose arguments may themselves be synthesized `^x` constructions.
                 flow = this.Visit(rangeValue, reachable) with { Type = this.types.GetExpressionType(node) };
                 break;
             case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:
-                // SPEC 4.6.4: an Index or Range key is resolved by a synthesized call that reads the receiver's length
-                // and the key; the selection completes as that call does.
-                flow = this.Visit(resolvedKey, reachable) with { Type = this.types.GetExpressionType(node) };
+                // SPEC 4.6.4: the receiver is evaluated, then a synthesized call resolves the key against the length of that
+                // evaluated receiver; the selection completes as both do.
+                var selectedFlow = this.Visit(keyed.Left, reachable);
+                var keyFlow = this.Visit(resolvedKey, reachable && selectedFlow.Normal);
+                flow = new(selectedFlow.Normal && keyFlow.Normal, this.types.GetExpressionType(node), Union(selectedFlow.Transfers, selectedFlow.Normal ? keyFlow.Transfers : null), selectedFlow.Pending || keyFlow.Pending);
+                break;
+            case EvaluatedKoto:
+                flow = new(true, this.types.GetExpressionType(node)); // Its desugaring evaluated the source already.
                 break;
             case IdentifierNameKoto when node.CodeContext.Compilation.Binding.StorageProjection(node) is { } storage:
                 flow = this.Visit(storage, reachable);
@@ -508,6 +674,9 @@ public sealed class ControlFlowAnalysis
             case SyntaxFormKoto { Akind: KotoKind.AssociatedType }:
                 // SPEC 8.4.3: associated-Type parameters and formation Types have no runtime evaluation.
                 return new(true, ControlFlowType.Unit);
+            case EffectBoundKoto:
+                // SPEC 8.4.10.1: an effect item is declaration metadata; its selector and Name are never evaluated.
+                return new(true, ControlFlowType.Unit);
             case AttributeKoto { BindingState: BindingState.Resolved, LayoutMode: not null }:
                 // SPEC 21.1.2: a checked layout attribute is declaration metadata;
                 // its syntax argument is not a runtime call or string acquisition.
@@ -538,7 +707,7 @@ public sealed class ControlFlowAnalysis
             case LabeledKoto labeled:
                 this.CheckLabel(labeled);
                 flow = this.Visit(labeled.Target, reachable, expected);
-                this.nodes[labeled] = this.nodes[labeled.Target];
+                this.nodes[labeled] = this.NodeInfo(labeled.Target);
                 break;
             case DeferredBlockKoto deferred:
                 var cleanupBoundary = this.Begin(deferred, ControlFlowType.Unit);
@@ -547,7 +716,16 @@ public sealed class ControlFlowAnalysis
                 // Registration never evaluates its body. Its completion matters at scope exit only.
                 return new(true, ControlFlowType.Unit);
             case UnsafeBlockKoto unsafeBlock:
+                // SPEC 14.3.3: an operation uses the permission of the innermost enclosing Unsafe Block.
+                var (outerUsed, outerUncertain) = (this.unsafeUsed, this.unsafeUncertain);
+                (this.unsafeUsed, this.unsafeUncertain) = (false, false);
                 flow = this.Visit(unsafeBlock.Body, reachable);
+                if (!this.unsafeUsed && !this.unsafeUncertain)
+                {
+                    this.WarnUnnecessaryUnsafe(unsafeBlock);
+                }
+
+                (this.unsafeUsed, this.unsafeUncertain) = (outerUsed, outerUncertain || this.unsafeUncertain);
                 var unsafeInfo = this.RentInfo();
                 unsafeInfo.CanCompleteNormally = flow.Normal;
                 unsafeInfo.IsCompletionPending = flow.Pending;
@@ -592,7 +770,7 @@ public sealed class ControlFlowAnalysis
                     {
                         if (selected.ArgumentToParameter[i] == 1 && call.ArgumentNodes[i] is InterpolatedStringKoto literal)
                         {
-                            this.Warn(literal, "This argument creates an owning string before writing. Use $tryWrite(writer, literal) to write directly and skip later expressions after failure.");
+                            this.Warn(literal, DiagnosticCode.OwningWriteArgument_Kd);
                         }
                     }
                 }
@@ -659,12 +837,12 @@ public sealed class ControlFlowAnalysis
                     if (position.Parent is FieldKoto { TypeKoto: null } ||
                         (position.Parent is CodeBlockKoto { IsExpressionBody: false } && !KotoHelper.IsValueContext(position)))
                     {
-                        this.Error(node, "A null literal requires an expected raw-pointer Type.");
+                        this.Error(node, DiagnosticCode.UntypedNull_Kd);
                     }
                 }
                 else if (!IsPointer(expected))
                 {
-                    this.Error(node, "A null literal requires an expected raw-pointer Type.");
+                    this.Error(node, DiagnosticCode.UntypedNull_Kd);
                 }
 
                 break;
@@ -677,7 +855,7 @@ public sealed class ControlFlowAnalysis
                 var nullFlow = this.Visit(nullOperand, reachable, otherFlow.Type);
                 if (IsNullLiteral(other))
                 {
-                    this.Error(node, "A null comparison requires a pointer operand to determine its Type.");
+                    this.Error(node, DiagnosticCode.UntypedNullComparison_Kd);
                 }
 
                 flow = new(otherFlow.Normal, ControlFlowType.Boolean, otherFlow.Transfers, otherFlow.Pending || nullFlow.Pending);
@@ -706,18 +884,24 @@ public sealed class ControlFlowAnalysis
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
                 var destinationPointer = IsPointer(destinationType);
-                // SPEC 5.4: same-Type acquisition needs no unsafe context.
-                if ((sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
+                // SPEC 5: a conversion cannot cause undefined behavior, so it needs no unsafe context. An address (@raw, SPEC 5.4),
+                // a borrow and a follow convert no pointer.
+                var borrow = conversion.Right is TypeSemanticsKoto { Type: null } bare
+                    ? bare.Identifier == Constants.FollowOperation ||
+                        (CompilerHelper.TryParse(bare.Identifier, out var semantics) && semantics is SemanticsKind.Raw or SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                    : conversion.Right is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq };
+                if (!borrow && (sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
                 {
-                    this.CheckUnsafePermission(conversion);
                     if ((sourcePointer && destinationType is not null && !destinationPointer && destinationType.Name != "usize") ||
                         (destinationPointer && sourceType is not null && !sourcePointer && sourceType.Name is not ("usize" or "Never" or "integer literal")))
                     {
-                        this.Error(conversion, "Pointer conversions support only another pointer Type or usize.");
+                        this.Error(conversion, DiagnosticCode.InvalidPointerConversion_Kd);
                     }
                 }
 
-                flow = flow with { Type = flow.Normal ? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
+                // SPEC 10.2: the explicit conversion runs first, then its selected expected-Type adaptation supplies
+                // the result (for example, a value read of `position@ref` in a range-valued branch).
+                flow = flow with { Type = flow.Normal ? this.types.GetExpressionType(conversion) ?? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
                 if (destinationType is null)
                 {
                     this.pending.Add(conversion);
@@ -741,11 +925,7 @@ public sealed class ControlFlowAnalysis
                 break;
         }
 
-        if (!this.nodes.TryGetValue(node, out var info))
-        {
-            this.nodes[node] = info = this.RentInfo();
-        }
-
+        var info = this.NodeInfo(node);
         info.ExpressionType = this.boundaries.TryGetValue(node, out var resultBoundary) && resultBoundary.InvalidResult
             ? null : flow.Type;
         info.CanCompleteNormally = flow.Normal;
@@ -805,7 +985,33 @@ public sealed class ControlFlowAnalysis
     {
         if (!KotoHelper.IsUnsafeContext(node))
         {
-            this.Error(node, "This operation requires an Unsafe Block; unsafe func does not grant permission to its body.");
+            this.Error(node, DiagnosticCode.UnsafeBlockRequired_Kd);
+        }
+        else
+        {
+            this.unsafeUsed = true;
+        }
+    }
+
+    // SPEC 14.3.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body, an
+    // independent scope (SPEC 14.3.1), declares no Name and registers no defer; otherwise the Advice says what would change.
+    private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
+    {
+        var scoped = false;
+        if (block.Body is CodeBlockKoto { IsExpressionBody: false } body)
+        {
+            foreach (var item in body.Items)
+            {
+                scoped |= item is FieldKoto or FunctionKoto or DeferredBlockKoto or DeclarationContainerKoto;
+            }
+        }
+
+        var advice = scoped
+            ? "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately"
+            : "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
+        if (this.warningNodes.Add(block))
+        {
+            this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice });
         }
     }
 
@@ -926,7 +1132,7 @@ public sealed class ControlFlowAnalysis
         flow = baseFlow.Normal ? flow with { Transfers = Union(baseFlow.Transfers, flow.Transfers), Pending = baseFlow.Pending || flow.Pending } : baseFlow;
         if (!discards || (!flow.Pending && this.structural.CanComplete(body)))
         {
-            boundary.Sources.Add(new(body, discards ? ControlFlowType.Unit : flow.Type, true));
+            boundary.Sources.Add(new(body, discards ? ControlFlowType.Unit : flow.Type, true) { IsFallthrough = discards && body is CodeBlockKoto });
         }
 
         if (discards && flow.Pending)
@@ -939,7 +1145,7 @@ public sealed class ControlFlowAnalysis
         if (body is CodeBlockKoto && this.structural.CanComplete(body) && !flow.Pending &&
             info.TargetResultType is { } resultType && resultType != ControlFlowType.Unit)
         {
-            this.Error(body, "A non-Unit Block-bodied function cannot fall through.");
+            this.Error(body, DiagnosticCode.FunctionFallthrough_Kd);
         }
 
         // The function's callable return type falls back to Never, while its target contract remains absent.
@@ -993,12 +1199,12 @@ public sealed class ControlFlowAnalysis
         this.targets[jump] = target;
         if (target is null)
         {
-            this.Error(jump, $"No valid target for {jump.Keyword}.");
+            this.Error(jump, DiagnosticCode.InvalidJumpTarget_Kd, jump.Keyword);
         }
 
         if (jump is YieldKoto { Label: null } && target is IfKoto or MatchKoto && !KotoHelper.IsValueContext(target))
         {
-            this.Error(jump, "An unlabeled yield cannot target a discarded selection; name the intended target.");
+            this.Error(jump, DiagnosticCode.UnlabeledYieldTarget_Kd);
         }
 
         this.boundaries.TryGetValue(target ?? jump, out var boundary);
@@ -1034,7 +1240,7 @@ public sealed class ControlFlowAnalysis
             }
             else
             {
-                this.Error(node.ElseBody, "A require failure body must not continue normally to the statement after require.");
+                this.Error(node.ElseBody, DiagnosticCode.RequireFallthrough_Kd);
             }
         }
 
@@ -1108,7 +1314,7 @@ public sealed class ControlFlowAnalysis
         else if (exhaustive == false)
         {
             boundary.InvalidResult = true;
-            this.Error(node, coverage.Describe());
+            this.Error(node, DiagnosticCode.NonExhaustiveMatch_Kd, evidence: [coverage.Requirement], note: coverage.Describe());
         }
 
         var normal = exhaustive != true;
@@ -1168,7 +1374,7 @@ public sealed class ControlFlowAnalysis
 
         if (body != expression)
         {
-            this.nodes[body] = this.nodes[expression];
+            this.nodes[body] = this.NodeInfo(expression);
         }
 
         return flow;
@@ -1194,7 +1400,7 @@ public sealed class ControlFlowAnalysis
             case WhileKoto w:
                 if (KotoHelper.UnwrapParentheses(w.Condition) is BoolLiteralKoto { Value: true })
                 {
-                    this.Warn(w, "Use loop for unconditional iteration; while true retains a static false path.");
+                    this.Warn(w, DiagnosticCode.StaticWhileTrue_Kd);
                 }
 
                 header = this.Visit(w.Condition, reachable, ControlFlowType.Boolean);
@@ -1287,7 +1493,7 @@ public sealed class ControlFlowAnalysis
             this.pending.Add(node);
             if (!boundary.InferenceBlocked && allNull)
             {
-                this.Error(node, "Null results require an expected raw-pointer Type.");
+                this.Error(node, DiagnosticCode.UntypedNull_Kd);
             }
         }
 
@@ -1300,15 +1506,15 @@ public sealed class ControlFlowAnalysis
         {
             if (node is DoKoto scoped)
             {
-                this.WarnUnitTail(scoped.Body);
+                this.WarnUnitTail(scoped.Body, scoped.Body);
             }
             else if (node is IfKoto or MatchKoto)
             {
-                this.WarnUnitTail(node);
+                this.WarnUnitTail(node, node);
             }
             else if (node is FunctionKoto { IsAnonymous: true, Body: { } body })
             {
-                this.WarnUnitTail(body);
+                this.WarnUnitTail(body, body);
             }
         }
 
@@ -1319,9 +1525,11 @@ public sealed class ControlFlowAnalysis
     {
         foreach (var source in boundary.Sources)
         {
-            if (source.Transfer is { BindingState: BindingState.Invalid })
+            if (source.Transfer is { BindingState: BindingState.Invalid } || source.IsFallthrough)
             {
-                continue; // Binding reported the transferred value's mismatch; a dependent result error would repeat it.
+                // Binding reported the transferred value's mismatch, and a non-Unit function's fallthrough is reported as
+                // such; a result error would repeat either.
+                continue;
             }
 
             // Propagate a later inferred contract into nested Never expressions as well.
@@ -1374,10 +1582,19 @@ public sealed class ControlFlowAnalysis
         var compatible = this.types.IsCompatible(source, type);
         if (compatible == false)
         {
-            var message = KotoHelper.UnwrapParentheses(source.Node) is TryKoto propagation
-                ? Binding.DescribeTryPayloadFailure(propagation, type)
-                : $"Result of type {source.Type?.Name} is incompatible with {type.Name}.";
-            this.Error(source.Node, message);
+            if (KotoHelper.UnwrapParentheses(source.Node) is TryKoto propagation)
+            {
+                var (evidence, note) = Binding.TryPayloadFacts(propagation, type);
+                this.Error(source.Node, DiagnosticCode.TryPayloadMismatch_Kd, evidence: evidence, note: note);
+            }
+            else if (source.Type is null)
+            {
+                this.Error(source.Node, DiagnosticCode.UntypedNull_Kd); // Only a null literal is judged without its own Type.
+            }
+            else
+            {
+                this.Error(source.Node, DiagnosticCode.IncompatibleResult_Kd, source.Type.Name, type.Name);
+            }
         }
         else if (compatible is null)
         {
@@ -1455,7 +1672,7 @@ public sealed class ControlFlowAnalysis
 
                 if (operandType is not null && operandType != ControlFlowType.Never)
                 {
-                    this.Error(node, "Dereference requires a raw-pointer operand.");
+                    this.Error(node, DiagnosticCode.InvalidDereference_Kd);
                 }
 
                 return null;
@@ -1463,7 +1680,7 @@ public sealed class ControlFlowAnalysis
 
             if (rawPointer && node is PrefixPlusKoto or PrefixMinusKoto or PrefixPlusPlusKoto or PrefixMinusMinusKoto or PostfixIncrementKoto or PostfixDecrementKoto)
             {
-                this.Error(node, "Unary pointer arithmetic is not defined.");
+                this.Error(node, DiagnosticCode.InvalidPointerArithmetic_Kd);
                 return null;
             }
 
@@ -1477,7 +1694,7 @@ public sealed class ControlFlowAnalysis
             {
                 if (operandType?.Name is "()" or "bool" or "string")
                 {
-                    this.Error(node, "A numeric unary operator requires a numeric operand.");
+                    this.Error(node, DiagnosticCode.NonNumericOperand_Kd);
                 }
 
                 return operandType;
@@ -1504,7 +1721,7 @@ public sealed class ControlFlowAnalysis
                     var otherType = leftPointer ? right.ExpressionType : left.ExpressionType;
                     if (otherType is not null && otherType != pointerType && otherType != ControlFlowType.Never)
                     {
-                        this.Error(node, "Pointer equality requires operands with the same pointer Type.");
+                        this.Error(node, DiagnosticCode.InvalidPointerComparison_Kd);
                     }
 
                     return ControlFlowType.Boolean;
@@ -1515,7 +1732,7 @@ public sealed class ControlFlowAnalysis
                     this.CheckUnsafePermission(node);
                     if (!leftPointer || rightPointer || KotoHelper.UnwrapParentheses(binary.Right) is FromEndIndexKoto or RangeKoto)
                     {
-                        this.Error(node, "Pointer arithmetic and indexing require a pointer on the left and a signed isize offset.");
+                        this.Error(node, DiagnosticCode.InvalidPointerArithmetic_Kd);
                     }
                     else
                     {
@@ -1527,7 +1744,7 @@ public sealed class ControlFlowAnalysis
 
                 if (node is LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto)
                 {
-                    this.Error(node, "Pointer ordering comparisons are not defined.");
+                    this.Error(node, DiagnosticCode.InvalidPointerComparison_Kd);
                     return ControlFlowType.Boolean;
                 }
 
@@ -1535,7 +1752,7 @@ public sealed class ControlFlowAnalysis
                     AmpersandKoto or BarKoto or CaretKoto or AsteriskEqualsKoto or SlashEqualsKoto or PercentEqualsKoto or
                     LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto or AmpersandEqualsKoto or BarEqualsKoto or CaretEqualsKoto)
                 {
-                    this.Error(node, "This pointer arithmetic operation is not defined.");
+                    this.Error(node, DiagnosticCode.InvalidPointerArithmetic_Kd);
                     return null;
                 }
             }
@@ -1587,7 +1804,7 @@ public sealed class ControlFlowAnalysis
                 if (left.ExpressionType?.Name is "()" or "bool" ||
                     (left.ExpressionType?.Name == "string" && node is not PlusKoto))
                 {
-                    this.Error(node, "An arithmetic operator requires numeric operands.");
+                    this.Error(node, DiagnosticCode.NonNumericOperand_Kd);
                 }
 
                 return left.ExpressionType;
@@ -1610,7 +1827,7 @@ public sealed class ControlFlowAnalysis
 
             if (parent is LabeledKoto outer && outer.Label == label.Label && KotoHelper.IsInsideLabeledBody(label, outer))
             {
-                this.Error(label, $"Label {label.Label} overlaps an enclosing Label.");
+                this.Error(label, DiagnosticCode.OverlappingLabel_Kd, label.Label);
                 break;
             }
         }

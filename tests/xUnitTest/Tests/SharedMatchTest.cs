@@ -7,6 +7,7 @@ namespace XunitTest;
 
 public class SharedMatchTest
 {
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CopyPayloadSnapshotAndDestructibleBorrowKeepSeparateResponsibilities()
     {
@@ -18,7 +19,7 @@ public class SharedMatchTest
             struct Item
                 public let number: i32
                 public init(number: i32) => self.number = number
-                deinit => Console.writeLine("drop")
+                drop => Console.writeLine("drop")
             let value = (Pair.init(42), Item.init(7))
             match value
                 (let pair, let item)
@@ -31,6 +32,7 @@ public class SharedMatchTest
         NativeAllocationAudit.WriteFixture("SharedMatchCopyAndBorrow", Source, 0, 0, 0, "done\ndrop\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ASelectedArmCanReplaceTheOwnerAfterItsLastBorrowedUse()
     {
@@ -51,6 +53,7 @@ public class SharedMatchTest
         NativeAllocationAudit.WriteFixture("SharedMatchLastUse", Source, 1, 1, 5, "hello\ndone\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SharedTupleBindingsCopyAndBorrowWithoutDecomposingTheOwner()
     {
@@ -69,6 +72,7 @@ public class SharedMatchTest
         NativeAllocationAudit.WriteFixture("SharedMatchTuple", Source, 1, 1, 5, "hello\nhello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -101,6 +105,7 @@ public class SharedMatchTest
         Assert.False(invalid.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void InactiveEnumPayloadDoesNotDereferenceItsStorage()
     {
@@ -126,6 +131,7 @@ public class SharedMatchTest
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void SharedSubjectComposesWithParametersAndComparisonInspection()
     {
@@ -143,6 +149,7 @@ public class SharedMatchTest
         NativeAllocationAudit.WriteFixture("SharedMatchParameter", Source, 0, 0, 0, "hello\nhello\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Integer", "42", "40 => $abort(\"wrong\")\n    42 => Console.writeLine(\"ok\")\n    _ => $abort(\"missing\")")]
     [InlineData("Boolean", "false", "true => $abort(\"wrong\")\n    false => Console.writeLine(\"ok\")")]
@@ -151,6 +158,7 @@ public class SharedMatchTest
     public void LiteralPatternsInspectOneReference(string name, string value, string arms)
         => NativeAllocationAudit.WriteFixture("SharedMatchLiteral" + name, "let value = " + value + "\nmatch value@ref\n    " + arms, 0, 0, 0, "ok\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BareStringSubjectAndWholeBindingRetainItsOwner()
     {

@@ -39,7 +39,7 @@ public class FrontEndBenchmark
         struct Child : Parent
             init(value: i32) : base(value)
                 return
-            deinit
+            drop
                 return
         func transform<length N, T>(values: [N of T]) -> [N of T]
             T is Comparable
@@ -67,7 +67,7 @@ public class FrontEndBenchmark
         var validation = Compilation.CreateForTest().Kotonoha;
         var context = validation.CreateCodeContext();
         context.Parse(validation.RootKoto, this.source);
-        if (context.DiagnosticCollection.GetArray().Length != 0)
+        if (context.Compilation.Diagnostics.HasErrors)
         {
             throw new InvalidOperationException("Benchmark source must parse without diagnostics.");
         }

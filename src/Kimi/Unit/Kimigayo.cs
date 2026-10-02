@@ -1,23 +1,16 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi;
 
-using System.Collections.Concurrent;
-using System.Text;
 using Kimi.Diagnostics;
 
 public class Kimigayo
 {
-    internal const string GlobalName = "Global";
-
     private readonly IConsoleService consoleService;
-    private readonly ConcurrentDictionary<string, DiagnosticCollection> diagnosticCollections;
 
     public KimiSettings Settings { get; }
 
-    public DiagnosticCollection GlobalDiagnosticCollection { get; }
-
-    /// <summary>Gets a value indicating whether diagnostics are rendered to the console when they are added.</summary>
+    /// <summary>Gets a value indicating whether finalized diagnostics are rendered to the console.</summary>
     /// <remarks>The language server disables rendering: its standard output carries only protocol frames.</remarks>
     internal bool RendersDiagnostics { get; }
 
@@ -31,55 +24,22 @@ public class Kimigayo
         this.consoleService = consoleService;
         this.Settings = settings;
         this.RendersDiagnostics = rendersDiagnostics;
-
-        this.diagnosticCollections = new();
-        this.GlobalDiagnosticCollection = this.GetOrAddDiagnosticCollection(GlobalName);
     }
 
-    /// <summary>Gets the named diagnostic collections of this scope.</summary>
-    internal ICollection<DiagnosticCollection> DiagnosticCollections => this.diagnosticCollections.Values;
-
-    public void ReportDiagnostic(string path, Diagnostic diagnostic)
+    /// <summary>Renders a finalized result in its order (SPEC 23.3.6.8); a silent service renders nothing.</summary>
+    /// <param name="result">The finalized diagnostics.</param>
+    /// <param name="baseDirectory">The directory display paths are relative to, or an empty string.</param>
+    public void Render(DiagnosticResult result, string baseDirectory)
     {
-        var entry = diagnostic.Entry;
-        var fixOrNote = entry.Fix is not null || entry.Note is not null;
-
-        // Message : Name
-        this.consoleService.Write(diagnostic.Message);
-        this.consoleService.Write(" : ");
-        this.WriteLine(entry.Severity, entry.Name);
-
-        if (diagnostic.SourceDocument is { } sourceDocument)
+        if (!this.RendersDiagnostics)
         {
-            var start = sourceDocument.GetPosition(diagnostic.Span.Start);
-            this.consoleService.WriteLine($" --> {path}:{start.Line + 1}:{start.Character + 1}");
-            this.WriteSourceRange(diagnostic);
-        }
-        else
-        {
-            this.consoleService.WriteLine($" --> {path}:@{diagnostic.Span.Start}");
+            return;
         }
 
-        if (fixOrNote)
+        foreach (var diagnostic in result.Diagnostics)
         {
-            this.consoleService.WriteLine();
-            if (entry.Fix is not null)
-            {
-                this.consoleService.WriteLine($"Fix: {entry.Fix}");
-            }
-
-            if (entry.Note is not null)
-            {
-                this.consoleService.WriteLine($"Note: {entry.Note}");
-            }
+            this.Render(diagnostic, result.Sources, baseDirectory);
         }
-
-        this.consoleService.WriteLine();
-    }
-
-    public DiagnosticCollection GetOrAddDiagnosticCollection(string url)
-    {
-        return this.diagnosticCollections.GetOrAdd(url, x => new(this, x));
     }
 
     public ConsoleColor SeverityToColor(DiagnosticSeverity logLevel) => logLevel switch
@@ -101,88 +61,76 @@ public class Kimigayo
     internal static Kimigayo CreateSilent()
         => new(new EmptyConsoleService(), new(), false);
 
-    /// <summary>Creates a diagnostic scope that shares this service's console and settings but owns fresh collections.</summary>
-    /// <returns>The new scope. Each compilation owns one, so no diagnostic outlives or crosses its compilation.</returns>
-    internal Kimigayo CreateScope()
-        => new(this.consoleService, this.Settings, this.RendersDiagnostics);
-
-    private static int GetDisplayWidth(ReadOnlySpan<char> sourceText)
+    private static string DisplayPath(string path, string baseDirectory)
     {
-        var width = 0;
-        foreach (var c in sourceText)
+        if (baseDirectory.Length == 0 || !Path.IsPathFullyQualified(path))
         {
-            width += c == '\t' ? Constants.IndentationSpaces - (width % Constants.IndentationSpaces) : 1;
+            return path;
         }
 
-        return width;
+        var relative = Path.GetRelativePath(baseDirectory, path);
+        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathFullyQualified(relative) ? path : relative;
     }
 
-    private void WriteSourceRange(Diagnostic diagnostic)
+    // SPEC 23.4.7: message and code, the primary location, the underlined excerpt with its label, related locations, then
+    // Note and Advice.
+    private void Render(CheckDiagnostic diagnostic, DiagnosticSource[] sources, string baseDirectory)
     {
-        var sourceDocument = diagnostic.SourceDocument!;
-        var range = sourceDocument.GetSourceRange(diagnostic.Span);
-        var startLine = range.Start.Line;
-
-        if (startLine < 0 || startLine >= sourceDocument.LineCount)
+        var source = diagnostic.Source < 0 ? null : sources[diagnostic.Source];
+        this.consoleService.Write(diagnostic.Message);
+        this.consoleService.Write(" : ");
+        this.WriteLine(diagnostic.Severity, diagnostic.Code);
+        if (source is not null)
         {
-            return;
+            var path = DisplayPath(source.Path, baseDirectory);
+            this.consoleService.WriteLine(diagnostic.Display?.Range is { } range ? $" --> {path}:{range.Start.Line + 1}:{range.Start.Character + 1}" : $" --> {path}");
         }
 
-        var endLine = Math.Clamp(range.End.Line, startLine, sourceDocument.LineCount - 1);
-        if (endLine > startLine && range.End.Character == 0)
+        if (diagnostic.Display is { Excerpt.Length: > 0 } display)
         {
-            endLine--;
-        }
-
-        var lineNumberWidth = (endLine + 1).ToString().Length;
-        var margin = new string(' ', lineNumberWidth + 1);
-        this.consoleService.WriteLine($"{margin}|");
-
-        for (var lineIndex = startLine; lineIndex <= endLine; lineIndex++)
-        {
-            var sourceLine = sourceDocument.GetLineSpan(lineIndex);
-            var startCharacter = lineIndex == startLine ? Math.Clamp(range.Start.Character, 0, sourceLine.Length) : 0;
-            var endCharacter = lineIndex == range.End.Line ? Math.Clamp(range.End.Character, 0, sourceLine.Length) : sourceLine.Length;
-            var caretStart = GetDisplayWidth(sourceLine[..startCharacter]);
-            var caretEnd = GetDisplayWidth(sourceLine[..endCharacter]);
-            var caretLength = Math.Max(1, caretEnd - caretStart);
-
-            this.consoleService.Write($"{(lineIndex + 1).ToString().PadLeft(lineNumberWidth)} | ");
-            this.WriteSourceLine(sourceLine);
-
-            this.consoleService.Write($"{margin}| ");
-            this.consoleService.Write(new string(' ', caretStart));
-            this.WriteLine(diagnostic.Entry.Severity, new string(Constants.CaretChar, caretLength));
-        }
-
-        this.consoleService.WriteLine($"{margin}|");
-    }
-
-    private void WriteSourceLine(ReadOnlySpan<char> sourceLine)
-    {
-        if (sourceLine.IndexOf('\t') < 0)
-        {
-            this.consoleService.WriteLine(sourceLine);
-            return;
-        }
-
-        var builder = new StringBuilder(sourceLine.Length);
-        var column = 0;
-        foreach (var c in sourceLine)
-        {
-            if (c == '\t')
+            var width = display.Excerpt[^1].Line.ToString().Length;
+            var margin = new string(' ', width + 1);
+            this.consoleService.WriteLine($"{margin}|");
+            for (var i = 0; i < display.Excerpt.Length; i++)
             {
-                var spaces = Constants.IndentationSpaces - (column % Constants.IndentationSpaces);
-                builder.Append(' ', spaces);
-                column += spaces;
+                var line = display.Excerpt[i];
+                this.consoleService.WriteLine($"{line.Line.ToString().PadLeft(width)} | {line.Text}");
+                this.consoleService.Write($"{margin}| ");
+                this.consoleService.Write(new string(' ', line.Start));
+                var carets = new string(Constants.CaretChar, line.Length);
+                this.WriteLine(diagnostic.Severity, i == display.Excerpt.Length - 1 && diagnostic.Label is { } label ? $"{carets} {label}" : carets);
             }
-            else
+
+            this.consoleService.WriteLine($"{margin}|");
+        }
+
+        if (diagnostic.Related is { Length: > 0 } related)
+        {
+            foreach (var item in related)
             {
-                builder.Append(c);
-                column++;
+                this.consoleService.WriteLine($" = {item.Describe(item.Source < 0 ? null : DisplayPath(sources[item.Source].Path, baseDirectory))}");
             }
         }
 
-        this.consoleService.WriteLine(builder.ToString());
+        foreach (var omission in diagnostic.Omissions ?? [])
+        {
+            this.consoleService.WriteLine($" = {omission}");
+        }
+
+        if (diagnostic.Advice is not null || diagnostic.Note is not null)
+        {
+            this.consoleService.WriteLine();
+            if (diagnostic.Note is not null)
+            {
+                this.consoleService.WriteLine($"Note: {diagnostic.Note}");
+            }
+
+            if (diagnostic.Advice is not null)
+            {
+                this.consoleService.WriteLine($"Advice: {diagnostic.Advice}");
+            }
+        }
+
+        this.consoleService.WriteLine();
     }
 }

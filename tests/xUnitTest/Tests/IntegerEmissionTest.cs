@@ -29,7 +29,7 @@ public class IntegerEmissionTest
         var source = $"func id(x: {type}) -> {type} => x\nfunc snapshot(x: {type}) -> {type}\n    var y = x\n    defer => y = 0\n    return y\n" +
             $"var x: {type} = 9\nvar y: {type} = 2\nlet q = x / y\nlet r = x % y\nx += 3\nx -= 2\nx *= 2\nx /= 2\nx %= 7\nx |= 4\nx &= 6\nx ^= 3\nx <<= 1\nx >>= 1\nlet old = x++\n++x\nlet current = --x\nx--\n" +
             $"let low: {type} = {minimum}\nlet high: {type} = {maximum}\nlet top: {type} = 1 << {width - 1}\nvar c = true\nlet phi = if c => id(high) else => id(low)\n" +
-            $"if q == 4 and r == 1 and x == 5 and old == 5 and current == 6 and low < high and high > low and high >= high and low <= low and high / 1 == high and high % 1 == 0 and low / 1 == low and low % 1 == 0 and (top >> {width - 1}) == {(signed ? "-1" : "1")} and {(signed ? "top == low" : "top > 1 and top < high")} and snapshot(high) == high and phi == high\n    Console.writeLine(\"ok\")";
+            $"if q == 4 and r == 1 and x == 5 and old == 5 and current == 6 and low < high and high > low and high >= high and low <= low and high / 1 == high and high % 1 == 0 and low / 1 == low and low % 1 == 0{(signed ? " and low % -1 == 0 and low % y == 0" : string.Empty)} and (top >> {width - 1}) == {(signed ? "-1" : "1")} and {(signed ? "top == low" : "top > 1 and top < high")} and snapshot(high) == high and phi == high\n    Console.writeLine(\"ok\")";
         ScalarEmissionTest.EmitFixture("IntegerValues" + type, source, "ok\n");
     }
 
@@ -54,7 +54,7 @@ public class IntegerEmissionTest
         {
             Abort("IntegerFail" + type + "Negate", $"var x: {type} = {minimum}\n-x", Overflow, 2, 1);
             Abort("IntegerFail" + type + "DivideMinimum", $"var x: {type} = {minimum}\nx /= -1", Overflow, 2, 1);
-            Abort("IntegerFail" + type + "RemainderMinimum", $"var x: {type} = {minimum}\nx %= -1", Overflow, 2, 1);
+            Abort("IntegerFail" + type + "DivideMinimumVariable", $"var x: {type} = {minimum}\nvar d: {type} = -1\nx /= d", Overflow, 3, 1);
         }
     }
 
@@ -85,14 +85,14 @@ public class IntegerEmissionTest
     [InlineData("IntegerUnsignedUnderflow", "var x: u64 = 1\n0 - x", Overflow, 2, 1)]
     [InlineData("IntegerBeforeCleanup", "func f() -> u8\n    defer => Console.writeLine(\"bad\")\n    return 255 + 1\nf()", Overflow, 3, 12)]
     [InlineData("IntegerDuringCleanup", "defer => Console.writeLine(\"bad\")\ndefer\n    var x: i8 = -128\n    x /= -1", Overflow, 4, 5)]
+    [InlineData("IntegerShiftLiteralNegative", "var x: u8 = 1\nx << -1", ShiftCount, 2, 1)] // SPEC 12.3.1: the count is an i32.
+    [InlineData("IntegerShiftLiteralWide", "var x: i8 = 1\nx << 200", ShiftCount, 2, 1)]
     public void LiteralAndDeferredChecksRetainRuntimeFailure(string name, string source, string reason, int line, int column)
         => Abort(name, source, reason, line, column);
 
     [Theory]
     [InlineData("var x: u8 = 0\n-x", false)]
     [InlineData("var x: u64 = 1\n-x", false)]
-    [InlineData("var x: u8 = 1\nx << -1", false)]
-    [InlineData("var x: i8 = 1\nx << 200", false)]
     [InlineData("let x: u64 = 18446744073709551616", false)]
     [InlineData("let x: i64 = -9223372036854775809", false)]
     public void StaticErrorsNeverWriteIr(string source, bool bound)
@@ -182,6 +182,7 @@ public class IntegerEmissionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmMixedIntegerAnalysisAndWritingAllocateNothing()
     {

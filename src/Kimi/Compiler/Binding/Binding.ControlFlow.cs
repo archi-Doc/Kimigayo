@@ -31,9 +31,10 @@ public sealed partial class Binding
 
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
     /// <param name="types">The non-Never source Types.</param>
+    /// <param name="scope">The scope supplying read-Type Constraints.</param>
     /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
     /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
-    internal BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
+    internal BoundType? SelectCommonType(List<BoundType> types, BindingScope scope, out bool conflict)
     {
         conflict = false;
         for (var i = 0; i < types.Count; i++)
@@ -51,9 +52,9 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.5.3, 14.9.1: sources that differ only in safe reference layers over one Scalar Type unify to that Scalar,
-        // and each reference source is Scalar-read. Sources with the same layers keep the borrow rule below.
-        if (ScalarUnification(types) is { } scalar)
+        // SPEC 3.5.3, 14.9.1: sources that differ only in safe reference layers over one read Type unify to that Type,
+        // and each reference source is value-read. Sources with the same layers keep the borrow rule below.
+        if (this.ReadTypeUnification(types, scope) is { } scalar)
         {
             return scalar;
         }
@@ -101,9 +102,22 @@ public sealed partial class Binding
         return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
-    // SPEC 14.9.1: result sources whose reference layers over one Scalar differ in number or kind unify to that Scalar;
+    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
-    private static BoundType? ScalarUnification(List<BoundType> types)
+    // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
+    // result sources reaches no syntax the survey cannot bind yet.
+    private static bool SurveyablePosition(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return node switch
+        {
+            FromEndIndexKoto fromEnd => SurveyablePosition(fromEnd.Operand),
+            RangeKoto range => (range.Start is null || SurveyablePosition(range.Start)) && (range.End is null || SurveyablePosition(range.End)),
+            _ => IsUnfittedLiteral(node) || node.BindingState == BindingState.Resolved || node is IdentifierNameKoto,
+        };
+    }
+
+    private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
     {
         BoundType? scalar = null;
         var differ = false;
@@ -119,7 +133,8 @@ public sealed partial class Binding
             }
 
             differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
-            if (terminal.Kind != BoundTypeKind.Primitive || !ScalarTypes.Supports(terminal) || (scalar is not null && !ReferenceEquals(scalar, terminal)))
+            if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
+                (!(terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal)) && !this.IsReadType(terminal, scope)))
             {
                 return null;
             }
@@ -168,11 +183,19 @@ public sealed partial class Binding
     private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
     {
         this.FindResultEvidence(target, scope, context);
-        context.Expected = this.SelectCommonType(context.Evidence, out var conflict);
-        if (context.HasLiteral && context.Expected is { } common && ScalarReferent(common) is { } terminal)
+        if (context.HasLiteral)
         {
-            // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal Scalar of the reference sources,
-            // which then supply that Scalar by a Scalar read.
+            // Only literal fitting needs early read-conversion evidence. Ordinary borrow results must wait for
+            // block-local declarations and all their Origins before selecting a common reference Type.
+            context.Evidence.Clear();
+            this.FindResultEvidence(target, scope, context);
+        }
+
+        context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
+        if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
+        {
+            // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal read Type of the reference sources,
+            // which then supply that Type by a value read.
             context.Expected = terminal;
         }
 
@@ -180,7 +203,7 @@ public sealed partial class Binding
         context.Evidence.Clear();
     }
 
-    private BoundType? ResultEvidence(Koto source, BindingScope scope)
+    private BoundType? ResultEvidence(Koto source, BindingScope scope, bool readConversions = false)
     {
         source = KotoHelper.UnwrapParentheses(source);
         if (source.BoundType is { } known)
@@ -222,7 +245,18 @@ public sealed partial class Binding
                     return this.ResultEvidence(conversion.Left, this.NodeScope(source, scope));
                 }
 
-                return this.BindType(conversion.Right, this.NodeScope(source, scope));
+                // A literal branch can use `position@ref` as read-Type evidence, provided its operand is already
+                // known. Do not bind conversions over unavailable block locals while surveying result sources.
+                var conversionScope = this.NodeScope(source, scope);
+                var operandSyntax = KotoHelper.UnwrapParentheses(conversion.Left);
+                if (readConversions && (operandSyntax.BindingState == BindingState.Resolved || operandSyntax is IdentifierNameKoto) &&
+                    this.ResultEvidence(conversion.Left, conversionScope) is { } operandType &&
+                    (ScalarTypes.Supports(operandType) || this.IsReadType(operandType, conversionScope) || this.ReadTypeReferent(operandType, conversionScope) is not null))
+                {
+                    return this.BindNode(conversion, conversionScope);
+                }
+
+                return this.BindType(conversion.Right, conversionScope);
             case IdentifierNameKoto name:
                 var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
                 if (symbol?.Type is { } type)
@@ -235,6 +269,10 @@ public sealed partial class Binding
             case InvocationKoto { Method: IdentifierNameKoto callee }:
                 var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
                 return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? function.Type : null;
+            case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
+                // SPEC 4.6.3.1, 14.9.1: a written `^x` or range with a typed operand has an independent Type, which a
+                // literal-only source such as `0..3` beside `0..n` then fits.
+                return this.BindNode(source, this.NodeScope(source, scope));
             default:
                 return null;
         }
@@ -295,7 +333,7 @@ public sealed partial class Binding
             return;
         }
 
-        var evidence = this.ResultEvidence(expression, scope);
+        var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
         {
             context.Evidence.Add(evidence);
@@ -404,7 +442,7 @@ public sealed partial class Binding
         var common = context.Expected;
         if (common is null)
         {
-            common = this.SelectCommonType(types, out var conflict);
+            common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
             context.Invalid |= conflict;
         }
         else
@@ -418,7 +456,7 @@ public sealed partial class Binding
         types.Clear();
         if (context.Invalid)
         {
-            return Fail(node, BindingFailure.TypeMismatch);
+            return this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Pending)

@@ -140,6 +140,7 @@ public class IdentityAcquisitionEmissionTest
         ScalarEmissionTest.WriteFixture("IdentityAcquisitionReload", writer.ToString(), "ok\n");
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmIdentityAnalysisAndWritingAllocateNothing()
     {

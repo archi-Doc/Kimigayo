@@ -4,11 +4,58 @@ namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    // SPEC 4.6.4, 4.6.8: the absolute interval of a directly applied range whose boundaries are constants and whose
+    // receiver is a fixed array, when it resolves; an interval that fails keeps its runtime check and Aborts when executed.
+    private static bool TryConstantSlice(long fixedLength, Int128 shape, EmissionOperand start, EmissionOperand end, out Int128 first, out Int128 last)
+    {
+        first = last = 0;
+        var endOmitted = (shape & SliceShape.EndOmitted) != 0;
+        if (fixedLength < 0 || start.Kind != EmissionOperandKind.Integer || (!endOmitted && end.Kind != EmissionOperandKind.Integer))
+        {
+            return false;
+        }
+
+        first = (shape & SliceShape.StartFromEnd) != 0 ? fixedLength - start.Value : start.Value;
+        last = endOmitted ? fixedLength : (shape & SliceShape.EndFromEnd) != 0 ? fixedLength - end.Value : end.Value;
+        if ((shape & SliceShape.Closed) != 0)
+        {
+            if (first < 0 || first > last || last >= fixedLength)
+            {
+                return false;
+            }
+
+            last++;
+            return true;
+        }
+
+        return first >= 0 && first <= last && last <= fixedLength;
+    }
+
     private static void WriteSequence(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
-        if (instruction.ScalarOperator is "DictionaryStart" or "DictionaryEnd" or "DictionaryRead" or "DictionaryAddress" or "DictionaryStorageRead" or "DictionaryPair" or "DictionaryNext" or "DictionaryTakeNext" or "DictionaryLocate")
+        if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress" or "DictionaryLayout" or "FixedStorage")
         {
-            WriteDictionaryIteration(output, constants, function, instruction);
+            WriteDictionaryIteration(output, function, instruction);
+            return;
+        }
+
+        if (instruction.ScalarOperator == "RawSlice")
+        {
+            // SPEC 5.6: Raw.slice writes the Slice record {buffer, length} into its result slot.
+            var record = function.GetOperands(instruction);
+            output.Write("  store ptr ");
+            WriteOperand(output, record[0]);
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n  %rslen");
+            WriteNumber(output, instruction.Operation);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", i64 8\n  store i64 ");
+            WriteOperand(output, record[1]);
+            output.Write(", ptr %rslen");
+            WriteNumber(output, instruction.Operation);
+            output.Write(", align 8\n");
             return;
         }
 
@@ -17,39 +64,6 @@ internal static partial class LlvmModuleWriter
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
         var range = instruction.Representation == WindowsLowering.Unit;
-        if (instruction.ScalarOperator == "ArrayIterator")
-        {
-            // The consumed private handle no longer exposes capacity; that word becomes the next-element cursor.
-            Name(output, "  %iterator_cursor", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 16\n  store i64 0, ptr ");
-            Name(output, "%iterator_cursor", id);
-            output.Write(", align 8\n");
-            return;
-        }
-
-        if (instruction.ScalarOperator == "FromEnd")
-        {
-            Name(output, "  %invalid", id);
-            output.Write(" = icmp slt i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", 0\n");
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
-            output.Write("  store i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", ptr ");
-            Address();
-            Name(output, ", align 8\n  %direction", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 ");
-            WriteNumber(output, operands[2].Value);
-            Name(output, "\n  store i8 1, ptr %direction", id);
-            output.Write(", align 1\n");
-            return;
-        }
-
         if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.
@@ -70,35 +84,36 @@ internal static partial class LlvmModuleWriter
                 output.Write(", align 8\n");
             }
 
-            Name(output, "  %invalid", id);
-            output.Write(" = icmp uge i64 ");
-            WriteOperand(output, operands[1]);
-            output.Write(", ");
-            if (arrayRead)
+            // SPEC 4.6.8: a constant position proven inside a fixed array needs no runtime check.
+            if (arrayRead && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
             {
-                WriteNumber(output, operands[2].Value);
+                WriteArithmeticFailure(output, constants, instruction, ProvenValid);
             }
             else
             {
-                Name(output, "%seqend", id);
+                Name(output, "  %invalid", id);
+                output.Write(" = icmp uge i64 ");
+                WriteOperand(output, operands[1]);
+                output.Write(", ");
+                if (arrayRead)
+                {
+                    WriteNumber(output, operands[2].Value);
+                }
+                else
+                {
+                    Name(output, "%seqend", id);
+                }
+
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction, "%invalid");
             }
 
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
-            Name(output, operands.Length == 5 ? "  %itemoffset" : "  %offset", id);
+            Name(output, "  %offset", id);
             output.Write(" = mul i64 ");
             WriteOperand(output, operands[1]);
             output.Write(", ");
-            WriteNumber(output, operands.Length == 5 ? (long)operands[3].Value : instruction.Representation!.Layout.Stride);
+            WriteNumber(output, instruction.Representation!.Layout.Stride);
             output.Write('\n');
-            if (operands.Length == 5)
-            {
-                Name(output, "  %offset", id);
-                Name(output, " = add i64 %itemoffset", id);
-                output.Write(", ");
-                WriteNumber(output, (long)operands[4].Value);
-                output.Write('\n');
-            }
 
             Name(output, "  %element", id);
             output.Write(" = getelementptr i8, ptr ");
@@ -150,7 +165,28 @@ internal static partial class LlvmModuleWriter
 
         if (instruction.ScalarOperator is "SliceRange" or "SliceResolved")
         {
-            if (instruction.ScalarOperator == "SliceResolved")
+            // SPEC 4.6.4: a closed range names its last element q and applies [start, q + 1) when start <= q < length; a
+            // half-open one applies [start, end) when start <= end <= length. A from-end boundary is `length - offset`, and
+            // every boundary that does not resolve compares out of range as an unsigned value, so one check covers all.
+            var shape = instruction.ScalarOperator == "SliceRange" ? operands[4].Value : 0;
+            var closed = (shape & SliceShape.Closed) != 0;
+            var last = closed ? "%slicelast" : "%slicefinish";
+            Int128 constantStart = 0;
+            Int128 constantEnd = 0;
+            var constantSlice = instruction.ScalarOperator == "SliceRange" && TryConstantSlice(fixedLength, shape, operands[2], operands[3], out constantStart, out constantEnd);
+            if (constantSlice)
+            {
+                // SPEC 4.6.8: constant boundaries proven inside a fixed array need no runtime check.
+                Name(output, "  %slicestart", id);
+                output.Write(" = or i64 0, ");
+                WriteNumber(output, constantStart);
+                Name(output, "\n  %slicefinish", id);
+                output.Write(" = or i64 0, ");
+                WriteNumber(output, constantEnd);
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, ProvenValid);
+            }
+            else if (instruction.ScalarOperator == "SliceResolved")
             {
                 // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value.
                 Name(output, "  %slicestart", id);
@@ -167,32 +203,44 @@ internal static partial class LlvmModuleWriter
             else
             {
                 Name(output, "  %slicestart", id);
-                output.Write(" = or i64 0, ");
-                WriteOperand(output, operands[2]);
-                Name(output, "\n  %slicefinish", id);
-                output.Write(" = or i64 0, ");
-                if (operands[4].Value != 0)
+                Boundary((shape & SliceShape.StartFromEnd) != 0, operands[2]);
+                output.Write("\n  ");
+                Name(output, last, id);
+                if ((shape & SliceShape.EndOmitted) != 0)
                 {
+                    output.Write(" = or i64 0, ");
                     End();
                 }
                 else
                 {
-                    WriteOperand(output, operands[3]);
+                    Boundary((shape & SliceShape.EndFromEnd) != 0, operands[3]);
                 }
             }
 
-            Name(output, "\n  %reversed", id);
-            Name(output, " = icmp ugt i64 %slicestart", id);
-            Name(output, ", %slicefinish", id);
-            Name(output, "\n  %pastend", id);
-            Name(output, " = icmp ugt i64 %slicefinish", id);
-            output.Write(", ");
-            End();
-            Name(output, "\n  %invalid", id);
-            Name(output, " = or i1 %reversed", id);
-            Name(output, ", %pastend", id);
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+            if (!constantSlice)
+            {
+                Name(output, "\n  %reversed", id);
+                Name(output, " = icmp ugt i64 %slicestart", id);
+                output.Write(", ");
+                Name(output, last, id);
+                Name(output, "\n  %pastend", id);
+                output.Write(closed ? " = icmp uge i64 " : " = icmp ugt i64 ");
+                Name(output, last, id);
+                output.Write(", ");
+                End();
+                Name(output, "\n  %invalid", id);
+                Name(output, " = or i1 %reversed", id);
+                Name(output, ", %pastend", id);
+                output.Write('\n');
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+                if (closed)
+                {
+                    Name(output, "  %slicefinish", id);
+                    Name(output, " = add i64 %slicelast", id);
+                    output.Write(", 1\n");
+                }
+            }
+
             if (fixedLength < 0)
             {
                 Name(output, "  %seqbase", id);
@@ -278,6 +326,16 @@ internal static partial class LlvmModuleWriter
             Name(output, "%seqcapptr", id);
             output.Write(", align 8\n");
         }
+        else if (instruction.ScalarOperator == "fromEnd")
+        {
+            // SPEC 4.6.9: `length - offset` wraps without a check; the element access's bounds check follows.
+            Name(output, "  %v", id);
+            output.Write(" = sub i64 ");
+            End();
+            output.Write(", ");
+            WriteOperand(output, operands[3]);
+            output.Write('\n');
+        }
         else
         {
             Name(output, "  %v", id);
@@ -314,6 +372,22 @@ internal static partial class LlvmModuleWriter
             {
                 WriteOperand(output, addressOperand);
             }
+        }
+
+        void Boundary(bool fromEnd, EmissionOperand value)
+        {
+            if (fromEnd)
+            {
+                output.Write(" = sub i64 ");
+                End();
+                output.Write(", ");
+            }
+            else
+            {
+                output.Write(" = or i64 0, ");
+            }
+
+            WriteOperand(output, value);
         }
 
         void Start()

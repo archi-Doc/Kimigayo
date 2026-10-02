@@ -1,5 +1,10 @@
 # Change Log
 
+## Unreleased
+
+- Default to saving inputs and invoking `run` once for Run, Build and Run, and Ctrl+F5, avoiding a duplicate build with current Kimi. Explicit `kimi.runBuilds: false` retains support for older run-only executables.
+- Wait 1000 ms after the last edit, instead of 250 ms, before the language server checks the workspace.
+
 ## 0.0.9
 
 - Report invalid server paths and server failures once per unchanged setting, shared across diagnostics and build/run/check commands; retain repeated details in the Kimi output.

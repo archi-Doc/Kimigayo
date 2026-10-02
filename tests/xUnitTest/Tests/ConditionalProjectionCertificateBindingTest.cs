@@ -14,7 +14,7 @@ public class ConditionalProjectionCertificateBindingTest
     public void InvalidProjectionPremiseCannotCertifyConformance(bool lateWitness)
     {
         var c = MinimalEmissionTest.Analyze(Prefix(lateWitness, false) + Consumer);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
@@ -44,7 +44,7 @@ public class ConditionalProjectionCertificateBindingTest
     public void ForwardInvalidWitnessAlsoRevokesPremiseEvidence(bool lateWitness)
     {
         var c = MinimalEmissionTest.Analyze(Consumer + "\n" + Prefix(lateWitness, false));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
     }
@@ -69,7 +69,7 @@ public class ConditionalProjectionCertificateBindingTest
     {
         var source = Prefix(true, valid) + "struct S<T>\n    Self is Copy when T is Source.Origin.Item\nfunc take<U>()\n    U is Copy\n    ()\ntake<S<i32>>()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());
         Assert.Equal(valid, call.BoundCall is not null);
@@ -109,6 +109,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.False(ConditionalProperty(c).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConditionalProjectionChecksAllocateNothing()
     {
@@ -167,7 +168,7 @@ public class ConditionalProjectionCertificateBindingTest
     {
         var source = Prefix(lateWitness, valid) + Consumer + PropertyMember + "\n    public computed independent: i32\n        get(self: ref/Self) -> i32 => 2";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, ConditionalProperty(c).IsVerified);
         Assert.True(Type(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
@@ -178,6 +179,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, ConditionalProperty(restored).IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConditionalPropertyChecksAllocateNothing()
     {

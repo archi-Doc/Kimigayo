@@ -8,7 +8,7 @@ namespace XunitTest;
 
 public class DynamicArraySharedReadTest
 {
-    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"drop\")\n";
+    private const string Task = "struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"drop\")\n";
 
     [Theory]
     [InlineData("Owner", "let item = values[0]@ref")]

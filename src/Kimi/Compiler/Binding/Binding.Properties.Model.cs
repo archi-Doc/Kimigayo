@@ -30,6 +30,8 @@ public sealed class BoundProperty
     public BoundAccessor Setter { get; }
 
     public bool IsVerified { get; internal set; }
+
+    internal FunctionKoto? InitializerFunction { get; set; }
 }
 
 /// <summary>A reusable operation signature, including implicit inputs without synthetic syntax.</summary>

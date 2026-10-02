@@ -27,6 +27,23 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         Function,
     }
 
+    /// <summary>The member state of one Declaration Container body, shared by its directive targets and arms (SPEC 19.5).</summary>
+    /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
+    /// <param name="parseDeclarationContainers">Whether nested Declaration Containers are accepted.</param>
+    /// <param name="acceptsTypeConstraints">Whether this fragment may still define the container's Constraints.</param>
+    private struct MemberParseState(bool parseTypeConstraints, bool parseDeclarationContainers, bool acceptsTypeConstraints)
+    {
+        public readonly bool ParseTypeConstraints = parseTypeConstraints;
+
+        public readonly bool ParseDeclarationContainers = parseDeclarationContainers;
+
+        public readonly bool AcceptsTypeConstraints = acceptsTypeConstraints;
+
+        public DeclarationOrder DeclarationOrder;
+
+        public DeclarationContainerKoto? Detached;
+    }
+
     /// <inheritdoc/>
     public abstract override KotoKind Akind { get; }
 
@@ -113,16 +130,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets declared Origin names without allocating empty storage.</summary>
     public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
 
-    internal void SetImplicitOrigins(List<string> names)
-    {
-        if (!this.HasOriginHeader)
-        {
-            this.OriginList = names;
-        }
-    }
-
-    /// <summary>Gets a value indicating whether this Type explicitly closes its own Origin schema, including with an empty header.</summary>
-    public bool HasOriginHeader { get; private set; }
+    /// <summary>Gets a value indicating whether this Type writes an Origin header, which alone declares its own slots (SPEC 15.3.2).</summary>
+    public bool HasOriginHeader => this.OriginList is { Count: > 0 };
 
     internal bool HasIncompatibleBindingHeader { get; private set; }
 
@@ -219,12 +228,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.HasIncompatibleBindingHeader |= this.TokenKind != kind;
         if (this.hasBindingHeader)
         {
-            this.HasIncompatibleBindingHeader |= this is StructKoto && (!this.HasOriginHeader || origins is null);
             // Enums and contracts are closed declarations, even when repeated headers agree.
             this.HasIncompatibleBindingHeader |= this is EnumKoto or ContractKoto;
             var previous = this.Modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? this.Modifier | ModifierKind.Private : this.Modifier;
             var current = modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? modifier | ModifierKind.Private : modifier;
             this.HasIncompatibleBindingHeader |= previous != current;
+            // SPEC 6.1.2, 15.3.2: fragments agree on their own slots; an omitted header declares none.
             var count = genericArguments?.Count ?? 0;
             var same = count == this.GenericParameterNodes.Count &&
                 OriginNameList.SameParameters((IReadOnlyList<string>?)origins ?? [], this.OriginNames);
@@ -238,7 +247,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.hasBindingHeader = true;
-        this.HasOriginHeader = origins is not null;
         // Synthesized path groups have no header and acquire their first explicit modifiers.
         this.Modifier = modifier;
         if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
@@ -317,7 +325,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (this.HasOriginHeader)
         {
-            OriginNameList.WriteTo(this.OriginNames, ref builder, true);
+            OriginNameList.WriteTo(this.OriginNames, ref builder);
         }
 
         if (this.bases is { Length: > 0 } bases)
@@ -355,7 +363,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public void Clear()
     {
         this.hasBindingHeader = false;
-        this.HasOriginHeader = false;
         ((IOriginClauseOwner)this).OriginClauses?.Clear();
         this.fragmentOrdinal = 0;
         this.AttributeChain = null;
@@ -598,111 +605,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected void ParseMembers(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
     {
         ConsumeBlockStart(ref reader);
-        var declarationOrder = DeclarationOrder.None;
-        var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0;
-        while (TryBeginDeclaration(ref reader))
-        {
-            if (reader.IsExcluded)
-            {
-                Parser.SkipExcludedSyntax(ref reader);
-                continue;
-            }
-
-            if (Parser.IsCompileTimeSwitchStart(ref reader))
-            {
-                var caseGroup = Parser.ParseCompileTimeSwitch(ref reader, this);
-                this.AddLast(caseGroup);
-                continue;
-            }
-
-            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
-            {
-                var body = Parser.ParseDeclarationDirectiveBody(ref reader, this);
-                this.AddLast(body);
-                continue;
-            }
-
-            if (Parser.IsOriginRelationStart(ref reader))
-            {
-                var relation = Parser.ParseOriginRelation(ref reader);
-                if (!acceptsTypeConstraints)
-                {
-                    relation.AddDiagnostic(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
-                }
-
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
-                OriginClauses.Add(this, relation);
-                continue;
-            }
-
-            if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
-            {
-                if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
-                {
-                    reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-                    continue;
-                }
-
-                var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-                if (constraint is not null && reader.IsCurrentIdentifier("when"))
-                {
-                    reader.Advance();
-                    var conditions = new List<Koto>();
-                    do
-                    {
-                        var condition = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-                        if (condition is null)
-                        {
-                            break;
-                        }
-
-                        conditions.Add(condition);
-                    }
-                    while (reader.TryConsume(TokenKind.Comma));
-                    var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
-                    var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
-                    if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                    {
-                        var block = Parser.ParseDeclarationDirectiveBody(ref reader, this);
-                        this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, block.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises, block], separator: " when "));
-                        continue;
-                    }
-
-                    this.AddLast(new SyntaxFormKoto(ref reader, span, KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-                    continue;
-                }
-
-                if (!acceptsTypeConstraints)
-                {
-                    reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-                    continue;
-                }
-
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-                if (constraint is not null)
-                {
-                    this.AddTypeConstraint(constraint);
-                }
-
-                continue;
-            }
-
-            var token = reader.CurrentToken;
-            if (parseDeclarationContainers &&
-                this.TryParseDeclarationContainer(ref reader, token))
-            {
-                continue;
-            }
-
-            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
-            {
-                SkipUnexpectedDeclaration(ref reader, token);
-            }
-        }
+        var state = new MemberParseState(
+            parseTypeConstraints,
+            parseDeclarationContainers,
+            parseTypeConstraints && this.typeConstraints is not { Count: > 0 } && OriginClauses.Get(this).Count == 0);
+        this.ParseMemberItems(ref reader, ref state);
     }
 
     /// <summary>Consumes an unimplemented Declaration Container body without producing members.</summary>
@@ -762,7 +669,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.EndBlock)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Expect(SyntaxForm.Declaration);
         }
 
         return !reader.TryConsume(TokenKind.EndBlock);
@@ -783,7 +690,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (tokenKind == TokenKind.Extension)
         {
-            reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
+            reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
         }
 
         reader.Advance();
@@ -807,7 +714,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
         else if (container is EnumKoto)
         {
-            container.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.CodeContext.RecordRecovery(container, reader.Expect(SyntaxForm.Body));
         }
 
         return true;
@@ -875,10 +782,18 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
             else
             {
-                var name = reader.Read();
-                if (this is not ContractKoto || !name.Kind.IsIdentifierOrContextualKeyword())
+                if (this is not ContractKoto)
                 {
-                    reader.Diagnostic.Add(name.Span, DiagnosticCode.UnexpectedToken_Kd, "associate");
+                    // Only a Contract declares an associated Type requirement; the declaration is skipped with its line.
+                    reader.Unexpected(SyntaxForm.AssociatedTypeDeclaration, token.Span);
+                    Parser.SkipDeclarationLine(ref reader);
+                    return true;
+                }
+
+                var name = reader.Read();
+                if (!name.Kind.IsIdentifierOrContextualKeyword())
+                {
+                    reader.Expect(SyntaxForm.Name, name);
                 }
 
                 if (IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
@@ -900,7 +815,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             !(token.Kind is TokenKind.Computed or TokenKind.Property && reader.PeekKind(1).IsIdentifierOrContextualKeyword()))
         {
             this.AddLast(Parser.ParseEnumCase(ref reader));
-            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            reader.ExpectLineEnd();
             return true;
         }
 
@@ -917,21 +832,21 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
                 {
-                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property declaration container");
+                    propertyKoto.Unexpected(SyntaxForm.PropertyDeclaration);
                     return true;
                 }
 
                 if (propertyKoto.IsContractRequirement &&
                     (propertyKoto.Modifier != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
                 {
-                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property requirement modifiers or attributes");
+                    propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
 
                 foreach (var accessor in propertyKoto.Accessors)
                 {
                     if (accessor.ReceiverType is not null && this is not (StructKoto or ContractKoto))
                     {
-                        accessor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "static accessors omit self");
+                        accessor.Unexpected(SyntaxForm.ReceiverParameter);
                     }
                 }
 
@@ -941,20 +856,20 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return true;
         }
 
-        if (this is StructKoto && token.Kind == TokenKind.Deinit)
+        if (this is StructKoto && token.Kind == TokenKind.Drop)
         {
             var context = reader.TakeContext();
             reader.Advance();
-            var destructor = new FunctionKoto(ref reader, context, token.Span, "deinit", null, null, new TupleTypeKoto(ref reader, token.Span, []))
+            var destructor = new FunctionKoto(ref reader, context, token.Span, "drop", null, null, new TupleTypeKoto(ref reader, token.Span, []))
             {
                 IsDestructor = true,
             };
             reader.Document(destructor, token.Span, context.AttributeKoto);
 
-            // deinit accepts a common Body, without modifiers or attributes (SPEC 16.3).
+            // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)
             {
-                destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "deinit declaration");
+                destructor.Unexpected(SyntaxForm.Decoration);
             }
 
             destructor.Parse(ref reader);
@@ -990,10 +905,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             Parser.ValidateReceiverParameters(functionKoto);
         }
 
-        if (!functionKoto.IsExcluded)
-        {
-            this.AddLast(functionKoto);
-        }
+        this.AddLast(functionKoto);
 
         return true;
     }
@@ -1003,19 +915,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="token">The unsupported declaration's first token.</param>
     protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
     {
-        reader.Diagnostic.Add(
-            token.Span,
-            DiagnosticCode.UnexpectedToken_Kd,
-            reader.GetSpan(token).ToString());
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
-        reader.SkipSeparators();
-
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        var cause = reader.Expect(SyntaxForm.Declaration, token);
+        if (!reader.InExcludedSyntax)
         {
-            reader.SkipCurrentBlock(false);
+            // Excluded syntax records no omission for the selected program (SPEC 19.5).
+            reader.CodeContext.Kotonoha.RecordOmission(cause);
         }
 
-        reader.ClearContext();
+        Parser.SkipDeclarationLine(ref reader);
     }
 
     /// <summary>Writes one type constraint in the syntax used by this Declaration Container kind.</summary>
@@ -1204,4 +1111,186 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         (this.nestedContainers ??= []).Add(container);
         return container;
     }
+
+    /// <summary>Parses member declarations through the end of the current block.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="state">The member state of the enclosing body, shared by its directive targets and arms.</param>
+    /// <remarks>
+    /// Directive targets and arms are parsed by this same loop (SPEC 19.5): selected syntax goes into this container, and
+    /// excluded syntax into a detached container of the same kind, so it registers nothing here but keeps source order.
+    /// </remarks>
+    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state)
+    {
+        while (TryBeginDeclaration(ref reader))
+        {
+            if (reader.IsExcluded)
+            {
+                var owner = this.ExcludedOwner(ref reader, ref state);
+                var region = Parser.BeginExcludedRegion(ref reader);
+                owner.ParseMemberDirectiveOrItem(ref reader, ref state);
+                Parser.EndExcludedRegion(ref reader, region);
+            }
+            else if (reader.HasCompileTimeIfPrefix || Parser.IsCompileTimeSwitchStart(ref reader))
+            {
+                this.ParseMemberDirectiveOrItem(ref reader, ref state);
+            }
+            else
+            {
+                this.ParseMemberItem(ref reader, ref state);
+            }
+        }
+    }
+
+    private void ParseMemberDirectiveOrItem(ref TokenReader reader, ref MemberParseState state)
+    {
+        if (Parser.IsCompileTimeSwitchStart(ref reader))
+        {
+            var start = reader.CurrentTokenRange.Start;
+            var selection = Parser.ScanCompileTimeSwitch(ref reader);
+            Parser.RejectDirectiveBlockAttributes(ref reader);
+            if (Parser.BeginCompileTimeSwitchArms(ref reader))
+            {
+                for (var arm = 0; Parser.TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                {
+                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                    {
+                        reader.Expect(SyntaxForm.Body);
+                        continue;
+                    }
+
+                    if (arm == selection.Selected)
+                    {
+                        reader.Advance();
+                        this.ParseMemberItems(ref reader, ref state);
+                    }
+                    else
+                    {
+                        var owner = this.ExcludedOwner(ref reader, ref state);
+                        var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
+                        reader.Advance();
+                        owner.ParseMemberItems(ref reader, ref state);
+                        Parser.EndExcludedRegion(ref reader, region);
+                    }
+                }
+            }
+
+            if (Parser.UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            {
+                this.AddLast(unselected);
+            }
+
+            return;
+        }
+
+        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            Parser.RejectDirectiveBlockAttributes(ref reader);
+            reader.Advance();
+            this.ParseMemberItems(ref reader, ref state);
+            return;
+        }
+
+        this.ParseMemberItem(ref reader, ref state);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
+    {
+        // SPEC 8.4.10.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject.
+        if (Parser.IsEffectStart(ref reader, specification: true))
+        {
+            this.AddLast(Parser.ParseEffectBound(ref reader));
+            return;
+        }
+
+        // Count and uniqueness rules are judged after selection, so excluded syntax skips them (SPEC 19.5).
+        var acceptsTypeConstraints = state.AcceptsTypeConstraints || reader.InExcludedSyntax;
+        if (Parser.IsOriginRelationStart(ref reader))
+        {
+            var relation = Parser.ParseOriginRelation(ref reader);
+            if (!acceptsTypeConstraints)
+            {
+                relation.AddDiagnostic(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+            }
+
+            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint);
+            OriginClauses.Add(this, relation);
+            return;
+        }
+
+        if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
+        {
+            if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
+            {
+                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                return;
+            }
+
+            var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
+            if (constraint is not null && reader.IsCurrentIdentifier("when"))
+            {
+                reader.Advance();
+                var conditions = new List<Koto>();
+                do
+                {
+                    var condition = Parser.ParseTypeConstraint(ref reader, finishLine: false);
+                    if (condition is null)
+                    {
+                        break;
+                    }
+
+                    conditions.Add(condition);
+                }
+                while (reader.TryConsume(TokenKind.Comma));
+                var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
+                var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    var block = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                    this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, block.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises, block], separator: " when "));
+                    return;
+                }
+
+                this.AddLast(new SyntaxFormKoto(ref reader, span, KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
+                reader.ExpectLineEnd();
+                return;
+            }
+
+            if (!acceptsTypeConstraints)
+            {
+                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                return;
+            }
+
+            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint);
+            reader.ExpectLineEnd();
+            if (constraint is not null)
+            {
+                this.AddTypeConstraint(constraint);
+            }
+
+            return;
+        }
+
+        var token = reader.CurrentToken;
+        if (state.ParseDeclarationContainers &&
+            this.TryParseDeclarationContainer(ref reader, token))
+        {
+            return;
+        }
+
+        if (!this.TryParsePropertyOrFunction(ref reader, ref state.DeclarationOrder))
+        {
+            SkipUnexpectedDeclaration(ref reader, token);
+        }
+    }
+
+    /// <summary>Gets the owner of excluded member syntax: this container inside excluded syntax, otherwise a detached container of the same kind.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="state">The member state that keeps the detached container.</param>
+    /// <returns>The container that receives the excluded declarations.</returns>
+    private DeclarationContainerKoto ExcludedOwner(ref TokenReader reader, ref MemberParseState state)
+        => reader.InExcludedSyntax ? this : state.Detached ??= CreateStandalone(reader.CodeContext, this.TokenKind, default, this.Span, string.Empty);
 }

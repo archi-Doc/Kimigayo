@@ -42,7 +42,7 @@ public class ArrayMembersTest
         "    Console.writeLine(\"Mutation ok.\")\n";
 
     private const string Owned =
-        "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped.\")\n" +
+        "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped.\")\n" +
         "public func main()\n" +
         "    var items: Array<Tracked> = []\n" +
         "    items.append(Tracked.init(1))\n    items.append(Tracked.init(2))\n    items.append(Tracked.init(3))\n    items.append(Tracked.init(4))\n" +
@@ -70,7 +70,7 @@ public class ArrayMembersTest
 
     // SPEC 4.5, 16.3.2: an Array field is destroyed with its struct, elements before the buffer, once.
     private const string Field =
-        "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Dropped.\")\n" +
+        "struct Tracked\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Dropped.\")\n" +
         "struct Bag\n    var items: Array<Tracked>\n    public init(items: Array<Tracked>) => self.items = items@move\n    public func count(self) -> isize => self.items.length\n" +
         "func make() -> Bag\n    var items: Array<Tracked> = []\n    items.append(Tracked.init(1))\n    items.append(Tracked.init(2))\n    return Bag.init(items@move)\n" +
         "public func main()\n" +
@@ -80,7 +80,7 @@ public class ArrayMembersTest
 
     // SPEC 4.7.2, 4.7.4: init(! capacity:) reserves once, also for a generic or Non-Copy element; zero allocates nothing.
     private const string Capacity =
-        "struct Tag\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => Console.writeLine(\"Tag dropped.\")\n" +
+        "struct Tag\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => Console.writeLine(\"Tag dropped.\")\n" +
         "func make<T>(count: isize) -> Array<T>\n    return Array<T>.init(capacity: count)\n" +
         "public func main()\n" +
         "    var values = Array<i32>.init(capacity: 4)\n" +
@@ -121,13 +121,13 @@ public class ArrayMembersTest
         => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARGUMENT: Invalid argument value\n");
 
     // P26 boundary (PLAN G10): the callback members verify in the library, but a function passed to their Callable
-    // parameter is not yet bound; the call is diagnosed instead of generating code. P26 turns this into an execution.
+    // parameter is not yet bound; the argument is diagnosed as unsupported instead of generating code. P26 turns this into an execution.
     [Fact]
     public void CallbackArgumentsAwaitCallableValues()
     {
         var c = MinimalEmissionTest.Analyze(Callables);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.ToString()!.StartsWith("values.removeAll", StringComparison.Ordinal));
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd && x.Node.ToString() == "isLarge");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.Library.Kotonoha);
     }
 

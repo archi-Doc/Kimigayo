@@ -250,6 +250,7 @@ public class StartupBindingTest
         Assert.Throws<TinyhandException>(() => TinyhandSerializer.DeserializeFromUtf8<ProjectFile>("OutputKind = \"Unknown\""u8));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(32, false)]
@@ -426,7 +427,7 @@ public class StartupBindingTest
             c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, new SourceDocument($"source{i}.kimi", sources[i]));
         }
 
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         return c;
     }
 

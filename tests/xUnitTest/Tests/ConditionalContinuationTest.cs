@@ -7,7 +7,6 @@ using Xunit;
 
 namespace XunitTest;
 
-[TestClass(DisableParallelization = true)]
 public class ConditionalContinuationTest
 {
     [Theory]
@@ -36,47 +35,6 @@ public class ConditionalContinuationTest
             "NeverConditional" + Configuration + name,
             Source(declaration, yes, no, tail) + "\nf(true)\nf(false)\nConsole.writeLine(\"done\")",
             name == "Reinitialize" ? "s\ndone\n" : "done\n");
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void JoinedStateIsSeparateAndRecomputedAfterReload(bool reload)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n        return", "x = 2\n        return", "x = 3\n    let y = x") + "\nf(true)");
-        if (reload)
-        {
-            var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
-            c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            var kotonoha = c.Kotonoha;
-            TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-            Assert.NotNull(kotonoha);
-            kotonoha.OnDeserialized(c);
-            Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            c.Ownership.Analyze();
-        }
-
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "f");
-        var local = body.Places.First(p => p.Kind == OwnershipPlaceKind.Local);
-        var write = Enumerable.Range(0, body.Operations.Count).Last(i => body.Operations[i] is { Kind: OwnershipOperationKind.Write, Source: BinaryKoto } op && op.Place == local.Id);
-        Assert.False(body.IsReachable(write));
-        Assert.True(body.HasCheckingState(write));
-        Assert.Equal(PlaceState.None, body.GetInputState(write, local.Id));
-        Assert.True(body.GetCheckingInputState(write, local.Id).HasFlag(PlaceState.MustInit));
-        Assert.Equal(PlacementKind.None, body.Operations[write].Placement);
-        c.Bind();
-        Assert.False(body.HasCheckingState(write));
-        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.True(c.Ownership.Analyze().IsVerified);
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Ownership.Analyze();
-            c.Emission.WriteIr(TextWriter.Null, out _);
-        }));
-    }
 
     [Theory]
     [InlineData("func f(c: bool, d: bool)\n    let x = \"s\"\n    if c\n        if d\n            _ = x@move\n            return\n        else => return\n    else => return\n    Console.writeLine(x)")]
@@ -129,4 +87,50 @@ public class ConditionalContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    [TestClass(DisableParallelization = true)]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests
+    {
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void JoinedStateIsSeparateAndRecomputedAfterReload(bool reload)
+        {
+            var c = MinimalEmissionTest.Analyze(Source("var x: i32", "x = 1\n        return", "x = 2\n        return", "x = 3\n    let y = x") + "\nf(true)");
+            if (reload)
+            {
+                var bytes = TinyhandSerializer.Serialize(c.Kotonoha);
+                c = Compilation.CreateForTest();
+                Assert.True(c.Prepare(WindowsProfile.Target));
+                var kotonoha = c.Kotonoha;
+                TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
+                Assert.NotNull(kotonoha);
+                kotonoha.OnDeserialized(c);
+                Assert.True(c.Bind().IsComplete);
+                Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+                c.Ownership.Analyze();
+            }
+
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+            var body = Assert.Single(c.Ownership.Bodies, b => b.Function.Name == "f");
+            var local = body.Places.First(p => p.Kind == OwnershipPlaceKind.Local);
+            var write = Enumerable.Range(0, body.Operations.Count).Last(i => body.Operations[i] is { Kind: OwnershipOperationKind.Write, Source: BinaryKoto } op && op.Place == local.Id);
+            Assert.False(body.IsReachable(write));
+            Assert.True(body.HasCheckingState(write));
+            Assert.Equal(PlaceState.None, body.GetInputState(write, local.Id));
+            Assert.True(body.GetCheckingInputState(write, local.Id).HasFlag(PlaceState.MustInit));
+            Assert.Equal(PlacementKind.None, body.Operations[write].Placement);
+            c.Bind();
+            Assert.False(body.HasCheckingState(write));
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            Assert.True(c.Ownership.Analyze().IsVerified);
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out _));
+            Assert.Equal(0, AllocationMeasurement.Measure(() =>
+            {
+                c.Ownership.Analyze();
+                c.Emission.WriteIr(TextWriter.Null, out _);
+            }));
+        }
+    }
 }

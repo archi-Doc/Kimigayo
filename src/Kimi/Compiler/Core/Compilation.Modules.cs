@@ -2,6 +2,7 @@
 
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -79,7 +80,7 @@ public partial class Compilation
         {
             var node = graph.Nodes[i];
             var module = i == 0 ? this.Kotonoha : new Kotonoha(this, node.Key, node.Input.Path);
-            module.DiagnosticCollection.ClearDiagnostic();
+            this.Diagnostics.InvalidateSyntax(module);
             modules[i] = module;
             identities.Add(node.Key, module);
             this.moduleAliases.Add(module, EffectiveAliases(node.Input.Configuration.Alias));
@@ -100,7 +101,7 @@ public partial class Compilation
                 if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
                     variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
                 {
-                    module.DiagnosticCollection.Add(default, DiagnosticCode.InvalidCompileTimeSetting_Kd, name);
+                    this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, node.Input.Path, name);
                     return false;
                 }
 
@@ -114,14 +115,14 @@ public partial class Compilation
         {
             if (NativeConfiguration.ValidatePackageSupplies(graph.Nodes[i].Input.Configuration, graph.Nodes) is { } failure)
             {
-                modules[i].DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, failure);
+                this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[i].Input.Path, note: failure);
                 return false;
             }
         }
 
         if (NativeConfiguration.ValidateSupplyAgreement(graph.Nodes, out var conflicting) is { } conflict)
         {
-            modules[conflicting].DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, conflict);
+            this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[conflicting].Input.Path, note: conflict);
             return false;
         }
 

@@ -19,7 +19,7 @@ public class ParserOptimizationTest
         var arguments = structure.GenericArguments;
         var origins = structure.Origins;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct A<T> {first}");
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         Assert.Same(arguments, structure.GenericArguments);
         Assert.Same(origins, structure.Origins);
         Assert.Equal("T", Assert.Single(arguments).Identifier);
@@ -50,13 +50,13 @@ public class ParserOptimizationTest
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"var {spelling} = 1");
         if (valid)
         {
-            Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(kotonoha));
             var field = Assert.IsType<FieldKoto>(Assert.Single(kotonoha.GeneratedFunction!.Body!.Items));
             Assert.Same(cached, field.NameKoto.IdentifierName);
         }
         else
         {
-            Assert.NotEmpty(kotonoha.DiagnosticCollection.GetArray());
+            Assert.NotEmpty(TestDiagnostics.Of(kotonoha));
         }
     }
 
@@ -74,7 +74,7 @@ public class ParserOptimizationTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
 
         // Restore the saved sources before accessing mutable Arguments, preserving compact parser storage.
         var bytes = TinyhandSerializer.Serialize(kotonoha);
@@ -116,7 +116,7 @@ public class ParserOptimizationTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "func Run()\n    call<A>(1)\n    replacement<B>(2)");
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(kotonoha.GeneratedFunction!.Body!.Items));
         var body = function.Body!;
         var first = Assert.IsType<InvocationKoto>(body.Items[0]);
@@ -147,7 +147,7 @@ public class ParserOptimizationTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#First(1) func Run() => ()\n#Second(2) func Other() => ()");
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var functions = kotonoha.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
         var attribute = functions[0].AttributeChain!;
         var replacement = functions[1].AttributeChain!.Operand;
@@ -164,7 +164,7 @@ public class ParserOptimizationTest
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#First #Second func Run() => ()\n#Third func Other() => ()");
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(kotonoha));
         var functions = kotonoha.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
         var head = functions[0].AttributeChain!;
         var rest = head.AttributeChain!;

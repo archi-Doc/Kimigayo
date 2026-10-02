@@ -1,8 +1,8 @@
 public func main()
     var original = "before"
-    let selected = work: do
+    let selected = label work: do
         defer => original = "after"
-        exit to work: (if true => original@move else => "unused")
+        exit to work (if true => original@move else => "unused")
     Console.writeLine(selected)
     Console.writeLine(original)
 

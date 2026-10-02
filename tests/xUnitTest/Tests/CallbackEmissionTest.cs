@@ -73,6 +73,7 @@ public class CallbackEmissionTest
         Assert.Empty(output.ToString());
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndReanalysisRetainCaptureIdentity()
     {

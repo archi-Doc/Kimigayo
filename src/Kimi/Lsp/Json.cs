@@ -23,6 +23,18 @@ public sealed class InitializeParams
 public sealed class ClientCapabilities
 {
     public WorkspaceClientCapabilities? Workspace { get; set; }
+
+    public TextDocumentClientCapabilities? TextDocument { get; set; }
+}
+
+public sealed class TextDocumentClientCapabilities
+{
+    public PublishDiagnosticsClientCapabilities? PublishDiagnostics { get; set; }
+}
+
+public sealed class PublishDiagnosticsClientCapabilities
+{
+    public bool? RelatedInformation { get; set; }
 }
 
 public sealed class WorkspaceClientCapabilities
@@ -158,7 +170,33 @@ public sealed class PublishDiagnosticsParams
 }
 
 /// <summary>One published diagnostic; <c>severity</c> uses the LSP numbering (1 error to 4 hint), which matches <see cref="DiagnosticSeverity"/>.</summary>
-public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code, string Source, string Message);
+/// <param name="Range">The range.</param>
+/// <param name="Severity">The severity.</param>
+/// <param name="Code">The code.</param>
+/// <param name="Source">The source, <c>kimigayo</c>.</param>
+/// <param name="Message">The message with its label, Note, Advice and the text of unsent related locations.</param>
+/// <param name="RelatedInformation">The related locations sent as locations, when the client declares support.</param>
+public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code, string Source, string Message, LspRelatedInformation[]? RelatedInformation = null)
+{
+    /// <inheritdoc/>
+    public bool Equals(LspDiagnostic? other)
+        => other is not null && this.Range.Equals(other.Range) && this.Severity == other.Severity && this.Code == other.Code && this.Source == other.Source &&
+            this.Message == other.Message && (this.RelatedInformation ?? []).AsSpan().SequenceEqual(other.RelatedInformation ?? []);
+
+    /// <inheritdoc/>
+    public override int GetHashCode()
+        => HashCode.Combine(this.Range, this.Severity, this.Code, this.Message, this.RelatedInformation?.Length ?? 0);
+}
+
+/// <summary>A location related to a published diagnostic.</summary>
+/// <param name="Location">The location.</param>
+/// <param name="Message">The alternative text of the location.</param>
+public sealed record LspRelatedInformation(LspLocation Location, string Message);
+
+/// <summary>A range in a document.</summary>
+/// <param name="Uri">The document URI.</param>
+/// <param name="Range">The range.</param>
+public sealed record LspLocation(string Uri, SourceRange Range);
 
 public sealed class LogMessageParams
 {

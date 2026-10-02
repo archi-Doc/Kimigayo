@@ -174,6 +174,7 @@ public class PropertyProjectionApiAccessBindingTest
         Assert.False(property.BoundSymbol.Property.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPropertyProjectionChecksAllocateNothing()
     {

@@ -234,6 +234,7 @@ public class ConstraintBindingTest
         Assert.Equal(ConstraintKind.TypeIdentity, clause.BoundConstraint!.Kind);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmConstraintPassesReusePropositionsAndFactStorage()
     {
@@ -255,7 +256,7 @@ public class ConstraintBindingTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         if (!allowParserErrors)
         {
-            Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Empty(TestDiagnostics.Of(c));
         }
 
         return c;

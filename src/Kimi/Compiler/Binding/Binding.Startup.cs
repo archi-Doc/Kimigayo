@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -126,10 +127,24 @@ public sealed partial class Binding
     /// <summary>Publishes startup diagnostics only when the caller commits to an output kind.</summary>
     public void ReportStartupDiagnostics()
     {
+        this.compilation.Diagnostics.Invalidate(DiagnosticPartition.Startup);
         for (var i = 0; i < this.startupIssues.Count; i++)
         {
             var issue = this.startupIssues[i];
-            issue.Node.AddDiagnostic(issue.Code);
+            if (issue.Code == DiagnosticCode.InvalidStartupMain_Kd && issue.Node is FunctionKoto { BoundSymbol.Type: null, ReturnType: { BindingState: not BindingState.Resolved } result })
+            {
+                // Whether main returns Unit cannot be decided when its written result Type failed.
+                issue.Node.ReportDerived(DiagnosticRequirement.Startup, this.CauseKeys(result));
+            }
+            else if (issue.Code == DiagnosticCode.MissingStartupBody_Kd && this.compilation.Kotonoha.OmittedDeclarations is { Count: > 0 } omitted)
+            {
+                // The member set is incomplete where the parser skipped a declaration; whether a startup body exists rests on those Errors.
+                issue.Node.ReportDerived(DiagnosticRequirement.Startup, [.. omitted]);
+            }
+            else
+            {
+                issue.Node.Report(DiagnosticRequirement.Startup, issue.Code);
+            }
         }
     }
 

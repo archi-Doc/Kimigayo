@@ -6,6 +6,32 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>
+    /// Tests whether the bare acquisition of a pair-layer Place <c>s/T</c> has a finite conditional plan (SPEC 8.9): every admitted
+    /// case either Copies (shared references, raw pointers, and an owner of a proven-Copy Type) or Reborrows in its own Semantics
+    /// (an exclusive reference), and at least one case Reborrows.
+    /// </summary>
+    /// <param name="type">The stored Type of the Place.</param>
+    /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
+    /// <returns><see langword="true"/> when such a plan exists.</returns>
+    internal bool HasConditionalReborrowPlan(BoundType type, Koto node)
+    {
+        const SemanticsMask Exclusive = SemanticsMask.Uniq | SemanticsMask.ObjUniq;
+        if (!TryPairLayer(type, out var whole, out var target))
+        {
+            return false;
+        }
+
+        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
+        var copyCases = admitted & ~Exclusive;
+        if ((admitted & Exclusive) == 0 || (copyCases & ~(SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw)) != 0)
+        {
+            return false;
+        }
+
+        return (copyCases & SemanticsMask.Owner) == 0 || this.ProveCopy(target, node) == ConstraintProof.Proven;
+    }
+
     /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.7).</summary>
     private static bool SemanticsPremise(BoundConstraint constraint, BoundType whole)
         => constraint.Kind switch
@@ -242,7 +268,7 @@ public sealed partial class Binding
                 // An invalid required declaration invalidates the implementing Type.
                 // A path-local witness failure must preserve independent conformances.
                 var previous = implementation.BindingState;
-                Fail(implementation, failed.BindingFailure);
+                this.Fail(implementation, failed.BindingFailure);
                 changed |= previous != implementation.BindingState;
             }
 
@@ -260,7 +286,7 @@ public sealed partial class Binding
                     if (InvalidDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
-                        Fail(contract, BindingFailure.UnsatisfiedConstraint);
+                        this.Fail(contract, BindingFailure.UnsatisfiedConstraint);
                         changed |= previous != contract.BindingState;
                         break;
                     }
@@ -352,14 +378,14 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Refuted)
         {
-            Fail(use, BindingFailure.UnsatisfiedConstraint);
+            this.Fail(use, BindingFailure.UnsatisfiedConstraint);
         }
         else if (proof == ConstraintProof.Unknown)
         {
             // The provisional pass can gain bindings/conformance evidence across the Mod boundary.
             if (mode == BindingMode.Final)
             {
-                Fail(use, BindingFailure.UnprovenConstraint);
+                this.Fail(use, BindingFailure.UnprovenConstraint);
             }
             else if (use.BindingState != BindingState.Invalid)
             {
@@ -410,7 +436,7 @@ public sealed partial class Binding
             // Without an Origin slot, no borrow binding can be admitted; owning objects need no Origin.
             return (admitted & SemanticsMask.Borrow) == 0 &&
                 ((admitted & SemanticsMask.Object) == 0 || this.HasValueRole(type, scope, true)) &&
-                ((admitted & (SemanticsMask.Owner | SemanticsMask.Unsafe)) == 0 || this.HasValueRole(type, scope, false));
+                ((admitted & (SemanticsMask.Owner | SemanticsMask.Raw)) == 0 || this.HasValueRole(type, scope, false));
         }
 
         return false;
@@ -442,7 +468,7 @@ public sealed partial class Binding
         {
             return true;
         }
-        else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Unsafe, scope))
+        else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Raw, scope))
         {
             return true;
         }

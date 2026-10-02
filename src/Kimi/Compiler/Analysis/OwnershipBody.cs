@@ -5,11 +5,12 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipBody
 {
     // One bit lane per PlaceState flag, in flag order. A block input state is Lanes * words ulongs.
-    private const int Lanes = 4;
+    private const int Lanes = 5;
     private const int MustLane = 0;
     private const int MayLane = 1;
     private const int MovedLane = 2;
     private const int AssignedLane = 3;
+    private const int OwnedLane = 4;
 
     private int words;
     private int blockCount;
@@ -39,7 +40,7 @@ public sealed partial class OwnershipBody
         this.Reachable.AsSpan(0, count).Clear();
         this.PartitionBlocks(count);
         var blocks = this.blockCount;
-        Grow(ref this.BlockStates, checked(blocks * width));
+        Grow(ref this.BlockStates, OwnershipStorage.Cells(blocks, width, 64, "flow states"));
         Grow(ref this.Scratch, width);
         Grow(ref this.BlockReachable, blocks);
         Grow(ref this.BlockQueued, blocks);
@@ -64,9 +65,12 @@ public sealed partial class OwnershipBody
 
     private static void Grow<T>(ref T[] array, int length)
     {
+        var checkedLength = OwnershipStorage.Cells(length, 1, System.Runtime.CompilerServices.Unsafe.SizeOf<T>() * 8, "ownership storage");
         if (array.Length < length)
         {
-            Array.Resize(ref array, Math.Max(length, Math.Max(16, array.Length * 2)));
+            var capacity = Math.Max(checkedLength, Math.Max(16L, (long)array.Length * 2));
+            var maximum = Math.Min(Array.MaxLength, OwnershipStorage.ByteLimit / System.Runtime.CompilerServices.Unsafe.SizeOf<T>());
+            Array.Resize(ref array, (int)Math.Min(capacity, maximum));
         }
     }
 
@@ -240,6 +244,17 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.CheckDictionaryKey:
+            case OwnershipOperationKind.StoreDictionaryEntry:
+                this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
+                this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
+                if (operation.Kind == OwnershipOperationKind.StoreDictionaryEntry)
+                {
+                    var value = this.OperationSteps[index];
+                    this.CheckInitialized(operation, value, this.CompleteState(value));
+                }
+
+                break;
             case OwnershipOperationKind.UpdateBorrowed:
                 this.CheckInitialized(operation, (int)this.Values[index].Constant, this.CompleteState((int)this.Values[index].Constant));
                 this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
@@ -327,6 +342,10 @@ public sealed partial class OwnershipBody
 
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.StoreDictionaryEntry:
+                this.Move(operation.Input);
+                this.Move(this.OperationSteps[index]);
+                break;
             case OwnershipOperationKind.DecomposeCase:
                 var decomposition = this.DecompositionStorage[this.OperationSteps[index]];
                 this.Move(place);
@@ -351,6 +370,7 @@ public sealed partial class OwnershipBody
                 this.Clear(place, MayLane);
                 this.Clear(place, MovedLane);
                 this.Clear(place, AssignedLane);
+                this.Clear(place, OwnedLane);
                 if (this.moveRoots[place] >= 0)
                 {
                     this.SetPathState(this.moveRoots[place], false, true);
@@ -378,6 +398,7 @@ public sealed partial class OwnershipBody
                     // Keep the possible Copy's initialization, but no later use may rely on it.
                     this.Clear(place, MustLane);
                     this.Set(place, MovedLane);
+                    this.Clear(place, OwnedLane); // A Copy remnant owns nothing that its destruction could affect.
                 }
 
                 if (operation.Input >= 0)
@@ -425,6 +446,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Cleanup:
                 this.Clear(place, MustLane);
                 this.Clear(place, MayLane);
+                this.Clear(place, OwnedLane);
                 if (this.moveRoots[place] >= 0)
                 {
                     this.SetPathState(this.moveRoots[place], false, cleanup: true);
@@ -442,7 +464,8 @@ public sealed partial class OwnershipBody
         return (PlaceState)(((scratch[word] & bit) != 0 ? (int)PlaceState.MustInit : 0) |
             ((scratch[this.words + word] & bit) != 0 ? (int)PlaceState.MayInit : 0) |
             ((scratch[(MovedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayMoved : 0) |
-            ((scratch[(AssignedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayAssigned : 0));
+            ((scratch[(AssignedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayAssigned : 0) |
+            ((scratch[(OwnedLane * this.words) + word] & bit) != 0 ? (int)PlaceState.MayOwn : 0));
     }
 
     private void Initialize(int place)
@@ -451,6 +474,7 @@ public sealed partial class OwnershipBody
         this.Set(place, MayLane);
         this.Clear(place, MovedLane);
         this.Set(place, AssignedLane);
+        this.Set(place, OwnedLane);
         if (place < this.Places.Count && this.moveRoots[place] >= 0)
         {
             this.SetPathState(this.moveRoots[place], true);
@@ -463,6 +487,7 @@ public sealed partial class OwnershipBody
         this.Clear(place, MustLane);
         this.Clear(place, MayLane);
         this.Set(place, MovedLane);
+        this.Clear(place, OwnedLane);
         if (place < this.Places.Count && this.moveRoots[place] >= 0)
         {
             this.SetPathState(this.moveRoots[place], false);

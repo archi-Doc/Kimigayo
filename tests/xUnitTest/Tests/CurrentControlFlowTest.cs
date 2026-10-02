@@ -11,12 +11,12 @@ public class CurrentControlFlowTest
 {
     [Theory]
     [InlineData("let block = 1\nlet to = block\nlet result = do => to")]
-    [InlineData("let result = work: do\n    if ready => exit to work: 1\n    exit to work: 2")]
-    [InlineData("outer: loop => exit to outer\nfor item in items => use(item)\nwhile ready => tick()")]
+    [InlineData("let result = label work: do\n    if ready => exit to work 1\n    exit to work 2")]
+    [InlineData("label outer: loop => exit to outer\nfor item in items => use(item)\nwhile ready => tick()")]
     [InlineData("func f() => defer => unsafe => release()")]
     [InlineData("func f()\n    require ready else => return\n    defer\n        finish()")]
-    [InlineData("let v = selection: match flag\n    true\n        yield to selection: 1\n    false => 2")]
-    [InlineData("let v = choice: if flag\n    for x in xs => yield to choice: x\n    yield\nelse => ()")]
+    [InlineData("let v = label selection: match flag\n    true\n        yield to selection 1\n    false => 2")]
+    [InlineData("let v = label choice: if flag\n    for x in xs => yield to choice x\n    yield\nelse => ()")]
     [InlineData("let v = do => match flag\n    true\n        yield 1\n    false => 2")]
     [InlineData("if (do => true) => ()")]
     [InlineData("let v = ((do\n    1\n))")]
@@ -32,7 +32,7 @@ public class CurrentControlFlowTest
         Parse(output);
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha))!;
         restored.OnDeserialized(Compilation.CreateForTest());
-        Assert.Empty(restored.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(restored));
     }
 
     [Theory]
@@ -51,12 +51,12 @@ public class CurrentControlFlowTest
     [InlineData("if (let flag = true) => ()")]
     [InlineData("let result = unsafe => read()")]
     [InlineData("let result = require ready else => return")]
-    [InlineData("loop => exit to target: inner: do => 1")]
+    [InlineData("loop => exit to target: label inner: do => 1")]
     public void RejectsObsoleteAndAmbiguousSyntax(string source)
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
     }
 
     [Theory]
@@ -64,12 +64,12 @@ public class CurrentControlFlowTest
     [InlineData("func f(flag: bool)\n    if flag => 1 else => \"text\"")]
     [InlineData("func f(flag: bool)\n    match flag\n        true => 1\n        false => \"text\"")]
     [InlineData("let v = do => 1")]
-    [InlineData("let v = work: do\n    exit to work: 1")]
+    [InlineData("let v = label work: do\n    exit to work 1")]
     [InlineData("let v = loop => exit 1")]
     [InlineData("let v = loop\n    continue\n    exit 1")]
     [InlineData("func f(flag: bool) -> i32\n    return if flag\n        yield 1\n    else => 2")]
     [InlineData("func f(flag: bool) -> i64\n    let big: i64 = 10\n    return if flag => 1 else => big")]
-    [InlineData("let v = choice: if true\n    loop => yield to choice: 1\nelse => 2")]
+    [InlineData("let v = label choice: if true\n    loop => yield to choice 1\nelse => 2")]
     [InlineData("let large: i64 = 10\nlet result = if true => 1 else => large + 1")]
     [InlineData("let large: i64 = 10\nlet result = if true => 1 + large else => 1")]
     public void BindsCurrentResultRules(string source)
@@ -83,7 +83,7 @@ public class CurrentControlFlowTest
 
     [Theory]
     [InlineData("loop => exit 1")]
-    [InlineData("work: do => exit to work: 1")]
+    [InlineData("label work: do => exit to work 1")]
     [InlineData("let v = if true => 1")]
     [InlineData("let v = loop\n    continue\n    exit 1\n    exit \"x\"")]
     [InlineData("func f() => return 1")]
@@ -102,7 +102,7 @@ public class CurrentControlFlowTest
     [Fact]
     public void UnreachableExitAndBlockedCleanupRetainTheirTypes()
     {
-        var c = Parse("let a = loop\n    continue\n    exit 1\nlet b = work: do\n    defer => loop => ()\n    exit to work: 2");
+        var c = Parse("let a = loop\n    continue\n    exit 1\nlet b = label work: do\n    defer => loop => ()\n    exit to work 2");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
@@ -135,13 +135,13 @@ public class CurrentControlFlowTest
     [InlineData("func f()\n    let text = \"old\"\n    if false => _ = text@move\n    Console.writeLine(text)", false)]
     [InlineData("func f()\n    let n: i32\n    while true\n        n = 1\n        exit\n    let value = n", false)]
     [InlineData("func f()\n    let n: i32\n    loop\n        n = 1\n        exit\n    let value = n", true)]
-    [InlineData("func f() -> string\n    return (work: do\n        let text = \"value\"\n        defer => Console.writeLine(\"cleanup\")\n        exit to work: text@move\n    )", true)]
+    [InlineData("func f() -> string\n    return (label work: do\n        let text = \"value\"\n        defer => Console.writeLine(\"cleanup\")\n        exit to work text@move\n    )", true)]
     [InlineData("func f()\n    require true else => defer => loop => ()", true)]
     [InlineData("func f()\n    require true else => defer => ()", false)]
     [InlineData("func f() -> i32 => unsafe => return 1", true)]
     [InlineData("func f()\n    defer => exit", true)]
     [InlineData("func f()\n    loop => exit ()", true)]
-    [InlineData("func f()\n    choice: if true => yield to choice: ()", true)]
+    [InlineData("func f()\n    label choice: if true => yield to choice ()", true)]
     public void CleanupAndConservativePathsPreserveOwnership(string source, bool valid)
     {
         var c = Parse(source);
@@ -150,18 +150,18 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
-    [InlineData("func f() => 42", "effect-free")]
-    [InlineData("func isAdult(age: i32) => age >= 18", "effect-free")]
-    [InlineData("func f() => while true => ()", "Use loop")]
-    [InlineData("func compute() -> i32 => 1\nlet x = do\n    compute()", "Unit was inferred")]
-    [InlineData("func compute() -> i32 => 1\nlet x = do\n    if true => compute() else => compute()", "Unit was inferred")]
-    public void ReportsSpecifiedWarnings(string source, string message)
+    [InlineData("func f() => 42", Kimi.DiagnosticCode.DiscardedValue_Kd)]
+    [InlineData("func isAdult(age: i32) => age >= 18", Kimi.DiagnosticCode.DiscardedValue_Kd)]
+    [InlineData("func f() => while true => ()", Kimi.DiagnosticCode.StaticWhileTrue_Kd)]
+    [InlineData("func compute() -> i32 => 1\nlet x = do\n    compute()", Kimi.DiagnosticCode.DiscardedTail_Kd)]
+    [InlineData("func compute() -> i32 => 1\nlet x = do\n    if true => compute() else => compute()", Kimi.DiagnosticCode.DiscardedTail_Kd)]
+    public void ReportsSpecifiedWarnings(string source, Kimi.DiagnosticCode code)
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
-        Assert.Contains(flow.Warnings, warning => warning.Message.Contains(message));
+        Assert.Contains(flow.Warnings, warning => warning.Code == code);
         var count = flow.Warnings.Count;
         Assert.Equal(count, c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings.Count);
     }
@@ -194,7 +194,7 @@ public class CurrentControlFlowTest
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, source + "\n" + string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.Message)));
+        Assert.True(TestDiagnostics.Of(c).Length == 0, source + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.Message)));
         return c;
     }
 

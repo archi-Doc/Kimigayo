@@ -25,7 +25,7 @@ public class NormalizedConstraintProofBindingTest
     public void EquivalentRequirementSpellingsUseTheSameEvidence(string evidence, string requirement, ConstraintProof expected)
     {
         var c = MinimalEmissionTest.Analyze(Head + "func context<T>(value: T)\n    T is " + evidence + "\n    ()\nfunc query<T>(value: T)\n    T is " + requirement + "\n    ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         AssertProof(c, expected);
         c.Bind();
         AssertProof(c, expected);
@@ -42,7 +42,7 @@ public class NormalizedConstraintProofBindingTest
     public void DependentCallsUseEquivalentCompoundPremises(string evidence, string requirement)
     {
         var c = MinimalEmissionTest.Analyze(Head + "func take<T>()\n    T is " + requirement + "\n    ()\nfunc caller<U>()\n    U is " + evidence + "\n    take<U>()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(Assert.IsType<InvocationKoto>(Function(c, "caller").Body!.Items.Single()).BoundCall);
         var restored = CompilationTestHelper.Reload(c);
@@ -86,6 +86,7 @@ public class NormalizedConstraintProofBindingTest
         AssertProof(c, ConstraintProof.Proven);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmNormalizedProofsAndCallsAllocateNothing()
     {

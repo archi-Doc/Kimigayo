@@ -9,6 +9,7 @@ This normative profile is part of §22. It owns UTF-8 formatting, the standard b
 ```kimi
 contract BufferWriter
     func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>
+        effect confined
 
 contract Utf8Format
     func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -24,18 +25,18 @@ The following declarations are required. The default Kimi alias makes `Text` vis
 | --- | --- | --- |
 | `Kimi` | `Utf8Format`, `BufferWriter` | Static Contracts above |
 | `Kimi` | `BufferFull` | Ordinary, stateless Copy struct; public `init()` |
-| `Kimi` | `WriteWindow {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload (§8.4.7.2) |
-| `Kimi` | `Utf8Writer {target}` | Verified intrinsic, Non-Copy; covariant `target`, required Loan `uniq`; opts out of ObjectPayload |
-| `Kimi.Text` | `FixedBuffer {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload |
+| `Kimi` | `WriteWindow {source}` | Non-Copy struct with a `Loan<uniq/u8 during source>` Field, so `source` is covariant with required Loan `uniq`; opts out of ObjectPayload (§8.4.7.2) |
+| `Kimi` | `Utf8Writer {target}` | Non-Copy struct with a `Loan<uniq/u8 during target>` Field, so `target` is covariant with required Loan `uniq`; opts out of ObjectPayload |
+| `Kimi.Text` | `FixedBuffer {source}` | Non-Copy struct with a `Loan<uniq/u8 during source>` Field, so `source` is covariant with required Loan `uniq`; opts out of ObjectPayload |
 | `Kimi.Text` | `HeapBuffer` | Ordinary Non-Copy struct owning a growable allocation |
 | `Kimi.Text` | `Utf8Slice {source}` | Ordinary Copy struct with a private `Slice<u8>`; required Loan `ref` |
 | `Kimi.Text` | `InvalidUtf8` | Ordinary, stateless Copy struct; public `init()` |
 
-Only the error types expose initializers; the other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5), and neither raw pointers nor a source-declared phantom Origin can reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback. The three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads; the no-allocation requirement is a separate requirement on the operations.
+Only the error types expose initializers; the other types are obtained through the operations below. Their slot properties follow from their `Loan<T>` Fields (§15.3.5); the Loan values are formed by the compiler-known creation operations `Text.fixed`, `Text.writer` and `reserve`. Window, view and adapter management performs no heap allocation, reference-count update or management callback. The three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads; the no-allocation requirement is a separate requirement on the operations.
 
 ### 1.2. Effects and erasure
 
-`BufferWriter.reserve` may use only authority supplied through `self`; it cannot acquire access to mutable state from the ambient environment. Conformance checking (§8.4.5) rejects an implementation whose transitive effect summary includes access through a mutable static Field, including called functions, lazy initialization or destruction, or a call with unknown effects. Access through a borrowed Field of `self` uses ordinary Loan checking, even when its referent has static storage.
+`BufferWriter.reserve` declares the `confined` bound (§8.4.10.2). Because `minimum` carries no authority, an implementation may use only authority supplied through `self` and cannot acquire access to mutable state from the ambient environment. Erased `Utf8Writer` reservations are checked with this bound (§8.4.10.4).
 
 `Utf8Writer` erases the concrete Writer Type. Standard `FixedBuffer` and `HeapBuffer` reservations use direct calls, including inside a non-generic `format` body, and a user Writer uses one function-pointer call per reservation. The implementation may inline capacity checks and share growth and copy routines. Different Writer Types do not require separate `format` instances.
 
@@ -190,7 +191,7 @@ Only a contiguous prefix known to be valid may be recorded as validated, using e
 
 Appending only through an adapter to an empty or validated buffer needs no further validation. `validate()` does not reset adapter failure. Safe code, together with unsafe operations that satisfy their existing obligations, cannot expose uninitialized bytes or invalid UTF-8 as a string/view merely by violating formatting or Window laws. This does not constrain user side effects, termination or Abort.
 
-FixedBuffer, WriteWindow and Utf8Writer have no `deinit` and do not observe their borrow at destruction. Their Loans may end after last use, unless a later use or `defer` keeps them live. HeapBuffer frees its allocation once. FixedBuffer never frees its source. General destructor rules are unchanged.
+FixedBuffer, WriteWindow and Utf8Writer have no `drop` and do not observe their borrow at destruction. Their Loans may end after last use, unless a later use or `defer` keeps them live. HeapBuffer frees its allocation once. FixedBuffer never frees its source. General destructor rules are unchanged.
 
 ### 3.4. Optional in-place shrinking
 
@@ -217,15 +218,20 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 | Value | Representation |
 | --- | --- |
 | Integer | ASCII decimal, `-` only for negatives, no redundant leading zeros; includes the minimum signed value. |
+| `Wrapping<T>` | That of its value as `T`: `Wrapping<u8>` 255 is `255`, and `Wrapping<i8>` -1 is `-1`. |
 | `bool` | `true` or `false`. |
 | `char` | UTF-8 encoding of the Unicode scalar. |
 | Unit | `()`. |
 | `string`, `Utf8Slice` | Their bytes, including NUL. |
 | Floating point | The rules below, independent of locale. |
+| `FromEnd<T>` | `^` followed by the offset's integer representation: `^1`, and `^-1` for `^(-1)`. |
+| `Start`, `End` | The empty string: the boundary that range syntax omits. |
+| `Range<S, E>`, `ClosedRange<S, E>` | The start, then `..` or `..=`, then the end, each boundary in its own representation: `1..^1`, `..=3`, `2..`. |
+| `ResolvedRange` | That of the `Range<isize, isize>` with the same boundaries: `1..4`. |
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance.
+Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance. The position and range Types conform through their Kimi implementations (§4.6.2–§4.6.4), so `"\(1..^1)"` produces `1..^1`.
 
 ## 5. Interpolation and internal adapters
 
@@ -239,6 +245,7 @@ Borrow Types do not forward conformance; the argument adaptation of §5.2 select
 | `i64` / `u64` | 20 / 20 |
 | `i128` / `u128` | 40 / 39 |
 | `isize` / `usize` | Same as the pointer-width integer Type. |
+| `Wrapping<T>` | Same as `T`. |
 | `bool` / `char` / Unit | 5 / 4 / 2 |
 | `f32` / `f64` | 17 / 24 |
 

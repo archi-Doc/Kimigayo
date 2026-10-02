@@ -39,11 +39,11 @@ public class TestExecutionAnalysisTest
     [Theory]
     [InlineData("$expect(true)")]
     [InlineData("defer => $expect(false)")]
-    [InlineData("$require(true, message: (message: do => exit to message: \"message\"))")]
+    [InlineData("$require(true, message: (label message: do => exit to message \"message\"))")]
     [InlineData("$expect((if true => return else => false))")]
     [InlineData("$expect((do => return))")]
     [InlineData("$expect(false, message: $abort(\"message\"))")]
-    [InlineData("$expect(false, message: (message: do\n        $expect(false)\n        exit to message: \"message\"\n    ))")]
+    [InlineData("$expect(false, message: (label message: do\n        $expect(false)\n        exit to message \"message\"\n    ))")]
     [InlineData("let f = func () -> ()\n        $expect(true)\n    f()")]
     [InlineData("func local()\n        $expect(true)\n    local()")]
     public void VerificationPreservesBodiesAndTransfers(string body)
@@ -65,7 +65,7 @@ public class TestExecutionAnalysisTest
     public void VerificationRejectsInvalidSyntaxAndEscapingMessages(string body)
     {
         var c = Analyze("#Test\nfunc sample()\n    " + body);
-        Assert.True(c.Kotonoha.HasSourceErrors || !c.Binding.Result.IsComplete);
+        Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha) || !c.Binding.Result.IsComplete);
     }
 
     [Theory]

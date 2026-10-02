@@ -35,15 +35,15 @@ public class SemicolonParseTest
     public void ReportsDedicatedErrorAtEverySemicolon(string source)
     {
         var tree = Parse(source);
-        var diagnostics = tree.DiagnosticCollection.GetArray()
-            .Where(x => x.Entry.Name == nameof(DiagnosticCode.SemicolonNotAllowed_Kd)).ToArray();
+        var diagnostics = TestDiagnostics.Of(tree)
+            .Where(x => x.Code == nameof(DiagnosticCode.SemicolonNotAllowed_Kd)).ToArray();
         var positions = Enumerable.Range(0, source.Length).Where(i => source[i] == ';').ToArray();
         Assert.Equal(positions.Length, diagnostics.Length);
         Assert.Equal(positions, diagnostics.Select(x => x.Span.Start));
         Assert.All(diagnostics, x =>
         {
             Assert.Equal(1, x.Span.Length);
-            Assert.Equal(DiagnosticSeverity.Error, x.Entry.Severity);
+            Assert.Equal(DiagnosticSeverity.Error, x.Severity);
         });
     }
 
@@ -54,7 +54,7 @@ public class SemicolonParseTest
     public void RecoversFollowingDeclarationsAndStatements(string source)
     {
         var tree = Parse(source);
-        Assert.All(tree.DiagnosticCollection.GetArray(), x => Assert.Equal(nameof(DiagnosticCode.SemicolonNotAllowed_Kd), x.Entry.Name));
+        Assert.All(TestDiagnostics.Of(tree), x => Assert.Equal(nameof(DiagnosticCode.SemicolonNotAllowed_Kd), x.Code));
         AssertItems(tree.GeneratedFunction!.Body!.Items);
 
         var compilation = Compilation.CreateForTest();
@@ -65,7 +65,7 @@ public class SemicolonParseTest
         var text = restored.GeneratedFunction.ToString();
         Assert.DoesNotContain(";", text);
         var reparsed = Parse(text);
-        Assert.Empty(reparsed.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(reparsed));
         AssertItems(reparsed.GeneratedFunction!.Body!.Items);
     }
 
@@ -73,7 +73,7 @@ public class SemicolonParseTest
     public void RecoversInsideAnIndentedBlock()
     {
         var tree = Parse("loop\n    var first = 1;var second = 2\n    next()");
-        Assert.Equal(nameof(DiagnosticCode.SemicolonNotAllowed_Kd), Assert.Single(tree.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.SemicolonNotAllowed_Kd), Assert.Single(TestDiagnostics.Of(tree)).Code);
         AssertItems(Assert.IsType<LoopKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).Body.Items);
     }
 
@@ -85,7 +85,7 @@ public class SemicolonParseTest
     [InlineData("// ;\nwork()")]
     [InlineData("/* ; */ work()")]
     public void AllowsSemicolonsInLiteralContentAndComments(string source)
-        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
+        => Assert.Empty(TestDiagnostics.Of(Parse(source)));
 
     private static void AssertItems(IReadOnlyList<Koto> items)
     {

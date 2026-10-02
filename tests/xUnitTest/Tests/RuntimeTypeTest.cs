@@ -85,7 +85,7 @@ public class RuntimeTypeTest
     [InlineData("Dog", "x")]
     [InlineData("ref/Dog", "x")]
     [InlineData("ref/obj/Dog", "x")]
-    [InlineData("unsafe/Dog", "x")]
+    [InlineData("raw/Dog", "x")]
     [InlineData("(i32, i32)", "x")]
     [InlineData("Choice", "x")]
     public void NonObjectOperandsAreRejected(string type, string operand)
@@ -251,7 +251,7 @@ public class RuntimeTypeTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, $"struct Dog\nfunc f(x: objref/Dog) -> bool => x is {target}");
-        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length != 0 || !c.Bind().IsComplete);
+        Assert.True(TestDiagnostics.Of(c).Length != 0 || !c.Bind().IsComplete);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class RuntimeTypeTest
     [Fact]
     public void RequiredCleanupCanStopAValidObjectTypedOperand()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (work: do\n    defer => loop => ()\n    exit to work: x\n) is Dog");
+        var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (label work: do\n    defer => loop => ()\n    exit to work x\n) is Dog");
         AssertBound(c);
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
         Assert.Empty(flow.Issues);
@@ -306,7 +306,7 @@ public class RuntimeTypeTest
         var source = "struct Dog\nfunc " + name + "(x: objref/Dog)\n    x is Dog\n    ()";
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.NotEmpty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(c));
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
         var parenthesized = CompilationTestHelper.ParseSuccess(source.Replace("    x is Dog", "    (x is Dog)", StringComparison.Ordinal));
@@ -366,6 +366,7 @@ public class RuntimeTypeTest
         Assert.NotNull(Test(refinement).BoundRuntimeTest);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1)]
     [InlineData(32)]

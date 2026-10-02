@@ -46,25 +46,20 @@ public class AggregateEmissionTest
         }
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndEmissionAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze("let value = (\"a\", (2, \"b\"))\nlet moved = value@move\nlet array: [2 of i32] = [1, 2]\nlet copied = array");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
         var valid = true;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                valid &= c.Ownership.Analyze().IsVerified;
+                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(valid);
         Assert.Equal(0, allocated);
     }

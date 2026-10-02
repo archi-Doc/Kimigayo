@@ -26,7 +26,11 @@ internal static class ReferenceTypes
     internal static bool IsDictionary(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.Dictionary;
 
-    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) || IsDictionary(type) ||
+    // SPEC 4.6.5: a borrowed Slice is a reference to its Copy handle storage; the elements keep their own source Loan.
+    internal static bool IsSlice(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+        && type.Components[0].Kind == BoundTypeKind.Slice;
+
+    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) || IsDictionary(type) || IsSlice(type) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.String)) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||
@@ -35,10 +39,10 @@ internal static class ReferenceTypes
         // SPEC 8.4.3, 8.1.1: an associated projection, a pair target or a Semantics application stands for a complete Type like a
         // parameter; each instance checks its substitution.
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && ScalarTypes.Supports(type.Components[0])) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && (ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0]))) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
             (type.Components[0].Kind == BoundTypeKind.Parameter ||
-                (ScalarTypes.Supports(type.Components[0]) && type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection })));
+                ((ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])) && type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection or OriginKind.Static or OriginKind.Anchor })));
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
 
@@ -49,8 +53,11 @@ internal static class ReferenceTypes
     internal static bool IsScalarBorrow(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && ScalarTypes.Supports(type.Components[0]);
 
+    // SPEC 3.4: a safe ref/T or uniq/T, whatever its referent and representation as an argument.
+    internal static bool IsReference(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+
     // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
-    internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 };
+    internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
 
     internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type) || IsPointer(type);
 

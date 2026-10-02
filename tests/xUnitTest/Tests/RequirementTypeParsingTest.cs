@@ -72,7 +72,7 @@ public class RequirementTypeParsingTest
     public void CallsDischargeTupleIdentityRequirements(string requirement, string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze($"func identity<T>(value: T) -> T\n    T is {requirement}\n    return value\nlet result = identity({argument})");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
@@ -91,7 +91,7 @@ public class RequirementTypeParsingTest
     public void NewRequirementFormsRetainAccessAcrossRebindingAndReload(string requirement, string contractAccess, bool valid)
     {
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is {requirement}\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(valid, c.Bind().IsComplete);
         if (!valid)
@@ -113,7 +113,7 @@ public class RequirementTypeParsingTest
     public void ConstructedQualifierCannotHideARestrictedArgument()
     {
         var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\nstruct Hidden\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public func use<T>(value: T)\n        T is Box<Hidden>.C.Element\n        ()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
     }
@@ -131,11 +131,12 @@ public class RequirementTypeParsingTest
     {
         var source = $"func use<T>(value: T)\n    T is {requirement}\n    ()";
         var tree = ParseTestHelper.Parse(source);
-        Assert.True(tree.DiagnosticCollection.HasErrors);
-        Assert.All(tree.DiagnosticCollection.GetArray(), x => Assert.InRange(x.Span.Start, 0, source.Length));
+        Assert.True(tree.Compilation.Diagnostics.HasErrors);
+        Assert.All(TestDiagnostics.Of(tree), x => Assert.InRange(x.Span.Start, 0, source.Length));
         Assert.False(MinimalEmissionTest.Analyze(source).Emission.Validate(out _));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTupleAndConstructedProjectionBindingAllocatesNothing()
     {

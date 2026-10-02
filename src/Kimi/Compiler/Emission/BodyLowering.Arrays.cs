@@ -12,51 +12,13 @@ internal sealed partial class BodyLowering
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelpers = new();
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelperCache = new();
     private bool arrayRuntimeUsed;
-    private int[] arrayIterators = [];
-    private int[] arrayIterationPlaces = [];
-
-    private bool PrepareArrayIterators(OwnershipBody body, out string? failure)
-    {
-        failure = null;
-        Grow(ref this.arrayIterators, body.Places.Count);
-        this.arrayIterators.AsSpan(0, body.Places.Count).Fill(-1);
-        Grow(ref this.arrayIterationPlaces, body.Places.Count);
-        this.arrayIterationPlaces.AsSpan(0, body.Places.Count).Clear();
-        foreach (var sequence in body.Sequences)
-        {
-            if (sequence.Kind is SequenceOperation.ArrayMoveRead or SequenceOperation.DictionaryMoveRead && (uint)sequence.Operation < (uint)body.Operations.Count &&
-                body.Operations[sequence.Operation] is { Kind: OwnershipOperationKind.Produce, Source: ForKoto loop } produce &&
-                (uint)produce.Place < (uint)body.Places.Count)
-            {
-                this.arrayIterationPlaces[produce.Place] = 1;
-                var slot = sequence.Element < 0 ? 0 : sequence.Element;
-                if ((uint)slot < (uint)loop.Bindings.Count && loop.Bindings[slot].BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var binding))
-                {
-                    this.arrayIterationPlaces[binding] = 1;
-                }
-            }
-
-            if (sequence.Kind != SequenceOperation.ArrayIterator)
-            {
-                continue;
-            }
-
-            if ((uint)sequence.Receiver >= (uint)body.Places.Count || (uint)sequence.Operation >= (uint)body.Operations.Count ||
-                this.arrayIterators[sequence.Receiver] >= 0 || body.Places[sequence.Receiver] is not { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Type.Kind: BoundTypeKind.Array } ||
-                body.Operations[sequence.Operation].Source is not ForKoto { SharedIterable: null, IsTupleBinding: false })
-            {
-                return Fail("An owning Array iterator requires a private acquired handle.", out failure);
-            }
-
-            this.arrayIterators[sequence.Receiver] = sequence.Operation;
-        }
-
-        return true;
-    }
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
         internal bool IsScalar => this.Layout is null && !this.IsString && !ReferenceEquals(this.Type, BoundType.Unit);
+
+        // A zero-sized value (Unit or an empty aggregate) has no slot, so its helpers take no value or result pointer.
+        internal bool IsZeroSized => this.Value.Layout.Size == 0;
 
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
@@ -69,17 +31,25 @@ internal sealed partial class BodyLowering
             (body.Places[body.Constructions[this.payloadOwners[place]].Place].Type.Kind == BoundTypeKind.Array ||
              body.Places[body.Constructions[this.payloadOwners[place]].Place].Source is ArrayLiteralKoto { FillLength: not null });
 
-    // SPEC 4.5, 16.3.2: the drop helper that destroys an Array field's elements and releases its buffer with the containing struct.
-    private string? ArrayFieldDrop(BoundType array)
+    // SPEC 4.5, 16.3.2: the same recursive destruction applies in fields, payloads and collection slots.
+    private string? CollectionFieldDrop(BoundType collection)
     {
-        return array.Kind == BoundTypeKind.Array && array.Components.Count == 1 && this.TryGetArrayElement(array.Components[0], out var element)
-            ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name : null;
+        if (collection.Kind == BoundTypeKind.Array && collection.Components.Count == 1 && this.TryGetArrayElement(collection.Components[0], out var element))
+        {
+            return this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi.Name;
+        }
+
+        return collection.Kind == BoundTypeKind.Dictionary && collection.Components.Count == 2 &&
+            this.TryGetArrayElement(collection.Components[0], out var key) && this.TryGetArrayElement(collection.Components[1], out var value)
+            ? this.GetDictionaryHelper(DictionaryHelperKind.Drop, key, value).Abi.Name : null;
     }
 
-    private bool TryGetArrayElement(BoundType type, out ArrayElement element, bool allowEmpty = false)
+    // SPEC 4.5: every supported complete element Type has a recursive storage plan; a zero-sized element has stride zero,
+    // and its Array keeps the substitute buffer of the capacity routines.
+    private bool TryGetArrayElement(BoundType type, out ArrayElement element)
     {
         element = default;
-        if (allowEmpty && ReferenceEquals(type, BoundType.Unit))
+        if (ReferenceEquals(type, BoundType.Unit))
         {
             element = new(type, WindowsLowering.Unit, null, false);
             return true;
@@ -102,9 +72,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        // Nested handles and zero-sized elements wait for their own storage plans (PLAN P29).
-        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) ||
-            this.aggregateLayouts.Get(type) is not { } layout || (!allowEmpty && layout.Value.Layout.Stride <= 0))
+        if (ReferenceEquals(type, BoundType.Never) || this.aggregateLayouts.GetStored(type) is not { } layout)
         {
             return false;
         }
@@ -136,17 +104,14 @@ internal sealed partial class BodyLowering
         {
             ArrayHelperKind.Append => "__kimi_array_append_",
             ArrayHelperKind.Insert => "__kimi_array_insert_",
-            ArrayHelperKind.InsertIndex => "__kimi_array_insert_index_",
             ArrayHelperKind.Pop => "__kimi_array_pop_",
             ArrayHelperKind.Remove => "__kimi_array_remove_",
-            ArrayHelperKind.RemoveIndex => "__kimi_array_remove_index_",
             ArrayHelperKind.Place => "__kimi_array_place_",
             ArrayHelperKind.Clear => "__kimi_array_clear_",
-            ArrayHelperKind.Take => "__kimi_array_take_",
-            ArrayHelperKind.IteratorDrop => "__kimi_array_iterator_drop_",
             ArrayHelperKind.Swap => "__kimi_array_swap_",
             ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
             ArrayHelperKind.OwnStorage => "__kimi_array_own_",
+            ArrayHelperKind.OwnFixedStorage => "__kimi_fixed_own_",
             _ => "__kimi_array_drop_",
         };
         var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
@@ -156,22 +121,26 @@ internal sealed partial class BodyLowering
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
         var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
         var unit = WindowsLowering.Unit.ComputationType;
-        var indexParameter = kind is ArrayHelperKind.InsertIndex or ArrayHelperKind.RemoveIndex ? new AbiParameter("ptr", "index_value") : new("i64", "index");
+        var indexParameter = new AbiParameter("i64", "index");
         FunctionAbi abi = kind switch
         {
+            ArrayHelperKind.Append when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Insert or ArrayHelperKind.InsertIndex => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
+            ArrayHelperKind.Insert when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
+            ArrayHelperKind.Insert => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
             ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
             ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
-            ArrayHelperKind.Take => element.IsScalar
-                ? new(name, element.Value.ComputationType, [handle, location, length])
-                : new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
-            ArrayHelperKind.Remove or ArrayHelperKind.RemoveIndex => element.IsScalar
+            ArrayHelperKind.Remove => element.IsScalar
                 ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
+                : element.IsZeroSized
+                ? new(name, unit, [handle, indexParameter, location, length])
                 : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage when remainder!.Fields[0].Layout.Size == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
         var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
@@ -245,12 +214,11 @@ internal sealed partial class BodyLowering
                 break;
             case CompilerFunctionKind.ArrayAppend:
             case CompilerFunctionKind.ArrayInsert:
-            case CompilerFunctionKind.ArrayInsertIndex:
                 var insert = kind != CompilerFunctionKind.ArrayAppend;
-                callee = this.GetArrayHelper(kind == CompilerFunctionKind.ArrayInsertIndex ? ArrayHelperKind.InsertIndex : insert ? ArrayHelperKind.Insert : ArrayHelperKind.Append, element).Abi;
+                callee = this.GetArrayHelper(insert ? ArrayHelperKind.Insert : ArrayHelperKind.Append, element).Abi;
                 if (insert)
                 {
-                    if (!this.ArrayIndexArgument(library, body, id, kind == CompilerFunctionKind.ArrayInsertIndex, out var index))
+                    if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var index))
                     {
                         return Fail("Array insert index is unavailable at the call.", out failure);
                     }
@@ -263,7 +231,11 @@ internal sealed partial class BodyLowering
                     return Fail("Array element argument is not an initialized acquired value.", out failure);
                 }
 
-                this.callOperands.Add(value);
+                if (!element.IsZeroSized)
+                {
+                    this.callOperands.Add(value);
+                }
+
                 break;
             case CompilerFunctionKind.ArrayPop:
                 if (this.aggregateLayouts.Get(returnType) is not { Cases.Length: 2 } option || !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
@@ -275,15 +247,22 @@ internal sealed partial class BodyLowering
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
                 break;
             case CompilerFunctionKind.ArrayRemove:
-            case CompilerFunctionKind.ArrayRemoveIndex:
-                callee = this.GetArrayHelper(kind == CompilerFunctionKind.ArrayRemoveIndex ? ArrayHelperKind.RemoveIndex : ArrayHelperKind.Remove, element).Abi;
-                if (!this.ArrayIndexArgument(library, body, id, kind == CompilerFunctionKind.ArrayRemoveIndex, out var removed))
+                callee = this.GetArrayHelper(ArrayHelperKind.Remove, element).Abi;
+                if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var removed))
                 {
                     return Fail("Array remove index is unavailable at the call.", out failure);
                 }
 
                 this.callOperands.Add(removed);
-                if (element.IsScalar)
+                if (element.IsZeroSized)
+                {
+                    // A removed zero-sized value has no bytes and no slot: the helper returns nothing to place.
+                    if (!ReferenceTypes.StorageMatches(element.Type, returnType))
+                    {
+                        return Fail("Array remove result does not match its element Type.", out failure);
+                    }
+                }
+                else if (element.IsScalar)
                 {
                     if (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), element.Type) || !ReferenceEquals(returnType, element.Type))
                     {
@@ -341,14 +320,51 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var kind = plan.Target.CompilerFunction;
         var owning = kind == CompilerFunctionKind.StorageOwn;
-        if (kind == CompilerFunctionKind.StorageRelease)
+        if (kind == CompilerFunctionKind.StorageOwnFixed)
         {
-            return this.LowerStorageRelease(body, function, constants, directory, id, call, plan, out failure);
+            return this.LowerFixedStorageOwn(body, function, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit)
+        if (kind == CompilerFunctionKind.StorageDictionaryLayout)
         {
-            return this.LowerStorageCapability(body, function, id, call, plan, out failure);
+            return this.LowerDictionaryLayout(body, function, id, call, plan, out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StoragePlaceDictionaryEntry)
+        {
+            return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
+        }
+
+        if (kind is CompilerFunctionKind.StorageReserveDictionary or CompilerFunctionKind.StorageShrinkDictionary)
+        {
+            return this.LowerDictionaryCapacity(body, function, constants, directory, id, call, plan, out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StorageMissingDictionaryKey)
+        {
+            if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
+            {
+                return Fail("Missing Dictionary key failure requires the standard entry's forwarded caller location.", out failure);
+            }
+
+            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, WindowsLowering.MissingKeyReason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
+            function.Add(EmissionOpcode.Unreachable, id);
+            return true;
+        }
+
+        if (kind is CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageBorrowDictionaryExclusive)
+        {
+            return this.LowerDictionaryStorageBorrow(body, function, id, call, plan, out failure);
+        }
+
+        if (kind is CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive)
+        {
+            return this.LowerFixedStorageBorrow(body, function, id, call, plan, out failure);
+        }
+
+        if (kind is >= CompilerFunctionKind.StorageOwnDictionary and <= CompilerFunctionKind.StorageValueAt)
+        {
+            return this.LowerOwnedDictionaryStorage(body, function, id, call, plan, out failure);
         }
 
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
@@ -411,7 +427,7 @@ internal sealed partial class BodyLowering
 
         // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
         var remainder = result;
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) ||
+        if (remainder is not { IsArray: false } || remainder.Fields.Length != 4 || (!owning && remainder.Fields[3].Layout.Size != 0) ||
             (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
         {
             return Fail("Storage operation records do not have the boundary's shape.", out failure);
@@ -428,77 +444,6 @@ internal sealed partial class BodyLowering
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        return true;
-    }
-
-    // The validated, internal unsafe primitives publish the remainder's source Origin; their runtime value is the
-    // supplied element pointer. Storage.kimi checks the untaken range and advances it before making this call.
-    private bool LowerStorageCapability(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        var exclusive = plan.Target.CompilerFunction == CompilerFunctionKind.StorageSplit;
-        var semantics = exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref;
-        var remainderId = exclusive ? KimiDeclarationId.UniqRemainder : KimiDeclarationId.RefRemainder;
-        var stateArgument = plan.ArgumentToParameter.Length == 2 && plan.ArgumentToParameter[0] == 1 ? 1 : 0;
-        var pointerArgument = 1 - stateArgument;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || plan.ArgumentToParameter.Length != 2 || target.Parameters.Count != 2 ||
-            plan.ArgumentToParameter[stateArgument] != 0 || plan.ArgumentToParameter[pointerArgument] != 1 ||
-            SignatureType(this, plan.ArgumentOperations[stateArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [var remainder] } state || state.Semantics != semantics ||
-            remainder.Symbol?.LibraryDeclaration != remainderId || remainder.Components is not [var element] ||
-            SignatureType(this, plan.ArgumentOperations[pointerArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } pointer || !ReferenceEquals(pointee, element) ||
-            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Components: [var referent] } result || result.Semantics != semantics || !ReferenceEquals(referent, element) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), result))
-        {
-            return Fail("Storage capability does not match its element and remainder Types.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        if (!this.ScalarArrayArgument(body, id, 0, state, out _) || !this.ScalarArrayArgument(body, id, 1, pointer, out var address))
-        {
-            return Fail("Storage capability arguments are unavailable at the call.", out failure);
-        }
-
-        function.AddScalar(EmissionOpcode.BorrowAddress, id, [address]);
-        return true;
-    }
-
-    private bool LowerStorageRelease(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } pointer ||
-            !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
-        {
-            return Fail("Storage release requires one raw region pointer and a Unit result.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        if (!this.ScalarArrayArgument(body, id, 0, pointer, out var address) || !this.TryGetLocation(call, directory, constants, out var location))
-        {
-            return Fail("Storage release argument or location is unavailable at the call.", out failure);
-        }
-
-        function.AddCall(id, WindowsLowering.StorageRelease, [address, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }
 
@@ -583,19 +528,6 @@ internal sealed partial class BodyLowering
 
         this.arguments.Clear();
         return true;
-    }
-
-    private bool ArrayIndexArgument(KimiLibrary library, OwnershipBody body, int call, bool indexValue, out EmissionOperand operand)
-    {
-        if (!indexValue)
-        {
-            return this.ScalarArrayArgument(body, call, 1, BoundType.ISize, out operand);
-        }
-
-        operand = default;
-        return library.Index.Type is { } type && this.TryGetArrayElement(type, out var element) &&
-            element.Layout is { Fields.Length: 2 } layout && layout.Offset(0) == 0 && layout.Offset(1) == 8 &&
-            this.ArrayValueArgument(body, call, 1, element, out operand);
     }
 
     // A scalar argument (the receiver borrow, an isize index or amount) is the acquired entry's aliased value.

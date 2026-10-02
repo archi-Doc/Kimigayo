@@ -24,7 +24,7 @@ public sealed partial class Binding
     {
         if (candidates.Ambiguous)
         {
-            Fail(use, BindingFailure.Ambiguous, true);
+            this.Fail(use, BindingFailure.Ambiguous, true);
             return null;
         }
 

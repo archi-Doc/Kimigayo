@@ -35,7 +35,7 @@ public class OptionalTryDiscardTest
     public void RejectsSyntaxOutsideDedicatedPositions(string source)
     {
         var parsed = ParseTestHelper.Parse(source);
-        Assert.NotEmpty(parsed.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(TestDiagnostics.Of(parsed));
     }
 
     [Theory]
@@ -132,11 +132,11 @@ public class OptionalTryDiscardTest
 
     [Fact]
     public void ExplicitDiscardDestroysAtStatementEnd()
-        => ScalarEmissionTest.EmitFixture("OptionalTryDiscardCleanup", "struct Token\n    deinit => Console.writeLine(\"destroy\")\n_ = Token.init()\nConsole.writeLine(\"after\")", "destroy\nafter\n");
+        => ScalarEmissionTest.EmitFixture("OptionalTryDiscardCleanup", "struct Token\n    drop => Console.writeLine(\"destroy\")\n_ = Token.init()\nConsole.writeLine(\"after\")", "destroy\nafter\n");
 
     [Fact]
     public void FailureCleansAcquiredArgumentsBeforeFunctionLocals()
-        => EmitChecked("OptionalTryFailureCleanup", "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    deinit\n        if self.id == 1 => Console.writeLine(\"local\")\n        if self.id == 2 => Console.writeLine(\"argument\")\n        if self.id == 3 => Console.writeLine(\"late\")\nfunc fail() -> Result<i32, string> => .Err(\"error\")\nfunc skipped(a: Token, b: i32, c: Token) => $abort(\"called\")\nfunc run() -> Result<(), string>\n    let local = Token.init(1)\n    defer => Console.writeLine(\"defer\")\n    skipped(Token.init(2), try fail(), Token.init(3))\n    return .Ok(())\nmatch run()\n    .Ok(_) => $abort(\"ok\")\n    .Err(let e) => Console.writeLine(e)", "argument\ndefer\nlocal\nerror\n");
+        => EmitChecked("OptionalTryFailureCleanup", "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"local\")\n        if self.id == 2 => Console.writeLine(\"argument\")\n        if self.id == 3 => Console.writeLine(\"late\")\nfunc fail() -> Result<i32, string> => .Err(\"error\")\nfunc skipped(a: Token, b: i32, c: Token) => $abort(\"called\")\nfunc run() -> Result<(), string>\n    let local = Token.init(1)\n    defer => Console.writeLine(\"defer\")\n    skipped(Token.init(2), try fail(), Token.init(3))\n    return .Ok(())\nmatch run()\n    .Ok(_) => $abort(\"ok\")\n    .Err(let e) => Console.writeLine(e)", "argument\ndefer\nlocal\nerror\n");
 
     [Theory]
     [InlineData("Partial", "(key, _)", "sum += key", 4)]
@@ -200,7 +200,7 @@ public class OptionalTryDiscardTest
     public void PreservesInferenceOwnershipAndBindingRules(string source, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Kotonoha.DiagnosticCollection.HasErrors);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasErrors);
     }
 
     [Theory]
@@ -215,7 +215,7 @@ public class OptionalTryDiscardTest
     [InlineData("let x = value@(ref/T during a)")]
     [InlineData("let x = value@ref/(ref/T during a)")]
     public void RejectsReservedAndIncompleteForms(string source)
-        => Assert.NotEmpty(ParseTestHelper.Parse(source).DiagnosticCollection.GetArray());
+        => Assert.NotEmpty(TestDiagnostics.Of(ParseTestHelper.Parse(source)));
 
     [Fact]
     public void GenericWarningsAreIssuedAtDefinitionOnce()
@@ -244,23 +244,24 @@ public class OptionalTryDiscardTest
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
         c.AnalyzeControlFlow(c.Binding.TypeSystem).ReportDiagnostics();
-        Assert.Contains(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray(), d => d.Message.Contains("payload Type", StringComparison.Ordinal) && d.Message.Contains("without try", StringComparison.Ordinal));
+        Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Code == "TryPayloadMismatch_Kd" && d.Explanation.Contains("without try", StringComparison.Ordinal));
     }
 
     [Fact]
     public void ExplicitWholeResultDiscardCleansError()
-        => EmitChecked("OptionalTryIgnoreError", "struct Error\n    deinit => Console.writeLine(\"error destroyed\")\nfunc source() -> Result<(), Error> => .Err(Error.init())\n_ = source()\nConsole.writeLine(\"after\")", "error destroyed\nafter\n");
+        => EmitChecked("OptionalTryIgnoreError", "struct Error\n    drop => Console.writeLine(\"error destroyed\")\nfunc source() -> Result<(), Error> => .Err(Error.init())\n_ = source()\nConsole.writeLine(\"after\")", "error destroyed\nafter\n");
 
     [Fact]
     public void SuccessMoveDestroysOnlyTheSecuredValue()
-        => EmitChecked("OptionalTryMoveCleanup", "struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc run(x: Token?) -> Token? => .Some(try x@move)\n_ = run(.Some(Token.init()))\nConsole.writeLine(\"after\")", "destroy\nafter\n");
+        => EmitChecked("OptionalTryMoveCleanup", "struct Token\n    drop => Console.writeLine(\"destroy\")\nfunc run(x: Token?) -> Token? => .Some(try x@move)\n_ = run(.Some(Token.init()))\nConsole.writeLine(\"after\")", "destroy\nafter\n");
 
     [Theory]
     [InlineData("try source()")]
     [InlineData("_ = try source()")]
     public void BothDiscardFormsDestroySuccessAtStatementEnd(string statement)
-        => EmitChecked(statement[0] == '_' ? "OptionalTryExplicitPayloadCleanup" : "OptionalTryImplicitPayloadCleanup", $"struct Token\n    deinit => Console.writeLine(\"destroy\")\nfunc source() -> Token? => .Some(Token.init())\nfunc run() -> ()?\n    {statement}\n    Console.writeLine(\"after\")\n    return .Some(())\n_ = run()", "destroy\nafter\n");
+        => EmitChecked(statement[0] == '_' ? "OptionalTryExplicitPayloadCleanup" : "OptionalTryImplicitPayloadCleanup", $"struct Token\n    drop => Console.writeLine(\"destroy\")\nfunc source() -> Token? => .Some(Token.init())\nfunc run() -> ()?\n    {statement}\n    Console.writeLine(\"after\")\n    return .Some(())\n_ = run()", "destroy\nafter\n");
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmTryBindingAndFlowReuseStorage()
     {
@@ -303,7 +304,7 @@ public class OptionalTryDiscardTest
     public void OptionalIdentityAcquisitionMovesOwnedPayload()
     {
         // SPEC 13.5.3: Identity Acquisition never transfers a Non-Copy Place; the transferred temporary is acquired instead.
-        const string Declaration = "struct Token\n    deinit => Console.writeLine(\"destroy\")\nlet x: Token? = .Some(Token.init())\n";
+        const string Declaration = "struct Token\n    drop => Console.writeLine(\"destroy\")\nlet x: Token? = .Some(Token.init())\n";
         var rejected = MinimalEmissionTest.Analyze(Declaration + "_ = x@Token?");
         Assert.False(rejected.Binding.Result.IsComplete);
         Assert.Contains(rejected.Binding.Issues, x => x.Code == DiagnosticCode.TransferRequired_Kd);
@@ -331,7 +332,7 @@ public class OptionalTryDiscardTest
 
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.BindingFailure + ":" + x.Node)) +
-            "\n" + string.Join("\n", c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray().Select(x => x.Message)) +
+            "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message)) +
             "\n" + string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             "\nPending: " + string.Join(", ", c.Ownership.ControlFlow?.PendingBinding.Select(x => x.ToString()) ?? []);
 }

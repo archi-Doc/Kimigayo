@@ -35,6 +35,10 @@ internal static partial class WindowsLowering
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (SPEC 22.5.5).</summary>
     internal const int StaticReleaseKind = 0;
 
+    /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
+    /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
+    internal const int ZeroSizedBuffer = 4096;
+
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
     // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (SPEC 22.5.5).
@@ -59,6 +63,7 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
+    internal static readonly FunctionAbi RawAllocate = new("__kimi_raw_allocate", "ptr", [new("i64", "count"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi StorageRelease = new("__kimi_free", Unit.ComputationType, [new("ptr", "storage"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
 
     // SPEC 4.7.4, 4.7.7: capacity routines move element bytes by stride and run no user code; the writer emits them only for modules that use Arrays.
@@ -112,6 +117,13 @@ internal static partial class WindowsLowering
         AddScalar(values, "u128", "i128", 16);
         AddScalar(values, "f32", "float", 4);
         AddScalar(values, "f64", "double", 8);
+
+        // SPEC 3.1.1.1, 21.1.4: a wrapping integer Type has exactly the representation and ABI of its integer argument.
+        foreach (var (integer, wrapping) in BoundType.WrappingScalars)
+        {
+            values.Add(wrapping, values[integer]);
+        }
+
         return values;
 
         static void AddScalar(Dictionary<BoundType, ValueLowering> values, string name, string llvm, int size)

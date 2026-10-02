@@ -20,7 +20,7 @@ internal static class CompilationTestHelper
     internal static Compilation ParseSuccess(string source)
     {
         var c = Parse(source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(TestDiagnostics.Of(c));
         return c;
     }
 

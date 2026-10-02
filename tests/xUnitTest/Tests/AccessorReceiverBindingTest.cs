@@ -11,13 +11,13 @@ public class AccessorReceiverBindingTest
     [Theory]
     [InlineData("struct Hidden\npublic struct Api\n    public computed item: i32\n        get(self: ref/Hidden) -> i32 => 1")]
     [InlineData("struct Api\n    computed item: i32\n        get(self: ref/(ref/Self during static)) -> i32 => 1")]
-    [InlineData("struct Api\n    computed item: i32\n        get(self: unsafe/Self) -> i32 => 1")]
+    [InlineData("struct Api\n    computed item: i32\n        get(self: raw/Self) -> i32 => 1")]
     [InlineData("struct Hidden\npublic contract Api\n    property item: i32\n        get(self: ref/Hidden) -> i32")]
     [InlineData("group Api\n    computed item: i32\n        get(self: i32) -> i32 => 1")]
     [InlineData("public struct Other\npublic struct Api\n    public computed item: i32\n        get() -> i32 => 1\n        private set(self: uniq/Other, value: i32) -> () => ()")]
     [InlineData("struct Api<T>\n    computed item: i32\n        get(self: T) -> i32 => 1")]
     [InlineData("struct Api\n    computed item: i32\n        get(self: i32) -> i32 => 1")]
-    [InlineData("contract Api\n    property item: i32\n        get() -> i32\n        set(self: unsafe/Self, value: i32) -> ()")]
+    [InlineData("contract Api\n    property item: i32\n        get() -> i32\n        set(self: raw/Self, value: i32) -> ()")]
     [InlineData("group Api\n    var item: i32 = 0\n        set(self: i32, value: i32) -> () => storage = value")]
     public void InvalidReceiversFailAtTheUnusedDeclaration(string source)
     {
@@ -76,7 +76,7 @@ public class AccessorReceiverBindingTest
     [Theory]
     [InlineData("ref/Self", true)]
     [InlineData("ref/Other", false)]
-    [InlineData("unsafe/Self", false)]
+    [InlineData("raw/Self", false)]
     public void RebindingAndReloadPreserveReceiverValidation(string receiver, bool valid)
     {
         var c = MinimalEmissionTest.Analyze($"struct Other\nstruct Api\n    computed item: i32\n        get(self: {receiver}) -> i32 => 1");
@@ -106,6 +106,7 @@ public class AccessorReceiverBindingTest
         Assert.False(property.BoundSymbol.Property.IsVerified);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAccessorReceiverChecksAllocateNothing()
     {

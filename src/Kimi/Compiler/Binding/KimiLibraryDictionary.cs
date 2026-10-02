@@ -12,10 +12,10 @@ public sealed partial class KimiLibrary
         if (symbol.CompilerFunction != rule.Function || symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.DictionaryScope.Owner) ||
             function.NameBoundaryIndex >= 0 || function.Name != rule.Name || function.Modifier != ModifierKind.Public ||
             function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 ||
-            function.Body is not null || function.ExpressionBody is not null || function.AttributeChain is not null ||
+            (function.Body is not null || function.ExpressionBody is not null) != rule.SourceFunction || function.AttributeChain is not null ||
             function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count == 0 ||
             function.Parameters[0] is not { ExternalName: "self", InternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } receiver } ||
-            receiver.SemanticsKind != (id == KimiDeclarationId.DictionaryTryGet ? SemanticsKind.Ref : SemanticsKind.Uniq) || !BareName(receiver.Type, "Self"))
+            receiver.SemanticsKind != (id is KimiDeclarationId.DictionaryTryGet or KimiDeclarationId.DictionaryIndex ? SemanticsKind.Ref : SemanticsKind.Uniq) || !BareName(receiver.Type, "Self"))
         {
             return false;
         }
@@ -24,6 +24,9 @@ public sealed partial class KimiLibrary
         var result = BareType(function.ReturnType) as GenericsKoto;
         return id switch
         {
+            KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq => inputs == 1 && Input(1, "key", "K", borrow: true) &&
+                function.ReturnType is PlaceResultKoto place && place.Type is TypeSemanticsKoto { SemanticsParameter: null, OriginArguments: null, OriginExpression: IdentifierNameKoto { IdentifierName: "self" }, Type: { } indexed } reference &&
+                reference.SemanticsKind == receiver.SemanticsKind && BareName(indexed, "V"),
             KimiDeclarationId.DictionaryReserve => inputs == 1 && Input(1, "additional", "isize") && function.ReturnType is null,
             KimiDeclarationId.DictionaryTryInsert => inputs == 2 && Input(1, "key", "K") && Input(2, "value", "V") &&
                 result is { TypeArguments.Count: 2 } && BareName(result.Identifier, "Result") && BareType(result.TypeArguments[0]) is TupleTypeKoto { ElementNodes.Count: 0 } && Pair(result.TypeArguments[1]),

@@ -20,6 +20,12 @@ public class IndexableContractTest
         "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
         "    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\n";
 
+    // SPEC 8.4.9: a generic Type's conformance names its reference in the Type's own parameters; an instance dispatches
+    // through the reference the generic call recorded, instantiated (`Indexable<isize>` for `Keyed<isize>`).
+    private const string Keyed =
+        "struct Keyed<K>\n    Self is Indexable<K>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +
+        "    public func index(self, key: ref/K) -> place ref/i32 during self => self.value\n";
+
     // SPEC 8.4.2: a Constraint on a bound Contract reference indexes a Type parameter through the requirement.
     private const string FirstPlace =
         "func firstPlace<S>(items: ref/S) -> place ref/S.Element during items\n    S is Indexable<isize>\n    return items[0]\n";
@@ -36,6 +42,7 @@ public class IndexableContractTest
         { "SharedOnly", Shared + "let view = View.init(42)\nrequire view[0] == 42 else => $abort(\"shared\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "GenericShared", Pair + Shared + FirstPlace + "var pair = Pair<string>.init(\"Pair first.\", \"Pair second.\")\nConsole.writeLine(firstPlace(pair))\nlet counts = Pair<i32>.init(7, 8)\nlet view = View.init(9)\nrequire firstPlace(counts) == 7 and firstPlace(view) == 9 else => $abort(\"generic\")\nlet lent = firstPlace(pair)@ref\nConsole.writeLine(lent)", "Pair first.\nPair first.\n" },
         { "GenericExclusive", Pair + FirstUniq + "var counts = Pair<i32>.init(1, 2)\nfirstUniq(counts@uniq) = 40\nfirstUniq(counts@uniq) += 2\nrequire counts[0] == 42 and counts[1] == 2 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")", "ok\n" },
+        { "GenericConformanceReference", Keyed + FirstPlace + "let keyed = Keyed<isize>.init(7)\nrequire firstPlace(keyed) == 7 and keyed[1] == 7 else => $abort(\"keyed\")\nConsole.writeLine(\"ok\")", "ok\n" },
         { "PlaceComparison", Pair + FirstPlace + "var names = Pair<string>.init(\"a\", \"b\")\nlet held = names[1]@ref\nrequire firstPlace(names) == \"a\" and names[1] == held and firstPlace(names) != held and held == names[1] else => $abort(\"compare\")\nConsole.writeLine(\"ok\")", "ok\n" },
     };
 
@@ -50,7 +57,7 @@ public class IndexableContractTest
     [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\nlet taken = pair[0]@move", DiagnosticCode.ExclusivePathTake_Kd)]
     [InlineData(Shared + "var view = View.init(1)\nview[0] = 2", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Shared + "var view = View.init(1)\nlet exclusive = view[0]@uniq", DiagnosticCode.SharedPathAccess_Kd)]
-    [InlineData("struct Box\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet box = Box.init(1)\nlet read = box[0]", DiagnosticCode.UnsupportedBinding_Kd)]
+    [InlineData("struct Box\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value\nlet box = Box.init(1)\nlet read = box[0]", DiagnosticCode.NotIndexable_Kd)]
     [InlineData("struct Wrong\n    Self is Indexable<isize>\n    associate Element is string\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("struct Missing\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> place ref/i32 during self => self.value", DiagnosticCode.MissingContractImplementation_Kd)]
     [InlineData("struct Value\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n    public func index(self, key: ref/isize) -> i32 => self.value", DiagnosticCode.IncompatibleContractImplementation_Kd)]
@@ -66,7 +73,6 @@ public class IndexableContractTest
     [Theory]
     [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\nlet bare = pair[0]")]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet view = pair[0]@ref\npair[0] = 3\nrequire view == 1 else => $abort(\"x\")")]
-    [InlineData(Pair + "var pair = Pair<string>.init(\"a\", \"b\")\npair[0] = \"c\"")] // Non-Copy replacement through a Place shares the reference-write boundary (STATUS).
     public void RejectsAtOwnership(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -74,6 +80,135 @@ public class IndexableContractTest
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
+    }
+
+    // SPEC 8.4.9, 4.6.9: Indexable<isize> and Indexable<Name> are distinct conformances with their own Element, specified
+    // through the bound reference; `receiver[key]` selects the conformance whose Key is the key's own Type, for reads and,
+    // through UniqIndexable, for updates.
+    private const string TwoKeys = """
+        struct Name
+            Self is Copy
+            public let id: isize
+            public init(id: isize) => self.id = id
+
+        struct Table
+            Self is UniqIndexable<isize>
+            Self is UniqIndexable<Name>
+            associate Indexable<isize>.Element is i32
+            associate Indexable<Name>.Element is i64
+            var small: i32
+            var large: i64
+            public init(small: i32, large: i64)
+                self.small = small
+                self.large = large
+            public func index(self, key: ref/isize) -> place ref/i32 during self => self.small
+            public func index(self, key: ref/Name) -> place ref/i64 during self => self.large
+            public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/i32 during self => self.small
+            public func indexUniq(self: uniq/Self, key: ref/Name) -> place uniq/i64 during self => self.large
+
+        """;
+
+    [Fact]
+    public void TheKeyTypeSelectsAmongSeveralConformances()
+    {
+        const string Use = "var table = Table.init(3, 4)\nlet k: isize = 0\nlet n = Name.init(1)\nlet a: i32 = table[k]\nlet b: i64 = table[n]\n" +
+            "table[k] = 30\ntable[n] = 40\nlet c: i32 = table[k]\nlet d: i64 = table[n]\nrequire a == 3 and b == 4 and c == 30 and d == 40 else => $abort(\"index\")\nConsole.writeLine(\"two keys\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractTwoKeys", TwoKeys + Use, "two keys\n");
+    }
+
+    // SPEC 8.4.9, 4.6.9: inside a generic body, a parameter with two Indexable conformances selects the one whose Key is the
+    // key's own Type, and `S.(Indexable<Name>).Element` names that conformance's Element, distinct from the other one.
+    private const string GenericTwoKeys =
+        "func pick<S>(table: ref/S, k: isize, n: Name) -> S.(Indexable<Name>).Element\n    S is Indexable<isize>\n    S is Indexable<Name>\n" +
+        "    S.(Indexable<isize>).Element is Copy\n    S.(Indexable<Name>).Element is Copy\n    let small: S.(Indexable<isize>).Element = table[k]\n    return table[n]\n";
+
+    [Fact]
+    public void TheKeyTypeSelectsAmongSeveralGenericConformances()
+    {
+        const string Use = "let table = Table.init(3, 4)\nlet b: i64 = pick(table@ref, 0, Name.init(1))\nrequire b == 4 else => $abort(\"pick\")\nConsole.writeLine(\"generic keys\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractGenericTwoKeys", TwoKeys + GenericTwoKeys + Use, "generic keys\n");
+    }
+
+    // Qualified projections, per-reference requirement candidates and reference dispatch add no warm allocation: warm
+    // Binding, ownership analysis and IR writing of the generic two-key program and its concrete counterpart allocate
+    // nothing. Checking whether two conformances to one Contract declaration may collide reuses its scratch map.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmGenericTwoKeyCompilationAddsNoAllocation()
+    {
+        const string Generic = "let table = Table.init(3, 4)\nlet n = Name.init(1)\nlet b: i64 = pick(table@ref, 0, n)\nrequire b == 4 else => $abort(\"pick\")";
+        const string Concrete = "let table = Table.init(3, 4)\nlet n = Name.init(1)\nlet b: i64 = table[n]\nrequire b == 4 else => $abort(\"pick\")";
+        var generic = Measure(TwoKeys + GenericTwoKeys + Generic);
+        var concrete = Measure(TwoKeys + Concrete);
+        Assert.Equal((0L, 0L, 0L), generic);
+        Assert.Equal((0L, 0L, 0L), concrete);
+
+        static (long Binding, long Ownership, long Generation) Measure(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            for (var i = 0; i < 100; i++)
+            {
+                Assert.True(c.Bind().IsComplete);
+                c.Binding.CheckStartup(OutputKind.Application);
+                Assert.True(c.Ownership.Analyze().IsVerified);
+                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
+            }
+
+            var success = true;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Bind().IsComplete;
+            }
+
+            var binding = GC.GetAllocatedBytesForCurrentThread() - before;
+            c.Binding.CheckStartup(OutputKind.Application);
+            before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+            }
+
+            var ownership = GC.GetAllocatedBytesForCurrentThread() - before;
+            before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 128; i++)
+            {
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            }
+
+            Assert.True(success);
+            return (binding, ownership, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+    }
+
+    // Through UniqIndexable, updates select each conformance's indexUniq by the key Type in generic code.
+    [Fact]
+    public void GenericUpdatesSelectAmongSeveralUniqConformances()
+    {
+        const string Update = "func keySlot<S>(table: uniq/S, k: isize) -> place uniq/S.(Indexable<isize>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[k]\n" +
+            "func nameSlot<S>(table: uniq/S, n: Name) -> place uniq/S.(Indexable<Name>).Element during table\n    S is UniqIndexable<isize>\n    S is UniqIndexable<Name>\n    return table[n]\n";
+        const string Use = "var table = Table.init(3, 4)\nkeySlot(table@uniq, 0) = 30\nnameSlot(table@uniq, Name.init(1)) = 40\nnameSlot(table@uniq, Name.init(1)) += 2\nlet k: isize = 0\nlet n = Name.init(1)\n" +
+            "let a: i32 = table[k]\nlet b: i64 = table[n]\nrequire a == 30 and b == 42 else => $abort(\"update\")\nConsole.writeLine(\"generic updates\")";
+        ScalarEmissionTest.EmitFixture("IndexableContractGenericUpdates", TwoKeys + Update + Use, "generic updates\n");
+    }
+
+    // The two Element projections are distinct Types in the generic body.
+    [Fact]
+    public void GenericElementsOfDistinctReferencesDoNotMix()
+    {
+        const string Mixed = "func mix<S>(table: ref/S, n: Name) -> S.(Indexable<isize>).Element\n    S is Indexable<isize>\n    S is Indexable<Name>\n" +
+            "    S.(Indexable<Name>).Element is Copy\n    return table[n]\n";
+        var c = MinimalEmissionTest.Analyze(TwoKeys + Mixed);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
+    [Theory]
+    [InlineData("let table = Table.init(3, 4)\nlet a: i32 = table[0]")]
+    [InlineData("let table = Table.init(3, 4)\nlet s: string = \"x\"\nlet a: i32 = table[s]")]
+    public void AKeyThatSelectsNoSingleConformanceIsRejected(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(TwoKeys + use);
+        Assert.False(c.Binding.Result.IsComplete);
     }
 
     [Fact]

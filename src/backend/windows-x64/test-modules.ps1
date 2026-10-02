@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
     [string] $ToolchainRoot = '',
     [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/module-verification')
 )
@@ -42,7 +42,7 @@ function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit 
 $library = @'
 public group Api
     public func run() => Child.Api.output(keep("module"))
-    public func keep<T>(value: T) -> T => value
+    public func keep<T>(value: T) -> T => value@move
     #Test
     func dependencyTest() => Missing.mustNotBeIncluded()
 '@
@@ -77,8 +77,8 @@ Dependencies={Lib={PackageId="library" PackageVersion="1" Project="../Library/Li
         $null = Invoke-Kimi "$level-build" @('build', $project)
         $recordPath = Join-Path $work 'App/bin/x86_64-pc-windows-msvc/App.link.build.json'
         $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
-        if ($record.status -cne 'linked' -or -not $record.reportedVersionsMatched -or $record.unverifiedToolchain) { throw 'Unverified module native build' }
-        $output = Invoke-Kimi "$level-run" @('run', $project)
+        if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Unverified module native build' }
+        $output = Invoke-Kimi "$level-run" @('run', $project, '--no-build')
         if (-not $output.EndsWith("module`nmodule`n", [StringComparison]::Ordinal)) { throw "Project module output mismatch: $output" }
         $output = Invoke-Kimi "$level-executable" @('run', (Join-Path $work "App/bin/x86_64-pc-windows-msvc/App.$level.exe"))
         if ($output -cne "module`nmodule`n") { throw "Module output mismatch: $output" }

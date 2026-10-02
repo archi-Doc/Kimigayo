@@ -27,6 +27,13 @@ public sealed partial class Binding
             return;
         }
 
+        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallSignature(pattern) && PerCallSignature(actual))
+        {
+            // These Origins are quantified by the nested Function Types, not by this call's binder.
+            // Their positional correspondence is checked by the ordinary Type relation.
+            return;
+        }
+
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
             Add(p, a, polarity);
@@ -40,7 +47,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            var sign = pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe ? 0 :
+            var sign = pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 :
                 pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
             {

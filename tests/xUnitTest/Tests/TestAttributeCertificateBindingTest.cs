@@ -15,7 +15,7 @@ public class TestAttributeCertificateBindingTest
     public void InvalidTestTargetCannotCertifyConformance(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
         Assert.False(Definition(c).IsVerified);

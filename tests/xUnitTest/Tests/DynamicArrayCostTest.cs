@@ -7,10 +7,39 @@ namespace XunitTest;
 
 public class DynamicArrayCostTest
 {
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void BorrowedElementUpdatesReuseTheBuffer()
+        => WriteCostFixture("BorrowedWrite", "func edit(values: uniq/Array<isize>)\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: Array<isize> = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void BorrowedFixedArrayUpdatesAllocateNoStorage()
+        => WriteCostFixture("BorrowedFixedWrite", "func edit(values: uniq/[2 of isize])\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: [2 of isize] = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 0, 0, growth: false);
+
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Array<i32>", "Array", 1)]
+    [InlineData("[2 of i32]", "Fixed", 0)]
+    public void DisjointPairsAllocateNoAdditionalStorage(string type, string name, int allocations)
+        => WriteCostFixture("DisjointPair" + name, DisjointArrayPairTest.RepeatedUpdates(type), allocations, 0, growth: allocations != 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void SortingRetainsStorageWithoutFurtherAllocation()
+        => WriteCostFixture("Sort", "var values: Array<isize> = [7, 3, 5, 1, 6, 2, 4, 3]\nvalues.sort()\nvalues.reverse()\nvalues.sort()\nrequire values[0] == 1 and values[7] == 7 and values.length == 8 else => $abort(\"sort\")\nvar empty: Array<isize> = []\nempty.sort()", 1, 0);
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyConstructionAndEmptyOperationsAllocateNothing()
         => WriteCostFixture("Empty", "var values: Array<isize> = []\nvalues@uniq.reserve(0)\nvalues@uniq.clear()\nvalues@uniq.shrinkToFit()\nmatch values@uniq.pop()\n    .None => ()\n    .Some(_) => $abort(\"empty\")\nfor value in values@move => $abort(\"iteration\")", 0, 0);
 
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ZeroSizedElementsNeverAllocate()
+        => WriteCostFixture("ZeroSized", "var units: Array<()> = [(), ()]\nvar i: isize = 0\nwhile i < 1024\n    units@uniq.append(())\n    units@uniq.insert(0, ())\n    units@uniq.remove(1)\n    i += 1\nunits@uniq.reserve(4096)\nunits@uniq.shrinkToFit()\nrequire units.length == 1026 else => $abort(\"length\")\nfor unit in units@move => ()", 0, 0);
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void CapacityPreservingMutationAndChurnNeedOnlyTheInitialAllocation()
         => WriteCostFixture(
@@ -19,10 +48,12 @@ public class DynamicArrayCostTest
             1,
             0);
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedSharedViewsAndIterationAllocateNoStorage()
         => WriteCostFixture("SharedViews", "let values: Array<isize> = [10, 20, 22, 30]\nvar i = 0\nwhile i < 1024\n    let view = values[1..3]\n    let copied = view[..]\n    let item = copied[0]@ref\n    require item == 20 else => $abort(\"borrow\")\n    var sum: isize = 0\n    for value in copied => sum += value\n    require sum == 42 else => $abort(\"iteration\")\n    i += 1", 1, 0);
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(1, false)]
     [InlineData(4, false)]
@@ -44,6 +75,7 @@ public class DynamicArrayCostTest
         WriteCostFixture("Growth" + count + (reserve ? "Reserve" : "Append"), source, 1 + (int)Math.Ceiling(Math.Log2(count)), 16L * count, exactAllocations: false);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -56,6 +88,7 @@ public class DynamicArrayCostTest
 
     // The storage boundary helpers of the Kimigayo iterators are keyed by layout ids, so warm emission reuses them without
     // building their names again.
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("var it = values.iterate()\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit")]
     [InlineData("var it = values.iterateUniq()\nloop\n    match it.next()\n        .Some(let v) => v@follow += 1\n        .None => exit")]
@@ -74,6 +107,7 @@ public class DynamicArrayCostTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Emission.WriteIr(TextWriter.Null, out _)));
     }
 
+    [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Binding")]
     [InlineData("Ownership")]
@@ -82,7 +116,7 @@ public class DynamicArrayCostTest
     [InlineData("Pipeline")]
     public void WarmArrayAnalysisAndEmissionAllocateNothing(string stage)
     {
-        var c = MinimalEmissionTest.Analyze("struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    deinit => ()\nlet tasks: Array<Task> = [Task.init(42)]\nlet task = tasks[0]@ref\nrequire task.id == 42 else => $abort(\"task\")\nlet taskView = tasks[..]\nfor item in taskView => require item.id == 42 else => $abort(\"shared\")\nvar values: Array<i32> = [1, 2]\nvalues@uniq.insert(^0, 3)\nvalues[0] = 4\nlet last = values@uniq.remove(^1)\nlet view = values[0..1]\nlet item = view[0]@ref\nrequire item == 4 else => $abort(\"view\")\nfor value in values@move => require value > 0 else => $abort(\"value\")");
+        var c = MinimalEmissionTest.Analyze("struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\nlet tasks: Array<Task> = [Task.init(42)]\nlet task = tasks[0]@ref\nrequire task.id == 42 else => $abort(\"task\")\nlet taskView = tasks[..]\nfor item in taskView => require item.id == 42 else => $abort(\"shared\")\nvar values: Array<i32> = [1, 2]\nvalues@uniq.insert(^0, 3)\nvalues[0] = 4\nlet last = values@uniq.remove(^1)\nlet view = values[0..1]\nlet item = view[0]@ref\nrequire item == 4 else => $abort(\"view\")\nfor value in values@move => require value > 0 else => $abort(\"value\")");
         for (var i = 0; i < 32; i++)
         {
             Assert.True(c.Bind().IsComplete);
@@ -147,7 +181,7 @@ public class DynamicArrayCostTest
         ScalarEmissionTest.WriteFixture("DynamicArrayCostReload", ir, string.Empty);
     }
 
-    private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true)
+    private static void WriteCostFixture(string name, string source, int allocations, long transferredBytes, int failAllocation = 0, bool exactAllocations = true, bool growth = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -155,7 +189,8 @@ public class DynamicArrayCostTest
         ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @probe_allocate(", StringComparison.Ordinal);
         // Count only Array growth transfers; user payload construction and stable insert/remove are separate costs.
         const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
-        Assert.Equal(2, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
+        // Fixed storage must contain no Array growth helper at all; existing dynamic workloads require exactly one.
+        Assert.Equal(growth ? 2 : 1, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
         ir = ir.Replace(CopyAnchor, CopyAnchor + "  %previous_bytes = load i64, ptr @probe_transferred, align 8\n  %total_bytes = add i64 %previous_bytes, %used\n  store i64 %total_bytes, ptr @probe_transferred, align 8\n", StringComparison.Ordinal);
         var start = $$"""
             define void @__kimi_start() noreturn #0 {

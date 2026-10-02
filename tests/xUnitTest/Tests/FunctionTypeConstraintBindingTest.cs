@@ -27,7 +27,7 @@ public class FunctionTypeConstraintBindingTest
     public void FunctionTypesRetainCapabilitiesAndIdentity(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public struct Target\n    " + clause);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().BindingState);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -37,7 +37,7 @@ public class FunctionTypeConstraintBindingTest
         {
             c.Kotonoha.RootKoto.UnparseAll(ref builder);
             var written = MinimalEmissionTest.Analyze(builder.ToString());
-            Assert.Empty(written.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+            Assert.Empty(TestDiagnostics.Of(written, "Hello.kimi"));
             Assert.Equal(valid, written.Binding.Result.IsComplete);
         }
         finally
@@ -53,7 +53,7 @@ public class FunctionTypeConstraintBindingTest
     public void EveryTypeDeclarationRegionParsesFunctionRequirements(string kind)
     {
         var c = MinimalEmissionTest.Analyze("public " + kind + " Target\n    (i32) -> bool is (i32) -> bool" + (kind == "enum" ? "\n    A" : string.Empty));
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -63,7 +63,7 @@ public class FunctionTypeConstraintBindingTest
     public void FunctionInputRequirementsAreDischargedAtCalls(string result, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("group Consumer\n    func take<T>()\n        T is (i32) -> bool\n        ()\n    func call() => take<(i32) -> " + result + ">()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
@@ -76,11 +76,12 @@ public class FunctionTypeConstraintBindingTest
     public void FunctionConditionTypesRetainNestedApiDomains(string clause)
     {
         var c = MinimalEmissionTest.Analyze("internal struct Hidden\npublic struct Target\n    " + clause);
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmFunctionConditionChecksAllocateNothing()
     {

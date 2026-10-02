@@ -59,13 +59,20 @@ public static partial class Parser
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "expected == or outlives in Origin relation");
+                reader.AddDiagnostic(DiagnosticCode.OriginRelationOperator_Kd);
+                // A misspelled relation operator is the cause; preserve the right operand for recovery.
+                // A missing operator before an Origin atom does not consume that atom.
+                if (reader.CurrentTokenKind is TokenKind.Equals or TokenKind.ExclamationEquals or
+                    TokenKind.LessThan or TokenKind.LessThanEquals or TokenKind.GreaterThan or TokenKind.GreaterThanEquals)
+                {
+                    reader.Advance();
+                }
             }
         }
 
         var right = ParseOriginExpression(ref reader);
         var relation = new OriginRelationKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(left.Span.End, right.Span.End)), left, right, equality);
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        reader.ExpectLineEnd();
         return relation;
     }
 
@@ -91,7 +98,7 @@ public static partial class Parser
             }
             else
             {
-                reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "expected declaration-attached Origin relation");
+                reader.AddDiagnostic(DiagnosticCode.AttachedOriginRelation_Kd);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.SkipCurrentBlock(false);
@@ -115,22 +122,28 @@ public static partial class Parser
         var keyword = reader.Read();
         if (reader.GetSpan(keyword) is "from")
         {
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "borrow annotations use 'during', not 'from'");
+            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd);
         }
 
         var expression = ParseOriginAtom(ref reader);
         if (reader.CurrentTokenKind == TokenKind.And && !reader.ConstraintRequirement)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "an Origin intersection requires parentheses: 'during (a and b)'");
+            reader.AddDiagnostic(DiagnosticCode.BorrowOriginIntersection_Kd);
+            // Recover the whole malformed intersection here, retaining the first annotation. The enclosing
+            // parameter/Type delimiter is still available and is not itself missing.
+            while (reader.TryConsume(TokenKind.And))
+            {
+                _ = ParseOriginAtom(ref reader);
+            }
         }
 
         var span = SourceSpan.FromBounds(keyword.Span.Start, Math.Max(keyword.Span.End, expression.Span.End));
         if (type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } target)
         {
             target.SetBorrowOrigin(expression, span);
-            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Unsafe)
+            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Raw)
             {
-                reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, "during requires safe borrow Semantics");
+                reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginSemantics_Kd);
             }
         }
         else if (type is TypeSemanticsKoto { IsNamedType: true, HasOrigin: false } named)
@@ -140,20 +153,20 @@ public static partial class Parser
         }
         else
         {
-            var detail = type is TypeSemanticsKoto { IsNamedType: true }
-                ? "a named Type takes a binding set or a single-slot during, not both"
-                : "during requires the first explicit Semantics or a named Type in the same Type; use 'ref/T? during a', not '(ref/T)? during a'";
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.UnexpectedToken_Kd, detail);
+            var code = type is TypeSemanticsKoto { IsNamedType: true }
+                ? DiagnosticCode.BorrowOriginBindingSet_Kd
+                : DiagnosticCode.BorrowOriginTarget_Kd;
+            reader.Diagnostic.Add(keyword.Span, code);
         }
 
         // Consume malformed repetitions locally without changing the first annotation.
         while (reader.IsCurrentIdentifier("during") || reader.CurrentTokenKind == TokenKind.Question)
         {
             var extra = reader.Read();
-            var detail = extra.Kind == TokenKind.Question
-                ? "optional '?' must precede 'during'; group the annotated Type for a later '?'"
-                : "only one 'during' annotation is permitted in this Type";
-            reader.Diagnostic.Add(extra.Span, DiagnosticCode.UnexpectedToken_Kd, detail);
+            var code = extra.Kind == TokenKind.Question
+                ? DiagnosticCode.BorrowOriginSuffixOrder_Kd
+                : DiagnosticCode.DuplicateBorrowOrigin_Kd;
+            reader.Diagnostic.Add(extra.Span, code);
             if (extra.Kind != TokenKind.Question)
             {
                 _ = ParseOriginAtom(ref reader);
@@ -165,7 +178,7 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.OpenBrace)
         {
-            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "callable Origin lists were removed; introduce names in borrow annotations");
+            reader.AddDiagnostic(DiagnosticCode.CallableOriginList_Kd);
             _ = ParseOriginParameters(ref reader);
         }
 

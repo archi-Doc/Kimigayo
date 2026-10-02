@@ -17,7 +17,12 @@ internal static class ElementAccess
     // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
-        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType));
+        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType));
+
+    // SPEC 3.4.1: the referent of an exclusive array reference offers element replacement, without requiring a mutable
+    // binding for the reference itself. Shared layers on its path are checked separately by Binding.
+    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto, Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
+        (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver)) && !IsSlicing(source);
 
     // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
     // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
@@ -57,6 +62,15 @@ internal static class ElementAccess
     // SPEC 4.6.4: a range selection applied through one ResolvedRange value rather than two isize boundaries.
     internal static bool IsResolvedSlice(Koto source) => source is IndexKoto index && index.CodeContext.Compilation.Binding.IsResolvedSlice(index);
 
+    // SPEC 4.6.6: a range selection, written with a range or applied through a ResolvedRange key, produces a Slice value,
+    // not a Place.
+    internal static bool IsSlicing(Koto source) => source is IndexKoto { BoundType.Kind: BoundTypeKind.Slice } slice && (slice.Right is RangeKoto || IsResolvedSlice(slice));
+
+    // SPEC 4.6.1: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
+    internal static bool IsSequence(BoundType? type)
+        => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
+            is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
+
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
     internal static int StaticSelector(BinaryKoto source)
     {
@@ -82,8 +96,8 @@ internal static class ElementAccess
         => ReferenceEquals(type, BoundType.Never) && KotoHelper.UnwrapParentheses(source) is BinaryKoto element &&
             IsSyntax(element) && TryType(element, out var destination, out _) ? destination : type;
 
-    // A transferred operand (x@move) or an Identity acquisition is the operand Place's own value:
-    // its temporary keeps the Place's syntax, so both unwrap like a label.
+    // A transferred operand (x@move), an Identity acquisition or an adapted literal (5@isize) is the operand Place's own
+    // value: its temporary keeps the Place's syntax, so each unwraps like a label.
     internal static Koto ValueSource(Koto source)
     {
         while (true)
@@ -94,11 +108,16 @@ internal static class ElementAccess
                 case LabeledKoto labeled:
                     source = labeled.Target;
                     break;
-                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity } conversion:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity or ConversionBinding.Literal } conversion:
                     source = conversion.Left;
                     break;
+                case EvaluatedKoto evaluated:
+                    source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
+                    break;
                 default:
-                    return source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
+                    // A constructed `^x` or range value is produced by its synthesized construction call (SPEC 4.6.2, 4.6.3).
+                    var binding = source.CodeContext.Compilation.Binding;
+                    return binding.RangeValueCall(source) ?? binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }
         }
     }
@@ -132,6 +151,30 @@ internal static class ElementAccess
         return Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
     }
 
+    // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw
+    // Places. Range and from-end forms keep their existing handling.
+    internal static bool IsRawPlace(Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)))
+            {
+                return true;
+            }
+
+            if (source is not BinaryKoto element || !IsSyntax(element) ||
+                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto || element.Right.BoundType is not { IsInteger: true })))
+            {
+                return false;
+            }
+
+            source = KotoHelper.UnwrapParentheses(element.Left);
+        }
+
+        return false;
+    }
+
     // SPEC 5.2, 12: an inline stored field/Tuple/fixed-array path rooted at *p or p[n].
     // Binding mutability does not decide its write permission.
     internal static bool IsPointerPath(Koto source)
@@ -156,10 +199,21 @@ internal static class ElementAccess
     /// that Binding recorded as the expression's adaptation.
     /// </summary>
     /// <param name="node">The expression read in place.</param>
+    /// <param name="exclusive">Whether the selected projection requires exclusive access.</param>
     /// <returns>The access Type.</returns>
-    internal static BoundType? AccessType(Koto node)
-        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
-            ? adaptation.Type : node.BoundType;
+    internal static BoundType? AccessType(Koto node, bool exclusive = false)
+    {
+        var binding = node.CodeContext.Compilation.Binding;
+        if (!binding.TryGetAdaptation(node, out var adaptation) || adaptation.Kind is not (ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow))
+        {
+            return node.BoundType;
+        }
+
+        // A synthesized shared receiver read does not decide an indexer's later projection capability.
+        // Only an already bound exclusive entry can supply the stronger acquisition.
+        return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow && IndexerCall(node, true) is not null
+            ? binding.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
+    }
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the

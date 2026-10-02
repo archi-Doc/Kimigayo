@@ -10,7 +10,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | --- | --- | --- |
 | 1 | `.name`, `(...)`, `<Types>`, `[...]`, `@follow`, postfix `++` `--` | Postfix chain, left to right |
 | 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
-| 3 | `@Type`, `@Semantics`, `@move`, `@copy` | Left |
+| 3 | `@Type`, `@Semantics`, `@move`, `@copy`, `@wrap<U>`, `@bits<U>` | Left |
 | 4 | Prefix `try` | Right |
 | 5 | `*` `/` `%` | Left |
 | 6 | `+` `-` | Left |
@@ -32,7 +32,7 @@ Unparenthesized comparison chains such as `a < b < c`, `a == b == c` and `a < b 
 
 Prefix `try` binds below `@` and above the multiplicative operators, so `try x@move` is `try (x@move)` and `try a + 1` is `(try a) + 1`. Extracting before adapting needs grouping, `(try f())@i64`, and a level-2 prefix operator cannot take a `try` expression directly: write `-(try x)` or `not (try x)`.
 
-Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a Type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations and do expressions have their own body syntax. `return`, `exit` and `yield` consume a full result expression, so `return a + b` returns the sum.
+Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a Type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations and do expressions have their own body syntax. `return`, `exit` and `yield` consume a full result expression, so `return a + b` returns the sum. Named `exit` and `yield` first consume `to` and one Label Name, then consume their optional full result expression by the [target and operand boundary rule](14-control-flow.md#1451-syntax-and-operands); `exit to work a + b` transfers the sum to `work`.
 
 | Written form | Grouping |
 | --- | --- |
@@ -41,6 +41,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | `1 << n + 1` | `1 << (n + 1)` |
 | `a + b << count` | `(a + b) << count` |
 | `a + b@i64 * c` | `a + ((b@i64) * c)` |
+| `^n + 1` | `(^n) + 1`; a Type error, because `FromEnd<T>` has no addition |
 | `value@i64@f64` | `(value@i64)@f64` |
 | `builder@move.add(1).add(2)` | `((builder@move).add(1)).add(2)` |
 | `try pending@move * 2` | `(try (pending@move)) * 2` |
@@ -54,14 +55,14 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | Operator | Operand and result |
 | --- | --- |
 | `+value` | Numeric value; unchanged Type and value. |
-| `-value` | Negated signed integer or floating-point value. |
+| `-value` | Negated signed integer, wrapping integer or floating-point value. |
 | `not value` | Negated `bool`. |
 | `*pointer` | Raw-pointer Place under the [unsafe dereference rules](05-raw-pointers-and-unsafe-memory.md#52-dereference-and-ownership). |
-| `^value` | From-end `Index` formed from a nonnegative `isize`. |
+| `^value` | The from-end position `FromEnd<T>` storing `value` of any `T is PrimitiveInteger`, unchecked until resolution (§4.6.2). |
 | `++target` / `--target` | Increments or decrements an integer and returns the updated value. |
 | `target++` / `target--` | Increments or decrements an integer and returns the old value. |
 
-Increment and decrement require a readable, writable integer Place or Property; they do not apply to floats, raw pointers or other Types. The target is resolved, read and written once each, and overflow prevents the write. A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#1372-compound-assignment).
+Increment and decrement require a readable, writable integer or wrapping integer Place or Property; they do not apply to floats, raw pointers or other Types. The target is resolved, read and written once each; a result that an integer Type cannot represent Aborts before the write, and a wrapping integer Type writes the wrapped result (§13.3). A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#1372-compound-assignment).
 
 ```kimi
 var count: i32 = 1
@@ -83,9 +84,24 @@ let masked = bits & 0b0110  // 0b0010
 let shifted = bits << 1     // 0b10100
 ```
 
-Integer `+`, `-`, `*`, unary `-`, increment and decrement, and the arithmetic part of compound assignment are checked for overflow. Integer division or remainder by zero is invalid, as is the signed minimum divided by `-1`, including `% -1`. These failures follow [Abort Termination](17-failure-handling.md#173-abort-termination), including its constant-evaluation rule.
+**Integer results.** One rule covers the integer Types and the wrapping integer Types (§3.1.1.1). `+`, `-`, `*`, `/`, `%`, unary `-`, increment, decrement and the arithmetic part of compound assignment compute the mathematical result, division truncating toward zero. When the Type cannot represent that result, the Type's policy applies: an integer Type Aborts, and a wrapping integer Type **wraps**, producing the unique value of the Type that is congruent to the mathematical result modulo 2ᴺ, where N is the bit width. An input for which the operation is undefined Aborts for both kinds of Type: division or remainder by zero, and a shift count outside `0 <= count < N`. Wrapping removes the failure of unrepresentable results, not integer safety. Abort follows [Abort Termination](17-failure-handling.md#173-abort-termination), including its constant-evaluation rule.
 
-`&`, `|` and `^` perform bitwise AND, OR and XOR on operands of the same integer Type; they do not accept `bool`. `<<` and `>>` return the left operand's integer Type and accept any integer Type on the right, requiring `0 <= shift < bit width of the left operand`; an invalid count is a check failure. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed integers and zero-extends unsigned integers. Discarded shift bits are not arithmetic overflow.
+| Expression (`MIN` and `MAX` of 32 bits) | `i32` | `Wrapping<i32>` |
+| --- | --- | --- |
+| `MAX + 1` | Abort | `MIN` |
+| `MIN / -1` | Abort | `MIN` |
+| `MIN % -1` | `0` | `0` |
+| `x / 0`, `x % 0` | Abort | Abort |
+
+`MIN % -1` is 0 for both kinds because 0 is representable; only `MIN / -1` has an unrepresentable result. Unary `-` on an unsigned integer Type is rejected statically, because every nonzero result is unrepresentable; every wrapping integer Type, signed or unsigned, has unary `-`. A wrapping integer Type has the operators of its integer argument with the same operand, result, order and evaluation rules; both operands of a binary operation have the same wrapping integer Type, and comparisons use the argument's order (§13.4).
+
+```kimi
+func lowestBit(value: u32) -> u32
+    let w = value@Wrapping<u32>
+    return (w & -w)@u32 // -w wraps; the AND keeps the lowest set bit.
+```
+
+`&`, `|` and `^` perform bitwise AND, OR and XOR on operands of the same integer or wrapping integer Type; they do not accept `bool`. `<<` and `>>` return the left operand's Type and accept any integer Type on the right, requiring `0 <= shift < bit width of the left operand`; an invalid count is a check failure, and a wrapping integer Type is never a shift count. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed values and zero-extends unsigned values. Discarded shift bits are not an unrepresentable result.
 
 Floating-point operations follow IEEE 754 for `f32`/`f64`, rounding to nearest with ties to even. They support infinities, NaN and signed zero, and floating-point division by zero does not use the integer failure rules. Ordinary operations are not implicitly reassociated or fused when rounding or NaN results would change.
 
@@ -95,13 +111,13 @@ Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer
 
 ## 13.4. Comparison and logical operators
 
-`==`, `!=`, `<`, `<=`, `>` and `>=` return `bool`. Numeric operands must have the same Type. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic byte order, without normalization or locale processing.
+`==`, `!=`, `<`, `<=`, `>` and `>=` return `bool`. Numeric operands must have the same Type. A wrapping integer Type orders its values as its integer argument does, not cyclically: `Wrapping<u8>` has `0 < 255`, and `Wrapping<i8>` has `-128 < 127`. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic byte order, without normalization or locale processing.
 
 For floating-point values, `+0.0 == -0.0` is true. With a NaN operand, `==`, `<`, `<=`, `>` and `>=` are false and `!=` is true; floating-point ordering is not total.
 
 Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison. Tuple comparison visits corresponding elements from left to right and stops as soon as the result is determined: equality stops at the first unequal pair, and ordering stops at the first pair that is unequal or unordered. An unordered pair makes all four relational operators false, without inspecting later elements. This rule composes recursively, including shared-borrow elements, and never converts unordered floating values into a Comparable result.
 
-Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand whose Type is safe value-reference layers (`ref`, `uniq` and the qualifying pair layers of §3.4.1) denotes the terminal Place reached by following every layer (see [reference-path selection](03-types-and-values.md#341-reference-path-selection)), and the comparison applies to that terminal Type. Following the layers acquires nothing; the terminal is then copied or shared-inspected as this section requires. Both terminal Types must be the same (or one operand is `Never`), and that Type's comparison capability applies. An owned operand and a reference to the same Type therefore compare alike, and an untyped literal operand is fitted to the other operand's terminal Type. The outer borrow Origins need not be identical, but each layer of each operand must remain valid through the comparison. Object Semantics and raw pointers are not followed and compare under their own rules.
+Comparisons may borrow their operands and never Move Non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability (§13.4.1). An operand whose Type is safe value-reference layers (`ref`, `uniq` and the qualifying pair layers of §3.4.1) denotes the terminal Place reached by following every layer (see [reference-path selection](03-types-and-values.md#341-reference-path-selection)), and the comparison applies to that terminal Type. Following the layers acquires nothing; the terminal is then copied or shared-inspected as this section requires. Both terminal Types must be the same (or one operand is `Never`), and that Type's comparison capability applies. An owned operand and a reference to the same Type therefore compare alike, and an untyped literal or literal-only operand (§12.3.1) is fitted to the other operand's terminal Type. The outer borrow Origins need not be identical, but each layer of each operand must remain valid through the comparison. Object Semantics and raw pointers are not followed and compare under their own rules.
 
 ```kimi
 // names: Array<ref/string>; name is ref/(ref/string).
@@ -161,7 +177,7 @@ Beyond the built-in cases above, comparing two operands of the same complete use
 | `==`, `!=` | `Equatable.equals` on shared borrows of both operands | The returned `bool`, or its negation |
 | `<`, `<=`, `>`, `>=` | `Comparable.compare` on shared borrows of both operands | The returned `i32` compared with zero |
 
-`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error.
+`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
 
 For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive equality defined in §12.3.4, whereas a built-in `==` expression still returns false for NaN. Generic comparison through an Equatable requirement uses the mapping, and such a generic call must not be specialized into a floating `==` instruction that changes its meaning.
 
@@ -176,6 +192,7 @@ Explicit @ Operation
 ├─ Type / Semantics Adaptation: @Type, @ref, @uniq, ...
 ├─ Transfer: @move
 ├─ Copy: @copy
+├─ Address: @raw (§5.4)
 └─ Follow: @follow (postfix, §13.5.5.1)
 ```
 
@@ -188,8 +205,12 @@ Explicit @ Operation
 | `E@move` | The [transfer](#1353-defined-adaptations) of a Movable Place; no effect on a Temporary Value |
 | `E@copy` | A [Copy](#1353-defined-adaptations) of a proven-Copy value; never a transfer |
 | `E@follow` | Selection of the Place that the reference or complete object handle `E` points to (§13.5.5.1) |
+| `E@raw` | The [address](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions) of the Place `E`; not Semantics shorthand |
+| `E@raw/U` | Raw pointer [acquisition and conversion](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions) |
+| `E@wrap<U>` | The [wrapping conversion](#13543-wrapping-conversion) of an integer value to `U` |
+| `E@bits<U>` | The [bit conversion](#13544-bit-conversion) between a floating-point value and a same-width integer |
 
-An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Written borrow Origins are forbidden on the target's outer Semantics chain, even through grouping; those Origins are inferred from the operand, operation, Loans and constraints. Complete Types inside an Option or another aggregate keep their own annotations and dependencies. Runtime `is` keeps its Origin-free target restrictions; `exit to Label: value` belongs to control-transfer syntax.
+An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Written borrow Origins are forbidden on the target's outer Semantics chain, even through grouping; those Origins are inferred from the operand, operation, Loans and constraints. Complete Types inside an Option or another aggregate keep their own annotations and dependencies. Runtime `is` keeps its Origin-free target restrictions; `exit to Label value` belongs to control-transfer syntax.
 
 ```text
 Adaptation Target
@@ -199,9 +220,9 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name, `move`, `copy` or `follow` not followed by a slash completes the operation, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move`, `copy` and `follow` cannot be prefixes, take no Type, `?` or `during`, and are never reinterpreted as Type or Semantics names. A slash after `follow` is division. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
+**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name, `move`, `copy` or `follow` not followed by a slash completes the operation; a bare `raw` is the address operation of §5.4, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move`, `copy` and `follow` cannot be prefixes, take no Type, `?` or `during`, and are never reinterpreted as Type or Semantics names. A slash after `follow` is division. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
-`a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
+`a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. A grouped target is always a Type: `x@(ref)` names no Type and `x@(copy)` is not an operation, while a grouped bare owning shorthand keeps the diagnostic of §13.5.3. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
 An ungrouped AdaptationType has no trailing `during`. Use `@(Type)` for a suffix annotation; Types already delimited inside generic arguments, tuples or arrays need no additional grouping. Semantics shorthand accepts neither `?` nor `during`. Attachment is fixed and Optional expanded before the outer-chain prohibition is checked. The outer chain ends at a Core: a Function Type's parameter/result contracts retain their own fixed dependencies under §15.3.4.
 
@@ -243,11 +264,13 @@ For `saved: Option<ref/T during a>`, `saved@(ref/T? during a)` and `saved@Option
 
 ### 13.5.2. Static selection and inference
 
-The operation is resolved from the explicit designation and the operand's Type and category; access, ownership, Loans and Origins are checked afterward. Numeric conversion, Copy, Identity Acquisition and pointer casts use ordinary value acquisition, and Borrow targets use the Borrow table. A failure never selects a different operation, getter or overload.
+The operation is resolved from the explicit designation and the operand's Type and category; access, ownership, Loans and Origins are checked afterward. Numeric, wrapping and bit conversions, Copy, Identity Acquisition and pointer casts use ordinary value acquisition, and Borrow targets use the Borrow table. A failure never selects a different operation, getter or overload.
 
 Targets may guide permitted literal and generic inference but cannot change an established operand or result Type, and an outer expected Type cannot cancel the selected operation. The normal inference boundaries apply: no cyclic inference and no candidate-by-candidate retries. Subsequent result fitting is checked statically.
 
-For numeric adaptation, target guidance is limited to the direct unresolved literal cases of §13.5.4. The conversion target is never passed as an expected Type into a general operand expression, including arithmetic or a generic call; the operand is inferred independently before the numeric conversion. Thus `(200 + 100)@u8` computes an `i32` value and then fails its conversion range check, and `id(300)@u8` does not infer the call's numeric Type from `u8`.
+The operand of a numeric, wrapping or bit conversion, and of an Identity Acquisition whose target is a read Type, is a position that requires a read Type: safe reference layers ending in a read Type supply its value by the [value read](03-types-and-values.md#353-value-read) before the operation is selected, so `number@i64` with `number: ref/i32` converts the referent's value and `number@i32` Copies it. Borrow, `@follow`, `@copy`, `@move` and object targets take the reference itself.
+
+For numeric adaptation, target guidance is limited to the direct unresolved literal cases of §13.5.4. The conversion target is never passed as an expected Type into a general operand expression, including arithmetic, a literal-only expression or a generic call; the operand is inferred independently before the numeric conversion. Thus `(200 + 100)@u8` computes an `i32` value and then fails its conversion range check, and `id(300)@u8` does not infer the call's numeric Type from `u8`.
 
 ```kimi
 // handler is an overloaded function name; the annotation selects its reference.
@@ -264,16 +287,19 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | --- | --- |
 | Transfer | `@move` only; the operand is a Movable Place or a Temporary Value |
 | Copy | `@copy` only; the operand's Type is proven Copy |
-| Identity Acquisition | Same normalized complete Type, written as the Type or as a complete owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value |
-| Numeric Conversion | Integer and floating values under `owner` Semantics, per the numeric table in §13.5.4 |
+| Identity Acquisition | Same normalized complete Type, written as the Type or as a complete owning-Semantics target matching the operand's outer Semantics (below); a Copy Place or a Temporary Value, or the value read of a reference to a read Type (§13.5.2) |
+| Numeric Conversion | Integer, wrapping integer and floating values under `owner` Semantics, including the value read of a reference to one (§13.5.2), per the numeric table in §13.5.4 |
+| Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand, a value or its value read, and such a target (§13.5.4.3) |
+| Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type, the operand a value or its value read (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
-| Raw Pointer Conversion | The [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-pointer-conversions) |
-| Typed Null Formation | Contextually typing `null` as a raw pointer; no Unsafe context required |
+| Raw Pointer Conversion | `@raw/U` under the [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions); no Unsafe context required |
+| Address | Bare `@raw` on a Place (§5.4); no Unsafe context required |
+| Typed Null Formation | `null@raw/U`, or contextually typing `null` as a raw pointer; no Unsafe context required |
 
 **Transfer.** `E@move` requires a Movable Place (§15.1.5) and transfers its value and destruction responsibility, marking the Place Moved even when its Type is Copy. A borrow value's transfer moves the reference, not its referent; a Place reached through a reference offers no Take and is never transferred. Applied to a Temporary Value, including a getter result, `@move` has no effect. `@` applies to its direct operand only: `holder.item@move` transfers the Field or the getter result, never the receiver, which is acquired under §7.3. `@move/T`, `@move?` and `@move{...}` are invalid, and `x@move@ref` shared-borrows the transferred temporary.
 
-**Copy.** `E@copy` Copies the value of `E` and requires its Type to be proven Copy (§3.5); it never transfers or borrows. A Place keeps its value and state, and a Temporary Value is used as is. A Non-Copy or Copy-unproven operand is an error that suggests `@move` or a borrow; a generic `T` needs `T is Copy` at definition checking. `r@copy` Copies a reference value `r`, not its referent, and `r@follow@copy` Copies a Copy referent. Where an owned value must be spelled, as for a ByValue Subject (§15.1.6), `E@copy` is the Copy counterpart of `E@move`. `@copy/T`, `@copy?` and `@copy{...}` are invalid.
+**Copy.** `E@copy` Copies the value of `E` and requires its Type to be proven Copy (§3.5); it never transfers or borrows. A Place keeps its value and state, and a Temporary Value is used as is. A Non-Copy or Copy-unproven operand is an error that suggests `@move` or a borrow; a generic `T` needs `T is Copy` at definition checking. `r@copy` Copies a reference value `r`, not its referent, and `r@follow@copy` Copies a Copy referent. Where an owned value must be spelled, as for a ByValue Subject (§15.1.6), `E@copy` is the Copy counterpart of `E@move`. At an overloaded call, `E@copy` resolves an [acquisition conflict](10-overload-resolution-and-inference.md#1022-acquisition-conflicts) by stating the Copy; it does not name a candidate. `@copy/T`, `@copy?` and `@copy{...}` are invalid.
 
 `@move` is the only transfer spelling and `@copy` the only Copy spelling. The bare owning shorthands `@owner`, `@obj`, `@rc` and `@arc` are not operations, because an owning Semantics names no Core; the diagnostic suggests `@copy`, `@move` or a complete target. The complete forms, such as `@owner/T` and `@obj/T`, and a generic `@s` bound to an owning Semantics are ordinary same-Type acquisitions when the target's outermost written Semantics, after applying the Option suffix rule of §3.2.3 with grouping transparent, matches the operand's outer Semantics: they Copy a Copy value, transfer a temporary and reject a Non-Copy Place. When the target selects an owning [upcast row](#1357-object-upcasts), such as `@obj/Base`, that upcast is performed on the operand acquired the same way. Alias expansion supplies no written Semantics. `n@owner/i32` and `n@(owner/i32)` Copy; `x@uniq/i32?` and `x@owner/T?` are Type targets for the whole Option. Any other owning target is an error: these spellings neither perform [ownership creation or strong-owner duplication](#1358-object-ownership-creation-and-sharing) nor convert between ownership representations.
 
@@ -298,9 +324,19 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [Scalar read](03-types-and-values.md#353-scalar-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and no conversion applies to a referent through its reference. Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and only the numeric, wrapping and bit conversions and Identity Acquisition to a read Type read a referent through its reference (§13.5.2). A raw pointer is obtained from a Place only by `@raw` (§5.4), and a safe reference from raw storage only by borrowing a raw Place (§5.2.2); values are taken from raw storage only by `@move` on a raw Place (§5.2.3). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
+
+Three conversions exist between numeric Types. They are selected by the written designation and never by a failure of another conversion.
+
+| Form | Result | Failure | Operand and target Types |
+| --- | --- | --- | --- |
+| Numeric conversion `@Type` | The same value between integer kinds; the rounding or truncation below when a floating-point Type is involved | Abort outside the target range | Integer and floating-point Types, and `U` ↔ `Wrapping<U>` (§13.5.4.1) |
+| Wrapping conversion `@wrap<U>` | The value wrapped to `U` (§13.3) | None | Integer and wrapping integer Types (§13.5.4.3) |
+| Bit conversion `@bits<U>` | The same bit pattern | None | A floating-point Type and a same-width integer or wrapping integer Type (§13.5.4.4) |
+
+`@Type` never truncates or wraps an integer. A conversion that changes a value is spelled `@wrap`; one that reinterprets bits is spelled `@bits`.
 
 | Source -> target | Rule |
 | --- | --- |
@@ -313,27 +349,91 @@ A finite value that rounds to infinity fails; rounding to a subnormal or zero is
 
 Float-to-float conversion preserves signed zero, including the sign of a nonzero value rounded to zero. Integer zero converts to positive floating zero, and either floating zero converts to integer zero. Floating rounding uses roundTiesToEven, with gradual underflow. The initial Windows profile requires the ABI-standard floating-point environment at entry and across foreign calls (§21.5.4); foreign code that violates this contract is outside the supported boundary, and the runtime does not repair its environment. These rules also apply to literal conversion.
 
-**Direct literals.** For a direct unresolved literal, `@` performs literal fitting:
+#### 13.5.4.1. Wrapping integer conversions
 
-- an integer literal with an integer target must fit the target range;
-- a floating literal with an `f32`/`f64` target follows the [single-rounding rule](02-source-and-lexical-structure.md#26-number-literals);
-- an integer literal with `@f32`/`@f64` rounds once from the exact integer value, without an intermediate default Type.
+The only numeric conversions that involve a wrapping integer Type are `U` → `Wrapping<U>` and `Wrapping<U>` → `U`. Both always succeed and change neither the value nor the bits. A `@Type` conversion between `Wrapping<U>` and an integer Type other than `U`, another wrapping integer Type or a floating-point Type is a static error, so that a conversion whose name suggests wrapping is rejected at compile time rather than Aborting at runtime. Entering or leaving the wrapping Type across a width, signedness or floating-point boundary states its intent:
 
-A failure to fit, including floating overflow to infinity, is a compile-time error, not a runtime numeric-conversion failure. The language's literal representation limits still apply. A floating literal with an integer target first gets its ordinary floating source Type and then undergoes truncation and range checking. Typed values and general arithmetic expressions use ordinary numeric conversion. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison.
+| Intent | Enter: `x` to `Wrapping<U>` | Leave: `w` to `V` |
+| --- | --- | --- |
+| Numeric conversion, checking the range | `x@U@Wrapping<U>` | `w@U@V` |
+| Wrapping | `x@wrap<Wrapping<U>>` | `w@wrap<V>` |
+| Floating-point bits | `f@bits<Wrapping<U>>` | `w@bits<F>` |
 
-The direct-literal category unwraps surrounding parentheses and then permits one unary sign directly attached to the number literal (§12.3.1). Thus `(-128)@i8` and `((-128))@i8` fit the signed literal, while `-(128)@i8` converts the result of an ordinary negation, and `-(128)@u8` fails at runtime. A completed adaptation such as `1@u8` is a typed expression for subsequent argument fitting and overload comparison.
+```kimi
+func mix64(state: u64) -> u64
+    var x = state@Wrapping<u64>         // Same integer argument: @.
+    x = (x ^ (x >> 30)) * 0xbf58_476d_1ce4_e5b9
+    x = (x ^ (x >> 27)) * 0x94d0_49bb_1331_11eb
+    return (x ^ (x >> 31))@u64
+
+let small: u8 = 200
+let seed: u64 = 0x1_0000_0007
+let w1 = small@wrap<Wrapping<u32>>  // 200: an unsigned widening keeps the value.
+let w2 = seed@wrap<Wrapping<u32>>   // 7: wrapped.
+let w3 = seed@u32@Wrapping<u32>     // Abort: the numeric conversion checks the range.
+// let bad = seed@Wrapping<u32>     // Error: different integer argument; write one of the forms above.
+```
+
+#### 13.5.4.2. Direct literals
+
+A direct literal operand (surrounding parentheses and one directly attached unary sign included, §12.3.1) is converted once from its exact value, without an intermediate default Type, by every conversion. A failure to fit is a compile-time error, not a runtime conversion failure; the language's literal representation limits still apply.
+
+| Conversion | Integer literal | Floating literal |
+| --- | --- | --- |
+| `@` integer Type | Must fit the target range | Truncated toward zero from the exact decimal value, then must fit the target range |
+| `@Wrapping<U>` | Must fit the range of `U` | Invalid (§13.5.4.1) |
+| `@f32`, `@f64` | Rounded once from the exact integer value | The [single-rounding rule](02-source-and-lexical-structure.md#26-number-literals) |
+| `@wrap<U>` | Wrapped to `U` | Invalid |
+| `@bits<F>`, `F` floating-point | Wrapped to the unsigned integer Type of `F`'s width, then read as `F` | Invalid |
+| `@bits<I>`, `I` integer or wrapping integer | Invalid; integers use `@wrap` | Rounded once to the floating-point Type of `I`'s width, then read as `I` |
+
+Every other operand is typed independently before the conversion (§13.5.2), so `(200 + 100)@u8` Aborts at runtime and `(200 + 100)@wrap<u8>` computes 300 in `i32` and then wraps it to 44. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison. Thus `(-128)@i8` and `((-128))@i8` fit the signed literal, while `-(128)@i8` converts the result of an ordinary negation, and `-(128)@u8` fails at runtime. A completed adaptation such as `1@u8` is a typed expression for subsequent argument fitting and overload comparison.
 
 ```kimi
 let minimum = -128@i8
-let large = 5000000000@f64 // No intermediate i32 range check.
+let large = 5000000000@f64         // No intermediate i32 range check.
 let single = 1@f32
 let negativeZero = -0.0@f32
-let truncated = 3.9@i32  // 3
+let truncated = 3.9@i32            // 3
+let exact = 9007199254740993.0@i64 // 9007199254740993; no intermediate f64.
+let mask = -1@wrap<u64>            // 0xFFFF_FFFF_FFFF_FFFF
+let low = 0x1_0000_0005@wrap<u32>  // 5
+let negativeInfinity = 0xFF80_0000@bits<f32>
+let halfBits = 1.5@bits<u32>       // 0x3FC0_0000
+let allOnes: Wrapping<u32> = 0xFFFF_FFFF
+let minusOne: Wrapping<u32> = -(1) // Unary - of Wrapping<u32>: 0xFFFF_FFFF.
 // 256@u8 // Error: direct literal does not fit.
 // 300@i8 // Compile-time error; a typed i32 value 300 converted to i8 instead Aborts.
+// 1e10@i32 // Compile-time error: the truncated value does not fit.
+// let invalid: Wrapping<u32> = -1 // Error: the signed literal -1 is outside u32.
 ```
 
 Rounding and checks apply at every `@` in a chain; an intermediate result is never removed if its rounding or failure would change.
+
+#### 13.5.4.3. Wrapping conversion
+
+`E@wrap<U>` converts an integer or wrapping integer value to the integer or wrapping integer Type `U` by wrapping (§13.3). Every combination of widths and signedness is valid, including the same Type, so a generic body may use it for any proven-PrimitiveInteger Type (§8.4.7.3); floating-point Types, `bool`, `char` and raw pointers are not operands or targets. It never fails. In terms of bits, a narrowing keeps the low N bits, a same-width conversion keeps the bits and a widening extends by the operand's signedness, signed values by sign and unsigned values by zero; the resulting bits are then read as `U`. A zero extension of a signed value is written through the unsigned Type of the same width. The Type argument is mandatory and must be a complete value Type without Semantics annotation.
+
+```kimi
+let a = 300@i32@wrap<u8>          // 44
+let b = 200@u8@wrap<i8>           // -56
+let c = 0xFFFF_FFFF@u32@wrap<i32> // -1
+let d = -1@i32@wrap<u64>          // 0xFFFF_FFFF_FFFF_FFFF: sign-extended.
+let e = -1@i32@wrap<u32>@u64      // 0x0000_0000_FFFF_FFFF: zero-extended through u32.
+
+func zigzagEncode(value: i64) -> u64
+    return ((value << 1) ^ (value >> 63))@wrap<u64>
+```
+
+#### 13.5.4.4. Bit conversion
+
+`E@bits<U>` reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of the same width: `f32` with `i32`, `u32`, `Wrapping<i32>` or `Wrapping<u32>`, and `f64` with `i64`, `u64`, `Wrapping<i64>` or `Wrapping<u64>`, in either direction. Exactly one of the two Types is floating-point; two integers (use `@wrap`), two floating-point Types, different widths, `isize`/`usize` (whose width is platform-dependent), 128-bit integers, `bool` and `char` are rejected. The result is the operand's IEEE 754 binary32 or binary64 encoding or the value it encodes; nothing is normalized, so NaN payloads, the quiet/signaling bit and the sign of zero are preserved, and later floating-point operations keep their ordinary rules. It never fails. It is unavailable while the operand or target Type depends on a Type parameter; inside a generic body a conversion between fixed Types is allowed.
+
+```kimi
+let raw = 1.5@f32@bits<u32>        // 0x3FC0_0000
+let back = raw@bits<f32>           // 1.5
+let quiet = 0x7FC0_0001@u32@bits<f32> // A quiet NaN with payload 1.
+```
 
 ### 13.5.5. Follow, borrow and reborrow
 
@@ -429,8 +529,9 @@ func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
 | `objref/T` | `@objref` | Copy of the shared object reference |
 | `objuniq/T` | `@objref` | Shared object Reborrow |
 | `objuniq/T` | `@objuniq` | Exclusive object Reborrow |
+| Raw Place storing `V`, in an unsafe context | `@ref`, `@uniq`, `@objref`, `@objuniq` as for the corresponding owned Place | New reference with a fresh Loan anchor (§5.2.2) |
 
-A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving the parent reference, and a position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
+A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving the parent reference. A position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2), and the bare acquisition of a Place storing `uniq/T` Reborrows it as `r@follow@uniq` does (§3.5). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
 
 ```kimi
 var number = 1
@@ -444,7 +545,8 @@ let exclusive = value@uniq
 inspect(exclusive)                   // Shared Reborrow at a ref parameter.
 modify(exclusive)                    // Exclusive Reborrow at a uniq parameter, after the previous child Loan ends.
 let child: uniq/Value = exclusive    // Exclusive Reborrow; exclusive resumes after child's last use.
-// let bare = exclusive              // Error: no expected Type and uniq/Value is Non-Copy.
+let bare = exclusive                 // The same Reborrow without an expected Type (§3.5).
+_ = exclusive                        // Reborrow a child and drop it at once; exclusive is not consumed.
 let transferred = exclusive@move     // Transfer the reference, not its referent.
 ```
 
@@ -531,7 +633,7 @@ These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary i
 
 Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only following it to an ordinary value Place additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
-**Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `deinit`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
+**Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `drop`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
 
 **Strong clone** shared-borrows its input for the operation, leaves it Initialized, and returns an independent responsibility without allocation, payload copying, user-code calls or view changes. The handle slot is borrowed explicitly, as in `clone(handle@ref)` or the equivalent `clone(handle@ref/rc/T)` (§13.5.5.2); no implicit handle-layer adaptation exists (§10.2). It preserves the full View Type, Dynamic Type and payload dependencies, without a lasting Loan on the input handle slot. Moving or borrowing an object never changes counts, and `rc`/`arc` provide shared payload access even at count one. These operations introduce no general deep clone, `obj` duplication, `rc`/`arc` conversion or ownership creation from a borrow.
 
@@ -680,7 +782,7 @@ If the right-hand side does not complete normally, the left side is not evaluate
 ```kimi
 var x = makeResource() // Non-Copy owned value.
 x = x@move            // Transfer to temporary, locate x, skip absent old value, Move back.
-// No user-defined deinit runs; no self-assignment exception is needed.
+// No user-defined drop runs; no self-assignment exception is needed.
 
 var count: i32 = 0
 let done: () = (count = 20)
@@ -692,7 +794,7 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 ### 13.7.2. Compound assignment
 
-`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement follow the same steps without a right-hand side (§13.2).
+`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement follow the same steps without a right-hand side (§13.2). An integer result that the destination's integer Type cannot represent Aborts before the write; a wrapping integer destination writes the wrapped result (§13.3).
 
 String `+=` remains subject to the deferred operator ownership design of [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
 

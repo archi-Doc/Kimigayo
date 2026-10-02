@@ -99,6 +99,7 @@ public class CompositeMatchTest
         Assert.True(c.Emission.Validate(out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmAnalysisPreserveNestedCandidates()
     {

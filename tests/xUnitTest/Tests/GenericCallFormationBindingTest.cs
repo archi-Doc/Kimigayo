@@ -13,12 +13,12 @@ public class GenericCallFormationBindingTest
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("() -> Box<string>")]
     public void InvalidExplicitArgumentCannotPublishCall(string argument)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         Assert.Null(Call(c).BoundCall);
@@ -33,7 +33,7 @@ public class GenericCallFormationBindingTest
     public void InvalidInferredArgumentCannotPublishCall()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>(value: T) => ()\n    func call(value: Box<string>) => take(value)");
-        Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Null(Call(c).BoundCall);
     }
@@ -42,7 +42,7 @@ public class GenericCallFormationBindingTest
     [InlineData("Box<i32>")]
     [InlineData("(i32, Box<i32>)")]
     [InlineData("[2 of Box<i32>]")]
-    [InlineData("unsafe/Box<i32>")]
+    [InlineData("raw/Box<i32>")]
     [InlineData("() -> Box<i32>")]
     public void ValidExplicitArgumentsRemainApplicable(string argument)
     {
@@ -93,6 +93,7 @@ public class GenericCallFormationBindingTest
         Assert.Same(plan, call.BoundCall);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericCallChecksAllocateNothing()
     {

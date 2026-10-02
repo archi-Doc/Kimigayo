@@ -19,22 +19,22 @@ public class ElementReplacementEmissionTest
         { "AggregateCall", "func make() -> (string, i32) => (\"new\", 42)\nvar a = ((\"old\", 0), 1)\na.0 = make()\nif a.0.1 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "Selection", "var a = (\"old\", 42)\na.0 = if true => \"new\" else => \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "Match", "var a = ((\"old\", 0), 1)\na.0 = match true\n    true => (\"new\", 42)\n    false => (\"unused\", 0)\nif a.0.1 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
-        { "ResultCleanup", "var a = (\"old\", 42)\na.0 = work: do\n    defer => Console.writeLine(\"ok\")\n    exit to work: \"new\"", "old=1;new=1;ok=1" },
+        { "ResultCleanup", "var a = (\"old\", 42)\na.0 = label work: do\n    defer => Console.writeLine(\"ok\")\n    exit to work \"new\"", "old=1;new=1;ok=1" },
         { "Loop", "var a: [1 of string] = [\"old\"]\nvar i = 0\nloop\n    defer => a[0] = \"new\"\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "old=1;new=3;ok=1" },
-        { "Sibling", "var a = (40, \"old\")\na.0 += work: do\n    a.1 = \"new\"\n    exit to work: 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
-        { "SiblingAggregate", "var a = (40, (\"old\", 0))\na.0 += work: do\n    a.1 = (\"new\", 2)\n    exit to work: a.1.1\nif a.0 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
+        { "Sibling", "var a = (40, \"old\")\na.0 += label work: do\n    a.1 = \"new\"\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
+        { "SiblingAggregate", "var a = (40, (\"old\", 0))\na.0 += label work: do\n    a.1 = (\"new\", 2)\n    exit to work a.1.1\nif a.0 == 42 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "ZeroSize", "var a: ([0 of string], i32) = ([], 42)\nlet empty: [0 of string] = []\na.0 = empty@move\nif a.1 == 42 => Console.writeLine(\"ok\")", "ok=1" },
         { "EmptyString", "var a = (\"old\", 42)\na.0 = \"\"\nConsole.writeLine(\"ok\")", "old=1;=1;ok=1" },
         { "ConditionalSource", "func f(replace: bool)\n    var a = (\"old\", 42)\n    let text = \"new\"\n    if replace => a.0 = text@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "old=2;new=2;ok=1" },
-        { "ReinitializeSource", "var a: [1 of string] = [\"old\"]\nvar text = \"new\"\na[(work: do\n    text = \"again\"\n    exit to work: 0\n)] = text@move\nConsole.writeLine(\"ok\")", "old=1;new=1;again=1;ok=1" },
-        { "RestoreParent", "var a = (\"old\", 0)\na.0 = work: do\n    a = (\"intermediate\", 42)\n    exit to work: \"new\"\nif a.1 == 42 => Console.writeLine(\"ok\")", "old=1;intermediate=1;new=1;ok=1" },
+        { "ReinitializeSource", "var a: [1 of string] = [\"old\"]\nvar text = \"new\"\na[(label work: do\n    text = \"again\"\n    exit to work 0\n)] = text@move\nConsole.writeLine(\"ok\")", "old=1;new=1;again=1;ok=1" },
+        { "RestoreParent", "var a = (\"old\", 0)\na.0 = label work: do\n    a = (\"intermediate\", 42)\n    exit to work \"new\"\nif a.1 == 42 => Console.writeLine(\"ok\")", "old=1;intermediate=1;new=1;ok=1" },
         { "CoveredArm", "var a = (\"old\", 0)\nmatch true\n    _ => a.0 = \"new\"\n    true => a.0 = \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "StringMatch", "var a = (\"old\", 0)\na.0 = match true\n    true => \"new\"\n    false => \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "CopyMatch", "var a = ((0, 0), 1)\na.0 = match true\n    true => (40, 2)\n    false => (0, 0)\nif a.0.0 + a.0.1 == 42 => Console.writeLine(\"ok\")", "ok=1" },
         { "Dead", "func f()\n    return\n    var a = (\"old\", 0)\n    a.0 = \"new\"\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
-        { "RhsReplacesParent", "var a = (40, \"old\")\na.0 += work: do\n    a = (0, \"new\")\n    exit to work: 2\nif a.0 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
-        { "RhsReplacesTarget", "var a = ((\"old\", 40), 1)\na.0.1 += work: do\n    a.0 = (\"new\", 0)\n    exit to work: 2\nif a.0.1 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
-        { "RhsReplacesSibling", "var a: [2 of (i32, string)] = [(40, \"old\"), (0, \"other\")]\nvar i: isize = 0\nvar j: isize = 1\na[i].0 += work: do\n    a[j].1 = \"new\"\n    exit to work: 2\nif a[i].0 == 42 => Console.writeLine(\"ok\")", "old=1;other=1;new=1;ok=1" },
+        { "RhsReplacesParent", "var a = (40, \"old\")\na.0 += label work: do\n    a = (0, \"new\")\n    exit to work 2\nif a.0 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
+        { "RhsReplacesTarget", "var a = ((\"old\", 40), 1)\na.0.1 += label work: do\n    a.0 = (\"new\", 0)\n    exit to work 2\nif a.0.1 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
+        { "RhsReplacesSibling", "var a: [2 of (i32, string)] = [(40, \"old\"), (0, \"other\")]\nvar i: isize = 0\nvar j: isize = 1\na[i].0 += label work: do\n    a[j].1 = \"new\"\n    exit to work 2\nif a[i].0 == 42 => Console.writeLine(\"ok\")", "old=1;other=1;new=1;ok=1" },
     };
 
     [Theory]
@@ -93,8 +93,8 @@ public class ElementReplacementEmissionTest
     }
 
     [Theory]
-    [InlineData("Rhs", "a[0] = work: do\n    defer => loop => ()\n    exit to work: \"new\"")]
-    [InlineData("Index", "a[(work: do\n    defer => loop => ()\n    exit to work: 0\n)] = \"new\"")]
+    [InlineData("Rhs", "a[0] = label work: do\n    defer => loop => ()\n    exit to work \"new\"")]
+    [InlineData("Index", "a[(label work: do\n    defer => loop => ()\n    exit to work 0\n)] = \"new\"")]
     public void NonterminatingCleanupPreventsDestructionAndPlacement(string name, string expression)
     {
         var source = "var a: [1 of string] = [\"old\"]\n" + expression;
@@ -113,7 +113,7 @@ public class ElementReplacementEmissionTest
     [InlineData("var a = (\"old\", 0)\nlet moved = a@move\na.0 = \"new\"")]
     [InlineData("func f(a: [1 of string])\n    a[0] = \"new\"")]
     [InlineData("func make() -> [1 of string] => [\"old\"]\nmake()[0] = \"new\"")]
-    [InlineData("var a: [1 of string] = [\"old\"]\nlet text = \"new\"\na[(work: do\n    Console.writeLine(text)\n    exit to work: 0\n)] = text@move")]
+    [InlineData("var a: [1 of string] = [\"old\"]\nlet text = \"new\"\na[(label work: do\n    Console.writeLine(text)\n    exit to work 0\n)] = text@move")]
     [InlineData("func f()\n    return\n    var a = (\"old\", 0)\n    let text = \"new\"\n    a.0 = text@move\n    Console.writeLine(text)")]
     public void InvalidOrUnsupportedReplacementProducesNoIr(string source)
     {
@@ -125,9 +125,9 @@ public class ElementReplacementEmissionTest
 
     [Theory]
     [InlineData("var a = (\"old\", 40)\nlet r = a@ref\na.0 = \"new\"\nlet n = r.1")]
-    [InlineData("var a: [1 of string] = [\"old\"]\na[(work: do\n    a[0] = \"bad\"\n    exit to work: 0\n)] = \"new\"")]
-    [InlineData("var a: [1 of string] = [\"old\"]\nlet r = a@ref\na[(work: do\n    exit to work: 0\n)] = \"new\"\nlet n = r.length")]
-    [InlineData("var a = ((\"old\", 40), 1)\nlet r = a@uniq\nr.0.1 += work: do\n    a.0 = (\"new\", 0)\n    exit to work: 2")]
+    [InlineData("var a: [1 of string] = [\"old\"]\na[(label work: do\n    a[0] = \"bad\"\n    exit to work 0\n)] = \"new\"")]
+    [InlineData("var a: [1 of string] = [\"old\"]\nlet r = a@ref\na[(label work: do\n    exit to work 0\n)] = \"new\"\nlet n = r.length")]
+    [InlineData("var a = ((\"old\", 40), 1)\nlet r = a@uniq\nr.0.1 += label work: do\n    a.0 = (\"new\", 0)\n    exit to work 2")]
     public void OverlappingReplacementIsRejectedByLoanChecking(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -191,6 +191,7 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmReplacementAnalysisAndEmissionAllocateNothing()
     {

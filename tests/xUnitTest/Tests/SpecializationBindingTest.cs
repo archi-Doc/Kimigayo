@@ -39,7 +39,7 @@ public class SpecializationBindingTest
     [Fact]
     public void RejectsSpecializationsThatViolateInheritedConstraints()
     {
-        var c = MinimalEmissionTest.Analyze("struct Token\n    deinit => ()\n" + Constrained + "specialize func twice<Token>(value: Token) -> Token => value@move");
+        var c = MinimalEmissionTest.Analyze("struct Token\n    drop => ()\n" + Constrained + "specialize func twice<Token>(value: Token) -> Token => value@move");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsatisfiedConstraint_Kd);
     }
