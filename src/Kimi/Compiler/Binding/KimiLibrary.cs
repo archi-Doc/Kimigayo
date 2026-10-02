@@ -60,6 +60,7 @@ public sealed partial class KimiLibrary
         this.ArrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new(array) { Parent = this.Scope } : this.Scope;
         this.DictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new(dictionary) { Parent = this.Scope } : this.Scope;
         this.StorageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new(storage) { Parent = this.Scope } : this.Scope;
+        this.RawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new(raw) { Parent = this.Scope } : this.Scope;
         this.FixedArrayMembers = (this.StorageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
@@ -77,6 +78,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Array => this.ArrayScope,
                 KimiLibraryContainer.Dictionary => this.DictionaryScope,
                 KimiLibraryContainer.Storage => this.StorageScope,
+                KimiLibraryContainer.Raw => this.RawScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
@@ -254,6 +256,8 @@ public sealed partial class KimiLibrary
     internal BindingScope DictionaryScope { get; }
 
     internal BindingScope StorageScope { get; }
+
+    internal BindingScope RawScope { get; }
 
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; }

@@ -27,7 +27,7 @@ internal group Storage
             while self.count > 0
                 self.count -= 1
                 unsafe => _ = storage[self.position + self.count]@move
-            unsafe => release(storage)
+            unsafe => Raw.release(storage)
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
@@ -59,7 +59,7 @@ internal group Storage
             let storage: raw/u8 = self.storage
             unsafe
                 destroyDictionaryEntries<K, V>(storage, self.stride, self.tail, self.count)
-                release(storage)
+                Raw.release(storage)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
     internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)

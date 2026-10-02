@@ -29,6 +29,7 @@ public sealed partial class KimiLibrary
             Read("Dictionary.kimi"),
             Read("DictionaryStorage.kimi"),
             Read("Storage.kimi"),
+            Read("Raw.kimi"),
             Read("Formatting.kimi"),
             Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
             Read("FixedBuffer.kimi", KimiLibraryContainer.FixedBuffer, signatures: true),
@@ -37,6 +38,7 @@ public sealed partial class KimiLibrary
             Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
             Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
             Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
+            Read("RawOperations.kimi", KimiLibraryContainer.Raw, signatures: true),
             Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
             Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
             Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
@@ -107,6 +109,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
                 KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
                 KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
+                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
                 KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
                 _ => this.FormattingContainer(source.Container),
             };

@@ -13,8 +13,15 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageBorrowShared, KimiDeclarationId.Array, SemanticsKind.Ref, KimiDeclarationId.RefRemainder),
         new(KimiDeclarationId.StorageBorrowExclusive, KimiDeclarationId.Array, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
-        new(KimiDeclarationId.StorageRelease, null, SemanticsKind.Raw),
     ];
+
+    // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit.
+    private static bool ValidBoundRawOperation(BindingSymbol symbol, KimiDeclarationId id)
+        => symbol.Declaration is FunctionKoto { GenericArguments: [var parameter] } function && parameter.BoundType is { Kind: BoundTypeKind.Parameter } element &&
+            (id == KimiDeclarationId.RawAllocate
+                ? ReferenceEquals(function.Parameters[0].Type.BoundType, BoundType.ISize) && BoundStoragePointer(symbol.Type, element)
+                : BoundStoragePointer(function.Parameters[0].Type.BoundType, element) && ReferenceEquals(symbol.Type, BoundType.Unit) &&
+                    (id == KimiDeclarationId.RawRelease || ReferenceEquals(function.Parameters[1].Type.BoundType, element)));
 
     private static bool BoundStoragePointer(BoundType? type, BoundType element)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Symbol: null, Origin: null, OriginArguments.Count: 0, Components: [var pointee] } && ReferenceEquals(pointee, element);
@@ -66,9 +73,14 @@ public sealed partial class KimiLibrary
             return this.ValidBoundDictionaryLayout(symbol);
         }
 
-        if (id is KimiDeclarationId.StoragePlaceDictionaryEntry or KimiDeclarationId.StoragePlaceDictionaryValue)
+        if (id == KimiDeclarationId.StoragePlaceDictionaryEntry)
         {
-            return ValidBoundDictionaryPlacement(symbol, id);
+            return ValidBoundDictionaryPlacement(symbol);
+        }
+
+        if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawInitialize)
+        {
+            return ValidBoundRawOperation(symbol, id);
         }
 
         if (id is KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary)
@@ -91,7 +103,7 @@ public sealed partial class KimiLibrary
             return this.ValidBoundDictionaryStorage(symbol, id);
         }
 
-        if (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageRelease)
+        if (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageOwn)
         {
             return true;
         }
@@ -117,11 +129,7 @@ public sealed partial class KimiLibrary
             return false;
         }
 
-        if (signature.Parameter is not { } parameterId)
-        {
-            return BoundStoragePointer(input, element) && ReferenceEquals(result, BoundType.Unit);
-        }
-
+        var parameterId = signature.Parameter;
         var storage = input;
         if (signature.Semantics != SemanticsKind.Owner)
         {
@@ -233,5 +241,5 @@ public sealed partial class KimiLibrary
             type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == origins &&
             ReferenceEquals(type.Symbol, this.GetSymbol(id)) && type.Components is [var argument] && ReferenceEquals(argument, element);
 
-    private readonly record struct StorageSignature(KimiDeclarationId Id, KimiDeclarationId? Parameter, SemanticsKind Semantics, KimiDeclarationId? Result = null);
+    private readonly record struct StorageSignature(KimiDeclarationId Id, KimiDeclarationId Parameter, SemanticsKind Semantics, KimiDeclarationId? Result = null);
 }

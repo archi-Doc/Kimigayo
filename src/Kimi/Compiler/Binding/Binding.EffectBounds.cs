@@ -931,8 +931,9 @@ public sealed partial class Binding
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
-                CompilerFunctionKind.StorageOwn or CompilerFunctionKind.StorageRelease or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary => true,
+                CompilerFunctionKind.StorageOwn or
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary or
+                >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawInitialize => true, // SPEC 5.6: an allocation and raw accesses.
             _ => false,
         };
 

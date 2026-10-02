@@ -16,6 +16,7 @@ internal enum KimiLibraryContainer : byte
     WriteWindow,
     Utf8Writer,
     Storage,
+    Raw,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -122,7 +123,6 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
         new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
         new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn, Overload: 0),
-        new(KimiDeclarationId.StorageRelease, "release", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageRelease),
         // SPEC 22.1.2.5: the distinct Dictionary family traverses live entries in insertion order.
         new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
@@ -147,10 +147,13 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryIndexUniq, "indexUniq", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageMissingDictionaryKey, "missingDictionaryKey", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageMissingDictionaryKey),
         new(KimiDeclarationId.StoragePlaceDictionaryEntry, "placeEntry", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryEntry),
-        new(KimiDeclarationId.StoragePlaceDictionaryValue, "placeValue", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryValue),
         new(KimiDeclarationId.StorageReserveDictionary, "reserveEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageReserveDictionary),
         new(KimiDeclarationId.StorageShrinkDictionary, "shrinkEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageShrinkDictionary),
         new(KimiDeclarationId.StorageAddressOfI64, "addressOfI64", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageAddressOfI64),
+        // SPEC 5.6: the public raw storage operations.
+        new(KimiDeclarationId.RawAllocate, "allocate", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawAllocate),
+        new(KimiDeclarationId.RawRelease, "release", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawRelease),
+        new(KimiDeclarationId.RawInitialize, "initialize", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawInitialize),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -160,6 +163,8 @@ internal static class KimiLibraryCatalog
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
     internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageAddressOfI64;
+
+    internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawInitialize;
 
     internal static bool RequiresCallerLocation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].CallerLocation;

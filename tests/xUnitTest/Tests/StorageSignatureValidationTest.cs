@@ -34,7 +34,6 @@ public class StorageSignatureValidationTest
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
-    [InlineData(KimiDeclarationId.StorageRelease)]
     public void EveryOperationRequiresItsOwnElementParameter(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();

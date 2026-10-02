@@ -53,7 +53,7 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
                         KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq => this.ValidDictionaryOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
-                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageRelease => this.ValidStorageOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageOwn => this.ValidStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder => this.ValidDictionaryRemainder(symbol, entry.Id),
                         KimiDeclarationId.StorageBorrowDictionary or KimiDeclarationId.StorageBorrowDictionaryExclusive or
                             >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt => this.ValidDictionaryStorageOperation(symbol, entry.Id),
@@ -62,7 +62,8 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StorageOwnFixed => this.ValidFixedOwningOperation(symbol),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
                         KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
-                        KimiDeclarationId.StoragePlaceDictionaryEntry or KimiDeclarationId.StoragePlaceDictionaryValue => this.ValidDictionaryPlacement(symbol, entry.Id),
+                        KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
+                        >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawInitialize => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
                         KimiDeclarationId.StorageAddressOfI64 => this.ValidAddressOfI64(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
@@ -695,28 +696,21 @@ public sealed partial class KimiLibrary
     private bool ValidStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
-        var release = id == KimiDeclarationId.StorageRelease;
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
             KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
-            KimiDeclarationId.StorageOwn => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
-            _ => ("release", "storage", SemanticsKind.Raw, "E"),
+            _ => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
         };
         if (symbol.CompilerFunction != kind ||
             symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
-            function.Name != name || function.Modifier != (release ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) || function.AttributeChain is not null ||
+            function.Name != name || function.Modifier != ModifierKind.Internal || function.AttributeChain is not null ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] ||
-            function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || (release ? function.ReturnType is not null : function.ReturnType is null) ||
+            function.Parameters.Count != 1 || function.TypeConstraints.Count != 0 || function.ReturnType is null ||
             function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization ||
             function.Parameters[0] is not { DefaultValue: null, AttributeChain: null } parameter || parameter.InternalName != parameterName || parameter.ExternalName != parameter.InternalName)
         {
             return false;
-        }
-
-        if (release)
-        {
-            return BareType(parameter.Type) is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } releasePointer && BareName(releasePointer.Type, "E");
         }
 
         return semantics == SemanticsKind.Owner

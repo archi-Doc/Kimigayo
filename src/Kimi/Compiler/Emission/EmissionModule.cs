@@ -398,7 +398,6 @@ internal enum DictionaryHelperKind : byte
 {
     CheckKey,
     Place,
-    PlaceValue,
     Find,
     Clear,
     Drop,

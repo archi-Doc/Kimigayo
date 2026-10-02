@@ -200,7 +200,6 @@ public class DictionaryLibraryTest
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
     [InlineData("unsafe => Kimi.Storage.placeEntry<i32, i32>(null, 1, 2)")]
-    [InlineData("unsafe => Kimi.Storage.placeValue<i32, i32>(null, 2)")]
     [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.reserveEntries(entries@uniq, 4)")]
     [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.shrinkEntries(entries@uniq)")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)

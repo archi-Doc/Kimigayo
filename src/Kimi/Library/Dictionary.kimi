@@ -58,7 +58,7 @@ public struct Dictionary<K, V>
             // The old value is secured before the new one is placed; the unused input key is destroyed before delivery.
             let slot = state.storage + (link - 1) * state.stride
             let previous = (*Storage.valueAt<K, V>(slot))@move
-            Storage.placeValue<K, V>(slot, value@move)
+            Raw.initialize(Storage.valueAt<K, V>(slot), value@move)
             return .Some(previous@move)
 
     /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.

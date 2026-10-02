@@ -102,11 +102,7 @@ public enum KimiDeclarationId : byte
     OwnedRemainder,
     StorageBorrowShared,
     StorageBorrowExclusive,
-    StorageSplitShared,
-    StorageSplitExclusive,
     StorageOwn,
-    StorageTakeFirst,
-    StorageRelease,
     PrimitiveInteger,
     Range,
     DictionaryRefRemainder,
@@ -130,10 +126,12 @@ public enum KimiDeclarationId : byte
     DictionaryIndexUniq,
     StorageMissingDictionaryKey,
     StoragePlaceDictionaryEntry,
-    StoragePlaceDictionaryValue,
     StorageReserveDictionary,
     StorageShrinkDictionary,
     StorageAddressOfI64,
+    RawAllocate,
+    RawRelease,
+    RawInitialize,
 }
 
 public enum KimiDeclarationState : byte

@@ -439,6 +439,18 @@ The following functions belong to `Intrinsics`:
 
 Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure and reference-count overflow Abort.
 
+### 5.4. Raw Storage
+
+[Specification: raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations). All functions belong to `Raw`.
+
+| Function | Guarantee |
+| --- | --- |
+| `allocate<T>(count: isize) -> raw/T` | Safe. Allocates uninitialized storage for `count` elements; a negative count, an overflow of `count * stride(T)` or an allocation failure Aborts. Zero bytes allocate nothing and return a nonnull address aligned for `T`. An element alignment above 16 is unsupported at compile time. |
+| `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any element; null and zero-byte results are ignored. |
+| `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into live, aligned, writable storage that holds no value, destroying nothing. |
+
+Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses. `slice` is not yet available.
+
 ## 6. Console and Test Utilities
 
 | Function | Guarantee | Specification |

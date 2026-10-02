@@ -160,7 +160,6 @@ public class StorageBoundaryTest
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(values@ref)")]
     [InlineData("let r = Storage.borrowStorage(values@ref)")]
-    [InlineData("unsafe => Kimi.Storage.release(null@raw/i32)")]
     [InlineData("func f(r: Kimi.Storage.RefRemainder<Array<i32>>) => ()")]
     public void UserSourceCannotReachTheBoundary(string use)
     {
