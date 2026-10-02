@@ -171,6 +171,21 @@ public class ContextualLabelTest
         Assert.Equal("TypeMismatch_Kd", Assert.Single(independent, x => x != error).Code);
     }
 
+    // A declaration recovered as a label target or as a branch body is not evaluated. Control flow shares the info it records
+    // for that position rather than reading one the declaration never registers, so only the syntax problems are published.
+    [Theory]
+    [InlineData("func f()\n    label work: func g()", "LabelTargetExpected_Kd,MissingSyntax_Kd")]
+    [InlineData("func f()\n    label work: label inner: func g()", "LabelTargetExpected_Kd,LabelTargetExpected_Kd,MissingSyntax_Kd")]
+    [InlineData("func f(ready: bool) -> i32\n    label work: func g()\n    return 1", "LabelTargetExpected_Kd,MissingSyntax_Kd")]
+    [InlineData("func f(ready: bool)\n    if ready => func g()", "MisplacedSyntax_Kd,MissingSyntax_Kd")]
+    [InlineData("func f(ready: bool)\n    label work: if ready => func g()", "MisplacedSyntax_Kd,MissingSyntax_Kd")]
+    public void ARecoveredDeclarationTargetPublishesItsSyntaxProblems(string source, string codes)
+        => Assert.Equal(codes, string.Join(',', Publish(source).OrderBy(static x => x.Span.Start).Select(static x => x.Code)));
+
+    [Fact]
+    public void ARecoveredStructLabelTargetIsAnalyzed()
+        => Assert.Contains(Publish("func f()\n    label work: struct S\n        var x: i32"), static x => x.Code == "LabelTargetExpected_Kd");
+
     [Fact]
     public void GroupingOperandsAndCleanupSurviveRoundTripAndEmission()
     {

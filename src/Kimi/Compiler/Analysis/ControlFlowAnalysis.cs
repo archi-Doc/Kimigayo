@@ -469,6 +469,18 @@ public sealed class ControlFlowAnalysis
         return info;
     }
 
+    // The info of a visited node. A declaration is not evaluated and records none of its own, so a construct sharing the info
+    // of a declaration it holds, such as a label or a branch body recovered over one (LabelTargetExpected_Kd), rents it here.
+    private ControlFlowNodeInfo NodeInfo(Koto node)
+    {
+        if (!this.nodes.TryGetValue(node, out var info))
+        {
+            this.nodes[node] = info = this.RentInfo();
+        }
+
+        return info;
+    }
+
     private HashSet<JumpKoto> RentTransfers()
     {
         if (this.transferCursor == this.transferPool.Count)
@@ -695,7 +707,7 @@ public sealed class ControlFlowAnalysis
             case LabeledKoto labeled:
                 this.CheckLabel(labeled);
                 flow = this.Visit(labeled.Target, reachable, expected);
-                this.nodes[labeled] = this.nodes[labeled.Target];
+                this.nodes[labeled] = this.NodeInfo(labeled.Target);
                 break;
             case DeferredBlockKoto deferred:
                 var cleanupBoundary = this.Begin(deferred, ControlFlowType.Unit);
@@ -913,11 +925,7 @@ public sealed class ControlFlowAnalysis
                 break;
         }
 
-        if (!this.nodes.TryGetValue(node, out var info))
-        {
-            this.nodes[node] = info = this.RentInfo();
-        }
-
+        var info = this.NodeInfo(node);
         info.ExpressionType = this.boundaries.TryGetValue(node, out var resultBoundary) && resultBoundary.InvalidResult
             ? null : flow.Type;
         info.CanCompleteNormally = flow.Normal;
@@ -1366,7 +1374,7 @@ public sealed class ControlFlowAnalysis
 
         if (body != expression)
         {
-            this.nodes[body] = this.nodes[expression];
+            this.nodes[body] = this.NodeInfo(expression);
         }
 
         return flow;
