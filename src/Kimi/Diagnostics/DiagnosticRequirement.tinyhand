@@ -564,6 +564,9 @@
   + Name="Binding.NonCopyOperand"
     Description="the @copy operand is proven Copy"
 
+  + Name="Binding.NonNumericOperand"
+    Description="the operand of an arithmetic or bitwise operator is numeric"
+
   + Name="Binding.InvalidWrapConversion"
     Description="the @wrap operand and target are integer or wrapping integer Types"
 

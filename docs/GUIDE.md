@@ -14,7 +14,8 @@ and [STATUS.md](STATUS.md) for compiler support. A specification rule is not a c
 - Bodies use an indented block or `=> expression` on the header's ending line. No body colon or braces.
   Use delimiters for multiline expressions. Executable bodies cannot be empty: write `()` for no work.
 - `//` comments; non-nesting `/* ... */`; `///` documentation. Strings use `"text \(expression)"`,
-  chars use `'A'`; `"""raw text"""` has no escapes or interpolation.
+  chars use `'A'`; `"""raw text"""` has no escapes or interpolation. Interpolation is the one way to join
+  strings: `string` has no `+` or `+=`.
 - Choose top-level executable items in exactly one file **or** root-level `public func main() -> ()`.
   Libraries have neither executable top-level items nor automatic startup.
 - Kimi's direct members are open by default: `Array`, `Option`, `Console`, etc.; use `Console.writeLine(text)`.

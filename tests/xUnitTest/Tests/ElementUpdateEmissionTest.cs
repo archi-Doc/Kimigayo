@@ -67,17 +67,19 @@ public class ElementUpdateEmissionTest
         ScalarEmissionTest.EmitFixture("ElementUpdateGenericInteger", Source, "ok\n");
     }
 
-    // Every compound update path computes through the same numeric plan: a string target through a raw pointer, which no
-    // emission supports, is rejected by the analysis like a string local, not verified and left to emission.
+    // SPEC 13.3: a string destination has no compound update, through a raw pointer or as a local; Binding rejects it before
+    // any update plan, so neither the analysis nor emission sees it.
     [Theory]
     [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"")]
     [InlineData("func append()\n    var s = \"a\"\n    s += \"b\"")]
-    public void AStringCompoundUpdateIsOutsideTheSubset(string function)
+    public void AStringCompoundUpdateIsRejectedAtBinding(string function)
     {
         var c = MinimalEmissionTest.Analyze(function + "\npublic func main() => ()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported && x.Source.ToString()!.Contains("+=", StringComparison.Ordinal));
+        Assert.False(c.Binding.Result.IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.NonNumericOperand_Kd, issue.Code);
+        Assert.Contains("+=", issue.Node.ToString(), StringComparison.Ordinal);
+        Assert.Empty(c.Ownership.Issues);
     }
 
     [Theory]

@@ -1199,14 +1199,9 @@ public sealed partial class OwnershipAnalysis
         var leftValue = this.Value(left);
         var rightValue = this.Value(this.Expression(binary.Right, PlaceUseKind.Read));
         if (left >= 0 && this.body.PlaceStorage[left] is { Kind: not OwnershipPlaceKind.Temporary, Acquisition: not AcquisitionKind.Copy } &&
-            KotoHelper.UnwrapParentheses(binary.Right) is not (IdentifierNameKoto or StringLiteralKoto))
+            KotoHelper.UnwrapParentheses(binary.Right) is not IdentifierNameKoto)
         {
             // Retaining a non-Copy operand view across effectful RHS evaluation needs a Loan.
-            this.Unsupported(binary);
-        }
-
-        if (binary is PlusKoto && ReferenceEquals(binary.BoundType, BoundType.String))
-        {
             this.Unsupported(binary);
         }
 

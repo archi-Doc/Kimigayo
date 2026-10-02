@@ -105,7 +105,16 @@ func lowestBit(value: u32) -> u32
 
 Floating-point operations follow IEEE 754 for `f32`/`f64`, rounding to nearest with ties to even. They support infinities, NaN and signed zero, and floating-point division by zero does not use the integer failure rules. Ordinary operations are not implicitly reassociated or fused when rounding or NaN results would change.
 
-**String concatenation.** `string + string` denotes concatenation, without implicit numeric stringification. Its operand acquisition and ownership rules, including those of string `+=`, are deferred to a common operator model. That design must specify Copy/Move or borrowing, Loan duration, result ownership, aliasing and self-update, and failure behavior, preserving the evaluation and write order of §13.7; no particular acquisition strategy is adopted here. These operations cannot pass executable finalization until those rules are defined and implemented; parsing or Type checking alone grants no ownership permission.
+**Strings.** `string` has no arithmetic, bitwise or shift operator, and there is no concatenation operator. An interpolated literal is the one form that joins strings: it produces an owning `string` and borrows the values it embeds ([interpolation formatting](12-expressions.md#1233-interpolation-formatting)). Text built in steps is written to a `Text.HeapBuffer` through `Utf8Writer` or `$tryWrite` and converted once with `intoString` ([formatting profile](utf8-formatting.md#2-text-operations)). `+` or `+=` with a `string` operand, directly or through safe reference layers, is rejected by the numeric-operand rule above; the diagnostic names the interpolated literal that joins the same operands in the same order, or for `+=` the replacement assignment of §13.7.1.
+
+```kimi
+let first = "Hello, "
+let second = "world"
+let joined = "\(first)\(second)" // An owning string; first and second are borrowed.
+var log = "start"
+log = "\(log)!"                   // Replaces log with a new string.
+// let bad = first + second       // Error: + requires numeric operands; strings are joined by interpolation.
+```
 
 Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer arithmetic](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
 
@@ -796,7 +805,7 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=` perform the corresponding binary operation and return Unit. Evaluation is right-hand-side first: the right-hand side is evaluated and acquired, the destination is located once, its old value is read once as the selected operator requires, the result is computed and written once. This is not a textual rewrite to `target = target op value`: receivers and indices are evaluated once, and the destination is never reevaluated. Increment and decrement follow the same steps without a right-hand side (§13.2). An integer result that the destination's integer Type cannot represent Aborts before the write; a wrapping integer destination writes the wrapped result (§13.3).
 
-String `+=` remains subject to the deferred operator ownership design of [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
+A `string` destination has no compound update ([§13.3](#133-arithmetic-bitwise-and-shift-operators)): `target += value` is rejected, and the replacement `target = "\(target)\(value)"` evaluates the new string first and then replaces the old value under §13.7.1.
 
 Reading and writing are selected independently under Chapter 11: standard operations use permitted storage access, and custom, computed and required operations call their accessors. The destination is an assignment target, not a Receiver Expression (§13.7.1), and the target of the write is never redirected from a reference to its referent (§3.5.3). The old value is acquired under the operator's contract and the common adaptation; no implicit Move is added, and a borrowed destination offers no Take. An update that consumes a Non-Copy value and rebuilds it uses an explicit transfer, such as `a = transform(a@move)`, whose reinitialization and intermediate completeness are checked. The operator's result must fit the `set` input. The destination and its dependencies are protected until placement, but no safe reference is manufactured to storage that may become Uninitialized. If acquisition, the operation or the old-value destruction does not complete normally, nothing further happens and earlier effects are not rolled back; a result that depends on old contents lost by the replacement is rejected. A setter is never bypassed through exclusive storage access, and updates of getter-owned temporaries remain forbidden (§11.2.3).
 
