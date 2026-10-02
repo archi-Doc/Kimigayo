@@ -15,10 +15,15 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
     ];
 
-    // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit.
+    // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit, and slice returns the
+    // Slice<T> of its own result-only Origin.
     private static bool ValidBoundRawOperation(BindingSymbol symbol, KimiDeclarationId id)
         => symbol.Declaration is FunctionKoto { GenericArguments: [var parameter] } function && parameter.BoundType is { Kind: BoundTypeKind.Parameter } element &&
-            (id == KimiDeclarationId.RawAllocate
+            (id == KimiDeclarationId.RawSlice
+                ? BoundStoragePointer(function.Parameters[0].Type.BoundType, element) && ReferenceEquals(function.Parameters[1].Type.BoundType, BoundType.ISize) &&
+                    symbol.Type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner, Origin: { Kind: OriginKind.Parameter } source, OriginArguments.Count: 0, Components: [var stored] } &&
+                    ReferenceEquals(stored, element) && ReferenceEquals(source.Binder, function)
+                : id == KimiDeclarationId.RawAllocate
                 ? ReferenceEquals(function.Parameters[0].Type.BoundType, BoundType.ISize) && BoundStoragePointer(symbol.Type, element)
                 : BoundStoragePointer(function.Parameters[0].Type.BoundType, element) && ReferenceEquals(symbol.Type, BoundType.Unit) &&
                     (id == KimiDeclarationId.RawRelease || ReferenceEquals(function.Parameters[1].Type.BoundType, element)));
@@ -78,7 +83,7 @@ public sealed partial class KimiLibrary
             return ValidBoundDictionaryPlacement(symbol);
         }
 
-        if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawInitialize)
+        if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice)
         {
             return ValidBoundRawOperation(symbol, id);
         }

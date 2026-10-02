@@ -63,7 +63,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
                         KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
-                        >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawInitialize => this.ValidRawOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
                         KimiDeclarationId.StorageAddressOfI64 => this.ValidAddressOfI64(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),

@@ -55,6 +55,41 @@ public class RawStorageTest
         ScalarEmissionTest.EmitFixture("RawStorageLifecycle", source, "drop\nreleased\ndrop\ndone\n");
     }
 
+    // SPEC 5.6: slice forms a shared Slice over initialized storage; its result-only Origin is fixed by the caller's expected Type,
+    // here the receiver's, and a zero length may use any storage, including null.
+    [Fact]
+    public void SlicesViewInitializedStorage()
+    {
+        var source = """
+            struct Holder
+                let data: raw/i32
+                let length: isize
+                public init(length: isize)
+                    self.data = Raw.allocate<i32>(length)
+                    self.length = length
+                    var i: isize = 0
+                    while i < length
+                        unsafe => Raw.initialize(self.data + i, (i * 10)@i32)
+                        i += 1
+                public func items(self: ref/Self) -> Slice<i32>
+                    unsafe => return Raw.slice(self.data, self.length)
+                drop
+                    unsafe => Raw.release(self.data)
+            func emptySlice() -> Slice<i32>
+                unsafe => return Raw.slice(null@raw/i32, 0)
+            public func main()
+                let holder = Holder.init(4)
+                var total: i32 = 0
+                for item in holder.items()
+                    total += item
+                let view = holder.items()
+                require total == 60 and view.length == 4 and view[3] == 30 else => $abort("view")
+                require emptySlice().length == 0 else => $abort("empty")
+                Console.writeLine("sliced")
+            """;
+        ScalarEmissionTest.EmitFixture("RawStorageSlice", source, "sliced\n");
+    }
+
     [Theory]
     [InlineData("Negative", "-1", "abort KIMI_E_ARGUMENT: Invalid argument value")]
     [InlineData("Oversized", "4611686018427387904", "abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
@@ -65,6 +100,7 @@ public class RawStorageTest
     [InlineData("let storage = Raw.allocate<i32>(1)", true)]
     [InlineData("Raw.release(null@raw/i32)", false)]
     [InlineData("Raw.initialize(null@raw/i32, 1)", false)]
+    [InlineData("let view: Slice<i32> = Raw.slice(null@raw/i32, 0)", false)]
     public void OnlyReleaseAndInitializeNeedAnUnsafeContext(string statement, bool valid)
     {
         var diagnostics = DiagnosticCorpus.Check("public func main()\n    " + statement + "\n").Diagnostics;
@@ -93,6 +129,7 @@ public class RawStorageTest
     [InlineData(KimiDeclarationId.RawAllocate)]
     [InlineData(KimiDeclarationId.RawRelease)]
     [InlineData(KimiDeclarationId.RawInitialize)]
+    [InlineData(KimiDeclarationId.RawSlice)]
     public void OperationsKeepTheirOwnElementType(KimiDeclarationId id)
     {
         var c = Compilation.CreateForTest();
@@ -100,7 +137,7 @@ public class RawStorageTest
         var symbol = c.Library.GetSymbol(id)!;
         var function = (Kimi.Compiler.Parsing.FunctionKoto)symbol.Declaration;
         var parameter = function.Parameters[^1];
-        parameter.Type.BoundType = id == KimiDeclarationId.RawAllocate ? BoundType.Primitives["i32"] : BoundType.ISize;
+        parameter.Type.BoundType = id is KimiDeclarationId.RawAllocate or KimiDeclarationId.RawSlice ? BoundType.Primitives["i32"] : BoundType.ISize;
         Assert.False(c.Library.ValidateBoundDeclarations());
         Assert.Same(function, c.Library.InvalidDeclaration);
     }

@@ -85,4 +85,5 @@ public enum CompilerFunctionKind : byte
     RawAllocate,
     RawRelease,
     RawInitialize,
+    RawSlice,
 }

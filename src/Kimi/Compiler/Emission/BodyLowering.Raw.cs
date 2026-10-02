@@ -11,12 +11,12 @@ internal sealed partial class BodyLowering
 
     // SPEC 5.6: Kimi.Raw. allocate checks the count and the byte size and allocates through the runtime, returning a nonnull
     // aligned substitute for zero bytes; release frees an allocate result and ignores null and that substitute; initialize
-    // moves its value into the storage and destroys nothing.
+    // moves its value into the storage and destroys nothing; slice forms the Slice record over the storage.
     private bool LowerRawOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
         var kind = plan.Target.CompilerFunction;
-        var inputs = kind == CompilerFunctionKind.RawInitialize ? 2 : 1;
+        var inputs = kind is CompilerFunctionKind.RawInitialize or CompilerFunctionKind.RawSlice ? 2 : 1;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || (inputs == 2 && plan.ArgumentToParameter[1] != 1) || plan.TypeArguments.Length != 1 ||
@@ -26,11 +26,21 @@ internal sealed partial class BodyLowering
         }
 
         var pointer = kind == CompilerFunctionKind.RawAllocate ? SignatureType(this, plan.ReturnType) : SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var result = SignatureType(this, call.BoundType);
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, elementType) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), kind == CompilerFunctionKind.RawAllocate ? pointer : BoundType.Unit) ||
+            (kind == CompilerFunctionKind.RawSlice
+                ? result is not { Kind: BoundTypeKind.Slice, Components: [var sliced] } || !ReferenceEquals(sliced, elementType) ||
+                    !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize)
+                : !ReferenceEquals(result, kind == CompilerFunctionKind.RawAllocate ? pointer : BoundType.Unit)) ||
             (kind == CompilerFunctionKind.RawAllocate && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[0].ParameterType), BoundType.ISize)))
         {
             return Fail("Raw storage operation does not match its element Type.", out failure);
+        }
+
+        if (kind == CompilerFunctionKind.RawSlice &&
+            (this.aggregateLayouts.Get(result!) is not { IsArray: false } layout || !SlotTypes.IsResult(result!) || layout.Fields.Length != 2 || layout.Offset(0) != 0 || layout.Offset(1) != 8))
+        {
+            return Fail("Raw slice result is not the Slice record {buffer, length}.", out failure);
         }
 
         if (kind == CompilerFunctionKind.RawAllocate && element.Value.Layout.Alignment > RawAllocationAlignment)
@@ -51,6 +61,19 @@ internal sealed partial class BodyLowering
         if (kind == CompilerFunctionKind.RawInitialize)
         {
             return this.LowerRawInitialize(body, function, id, pointer, element, out failure);
+        }
+
+        if (kind == CompilerFunctionKind.RawSlice)
+        {
+            // SPEC 5.6: the Slice record {buffer, length} is written into the call's result slot; nothing is read or checked.
+            if (!this.ValidateSlotCallResult(body, id, out failure) || !this.ScalarArrayArgument(body, id, 0, pointer, out var buffer) ||
+                !this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var count))
+            {
+                return Fail(failure ?? "Raw slice arguments are unavailable at the call.", out failure);
+            }
+
+            function.AddScalar(EmissionOpcode.Sequence, id, [buffer, count], place: body.Operations[id].Place, op: "RawSlice");
+            return true;
         }
 
         if (!this.ScalarArrayArgument(body, id, 0, kind == CompilerFunctionKind.RawAllocate ? BoundType.ISize : pointer, out var input) ||

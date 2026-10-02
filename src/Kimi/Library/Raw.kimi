@@ -1,4 +1,4 @@
-/// Operations on raw storage (SPEC 5.6). `allocate` is safe; `release` and `initialize` carry the obligations their contracts
-/// state. Elements are taken and destroyed with `@move` on raw Places (SPEC 5.2.3), and none of these operations is an
+/// Operations on raw storage (SPEC 5.6). `allocate` is safe; `release`, `initialize` and `slice` carry the obligations their
+/// contracts state. Elements are taken and destroyed with `@move` on raw Places (SPEC 5.2.3), and none of these operations is an
 /// environment effect (SPEC 8.4.10.2).
 public group Raw

@@ -132,6 +132,7 @@ public enum KimiDeclarationId : byte
     RawAllocate,
     RawRelease,
     RawInitialize,
+    RawSlice,
 }
 
 public enum KimiDeclarationState : byte
