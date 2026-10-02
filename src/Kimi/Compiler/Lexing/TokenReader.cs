@@ -749,13 +749,15 @@ public ref partial struct TokenReader
     /// declaration, so one between the parts of a header, before a Type or in an expression is misplaced. Each is reported
     /// once over its whole extent and kept for the next node, so the source still round-trips through the tree.
     /// </summary>
+    /// <param name="next">The token the grammar expects after the attributes, or <see cref="TokenKind.Invalid"/>. Where it is
+    /// <c>(</c>, an attribute leaves the last parenthesized list to the grammar (<see cref="Parser.ParseAttributeKoto"/>).</param>
     /// <returns><see langword="true"/> when at least one attribute was read.</returns>
-    internal bool ReportMisplacedAttributes()
+    internal bool ReportMisplacedAttributes(TokenKind next = TokenKind.Invalid)
     {
         var found = false;
         while (this.currentToken.Kind == TokenKind.Sharp)
         {
-            if (Parser.ParseAttributeKoto(ref this) is { } attribute)
+            if (Parser.ParseAttributeKoto(ref this, next == TokenKind.OpenParenthesis) is { } attribute)
             {
                 // The kept attribute is this Error's recovery: Binding lets it mark nothing and checks the node it lands on alone.
                 this.CodeContext.RecordRecovery(attribute, this.Unexpected(SyntaxForm.Attribute, attribute.Span));
@@ -792,7 +794,7 @@ public ref partial struct TokenReader
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
         // An attribute where the grammar takes none is misplaced: it is reported and skipped, and the expected token may follow it.
-        if (this.currentToken.Kind == TokenKind.Sharp && this.ReportMisplacedAttributes() && this.currentToken.Kind == targetKind && this.CanRead)
+        if (this.currentToken.Kind == TokenKind.Sharp && this.ReportMisplacedAttributes(targetKind) && this.currentToken.Kind == targetKind && this.CanRead)
         {
             range = this.currentToken.Span;
             this.AdvanceOne();

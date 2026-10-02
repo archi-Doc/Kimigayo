@@ -274,6 +274,13 @@ public static partial class Parser
     /// </summary>
     private static bool TryParseFunctionName(ref TokenReader reader, bool anonymous, bool constructor, [NotNullWhen(true)] out string? name)
     {
+        // An attribute precedes the declaration (SPEC 6.5); one before the Name, or before a function expression's parameter
+        // list, is reported and the header continues after it.
+        if (reader.CurrentTokenKind == TokenKind.Sharp)
+        {
+            reader.ReportMisplacedAttributes(anonymous ? TokenKind.OpenParenthesis : TokenKind.Invalid);
+        }
+
         var token = reader.CurrentToken;
         if (anonymous && token.Kind == TokenKind.OpenParenthesis)
         {
@@ -528,8 +535,9 @@ SkipLine:
             defaultValue = ParseRequiredExpression(ref reader);
         }
 
-        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them.
-        if (anonymous && (internalName != externalName || defaultValue is not null || attribute is not null))
+        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them. A
+        // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
+        if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(ref reader, attribute)))
         {
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameToken.Span);
         }
@@ -538,12 +546,26 @@ SkipLine:
         return true;
     }
 
+    private static bool HasWrittenAttribute(ref TokenReader reader, AttributeKoto? attribute)
+    {
+        for (; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (reader.CodeContext.RecoveryCause(attribute) is null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void SkipParameter(ref TokenReader reader)
         => reader.SkipUntil(TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis);
 
     /// <summary>Parses the result Type after a function header's arrow; a line that ends at the arrow leaves a recovery Type.</summary>
     private static Koto ParseFunctionReturnType(ref TokenReader reader, SourceSpan arrow)
     {
+        reader.ReportMisplacedAttributes(); // A Type takes no attribute (SPEC 6.5); the result Type may follow it.
         if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
         {
             reader.Diagnostic.Add(arrow, DiagnosticCode.MissingReturnType_Kd);
@@ -1941,8 +1963,11 @@ CloseParameters:
 
     /// <summary>Parses an attribute expression.</summary>
     /// <param name="reader">The token reader.</param>
+    /// <param name="beforeList">Whether the attribute is misplaced where the grammar expects <c>(</c>, such as before a parameter
+    /// list. SPEC 6.5 sets no adjacency rule for the argument list, so there the attribute takes a list only when another
+    /// <c>(</c> follows it: the last list is the one the grammar expects, as in <c>func f #Test () => ()</c>.</param>
     /// <returns>The parsed attribute, or <see langword="null"/> after an error.</returns>
-    public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader)
+    public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader, bool beforeList = false)
     {
         var previousAttribute = reader.PopAttribute();
 
@@ -1962,7 +1987,8 @@ CloseParameters:
             wellFormed = false;
         }
 
-        while (TryParsePostfixExpression(ref reader, ref operand))
+        while ((!beforeList || reader.CurrentTokenKind != TokenKind.OpenParenthesis || IsListFollowedByList(ref reader)) &&
+            TryParsePostfixExpression(ref reader, ref operand))
         {
         }
 
@@ -1984,6 +2010,31 @@ CloseParameters:
         reader.PushAttribute(attributeKoto);
         reader.CodeContext.Documentation?.Suppress(attributeKoto.Span);
         return attributeKoto;
+    }
+
+    // Whether the parenthesized list at the current token is directly followed by another one. Every list is closed: the
+    // tokenizer supplies a missing closer.
+    private static bool IsListFollowedByList(ref TokenReader reader)
+    {
+        var depth = 0;
+        for (var offset = 0; ; offset++)
+        {
+            switch (reader.PeekKind(offset))
+            {
+                case TokenKind.OpenParenthesis:
+                    depth++;
+                    break;
+                case TokenKind.CloseParenthesis:
+                    if (--depth == 0)
+                    {
+                        return reader.PeekKind(offset + 1) == TokenKind.OpenParenthesis;
+                    }
+
+                    break;
+                case TokenKind.Invalid:
+                    return false;
+            }
+        }
     }
 
     internal static CodeBlockKoto ParseDeclarationDirectiveBody(ref TokenReader reader, DeclarationContainerKoto declarationContext)
