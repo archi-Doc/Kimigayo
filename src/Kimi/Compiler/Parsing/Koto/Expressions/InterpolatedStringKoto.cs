@@ -36,6 +36,14 @@ public sealed class InterpolatedStringKoto : ExpressionKoto
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append('"');
+        this.WriteContentTo(ref builder);
+        builder.AppendVerbatim("\"");
+    }
+
+    /// <summary>Writes the segments and embedded expressions as written, without the delimiters.</summary>
+    /// <param name="builder">The destination builder.</param>
+    internal void WriteContentTo(ref IndentedStringBuilder builder)
+    {
         for (var i = 0; i < this.Segments.Length; i++)
         {
             this.Segments[i].WriteContentTo(ref builder);
@@ -46,8 +54,6 @@ public sealed class InterpolatedStringKoto : ExpressionKoto
                 builder.AppendVerbatim(")");
             }
         }
-
-        builder.AppendVerbatim("\"");
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

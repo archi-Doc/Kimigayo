@@ -16,6 +16,10 @@ public sealed partial class Binding
     private const string AcquisitionAdviceMove = "Append @ref to the whole argument to borrow the Place, or @move to transfer it";
     private const string AcquisitionAdviceCopyMove = "Append @ref to the whole argument to borrow the Place, @copy to pass a Copy of it, or @move to transfer it";
 
+    // SPEC 12.3.3, 13.3: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
+    private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.3.3, 13.3)";
+    private const string StringBuildingAdvice = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
+
     // SPEC 23.3.6.4: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
@@ -47,6 +51,9 @@ public sealed partial class Binding
 
     // SPEC 23.3.6.2: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
     private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
+
+    // SPEC 13.3: the operand Type an arithmetic or bitwise operator rejected, recorded only when the check fails.
+    private Dictionary<Koto, BoundType>? nonNumericOperands;
 
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
@@ -112,6 +119,105 @@ public sealed partial class Binding
 
         cause = default;
         return false;
+    }
+
+    // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
+    private static bool IsStringJoin(Koto node, int depth)
+        => depth < 32 && KotoHelper.UnwrapParentheses(node) is PlusKoto join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
+
+    private static bool IsStringOperand(Koto node, int depth)
+        => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
+
+    // The failed node is the innermost join of the chain around it; the whole chain is one interpolated literal.
+    private static string StringJoinAdvice(BinaryKoto operation)
+    {
+        Koto top = operation;
+        while (true)
+        {
+            var parent = top.Parent;
+            while (parent is ParenthesizedKoto)
+            {
+                parent = parent.Parent;
+            }
+
+            if (parent is PlusKoto join && IsStringJoin(join, 0))
+            {
+                top = join;
+            }
+            else if (parent is PlusEqualsKoto append && ReferenceTypes.EndsInString(append.Left.BoundType))
+            {
+                return StringAppendAdvice(append); // The chain is the value appended to a string target.
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            builder.Append("If the strings are to be joined, write the interpolated literal \"");
+            AppendJoinSegment(ref builder, top, 0);
+            builder.Append("\" in place of ");
+            top.WriteTo(ref builder);
+            builder.Append(StringBuildingAdvice);
+            return builder.ToString();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    // target += value becomes the replacement target = "\(target)value" (SPEC 13.7.1), spelled from the written operands.
+    private static string StringAppendAdvice(BinaryKoto operation)
+    {
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            builder.Append("If text is to be appended to ");
+            operation.Left.WriteTo(ref builder);
+            builder.Append(", assign a new string: ");
+            operation.Left.WriteTo(ref builder);
+            builder.Append(" = \"\\(");
+            operation.Left.WriteTo(ref builder);
+            builder.Append(')');
+            AppendJoinSegment(ref builder, operation.Right, 0);
+            builder.Append('"');
+            builder.Append(StringBuildingAdvice);
+            return builder.ToString();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    // An escaped or interpolated literal contributes its content as written, a string join its operands, and every other
+    // operand an interpolation of its spelling.
+    private static void AppendJoinSegment(ref IndentedStringBuilder builder, Koto operand, int depth)
+    {
+        operand = KotoHelper.UnwrapParentheses(operand);
+        if (operand is StringLiteralKoto { IsRaw: false } literal)
+        {
+            literal.WriteContentTo(ref builder);
+        }
+        else if (operand is InterpolatedStringKoto interpolated)
+        {
+            interpolated.WriteContentTo(ref builder);
+        }
+        else if (depth < 32 && operand is PlusKoto join && IsStringJoin(join, depth))
+        {
+            AppendJoinSegment(ref builder, join.Left, depth + 1);
+            AppendJoinSegment(ref builder, join.Right, depth + 1);
+        }
+        else
+        {
+            builder.Append("\\(");
+            operand.WriteTo(ref builder);
+            builder.Append(')');
+        }
     }
 
     private BoundType? CompleteDependent(Koto node, Koto cause)
@@ -182,6 +288,32 @@ public sealed partial class Binding
         }
 
         return this.Fail(node, BindingFailure.TypeMismatch);
+    }
+
+    /// <summary>Fails an arithmetic or bitwise operation whose operand Type has no such operator (SPEC 13.3), recording that Type.</summary>
+    /// <param name="node">The operation.</param>
+    /// <param name="operand">The operand Type as compared.</param>
+    /// <returns><see langword="null"/>.</returns>
+    private BoundType? FailNonNumericOperand(BinaryKoto node, BoundType operand)
+    {
+        if (node.BindingFailure == BindingFailure.None)
+        {
+            (this.nonNumericOperands ??= new(ReferenceEqualityComparer.Instance))[node] = operand;
+        }
+
+        return this.Fail(node, BindingFailure.NonNumericOperand);
+    }
+
+    // SPEC 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings,
+    // and + or += whose other operand is a string gets the literal that joins the same operands in the same order as Advice.
+    private void ReportNonNumericOperand(BinaryKoto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var text = ReferenceTypes.EndsInString(operand);
+        var advice = !text ? null
+            : operation.Akind == KotoKind.Plus && IsStringJoin(operation, 0) ? StringJoinAdvice(operation)
+            : operation.Akind == KotoKind.PlusEquals && IsStringOperand(operation.Right, 0) ? StringAppendAdvice(operation)
+            : null;
+        operation.Report(requirement, code, DiagnosticTypeName(operand), operation.InfixText.Trim(), note: text ? StringOperatorNote : null, advice: advice);
     }
 
     /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
@@ -270,6 +402,7 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.mismatches?.Clear();
+        this.nonNumericOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.captureFailures?.Clear();

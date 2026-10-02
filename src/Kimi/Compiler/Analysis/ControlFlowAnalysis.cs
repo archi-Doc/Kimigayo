@@ -1787,19 +1787,9 @@ public sealed class ControlFlowAnalysis
                 return ControlFlowType.Boolean;
             }
 
-            if (node is AmpersandKoto or BarKoto or CaretKoto)
+            // SPEC 13.3: Binding rejects a non-numeric operand (NonNumericOperand_Kd); the result has the left operand's Type.
+            if (node is PlusKoto or MinusKoto or AsteriskKoto or SlashKoto or PercentKoto or AmpersandKoto or BarKoto or CaretKoto)
             {
-                return left.ExpressionType;
-            }
-
-            if (node is PlusKoto or MinusKoto or AsteriskKoto or SlashKoto or PercentKoto)
-            {
-                if (left.ExpressionType?.Name is "()" or "bool" ||
-                    (left.ExpressionType?.Name == "string" && node is not PlusKoto))
-                {
-                    this.Error(node, DiagnosticCode.NonNumericOperand_Kd);
-                }
-
                 return left.ExpressionType;
             }
 

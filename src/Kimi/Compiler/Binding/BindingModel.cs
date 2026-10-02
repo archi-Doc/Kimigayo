@@ -149,6 +149,9 @@ internal enum BindingFailure : byte
     BareOwningShorthand,
     NonCopyOperand,
 
+    // SPEC 13.3: an arithmetic or bitwise operand is numeric; bool, Unit, char and string have no such operators.
+    NonNumericOperand,
+
     // SPEC 13.5.4.3-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
     // same-width integer Type and needs both Types fixed.
     InvalidWrapConversion,

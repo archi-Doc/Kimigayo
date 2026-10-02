@@ -846,7 +846,9 @@
 
   + Name="NonNumericOperand_Kd"
     Category="Language"
-    Message="An arithmetic operator requires numeric operands"
+    Message="The operator {1} requires numeric operands, but this operand has Type {0}"
+    Arguments="operand:Type,operator:Text"
+    Label="{0} has no {1}"
 
   + Name="UnsafeBlockRequired_Kd"
     Category="Language"

@@ -413,6 +413,10 @@ public sealed partial class Binding
             {
                 this.ReportWrite(issue.Node, target, requirement, issue.Code);
             }
+            else if (issue.Code == DiagnosticCode.NonNumericOperand_Kd && this.nonNumericOperands?.TryGetValue(issue.Node, out var nonNumeric) == true)
+            {
+                this.ReportNonNumericOperand((BinaryKoto)issue.Node, nonNumeric, requirement, issue.Code);
+            }
             else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
             {
                 // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
@@ -753,6 +757,7 @@ public sealed partial class Binding
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
+                    BindingFailure.NonNumericOperand => DiagnosticCode.NonNumericOperand_Kd,
                     BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
                     BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,

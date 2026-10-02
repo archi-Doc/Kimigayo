@@ -216,6 +216,11 @@ public sealed partial class Binding
     }
 
     // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
+    // SPEC 13.3: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string. Never fits
+    // every operator, and a pointer operand is displaced by SPEC 5.3 before this test.
+    private static bool NonNumericOperand(BoundType type)
+        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
+
     private static bool IsLiteralOnlyRange(Koto node)
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
@@ -1237,6 +1242,7 @@ public sealed partial class Binding
         var operation = assignment && kind != KotoKind.Equals ? KotoHelper.CompoundOperation(kind) : kind;
         var comparison = operation is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
+        var arithmetic = operation is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
         BoundType? left;
         BoundType? right;
         // SPEC 3.3 and 13.4: an operand of Type ref/T or uniq/T denotes its Copy referent; an assignment
@@ -1273,7 +1279,13 @@ public sealed partial class Binding
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
             var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
-            right = this.BindExpected(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand, assignment ? binary.Left : null);
+            // SPEC 13.3: a left operand without the operator is the problem, so the right operand is bound without its Type.
+            var expectedRight = logical ? BoundType.Boolean
+                : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
+                : arithmetic && left is not null && NonNumericOperand(left) ? null
+                : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
+                : comparand;
+            right = this.BindExpected(binary.Right, scope, expectedRight, assignment ? binary.Left : null);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
             {
@@ -1336,6 +1348,15 @@ public sealed partial class Binding
             return ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)
                 ? Complete(binary, result)
                 : this.FailMismatch(binary, binary.Right, right, BoundType.ISize);
+        }
+
+        // SPEC 13.3: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none. A string
+        // operand is judged through its reference layers and before the operands are compared, so that two string references
+        // with distinct Origins are not reported as a mismatch of one Type with itself; an interpolated literal is the one way
+        // to join strings (SPEC 12.3.3).
+        if (arithmetic && NonNumericOperand(left))
+        {
+            return this.FailNonNumericOperand(binary, left);
         }
 
         if (comparison)
@@ -1425,13 +1446,8 @@ public sealed partial class Binding
                 : Complete(binary, result);
         }
 
-        // string + string concatenates; there is no other built-in string arithmetic (SPEC 13.3).
-        if (operation == KotoKind.Plus && ReferenceEquals(left, BoundType.String))
-        {
-            return Complete(binary, result);
-        }
-
-        return primitive ? this.Fail(binary, BindingFailure.TypeMismatch) : this.Fail(binary, BindingFailure.Unsupported, true);
+        // Every primitive with an arithmetic operator is numeric and handled above; arithmetic on other Types remains deferred.
+        return this.Fail(binary, BindingFailure.Unsupported, true);
     }
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
