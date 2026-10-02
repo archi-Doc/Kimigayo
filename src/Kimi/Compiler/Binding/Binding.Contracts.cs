@@ -688,7 +688,8 @@ public sealed partial class Binding
             var scope = this.scopes[this.nodes[n]];
             if (scope.Owner is ContractKoto contract)
             {
-                this.AddContractPremises(contract.BoundSymbol!.Contract!, contract.BoundSymbol.Type!, scope);
+                // SPEC 8.4.7.2: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
+                this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
             }
 
             this.ExpandScopeContractPremises(scope);
