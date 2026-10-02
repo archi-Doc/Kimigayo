@@ -57,7 +57,8 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 | --- | --- | --- |
 | New value / in-place change | Past participle / verb | `sorted` / `sort`, `reversed` / `reverse` |
 | Shared / exclusive borrowing variants | Add `Uniq` to the exclusive variant | `tryGet` / `tryGetUniq`, `index` / `indexUniq` |
-| Inspect / advance or take | Different verbs | `peek` / `next` |
+| Inspect / advance or take | Different verbs; against a Property, verb + noun | `peek` / `next`, `reading` / `nextReading` |
+| Observe through a Property / consume the receiver to take the value | Noun Property / `into` + noun function | `item` / `intoItem` |
 | Conversion to another value Type | `toX` | `toString` |
 | Borrowed view construction | A noun naming the view | `utf8` |
 
@@ -144,8 +145,11 @@ declares; the restatement is valid but adds nothing.
   `rawMicroseconds: u64` is the exact integer representation. Read a running clock through `elapsed()`.
 - `[Kimi]` Use a Property for a stable observation with no explicit arguments, allocation or observable
   effects, and O(1) cost: `length`, `capacity`, `isEmpty`. Use functions for work such as `sorted()`.
-- `[Advice]` Prefer shared getters. An operation that needs exclusive access or consumes its receiver
-  is usually clearer as a function.
+- `[Language]` A getter reads through `ref/Self` and a setter writes through `uniq/Self`; an operation that
+  needs exclusive access to its receiver, or consumes it, is a function
+  ([SPEC §11.2](spec/11-properties.md#112-accessor-functions)).
+- `[Kimi]` Name a function that consumes its receiver to yield the value a Property observes `into` + noun
+  (`item` / `intoItem`), and one that advances state and reports it verb + noun (`reading` / `nextReading`).
 - `[Kimi]` Use `Equatable.equals` and `Comparable.compare` for equality and ordering. The latter returns
   a negative, zero or positive `i32`. Do not introduce competing comparison Contracts or Boolean
   `lessThan` callbacks for the same purpose.

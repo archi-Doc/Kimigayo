@@ -144,7 +144,18 @@ func test<T>(box: Box<T>) -> ()
 
 Custom and computed accessors declare their input and result Types explicitly; only the receiver may use the fixed shorthand below, and bodies infer none of these Types. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns must still fit the declared result. Parameter defaults and `!` boundaries are forbidden; Property access supplies the receiver and setter value through its dedicated syntax, without ordinary argument labels. Static accessors have no receiver. A setter's `value` parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
 
-**Receiver shorthand.** In an instance Property, an accessor signature without a written receiver gets `self: ref/Self` inserted for `get`, and `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors and explicit Contract requirement signatures: `get() -> T` and `set(value: U) -> ()` keep an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance or static kind, so group and rootgroup accessors remain receiverless. An explicit receiver Type remains available and must satisfy the accessor restrictions. Parameter lists, setter input Types and result Types remain required in custom and explicit requirement signatures; bare `get`/`set` keep their standard-accessor rules. The body never changes the receiver Type, even when its operations need a stronger receiver. Origin completion, signature matching and call/borrow behavior are those of the expanded signature, with the receiver as input slot zero.
+**Receiver shorthand.** In an instance Property, an accessor signature without a written receiver gets `self: ref/Self` inserted for `get`, and `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors and explicit Contract requirement signatures: `get() -> T` and `set(value: U) -> ()` keep an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance or static kind, so group and rootgroup accessors remain receiverless. An explicit receiver Type remains available and must have the accessor's fixed shape below. Parameter lists, setter input Types and result Types remain required in custom and explicit requirement signatures; bare `get`/`set` keep their standard-accessor rules. The body never changes the receiver Type, even when its operations need a stronger receiver. Origin completion, signature matching and call/borrow behavior are those of the expanded signature, with the receiver as input slot zero.
+
+**Accessor receiver shape.** The receiver of an accessor is fixed by its operation, never by its body: an instance `get` reads through `self: ref/Self`, and an instance `set` writes through `self: uniq/Self`. The shape is judged on the outer Semantics of the normalized receiver Type, so an Origin annotation such as `get(self: ref/Self during static) -> T` is permitted, and a receiver whose Effective Core is not `Self` (an unrelated Type, `raw/Self`, a Type parameter) remains the ordinary formation error. Every other receiver is the declaration error `AccessorReceiverShape_Kd`. An operation that needs exclusive access to its receiver, or consumes it, is a function ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), whose call form and Name show the effect; the naming pairs of [§4.7.1](04-arrays-indexing-and-slices.md#471-common-acquisition-and-outcomes) apply.
+
+| Accessor | Permitted receiver | Inserted when omitted | Rejected receivers |
+| --- | --- | --- | --- |
+| Instance `get` | `ref/Self` | `ref/Self` | `Self`, `uniq/Self`, the `obj`, `rc`, `arc`, `objref` and `objuniq` forms |
+| Instance `set` | `uniq/Self` | `uniq/Self` | `Self`, `ref/Self`, the `obj`, `rc`, `arc`, `objref` and `objuniq` forms |
+| Static `get`/`set` | None | None | Any written receiver |
+| Explicit Contract requirement `get`/`set` | As the instance rows | As the instance rows | As the instance rows |
+
+The error is reported once per accessor declaration at the written receiver Type, with the Property header as a related location; its Reason states the accessor kind, the written Semantics and the required shape. Its Advice moves the operation into a function that keeps the written receiver, Origins and body (`func name(self: R) -> T`, or `func name(self: R, value: U) -> ()` for a setter), named by §4.7.1; it never proposes another receiver Type, because a body valid for an owning or object receiver need not be valid for a value receiver, and a body valid for a shared receiver need not be valid for an exclusive one. The body is checked with the written receiver, so the declaration error adds no body errors, and the Property stays in member lookup; a use that fails only because of this error is derived from it (§23.3.6.4). Stored custom accessors already have these shapes; the rule gives computed accessors and explicit requirement signatures the same ones.
 
 A stored instance custom `get` uses `self: ref/Self` and returns the storage Type `T`, which must be Copy. A custom `set` uses `self: uniq/Self, value: T` and returns Unit. The static forms are `get() -> T` and `set(value: T) -> ()`.
 
@@ -175,20 +186,44 @@ Neither accessor needs to keep the Property's full access domain, and `set` acce
 
 ### 11.2.2. Computed properties
 
-A computed Property has no storage, initializer, bodyless standard accessor or inline `has` list. Its explicit getter result must match the header Type after Origin completion. The optional setter returns Unit and may have a different input Type. Instance receivers follow explicit ordinary function contracts, including ownership-bearing receivers; static accessors omit `self`. A Property access acquires its receiver as a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): a `get(self: uniq/Self)` getter acquires an owned Place exclusively without a spelling when its lending point is exclusively writable (§15.1.5), and the acquisition fails, without a Copy or another fallback, when it is not.
+A computed Property has no storage, initializer, bodyless standard accessor or inline `has` list. Its explicit getter result must match the header Type after Origin completion. The optional setter returns Unit and may have a different input Type. Instance accessors take the fixed receivers of §11.2, `ref/Self` for `get` and `uniq/Self` for `set`; static accessors omit `self`.
+
+**Getter receiver acquisition.** A Property read `x.p` through a custom, computed or required `get` acquires `x` as a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)) with the `ref/Self` row of its table, always in shared mode: an owned Place or temporary as `x@ref`, a borrow value as `x@follow@ref` after the reference-path selection that located the member, and an object handle as the complete Sealed payload follow or `x@objref`. A shared acquisition starts no exclusive reservation (§15.6.7) and does not depend on the writability of the lending point (§15.1.5): a `let` binding, an owned-Type parameter, a shared path, an `rc`/`arc` payload and getter-result storage are all readable, so `x.p` fails only under the preconditions of a Field read (initialization, completeness, access and Loan conflicts). The restrictions of §11.2.3 on an owned getter result continue to apply to `uniq/Self` method calls on that result and to updates of it.
+
+**Setter receiver acquisition.** `x.p = v`, a compound assignment, an increment or a decrement first locates its target with write permission (§13.7.1) and then acquires the receiver of a custom, computed or required `set` as a Receiver Expression requiring `uniq/Self`. Because the shape is fixed, the setter's receiver acquisition never Copies and never transfers; `objuniq/T` satisfies it through the path rule of §7.3. The explicit `holder@move.item = value` and `point@copy.x = 10` keep their meaning (§3.6.1, §15.1.5): they update the temporary or Copy they create. A compound assignment (§13.7.2) locates the receiver once and calls `get` in shared mode and then `set` in exclusive mode, as for a stored custom accessor pair.
 
 ```kimi
 struct Meter
     var hits: i32 = 0
     public computed reading: i32
-        get(self: uniq/Self) -> i32
+        get(self: uniq/Self) -> i32           // Error: a getter receiver is ref/Self.
             self.hits += 1
             return self.hits
+    public computed total: i32
+        get(self: Self) -> i32 => self.hits   // Error: an owning receiver is not an accessor receiver.
+    public computed handle: objref/Meter
+        get(self: objref/Self) -> objref/Meter => self   // Error: nor is an object form.
+    public func nextReading(self: uniq/Self) -> i32     // The operation that advances the state is a function.
+        self.hits += 1
+        return self.hits
+    public computed hitCount: i32
+        get() -> i32 => self.hits             // The same as get(self: ref/Self).
+
+group Registry
+    public var meter: Meter = Meter.init()
 
 var meter = Meter.init()
-let seen = meter.reading    // Supplies meter@uniq.
-let fixed = makeMeter()
-// let bad = fixed.reading  // Error: a let binding cannot be acquired exclusively.
+let a = meter.nextReading()               // The exclusive acquisition is visible in the call form (§7.3).
+let fixed = Meter.init()
+let c = fixed.hitCount                    // A let binding is readable.
+let d = Registry.meter.hitCount           // So is mutable static storage, in shared mode.
+
+struct Point
+    Self is Copy
+    var raw: i32 = 0
+    public computed x: i32
+        get() -> i32 => self.raw
+        set(self: Self, value: i32) -> () => ()   // Error: a setter receiver is uniq/Self; point.x = 10 would update a Copy and lose the write.
 ```
 
 ```kimi
@@ -205,18 +240,20 @@ struct Holder
     public computed view: ref/Resource
         get(self: ref/Self) -> ref/Resource
             return self.item@ref/Resource
-    public computed result: Resource
-        get(self: Self) -> Resource
-            return self.item@move // Only with valid partial Move/drop conditions.
+    public func intoResult(self: Self) -> Resource   // Consumes the receiver: a function, not a getter.
+        return self.item@move // Only with valid partial Move/drop conditions.
+
+let holder = Holder.init(makeResource())
+let owned = holder@move.intoResult()      // The transfer is visible in the spelling and the call form.
 ```
 
-Non-Copy results must be legally created or acquired; a shared receiver cannot supply an owned Non-Copy field by extraction. An owning getter or setter consumes the complete receiver, so unless `Self` is Copy an owned Place receiver is written `holder@move.result` or `holder@move.item = value` (§7.3), and a later setter cannot reuse a consumed receiver. No hidden duplication, restoration or get/set round-trip equality is promised.
+**Non-Copy results and consumption.** A Non-Copy getter result is created or acquired legally from the shared receiver: a newly constructed value, a Copy of a stored reference, or a borrow that depends on `self` (`ref/T during self`). A shared receiver cannot extract an owned Non-Copy part and cannot Reborrow a stored `uniq/T` exclusively (§13.5.5.1 requires Write). An operation that consumes its receiver to yield a value, or advances state and reports it, is a function, such as `intoResult(self: Self)` and `nextReading(self: uniq/Self)` above, named by §4.7.1. No hidden duplication, restoration or get/set round-trip equality is promised.
 
 ### 11.2.3. Getter results and temporaries
 
 Stored custom `get`, computed `get` and Contract `get` produce function results; adaptations apply to that result, not to backing storage.
 
-**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method or getter cannot be called on an owned getter result, and no Copy is modified instead. A reference returned by a getter keeps its referent's own capabilities (`holder.view@follow@uniq` Reborrows a returned `uniq/T`, and `holder.view.update()` Reborrows it implicitly). Updating the Property itself through `set` is separate and remains allowed (§13.7).
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented or decremented, or exclusively borrowed.** Parentheses, projections and the implicit or explicit exclusive receiver acquisition of §7.3 preserve this restriction: a `uniq/Self` method cannot be called on an owned getter result, and no Copy is modified instead; a further getter on that result reads it in shared mode (§11.2.2) and is not blocked. A reference returned by a getter keeps its referent's own capabilities (`holder.view@follow@ref` Reborrows a returned `ref/T`, and `holder.view.read()` Reborrows it implicitly); a getter reads through `ref/Self`, so it never lends its receiver's storage exclusively. Updating the Property itself through `set` is separate and remains allowed (§13.7).
 
 ```kimi
 // position: Point is Copy, with custom get and standard set.
@@ -335,9 +372,13 @@ contract ReplaceableItem
     property item: ref/Resource
         get(self: ref/Self) -> ref/Resource
         set(self: uniq/Self, value: Resource) -> ()
+contract Api
+    property item: i32
+        get(self: Self) -> i32                      // Error: a required getter reads through ref/Self.
+        set(self: objuniq/Self, value: i32) -> ()   // Error: a required setter writes through uniq/Self.
 ```
 
-`has get` requires `get(ref/Self) -> T` **by value**, not merely some readable access, and `has set` requires `set(uniq/Self, value: T) -> ()`. The explicit form states the signatures: its getter matches the header `T`, and its setter input may differ. Ordinary receiver and Origin contracts apply. For example, a shared receiver cannot Move a Non-Copy stored `Resource` to implement `property item: Resource has get`, whereas a `ref/Resource` requirement may use shared storage borrowing.
+`has get` requires `get(ref/Self) -> T` **by value**, not merely some readable access, and `has set` requires `set(uniq/Self, value: T) -> ()`. The explicit form states the signatures: its getter matches the header `T`, and its setter input may differ. Its receivers have the accessor shape of §11.2, `get(self: ref/Self)` and `set(self: uniq/Self, value:)` with Origin annotations permitted; `get(self: Self)`, `set(self: objuniq/Self, value:)` and the other forms are `AccessorReceiverShape_Kd`. Calls through object handles and base projections satisfy these receivers through the path rules of §12.4.4 and §9.5.1; the ObjectViewCompatible table (§8.4.7.2) and the witness bridges of §11.4.2 are unchanged. Ordinary receiver and Origin contracts apply. For example, a shared receiver cannot Move a Non-Copy stored `Resource` to implement `property item: Resource has get`, whereas a `ref/Resource` requirement may use shared storage borrowing.
 
 ### 11.4.1. Operation compatibility
 

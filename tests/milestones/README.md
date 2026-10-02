@@ -38,7 +38,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone21](Milestone21.kimi) | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
 | [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
 | [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
-| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
+| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
 | [Milestone27](Milestone27.kimi) | Saved position/range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
@@ -201,7 +201,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | 21 | Explicit full specialization | Closed Type/length selection, inherited default/Origin contracts and generic forwarding |
 | 22 | Generic generation | Monomorphized bodies (initial profile), compound ABI and finite generation limits; separate internal checks. Code sharing is deferred (§21.3.1) |
 | 23 | Basic Properties | Standard/custom/computed access over Copy values, permissions and evaluation order |
-| 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
+| 24 | Ownership-bearing Properties | Non-Copy setters, borrowed getter results, temporary lifetimes, receiver consumption through a function and Contract witnesses |
 | 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
 | 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
 | 27 | General Slice, positions and ranges, and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
@@ -288,7 +288,7 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | --- | --- | --- | --- |
 | 22 / 18–21 | Pass compound generic values through per-substitution concrete bodies; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursion, growing substitutions, invalid infinite layout and required resource-limit diagnostics. | Inspect concrete FunctionAbi and ordinary frames, selected body identities and deterministic finite generation; measure relevant warm allocations. Shared contexts, scratch frames and optional sharing budgets are deferred (§21.3.1). |
 | 23 / 4, 7 | Read/write stored standard, custom and computed Copy Properties with observable evaluation order. | Access permissions, differing setter inputs where permitted, single receiver/RHS/getter evaluation; reject writes or exclusive borrows into getter-result temporaries. | Distinguish direct Places from accessor calls; verify standard storage access and custom dispatch without invented get/set round trips. |
-| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
+| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Receiver consumption through an `into` function, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
 | 27 / 7, 13, 16, 19 | Resolve saved positions and ranges and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
@@ -1360,8 +1360,9 @@ and [assignment](../../docs/spec/13-operators-and-assignment.md#137-assignment).
 Resource 2 to the setter and destroys Resource 1 before installing it. The computed
 view returns a receiver-bounded borrow. `Viewed.item` maps to the standard shared
 slot-borrow operation, even though the implementation has a custom setter; it does
-not expose a Move or exclusive borrow. `Parcel.result` consumes its receiver and
-returns its owned field, whose destruction responsibility transfers to `owned`.
+not expose a Move or exclusive borrow. `Parcel.intoResult()` consumes its receiver
+(an accessor receiver is always shared for `get`, SPEC §11.2) and returns its owned
+field, whose destruction responsibility transfers to `owned`.
 
 Expected stdout (specification-derived; native execution is blocked):
 
@@ -1381,6 +1382,7 @@ Separate checks: a setter that discards its input must destroy that input and ke
 the old value; direct standard replacement witnesses and explicit computed
 implementations must preserve requirement contracts. Borrow an owned getter result
 for one call (allowed), then retain the borrow past its temporary lifetime (reject).
+Reject a computed getter with a `uniq/Self`, owning or object-form receiver.
 Reject replacement while a view remains live, shared extraction of a Non-Copy
 field, use of a consumed Parcel, direct Move/exclusive borrow through the custom
 setter, and incompatible requirement operations. Verify exact destruction counts,

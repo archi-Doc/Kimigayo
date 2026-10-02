@@ -768,7 +768,7 @@ Target validity and accessibility, Semantics preservation, [Owned erasure](15-ow
 
 For a custom, computed or required `set`, the secured input is passed to the setter instead of steps 3–4. A standard `set` places storage directly under the permissions of §11.1 and may restore incomplete storage. A constructor's first placement follows §11.3.1. A destination rooted in a getter-owned temporary is restricted by §11.2.3.
 
-The target of an assignment, compound assignment, increment or decrement is not a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): it is located and acquired with write permission under the path, `let`/`var` and Property permissions of §11.1, needs no `@uniq`/`@objuniq` whatever its access path, and starts no call reservation (§15.6.7). Getters invoked while locating the target, and the receiver of a custom, computed or required `set`, are Receiver Expressions and are acquired under §7.3.
+The target of an assignment, compound assignment, increment or decrement is not a Receiver Expression ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)): it is located and acquired with write permission under the path, `let`/`var` and Property permissions of §11.1, needs no `@uniq`/`@objuniq` whatever its access path, and starts no call reservation (§15.6.7). Getters invoked while locating the target, and the receiver of a custom, computed or required `set`, are Receiver Expressions and are acquired under §7.3, in shared mode for a getter and in exclusive mode for a setter (§11.2.2).
 
 Replacement uses the existing storage without invoking incoming constructors or declaration initializers. A complete old value is cleaned up by its exact Type's full destruction chain, and an incomplete one under [partial cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup). A derived value's base view is not a whole-value target. Destination and ancestor permissions and Loans are checked first. If cleanup of the old value does not complete normally, nothing is installed; the old state is not restored, and execution does not continue with an observably empty destination.
 
@@ -779,7 +779,7 @@ values[index()] = makeValue()  // makeValue, index, old destruction, placement.
 values[index()] += amount()    // amount, index, old read, compute, write.
 obj().prop = arg()             // arg, obj, setter.
 obj().setProp(arg())           // obj, arg, method call.
-object.view.x = 10 // If computed view returns uniq/Point: RHS, view get, x set.
+object.viewUniq().x = 10 // If viewUniq(self: uniq/Self) returns uniq/Point: RHS, viewUniq, x set.
 ```
 
 Use explicit locals when a particular order of receiver or index effects is needed.

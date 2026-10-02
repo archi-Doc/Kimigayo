@@ -56,3 +56,26 @@
 
 - **Proposed fix:** Keep `+` and `+=` for strings and define them as a strict desugaring to interpolation: `a + b` as `"\(a)\(b)"` and `t += v` as `t = "\(t)\(v)"`.
 - **Why not applied:** The desugaring keeps two forms of one operation (Principle 1). A chain `a + b + c` either allocates per step or needs a special fold that one interpolated literal performs by construction, and `+=` would hide the replacement of the whole string behind an update spelling (§13.7.2). Text built in steps belongs to `Text.HeapBuffer` and `Utf8Writer`, whose allocation and failure behavior are stated. The operators are removed instead (§13.3), and the diagnostic names the interpolated literal that joins the same operands in the same order.
+
+## Exclusive or owning accessor receivers
+
+- **Problem:** A computed getter with a `uniq/Self`, owning `Self` or object-form receiver makes a read-looking access `x.p` lend `x` exclusively, consume it or Copy it, and a setter with an owning `Self` receiver runs `point.x = 10` on a Copy and loses the update. A method shows its receiver through `()` and its Name; a Property shows nothing, so the effect of `x.p` cannot be read from the use (Principles 2 and 3).
+- **Example:**
+
+  ```kimi
+  struct Meter
+      var hits: i32 = 0
+      public computed reading: i32
+          get(self: uniq/Self) -> i32    // Error: a getter receiver is ref/Self (§11.2)
+              self.hits += 1
+              return self.hits
+      public func nextReading(self: uniq/Self) -> i32   // The call form shows the exclusive acquisition
+          self.hits += 1
+          return self.hits
+
+  let fixed = Meter.init()
+  let a = fixed.nextReading()          // Error: a let binding is not lent exclusively; nothing is read instead
+  ```
+
+- **Proposed fix:** Keep the ownership-bearing accessor receivers and require a spelling at the use (`meter@uniq.reading`), mark the declaration (`mutating get`), or warn.
+- **Why not applied:** A use spelling conflicts with the implicit acquisition of Receiver Expressions (§7.3) and with the meaning of `tasks@uniq.length`, a declaration mark leaves `x.p` looking like a read at every use, and a warning keeps the failing `let` receiver and the lost Copy update. The receiver of an accessor is fixed per operation instead, `ref/Self` for `get` and `uniq/Self` for `set` (§11.2), and the exclusive or consuming operation is a function named by §4.7.1 (`nextReading`, `intoItem`). `ref/Self` and `uniq/Self` are reachable through object handles by the path rules, so no capability is lost except a getter that returns `self` as a handle.

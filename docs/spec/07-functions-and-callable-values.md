@@ -151,7 +151,7 @@ let shown = meter.read()   // Shared receiver: implicit borrow.
 meter.update(5)            // Exclusive receiver: the owned Place is acquired implicitly.
 ```
 
-**Receiver shape.** A receiver's **shape** is `ref/Self`, `uniq/Self`, owning `Self` or one permitted object-Semantics form. In a function group fixed by member lookup (§9.5), every function that has a receiver must have the same shape; functions without a receiver do not count. For a group formed by a Type's declarations, a violation is a declaration error. Different parameters or labels and mutually exclusive `when` conditions (§8.4.8) do not exempt a group. Contract requirements, including refined ones, obey the rule (§8.4.1), and an explicit full specialization keeps its original's shape (§8.8.2). Same-name declarations in a base and a derived struct are already excluded by the inherited-Name rule (§6.2.2). A group gathered from generic Constraints is checked at the use (§9.5). The `get` and `set` of one Property are distinct operations and are exempt. The Name alone therefore fixes a call's receiver acquisition before overload resolution, and Best Candidate comparison covers only the explicit arguments (§10.4). Shared and exclusive variants of one operation need different names; Kimi declarations follow the naming convention of §4.7.1.
+**Receiver shape.** A receiver's **shape** is `ref/Self`, `uniq/Self`, owning `Self` or one permitted object-Semantics form. In a function group fixed by member lookup (§9.5), every function that has a receiver must have the same shape; functions without a receiver do not count. For a group formed by a Type's declarations, a violation is a declaration error. Different parameters or labels and mutually exclusive `when` conditions (§8.4.8) do not exempt a group. Contract requirements, including refined ones, obey the rule (§8.4.1), and an explicit full specialization keeps its original's shape (§8.8.2). Same-name declarations in a base and a derived struct are already excluded by the inherited-Name rule (§6.2.2). A group gathered from generic Constraints is checked at the use (§9.5). The `get` and `set` of one Property are distinct operations and are exempt: their shapes are fixed per operation by [§11.2](11-properties.md#112-accessor-functions), `ref/Self` for `get` and `uniq/Self` for `set`, so a Property is the one Name under which a shared and an exclusive receiver coexist. The Name alone therefore fixes a call's receiver acquisition before overload resolution, and Best Candidate comparison covers only the explicit arguments (§10.4). Shared and exclusive variants of one operation need different names; Kimi declarations follow the naming convention of §4.7.1.
 
 ```kimi
 struct Counter
@@ -193,10 +193,9 @@ A [pair layer](13-operators-and-assignment.md#pair-layers) on the selected path 
 ```kimi
 struct Meter
     var hits: i32 = 0
-    public computed reading: i32
-        get(self: uniq/Self) -> i32
-            self.hits += 1
-            return self.hits
+    public func nextReading(self: uniq/Self) -> i32
+        self.hits += 1
+        return self.hits
 
 group Registry
     public var meter: Meter = Meter.init()
@@ -209,9 +208,9 @@ struct Builder
 
 // holder and tasks are var locals.
 var meter = Meter.init()
-let seen = meter.reading              // Supplies meter@uniq.
+let seen = meter.nextReading()        // Supplies meter@uniq.
 holder.items.append(1)                // Supplies holder.items@uniq.
-let shared = Registry.meter.reading   // Mutable static: supplies Registry.meter@uniq.
+let shared = Registry.meter.nextReading() // Mutable static: supplies Registry.meter@uniq.
 makeResource().consume()              // An owned temporary passes as is.
 
 var builder = makeBuilder()
@@ -264,7 +263,7 @@ makePoint().normalize()   // Valid: a temporary from the start.
 | Failed check | Suggestion |
 | --- | --- |
 | Immutable owned storage: a `let` binding, an owned-Type parameter, a `let`-bound Closure | Make it `var`; for a parameter, `var local = p@move` (`var local = p` when Copy) |
-| Only shared permission: a `ref`/`objref` value, `rc`/`arc`, a shared path | Make the upstream exclusive, for example `self: uniq/Self` on the enclosing method |
+| Only shared permission: a `ref`/`objref` value, `rc`/`arc`, a shared path | Make the upstream exclusive, for example `self: uniq/Self` on the enclosing method; when the enclosing declaration is a getter, whose receiver is fixed as `ref/Self` (§11.2), move the operation into a function instead |
 | Storage whose direct exclusive borrow is forbidden: a stored Property with a custom `set`, getter-result storage | Read the value into a local, modify it and write it back through `set`; not suggested when the value cannot be acquired or `set` is inaccessible |
 | `set` access, receiver incompleteness, ObjectCallCompatible | The existing diagnostics |
 

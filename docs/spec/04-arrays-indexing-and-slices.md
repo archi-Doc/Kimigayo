@@ -687,13 +687,14 @@ Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rej
 
 These postconditions do not roll back external effects of arguments, equality or destructors.
 
-**Naming convention.** Because the functions of one Name share one receiver shape (§7.3), a shared variant and an exclusive variant of one operation need different names. Kimi declarations and the examples of this specification follow the convention below; user code is not required to.
+**Naming convention.** Because the functions of one Name share one receiver shape (§7.3) and an accessor's receiver is fixed by its operation (§11.2), a shared variant and an exclusive variant of one operation need different names, and so do a Property and the exclusive or consuming operation over the same state. Kimi declarations and the examples of this specification follow the convention below; user code is not required to.
 
 | Pair | Convention | Example |
 | --- | --- | --- |
 | Returns a new value / changes in place | Adjective (past participle) / verb | `sorted` / `sort` |
 | Returns a shared reference / returns an exclusive reference | Suffix `Uniq` on the exclusive variant | `tryGet` / `tryGetUniq` |
-| Only inspects / advances or takes | Different verbs | `peek` / `next` |
+| Only inspects / advances or takes | Different verbs; against a Property, verb + noun | `peek` / `next`, `reading` / `nextReading` |
+| Observes a value through a Property / consumes the receiver to take that value | Noun Property / `into` + noun function | `item` / `intoItem` |
 
 ### 4.7.2. Array operations
 

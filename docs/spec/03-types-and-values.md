@@ -462,7 +462,7 @@ These are alternative outcomes, not fallback stages: a failed direct Move cannot
 | Path | Definition |
 | --- | --- |
 | Direct | Resolves no reference: a local or parameter, its inline parts, static storage, or a payload reached through an owned `obj` handle |
-| Through an exclusive reference | Resolves a `uniq` or `objuniq` reference, including the result of a getter that returns one |
+| Through an exclusive reference | Resolves a `uniq` or `objuniq` reference, including the result of a function that returns one |
 | Through a shared reference | Resolves a `ref`, `objref`, `rc` or `arc` reference |
 
 The path's authority bounds every borrow of the Place ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-movable-places), [§13.5.5](13-operators-and-assignment.md#1355-follow-borrow-and-reborrow)). A temporary is not a Place and has no path.

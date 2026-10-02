@@ -158,7 +158,8 @@ func duplicate<T>(value: T) -> (T, T)
   Use separate shared/exclusive names. Groups contain static members; there is no `static` modifier.
 - Stored Properties use `let`/`var`, optionally `get` and narrowed `private set`.
   `computed p: T` requires `get() -> T`; optional `set(value: U) -> ()` may take a different Type.
-  Omitted instance accessor receivers are shared for get, exclusive for set. Custom getters return values.
+  Instance accessor receivers are always shared for get and exclusive for set; a written receiver can only add
+  an Origin. Updates and consumption are functions. Custom getters return values.
 - Enums declare `Name` or `Name(T, U)` Cases. Construct `Outcome<i32>.Value(1)` or `.Value(1)` with a known
   expected enum Type. Payload-free Cases have no parentheses. Enums have no stored/computed Properties.
 - `<T>` binds a complete Type, including references. `<s/T>` binds one argument, split into Semantics `s`
