@@ -134,9 +134,11 @@ declares; the restatement is valid but adds nothing.
 - `[Kimi]` A try-prefixed operation is the try form of the operation with the same inputs: `tryGet(k)` is
   the try form of `x[k]` for a position, as Dictionary's `tryGet` is for a key, and `trySlice(r)` for a range.
   Constraints alone never distinguish overloads (SPEC §9.1), so a position and a range entry need different names.
-- `[Kimi]` Do not overload only on how an input is acquired, such as `T` and `ref/T` at the same position: a
-  caller passing a Place must then write `@ref`, `@copy` or `@move` (SPEC §10.2.2), and adding such an
-  overload, or importing one, rejects existing calls. Give operations with different purposes different names.
+- `[Language]` The functions of one Name acquire corresponding parameters of overlapping Types in one mode:
+  `T` and `ref/T`, or `ref/T` and `uniq/T`, cannot share a position
+  ([SPEC §7.3.1](spec/07-functions-and-callable-values.md#731-parameter-acquisition-shape)). Give operations
+  that acquire an input differently different names: `sorted` / `sort`, `index` / `indexUniq`,
+  `borrowStorage` / `borrowStorageUniq`.
 - `[Kimi]` Choose defaults that are common, cheap, free of observable effects and require no allocation.
 
 ### 3.3. Properties and comparisons

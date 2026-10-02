@@ -120,8 +120,8 @@ choose(10)     // Error: both candidates fit.
 choose(2 * 5)  // Error: a literal-only expression fits both in the same way.
 
 func take(range: Range<i32, i32>) -> () => ()
-func take(range: ref/Range<i32, i32>) -> () => ()
-take(0..3)     // The value candidate; the other needs a borrow of a temporary.
+func take(range: ref/Range<i64, i64>) -> () => ()
+take(0..3)     // The value candidate; the other also fits the literals but needs a borrow of a temporary.
 
 let x: i64 = 7
 let s: Range<i64, i64> = 0..3

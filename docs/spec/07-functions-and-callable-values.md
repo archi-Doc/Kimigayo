@@ -271,6 +271,121 @@ A missing spelling at a position other than a Receiver Expression uses the exist
 
 **Unbound references.** A Type-qualified instance function reference is unbound. A call through `Type.method` supplies every parameter explicitly, including `self` at its declared position, under the ordinary argument-order and receiver-compatibility checks. The receiver may be supplied positionally at its declared position or as a named `self:` argument, whatever the written boundary. It is an ordinary argument, not a Receiver Expression, so an owned Place supplied to a `uniq/Self` position needs `@uniq`. Ordinary parameters keep their declared name contracts; positional skipping and positional supply after named arguments are not allowed. An unbound function value likewise keeps `self` as an ordinary position of its callable signature, captures no receiver and remains subject to the unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. None of this introduces extension functions, implicit `self` lookup or a conversion for an otherwise incompatible object receiver.
 
+### 7.3.1. Parameter acquisition shape
+
+The receiver-shape rule extends to ordinary parameters: in one function group, how an argument is acquired follows from the Name and the position, never from the candidate that the other arguments or the surrounding Semantics select.
+
+**Acquisition mode.** The **acquisition mode** of a parameter is what it requires of a bare owned Place argument, judged on the outer Semantics of its normalized Type (aliases expanded, grouping and redundant `owner` removed); the names are those of the Subject modes (§15.1.6).
+
+| Mode | Outer Semantics |
+| --- | --- |
+| ByValue | `owner` (a Core, Tuple, fixed array or Function Type), `obj`, `rc`, `arc`, `raw` |
+| Shared | `ref`, `objref` |
+| Exclusive | `uniq`, `objuniq` |
+
+A parameter whose outer Semantics is bound by generic substitution has one **admitted case** per Semantics it may take, and each case is judged as if the parameter were written with that Semantics:
+
+| Parameter Type | Admitted cases |
+| --- | --- |
+| A pair `s/T`, or `s` applied to another target `s/U` | The admitted set of `s` (§8.7) |
+| An ordinary Type parameter `T`, of the function or of an enclosing Type, or an associated projection that does not normalize | Every Semantics, because `T` binds a complete Type (§8.1.1) |
+
+A function's own slot, including an original pair, is bound to a Semantics other than `owner` for a bare owned Place only by explicit Type arguments (§10.1 step 1, §10.8); inference binds the argument's complete Type. Explicit Type arguments reach only the declarations with the same number of generic parameters, so against a declaration with a different number, a function slot that admits `owner` has the `owner` case alone. A projection of a slot is bound from other arguments and keeps every case. Two corresponding parameters whose outer layer is the **same binding** (the same slot of the enclosing Type, the same-numbered function slot of declarations with equal generic counts, or the same projection of either) always bind to one Type and plan one acquisition, and are not compared; every other pair compares every combination of cases.
+
+**Corresponding parameters.** A declaration has two parameter sequences: that of a bound call `value.f(...)`, which omits the receiver, and that of an unbound call `Type.f(...)` (§7.3), which includes the receiver at its written position; a function without a receiver has the unbound sequence only. Two parameters of two declarations **correspond** when, in the same sequence, both can be supplied positionally (§7.2.2; the receiver of the unbound sequence always can) at the same position number, or they have the same external name. Receivers correspond to receivers under the receiver-shape rule above; this rule compares ordinary parameters with each other and with a receiver in the unbound sequence. Defaults, parameter counts, the position of the `!` boundary, labels, Constraints and `when` conditions do not change correspondence.
+
+**Matching keys and overlap.** Each parameter has a **matching key**:
+
+| Parameter Type | Matching key |
+| --- | --- |
+| `owner/U` (that is, `U`), `ref/U`, `uniq/U` | `Value(U)` |
+| `obj/U`, `rc/U`, `arc/U`, `objref/U`, `objuniq/U` | `Object(U)` |
+| `s/U` for a pair `s` applied to another target | `Value(U)` and `Object(U)`, as the admitted set of `s` allows |
+| A bare Type parameter `T`, an original pair `s/T`, a pair target alone, an associated projection that does not normalize | Any: it overlaps every key |
+| Anything else (`raw/U`, a Core, Tuple, fixed array or Function Type) | `Value(the Type itself)` |
+
+Two keys **overlap** when steps 2–4 of the collision test of [§8.4.9.1](08-generics-constraints-and-contracts.md#8491-direct-conformance-collisions) unify them, without the Constraint normalization of its step 1 (**Generics** below). A function's own generic slots, including pair targets and lengths, are variables independent per declaration; a slot of the enclosing Type is one variable shared by both declarations, so `Array<A>` and `ref/Array<B>` in `struct Api<A, B>` overlap under `A = B`. Only a structural mismatch of nominal Types, Tuples or Function Types establishes non-overlap; two lengths differ only when both evaluate to constants with different values, so `(N + 1)` and `2` overlap. Origins and binding sets are ignored.
+
+**Rule.** *Two declarations of one function group are invalid together when they have corresponding parameters whose acquisition modes differ, for a parameter with admitted cases in any combination of cases, and whose matching keys overlap.*
+
+| Group formation | Judgment |
+| --- | --- |
+| The same-name declarations of one declaration scope: a Container and its fragments, the project root, a local scope, the members of a Type, constructors, the requirements of a Contract including those inherited by refinement (§8.4.2) | A declaration error |
+| A group gathered at a use from several declaration sources: the alias stage of §9.4.1, requirements gathered from Constraints (§9.5) | An error at that use, whatever its arguments |
+
+As for receiver shapes, different parameter counts, labels, defaults or mutually exclusive `when` conditions exempt no pair. An explicit full specialization keeps its original's contract and forms no new pair. The operator, index and comparison candidates come from the built-in operations and the published Contracts, which obey the rule (`index`/`indexUniq`).
+
+```kimi
+func bump(score: Score) -> Score
+func bump(score: uniq/Score) -> ()        // Error: position 0 is acquired by value and exclusively.
+
+func bumped(score: Score) -> Score       // The names differ (§4.7.1).
+func bump(score: uniq/Score) -> ()
+// bump(game.score)                      // Error: the only candidate needs @uniq (§15.1.5); no other candidate takes the call.
+
+func inspect(value: ref/i32) -> ()
+func inspect(value: uniq/i32) -> ()      // Error: shared and exclusive.
+
+func select(value: Node ! flag: bool) -> ()
+func select(value: ref/Node ! flag: i32) -> ()  // Error: flag distinguishes the calls, but value is one position.
+
+func g<T>(value: T) -> ()
+func g(value: uniq/Node) -> ()           // Error: T may be Node, in every case.
+
+func route(value: obj/Node) -> ()
+func route(value: objref/Node) -> ()     // Error: Object(Node) by value and shared.
+
+struct Api<A, B>
+    public func inspect(value: Array<A>) -> ()
+    public func inspect(value: ref/Array<B>) -> ()  // Error: A and B are one Type in Api<i32, i32>.
+
+func fill<length N>(value: [(N + 1) of i32], witness: [N of i32]) -> ()
+func fill<length M>(value: ref/[2 of i32], witness: [M of i32]) -> ()  // Error: a non-constant length overlaps.
+
+struct Node
+    public func inspect(self: ref/Self) -> ()
+    public func inspect(value: Self) -> ()  // Error: Node.inspect(node) acquires position 0 shared or by value.
+
+func choose<T>(value: T, items: Array<T>) -> ()
+func choose<T>(value: Node, items: Array<T>) -> ()  // Error: choose<ref/Node>(node, items) binds T to a reference.
+
+struct Box<A>
+    public func f(value: A) -> ()
+    public func f(value: Node) -> ()        // Error: Box<ref/Node> binds A to ref/Node.
+```
+
+The following pairs are valid:
+
+```kimi
+func writeLine(text: ref/string) -> ()
+func writeLine(text: Text.Utf8Slice) -> ()   // The Types do not overlap.
+
+func f(value: Node) -> ()
+func f<T>(value: T) -> ()                    // Different generic counts: T binds the argument's complete Type, so both are ByValue.
+
+func splitFirst<E>(state: uniq/RefRemainder<E>) -> Option<ref/E during state.source>
+func splitFirst<E>(state: uniq/UniqRemainder<E>) -> Option<uniq/E during state.source>  // Both exclusive; the Types differ.
+
+func show(value: Node) -> ()
+func show(value: objref/Node) -> ()          // Value(Node) and Object(Node) take different arguments.
+
+func f<T>(value: T ! tag: i32) -> ()
+func f<s/U>(value: s/U ! tag: i64) -> ()      // The same-numbered slots are one binding.
+
+struct Container<T>
+    public func add(self: uniq/Self, value: T) -> ()
+    public func add(self: uniq/Self, value: T, at: isize) -> ()  // The same enclosing slot.
+
+func fill(buffer: [2 of i32]) -> ()
+func fill(buffer: ref/[3 of i32]) -> ()      // Constant lengths differ.
+```
+
+**Consequences.** At a position whose Types overlap, the acquisition mode of an argument is fixed by the Name and the position: whichever candidate is selected acquires the argument by value, by a new shared borrow or by an exclusive borrow alike. Within one candidate, a reference argument is still acquired as its own Type decides (§10.2.1: the exclusive Reborrow of `identity(r)`, the value read of a read Type); that is not a switch between candidates. A forgotten `@uniq` is therefore an error at the only candidate (§15.1.5), never a silent selection of a by-value candidate that discards its update, and a shared variant and an exclusive variant never switch with the Semantics of an existing reference. Where the rule holds, no bare Place argument is Copied by one candidate and newly borrowed by another, so overload resolution has no acquisition conflict to resolve: the Copy proof of a bare by-value acquisition is an ordinary applicability condition (§10.1).
+
+**Generics.** Overlap is judged by unification of the matching keys alone. The admitted set of a Semantics slot is a finite set and is used; Type Constraints are not, because excluding an overlap through them needs a Refuted proof that the limited proof system (§8.7) often leaves Unknown. Pairs that Constraints, enclosing-Type arguments or length expressions would in fact keep apart are therefore rejected as well, and the diagnostic distinguishes this conservative case from an overlap of closed Types. The judgment is made once at the declarations and never at instantiation; a generic body that calls such a group plans its acquisitions as §8.9 states.
+
+**Diagnostics.** A declaration violation is `ParameterShapeMismatch_Kd`, reported once per corresponding parameter of the later declaration in source order (one record even when it overlaps several earlier declarations), located at that parameter's Type, with the overlapping earlier parameters as related locations. Its Reason states both acquisition modes, for a parameter with admitted cases the colliding case, the ground of correspondence (the call form and position number, or the external name) and the unified matching key in bounded form. A Note states, when the overlap arises from a slot or a non-constant length, that the check does not consult Constraints, enclosing Type arguments or length values; an overlap of closed Types has no Note. Its Advice names the naming pairs of §4.7.1 (`sorted`/`sort`, the `Uniq` suffix) or a change of Type that gives both parameters one mode; a rename reaches the callers, so no edit is applied automatically. The use-site error is located at the called Name and relates the overlapping declarations; for a group gathered at the alias stage it advises qualifying the Container (`A.f`), and for requirements gathered from Constraints no syntax selects among them, as for receiver shapes (§9.5). The declarations of a violating pair stay in their group, a call that selects one of them is checked normally, and a call that the pair leaves without a selection (ambiguous, or without an applicable candidate) is derived from the declaration error (§23.3.6.4).
+
 ## 7.4. Function constraints
 
 Every function, constructor, destructor and accessor with an indented body may begin that body with [Constraints](08-generics-constraints-and-contracts.md#82-constraints). Its Constraint Clauses must precede every executable body item; they are processed at compile time and are not executable expressions.

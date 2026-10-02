@@ -687,7 +687,7 @@ Precondition failures Abort. Ordinary absence uses `Option`, and recoverable rej
 
 These postconditions do not roll back external effects of arguments, equality or destructors.
 
-**Naming convention.** Because the functions of one Name share one receiver shape (§7.3) and an accessor's receiver is fixed by its operation (§11.2), a shared variant and an exclusive variant of one operation need different names, and so do a Property and the exclusive or consuming operation over the same state. Kimi declarations and the examples of this specification follow the convention below; user code is not required to.
+**Naming convention.** Because the functions of one Name share one receiver shape (§7.3), acquire corresponding parameters of overlapping Types in one mode (§7.3.1) and an accessor's receiver is fixed by its operation (§11.2), a shared variant and an exclusive variant of one operation need different names, whether the difference lies in the receiver or in an argument (`borrowStorage`/`borrowStorageUniq`), and so do a Property and the exclusive or consuming operation over the same state. Kimi declarations and the examples of this specification follow the convention below; user code is not required to.
 
 | Pair | Convention | Example |
 | --- | --- | --- |

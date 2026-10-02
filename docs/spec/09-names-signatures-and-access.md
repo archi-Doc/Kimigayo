@@ -64,7 +64,7 @@ func identity<T>(value: T) -> T => value
 func identity<U>(value: U) -> U => value // Error: same normalized Signature.
 ```
 
-Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is then ambiguous unless the overload rules select one. Header-name agreement between fragments is a separate rule from parameter-name normalization between different function declarations.
+Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is then ambiguous unless the overload rules select one. Header-name agreement between fragments is a separate rule from parameter-name normalization between different function declarations. Distinct Signatures may still be invalid together: the functions of one Name acquire corresponding parameters of overlapping Types in one mode ([parameter acquisition shape](07-functions-and-callable-values.md#731-parameter-acquisition-shape)), a rule separate from Signature identity.
 
 ## 9.2. Namespaces, roles, and visibility
 
@@ -260,7 +260,7 @@ Named aliases take part in the explicit source-alias stage in the Type namespace
 
 Explicit name mappings are checked at declaration time, once reference identity is fixed. In one selected SourceDocument, equal names with equal declaration references are duplicates of one mapping, while equal names with distinct references are errors even when unused. Distinct normalized argument bindings mean distinct references. If identity is unresolved, the comparison is deferred, keeping every path's validation obligations (§18.1.2). A prior mapping is never overwritten.
 
-Conflicts with members introduced by opening aliases are checked at use, under the ordinary namespace, role, access and selection rules, with equal references deduplicated within the stage. Opened members are not expanded eagerly merely to detect collisions.
+Conflicts with members introduced by opening aliases are checked at use, under the ordinary namespace, role, access and selection rules, with equal references deduplicated within the stage. Opened members are not expanded eagerly merely to detect collisions. A function group gathered at this stage from several declaration sources must satisfy the [parameter acquisition shape](07-functions-and-callable-values.md#731-parameter-acquisition-shape); otherwise the use is an error whatever its arguments, and a Container-qualified Name (`A.f`) selects one source.
 
 **Hidden-alias warning.** After selection and generation, a warning is issued at a successfully resolved and validated named alias that an earlier root qualifier hides. The candidates are the same-name project-root Type-namespace Qualifiers accessible throughout the document or, if there are none, the reserved or direct-dependency reference of that name. The warning is issued if candidates exist and none is the alias's own declaration reference. It ignores arity applicability, later members and call arguments, and does not enumerate potential uses. There is no warning for equal references, inner-only shadowing, or unresolved, invalid or conflicting aliases. The warning changes no lookup or acceptance rule.
 
@@ -302,7 +302,7 @@ A derived `f(string)` with an accessible base `f(i32)` is a declaration error un
 
 Generic bodies use their [definition-site source environment](18-modules-and-dependencies.md#18-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
-**Groups gathered from constraints.** Member lookup on a generic parameter collects the same-name requirements available from its Constraints (§8.4.6). If the requirements with receivers in such a group do not share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), the use is an error; no syntax selects among them.
+**Groups gathered from constraints.** Member lookup on a generic parameter collects the same-name requirements available from its Constraints (§8.4.6). If the requirements with receivers in such a group do not share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), or two of them have corresponding parameters of different acquisition modes whose Types overlap ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)), the use is an error; no syntax selects among them.
 
 ```kimi
 contract Reader

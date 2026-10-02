@@ -1121,7 +1121,7 @@ Generic analysis
 
 A by-value acquisition's effect follows its spelling:
 
-- a bare Place follows the bare acquisition of §3.5 in each admitted case: it Copies where Copy is proven and Reborrows in the same Semantics where its stored Type is proven to be a `uniq` or `objuniq` reference; a case with neither proof is an error at definition checking, never deferred checking or an inferred Move, and overload resolution decides the Copy proofs before ranking (§10.2.2);
+- a bare Place follows the bare acquisition of §3.5 in each admitted case: it Copies where Copy is proven and Reborrows in the same Semantics where its stored Type is proven to be a `uniq` or `objuniq` reference; a case with neither proof is an error at definition checking, never deferred checking or an inferred Move, and the Copy proof is part of a candidate's applicability (§10.1);
 - `@copy` Copies and requires the same evidence;
 - `@move` transfers;
 - `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
