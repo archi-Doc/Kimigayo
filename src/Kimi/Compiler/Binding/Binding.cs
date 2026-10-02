@@ -413,9 +413,10 @@ public sealed partial class Binding
             {
                 this.ReportWrite(issue.Node, target, requirement, issue.Code);
             }
-            else if (issue.Code == DiagnosticCode.NonNumericOperand_Kd && this.nonNumericOperands?.TryGetValue(issue.Node, out var nonNumeric) == true)
+            else if (issue.Code is DiagnosticCode.NonNumericOperand_Kd or DiagnosticCode.NonIntegerOperand_Kd or DiagnosticCode.InvalidShiftCount_Kd &&
+                this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
             {
-                this.ReportNonNumericOperand((BinaryKoto)issue.Node, nonNumeric, requirement, issue.Code);
+                this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
             }
             else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
             {
@@ -758,6 +759,8 @@ public sealed partial class Binding
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
                     BindingFailure.NonNumericOperand => DiagnosticCode.NonNumericOperand_Kd,
+                    BindingFailure.NonIntegerOperand => DiagnosticCode.NonIntegerOperand_Kd,
+                    BindingFailure.InvalidShiftCount => DiagnosticCode.InvalidShiftCount_Kd,
                     BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
                     BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,

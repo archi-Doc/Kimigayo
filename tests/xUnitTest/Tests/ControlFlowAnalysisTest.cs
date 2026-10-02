@@ -117,7 +117,6 @@ public class ControlFlowAnalysisTest
     [InlineData("label outer: loop\n    label outer: loop\n        continue", "overlaps")]
     [InlineData("loop\n    func f()\n        exit", "No valid target")]
     [InlineData("label outer: while (exit to outer)\n    ()", "No valid target")]
-    [InlineData("func f() -> i32\n    return 1\n    -\"text\"", "numeric")]
     [InlineData("let x: Never = loop\n    if false\n        exit 1", "incompatible")]
     [InlineData("func f() -> i8\n    if false\n        return 128\n    return 1", "incompatible")]
     [InlineData("func f() -> i32\n    1", "cannot fall through")]

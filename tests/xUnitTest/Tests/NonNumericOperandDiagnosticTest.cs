@@ -9,8 +9,9 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 13.3: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none, and an
-// interpolated literal is the one form that joins strings. Binding owns the check and names the repair (SPEC 23.3.6).
+// SPEC 13.2, 13.3: arithmetic, bitwise, shift, sign, increment and decrement operators take numeric operands, so bool, Unit,
+// char and string have none, and an interpolated literal is the one form that joins strings. Binding owns the check and names
+// the repair (SPEC 23.3.6).
 public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
 {
     private const string Strings = "let first = \"Hello, \"\nlet second = \"world\"\n";
@@ -49,6 +50,15 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
     [InlineData("var v = 'a'\nv %= 'b'", "char", "%=")]
     [InlineData("let v = \"a\" + 1", "string", "+")]
     [InlineData("func f() -> i32\n    return 1\n    true + false\npublic func main() => ()", "bool", "+")]
+    [InlineData("let v = true << 1", "bool", "<<")]
+    [InlineData("let v = \"a\" >> 1", "string", ">>")]
+    [InlineData("var v = 'a'\nv <<= 1", "char", "<<=")]
+    [InlineData("let v = -true", "bool", "-")]
+    [InlineData("let v = +()", "()", "+")]
+    [InlineData("let v = -\"a\"", "string", "-")]
+    [InlineData("func f() -> i32\n    return 1\n    -\"text\"\npublic func main() => ()", "string", "-")]
+    [InlineData("var v = true\nv++", "bool", "++")]
+    [InlineData("var v = 'a'\n--v", "char", "--")]
     public void EveryNonNumericPrimitiveNamesItsTypeAndOperator(string source, string type, string op)
     {
         var error = Assert.Single(Errors(Analyze(source)));

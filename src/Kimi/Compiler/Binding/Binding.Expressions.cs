@@ -221,6 +221,9 @@ public sealed partial class Binding
     private static bool NonNumericOperand(BoundType type)
         => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
 
+    // SPEC 13.2, 13.3: a numeric Type without the integer operators (%, bitwise, shift, increment, decrement), a floating-point Type.
+    private static bool NonIntegerOperand(BoundType type) => type.IsNumeric && !type.HasIntegerArithmetic;
+
     private static bool IsLiteralOnlyRange(Koto node)
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
@@ -1194,10 +1197,14 @@ public sealed partial class Binding
             case KotoKind.Not:
                 return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
-                return operand.IsNumeric || this.IsGenericInteger(operand, scope) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return operand.IsNumeric || this.IsGenericInteger(operand, scope) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand)
+                    : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
                 // Negation is defined for signed integers, floating-point values and every wrapping integer Type (SPEC 13.2, 13.3).
-                return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand)
+                    : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 if (!this.ValidPropertyWritePath(unary.Operand, scope))
                 {
@@ -1217,7 +1224,10 @@ public sealed partial class Binding
 
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
-                return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination)
+                    : destination is not null && NonNumericOperand(destination) ? this.FailOperand(unary, destination, BindingFailure.NonNumericOperand)
+                    : destination is not null && NonIntegerOperand(destination) ? this.FailOperand(unary, destination, BindingFailure.NonIntegerOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -1243,6 +1253,7 @@ public sealed partial class Binding
         var comparison = operation is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         var arithmetic = operation is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
+        var integerOnly = operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
         BoundType? left;
         BoundType? right;
         // SPEC 3.3 and 13.4: an operand of Type ref/T or uniq/T denotes its Copy referent; an assignment
@@ -1282,7 +1293,7 @@ public sealed partial class Binding
             // SPEC 13.3: a left operand without the operator is the problem, so the right operand is bound without its Type.
             var expectedRight = logical ? BoundType.Boolean
                 : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
-                : arithmetic && left is not null && NonNumericOperand(left) ? null
+                : arithmetic && left is not null && (NonNumericOperand(left) || (integerOnly && NonIntegerOperand(left))) ? null
                 : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
                 : comparand;
             right = this.BindExpected(binary.Right, scope, expectedRight, assignment ? binary.Left : null);
@@ -1318,7 +1329,11 @@ public sealed partial class Binding
         if (shift)
         {
             // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
-            return this.IsArithmeticInteger(left, scope) && (this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : this.Fail(binary, BindingFailure.TypeMismatch);
+            return NonNumericOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonNumericOperand)
+                : NonIntegerOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonIntegerOperand)
+                : !this.IsArithmeticInteger(left, scope) ? this.Fail(binary, BindingFailure.TypeMismatch)
+                : this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never) ? Complete(binary, result)
+                : this.FailOperand(binary, right, BindingFailure.InvalidShiftCount);
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
@@ -1353,10 +1368,16 @@ public sealed partial class Binding
         // SPEC 13.3: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none. A string
         // operand is judged through its reference layers and before the operands are compared, so that two string references
         // with distinct Origins are not reported as a mismatch of one Type with itself; an interpolated literal is the one way
-        // to join strings (SPEC 12.3.3).
+        // to join strings (SPEC 12.3.3). % and the bitwise operators take integers only, so a floating-point left operand is
+        // the problem whatever the other operand is.
         if (arithmetic && NonNumericOperand(left))
         {
-            return this.FailNonNumericOperand(binary, left);
+            return this.FailOperand(binary, left, BindingFailure.NonNumericOperand);
+        }
+
+        if (integerOnly && NonIntegerOperand(left))
+        {
+            return this.FailOperand(binary, left, BindingFailure.NonIntegerOperand);
         }
 
         if (comparison)
@@ -1440,10 +1461,7 @@ public sealed partial class Binding
                 return this.Fail(binary, BindingFailure.Unsupported, true);
             }
 
-            // % and bitwise operators accept integers only, including their compound forms (SPEC 13.3).
-            return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.HasIntegerArithmetic
-                ? this.Fail(binary, BindingFailure.TypeMismatch)
-                : Complete(binary, result);
+            return Complete(binary, result);
         }
 
         // Every primitive with an arithmetic operator is numeric and handled above; arithmetic on other Types remains deferred.

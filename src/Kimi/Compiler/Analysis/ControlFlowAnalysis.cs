@@ -1683,13 +1683,9 @@ public sealed class ControlFlowAnalysis
                 return ControlFlowType.Boolean;
             }
 
+            // SPEC 13.2: Binding rejects a non-numeric operand (NonNumericOperand_Kd); the result has the operand's Type.
             if (node is PrefixMinusKoto or PrefixPlusKoto)
             {
-                if (operandType?.Name is "()" or "bool" or "string")
-                {
-                    this.Error(node, DiagnosticCode.NonNumericOperand_Kd);
-                }
-
                 return operandType;
             }
 

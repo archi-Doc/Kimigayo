@@ -850,6 +850,18 @@
     Arguments="operand:Type,operator:Text"
     Label="{0} has no {1}"
 
+  + Name="NonIntegerOperand_Kd"
+    Category="Language"
+    Message="The operator {1} requires integer operands, but this operand has Type {0}"
+    Arguments="operand:Type,operator:Text"
+    Label="{0} has no {1}"
+
+  + Name="InvalidShiftCount_Kd"
+    Category="Language"
+    Message="The operator {1} requires an integer count, but this count has Type {0}"
+    Arguments="count:Type,operator:Text"
+    Label="{0} is not an integer Type"
+
   + Name="UnsafeBlockRequired_Kd"
     Category="Language"
     Message="This operation requires an Unsafe Block"

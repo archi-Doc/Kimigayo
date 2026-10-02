@@ -149,8 +149,12 @@ internal enum BindingFailure : byte
     BareOwningShorthand,
     NonCopyOperand,
 
-    // SPEC 13.3: an arithmetic or bitwise operand is numeric; bool, Unit, char and string have no such operators.
+    // SPEC 13.2, 13.3: an arithmetic, bitwise, shift, sign, increment or decrement operand is numeric; bool, Unit, char and
+    // string have no such operators. %, the bitwise and shift operators, increment and decrement also need an integer or
+    // wrapping integer operand, and a shift count an integer Type.
     NonNumericOperand,
+    NonIntegerOperand,
+    InvalidShiftCount,
 
     // SPEC 13.5.4.3-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
     // same-width integer Type and needs both Types fixed.

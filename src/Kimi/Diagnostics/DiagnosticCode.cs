@@ -203,6 +203,8 @@ public enum DiagnosticCode
     InvalidPointerArithmetic_Kd,
     InvalidPointerComparison_Kd,
     NonNumericOperand_Kd,
+    NonIntegerOperand_Kd,
+    InvalidShiftCount_Kd,
     UnsafeBlockRequired_Kd,
     UnnecessaryUnsafeBlock_Kd,
     StaticWhileTrue_Kd,

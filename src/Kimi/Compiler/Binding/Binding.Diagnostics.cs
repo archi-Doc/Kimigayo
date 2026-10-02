@@ -52,8 +52,8 @@ public sealed partial class Binding
     // SPEC 23.3.6.2: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
     private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
 
-    // SPEC 13.3: the operand Type an arithmetic or bitwise operator rejected, recorded only when the check fails.
-    private Dictionary<Koto, BoundType>? nonNumericOperands;
+    // SPEC 13.2, 13.3: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
+    private Dictionary<Koto, BoundType>? operatorOperands;
 
     // The selected iteration entry and the range whose boundary Types cannot supply it.
     private Dictionary<Koto, (BoundType Subject, BindingSymbol Entry)>? rangeIterationFailures;
@@ -119,6 +119,18 @@ public sealed partial class Binding
 
         cause = default;
         return false;
+    }
+
+    // SPEC 13.5.4.4: a floating-point value has no bitwise or shift operator, but its bits are an integer of the same width.
+    private static string? BitPatternAdvice(BoundType operand, string symbol, KotoKind operation)
+    {
+        if (operation is KotoKind.Percent or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
+        {
+            return null;
+        }
+
+        var (bits, type) = ReferenceEquals(operand, BoundType.F32) ? ("u32", "f32") : ("u64", "f64");
+        return $"If the bit pattern is meant, reinterpret each {type} operand with @bits<{bits}> before applying {symbol}; @bits<{type}> turns resulting bits back into an {type}";
     }
 
     // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
@@ -290,30 +302,59 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.TypeMismatch);
     }
 
-    /// <summary>Fails an arithmetic or bitwise operation whose operand Type has no such operator (SPEC 13.3), recording that Type.</summary>
+    /// <summary>Fails an operation whose operand Type has no such operator, or a shift whose count is not an integer Type
+    /// (SPEC 13.2, 13.3), recording that Type.</summary>
     /// <param name="node">The operation.</param>
-    /// <param name="operand">The operand Type as compared.</param>
+    /// <param name="operand">The operand Type as compared, or the count Type.</param>
+    /// <param name="failure"><see cref="BindingFailure.NonNumericOperand"/>, <see cref="BindingFailure.NonIntegerOperand"/> or
+    /// <see cref="BindingFailure.InvalidShiftCount"/>.</param>
     /// <returns><see langword="null"/>.</returns>
-    private BoundType? FailNonNumericOperand(BinaryKoto node, BoundType operand)
+    private BoundType? FailOperand(Koto node, BoundType operand, BindingFailure failure)
     {
         if (node.BindingFailure == BindingFailure.None)
         {
-            (this.nonNumericOperands ??= new(ReferenceEqualityComparer.Instance))[node] = operand;
+            (this.operatorOperands ??= new(ReferenceEqualityComparer.Instance))[node] = operand;
         }
 
-        return this.Fail(node, BindingFailure.NonNumericOperand);
+        return this.Fail(node, failure);
     }
 
-    // SPEC 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings,
-    // and + or += whose other operand is a string gets the literal that joins the same operands in the same order as Advice.
-    private void ReportNonNumericOperand(BinaryKoto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
+    // SPEC 13.2, 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings,
+    // and + or += whose other operand is a string gets the literal that joins the same operands in the same order as Advice. A
+    // floating-point operand of a bit operator is told how to reach its bits; a shift count is located at the count, and a
+    // wrapping count is told to leave Wrapping<U> through U.
+    private void ReportOperatorOperand(Koto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var text = ReferenceTypes.EndsInString(operand);
-        var advice = !text ? null
-            : operation.Akind == KotoKind.Plus && IsStringJoin(operation, 0) ? StringJoinAdvice(operation)
-            : operation.Akind == KotoKind.PlusEquals && IsStringOperand(operation.Right, 0) ? StringAppendAdvice(operation)
-            : null;
-        operation.Report(requirement, code, DiagnosticTypeName(operand), operation.InfixText.Trim(), note: text ? StringOperatorNote : null, advice: advice);
+        var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
+        if (code == DiagnosticCode.NonNumericOperand_Kd)
+        {
+            var text = ReferenceTypes.EndsInString(operand);
+            var advice = !text ? null
+                : operation.Akind == KotoKind.Plus && IsStringJoin(operation, 0) ? StringJoinAdvice((BinaryKoto)operation)
+                : operation.Akind == KotoKind.PlusEquals && IsStringOperand(((BinaryKoto)operation).Right, 0) ? StringAppendAdvice((BinaryKoto)operation)
+                : null;
+            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, note: text ? StringOperatorNote : null, advice: advice);
+        }
+        else if (code == DiagnosticCode.NonIntegerOperand_Kd)
+        {
+            // A compound form applies its operator to the reinterpreted value; the assignment is not part of the advice.
+            var compound = operation.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+            var kind = compound ? KotoHelper.CompoundOperation(operation.Akind) : operation.Akind;
+            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, advice: BitPatternAdvice(operand, compound ? symbol[..^1] : symbol, kind));
+        }
+        else
+        {
+            // SPEC 13.5.4.1: a numeric conversion leaves Wrapping<U> to U itself, which is always exact.
+            var integer = operand.IsWrappingInteger ? DiagnosticTypeName(operand.Underlying) : null;
+            operation.Report(
+                requirement,
+                code,
+                DiagnosticTypeName(operand),
+                symbol,
+                note: integer is not null ? "A wrapping integer Type is never a shift count (SPEC 13.3)" : null,
+                advice: integer is not null ? $"Convert the count to {integer} with @{integer}" : null,
+                at: ((BinaryKoto)operation).Right);
+        }
     }
 
     /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
@@ -402,7 +443,7 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.mismatches?.Clear();
-        this.nonNumericOperands?.Clear();
+        this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.captureFailures?.Clear();

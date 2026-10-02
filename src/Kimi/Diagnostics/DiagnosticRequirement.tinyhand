@@ -565,7 +565,13 @@
     Description="the @copy operand is proven Copy"
 
   + Name="Binding.NonNumericOperand"
-    Description="the operand of an arithmetic or bitwise operator is numeric"
+    Description="the operand of an arithmetic, bitwise, shift, sign, increment or decrement operator is numeric"
+
+  + Name="Binding.NonIntegerOperand"
+    Description="the operand of %, a bitwise or shift operator, increment or decrement is an integer or wrapping integer"
+
+  + Name="Binding.InvalidShiftCount"
+    Description="the count of a shift is an integer Type"
 
   + Name="Binding.InvalidWrapConversion"
     Description="the @wrap operand and target are integer or wrapping integer Types"
