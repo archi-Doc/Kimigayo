@@ -43,6 +43,22 @@ internal static class DiagnosticMeasurements
         var manyProject = WriteProject(directory, "ManyErrors", many.ToString());
         results["check-300-errors"] = Measure(() => Check(manyProject), 8);
 
+        // Three hundred bare transfers of Non-Copy locals, each offering a Transfer repair candidate (SPEC 23.3.6.9), against three
+        // hundred transfers through a shared reference, which refute Take and offer none: the difference per record is a candidate's cost.
+        const string Declarations = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => ()\nstruct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item\nfunc consume(value: Resource) => ()\npublic func main() => ()\n";
+        var transfers = new StringBuilder(Declarations);
+        var refuted = new StringBuilder(Declarations);
+        for (var i = 0; i < 100; i++)
+        {
+            transfers.Append("func g").Append(i).Append("()\n    let a = Resource.init(1)\n    let b = Resource.init(2)\n    let c = Resource.init(3)\n    consume(a)\n    consume(b)\n    consume(c)\n");
+            refuted.Append("func g").Append(i).Append("(h: ref/Holder)\n    consume(h.item)\n    consume(h.item)\n    consume(h.item)\n");
+        }
+
+        var transfersProject = WriteProject(directory, "Transfers", transfers.ToString());
+        var refutedProject = WriteProject(directory, "RefutedTransfers", refuted.ToString());
+        results["check-300-transfer-candidates"] = Measure(() => Check(transfersProject), 8);
+        results["check-300-transfers-without-candidates"] = Measure(() => Check(refutedProject), 8);
+
         // Input line indexing is already established. Record formation should depend on the quoted window, not on
         // the length of the unquoted prefix. Keep identical windows and sample conditions at both input sizes.
         foreach (var prefix in new[] { 2000, 1000000 })
