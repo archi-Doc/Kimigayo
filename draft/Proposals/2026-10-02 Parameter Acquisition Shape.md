@@ -243,7 +243,7 @@ receiver shape の規則（SPEC §7.3）を導入した提案である。本書�
 | 対象 | 該当 | 対応 |
 | --- | --- | --- |
 | Kimi ライブラリ | `Kimi.Storage.borrowStorage` の共有版・排他版の 3 組（[StorageOperations.kimi](../../src/Kimi/Library/StorageOperations.kimi)：Array、Dictionary、固定長配列）。`internal` でユーザーからは呼べない | 排他版を `borrowStorageUniq` へ改名する。排他版の呼出し：`Array.kimi`（`iterateUniq`、`tryGetPairUniq`）、`Dictionary.kimi`（`indexUniq`、`iterateUniq`）、`Storage.kimi`（固定長配列の `iterateUniq`、`tryGetPairUniq`）。共有版の呼出しは変更しない |
-| コンパイラー | `KimiLibraryCatalog.cs`（`borrowStorage` の 6 項目の名前と Overload 番号）、`KimiLibraryValidation.cs`、`KimiLibraryStorage.cs` | 排他版の名前の変更に追随する |
+| コンパイラー | `KimiLibraryCatalog.cs`、`KimiLibraryValidation.cs`、`KimiLibraryStorage.cs` の `borrowStorage` の項目 | 排他版の名前の変更に追随する |
 | 仕様の例 | SPEC §10.2.2 の全例、§10.4 の `inspect(ref/i32)`／`inspect(uniq/i32)` と `bump`、§10.6 の `unsafe func inspect(value: i32)`／`inspect(value: ref/i32)`、§12.3.1 の `take(range: Range<i32, i32>)`／`take(range: ref/Range<i32, i32>)` | 削除するか、取得モードだけが違う組を使わない例へ書き換える（§10.6 は型の異なる組で unsafe の検査順を示す） |
 | テスト | `AcquisitionConflictTest` | 本規則の宣言エラーの検査へ置き換える。その他の該当は実装時の検査で特定する |
 | マイルストーン、`docs/examples` | なし | — |
@@ -267,7 +267,7 @@ receiver shape の規則（SPEC §7.3）を導入した提案である。本書�
 
 ### 7.2. 性能方針
 
-- 宣言時の判定は同名グループごとに宣言の組 × 対応パラメーターで行う。同名グループは小さいので、二乗の走査でよい。組ごとにまず同じ束縛を除き、許容ケースを Semantics の集合として取得モードを比べ、異なる組だけ照合キーを単一化する。照合キーは宣言ごとに一度だけ作り、作業領域は再利用する。
+- 宣言時の判定は宣言の組と対応パラメーターごとに一度だけ行い、使用ごとの費用を持たない。
 - 使用時のグループの判定は束縛した宣言の集合だけで決まるので、同じ集合に対する結果を再利用し、使用箇所ごとに作るのは診断の主位置だけとする。
 - 呼出しごとの取得競合の走査と Copy 証明の保留がなくなる分、overload 解決の作業は減る見込みだが、測定前に高速化を主張しない。関連する割当て・再利用の回帰と、繰り返し使われる集めたグループの測定を含めて確認する。
 
@@ -310,7 +310,6 @@ receiver shape の規則（SPEC §7.3）を導入した提案である。本書�
 | 許容ケースを束縛を区別せず独立に比べる | 同じ外側のスロットや同じ番号の関数固有スロットは常に同じ型に束縛されるので、`Container<T>` の `add(value: T)` の組まで拒否する |
 | generic 引数の個数を区別しない | 明示的な型引数は個数の等しい宣言にしか及ばず、推論は引数の型をそのまま束縛するので、`f(value: Node)` と `f<T>(value: T)` の取得は分かれない。区別しないとこの組を失う |
 | receiver を本規則から除く | 非束縛呼出し `Type.f(x)` では同じ引数が一方の receiver と他方の通常パラメーターに対応し、取得が分かれる |
-| 使用時グループの再利用の鍵に可視性・Constraints 環境・外側の束縛を含める | 可視性と Constraints は集める宣言を決めるだけで判定を変えず、外側のスロットは変数なので束縛も変えない。束縛した宣言の集合だけで十分 |
 
 ### 9.2. Kimigayo Principles との対応
 

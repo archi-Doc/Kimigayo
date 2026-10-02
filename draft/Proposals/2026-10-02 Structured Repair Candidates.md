@@ -4,13 +4,13 @@
 
 状態：最終版。採否は未決定。正式仕様への取り込みと実装は未実施。
 
-本書は、診断レコードに**修正候補（repair candidate）**を加え、`kimi check` の JSON 出力と言語サーバーの code action で機械が受け取れるようにする。本書で変更する事項は SPEC とその参照先より優先し、変更しない事項には既存仕様を適用する。SPEC の節は「SPEC §n」、本書の節は「本書 n」と表記する。例は独立した断片であり、「エラー」と記した行は意図した拒否例である。
+本書は、診断レコードに**修正候補（repair candidate）**を加え、`kimi check` の JSON 出力と言語サーバーの code action で機械が受け取れるようにする。`2026-10-02 Parameter Acquisition Shape.md` の採用を前提とする（本書 6）。本書で変更する事項は SPEC とその参照先より優先し、変更しない事項には既存仕様を適用する。SPEC の節は「SPEC §n」、本書の節は「本書 n」と表記する。例は独立した断片であり、「エラー」と記した行は意図した拒否例である。
 
 ## 1. 現仕様の問題
 
-1. **検証した修正を散文にしか書けない。** SPEC §10.6・§7.3・§14.3.3・§14.5.1・§17.2.4・§17.4.3 は、修正を検証してから示すことを要求する。しかし診断レコード（§23.3.6.2）に修正の欄はなく、§23.3.2・§23.3.6.1 は「Advice と Note の散文から機械適用可能な編集を推論しない」と定める。実装も同じで、取得競合の報告は Copy の証明と Take の可否を判定してから英文を選び、不要な `unsafe` の警告はスコープの変化を判定してから英文を選ぶ。判定の結果は捨てられる。
+1. **検証した修正を散文にしか書けない。** SPEC §7.3・§14.3.3・§14.5.1・§17.2.4・§17.4.3 は、修正を検証してから示すことを要求する。しかし診断レコード（§23.3.6.2）に修正の欄はなく、§23.3.2・§23.3.6.1 は「Advice と Note の散文から機械適用可能な編集を推論しない」と定める。実装も同じで、不要な `unsafe` の警告は、本体が名前を宣言するか `defer` を登録するかを判定してから英文を選ぶ。判定の結果は捨てられる。
 2. **機械が受け取る経路がない。** JSON 形式（§23.3.6.8）はどのコマンドも出力せず、言語サーバー（§23.4.7）は label・Note・Advice を message に連結し、CSP（§23.5）は未実装である。
-3. **検証済みと未検証の区別が散文に埋まる。** 取得競合の Advice は、常に候補を一つに選ぶ `@ref` と、以後の使用に条件が付く `@move` を同じ文で勧める。
+3. **検証済みと未検証の区別が散文に埋まる。** `TransferRequired_Kd` の文は、`@move` による転送と `@ref`・`@uniq` による借用を同じ文で勧める。転送は Place が Take を提供するかに、借用は呼出し先が参照を受け取るかに左右されるが、文はどちらも区別しない。
 4. **原則4との乖離。** 原則4の「明示的な前提条件と保証を伴う修正候補」は、§23.5.3 で CSP の将来要件とされ、Appendix D で保留になっている。修正候補は Reason や関連位置と同じくレコードの一部であり、CSP を待つ必要がない。
 
 ## 2. 理想的な動作
@@ -43,16 +43,12 @@
 
 | 条件 | 意味 |
 | --- | --- |
-| `Selection` | 呼出しが候補をちょうど一つ選ぶ |
-| `Copy` | 取得する値が Copy と証明済み |
 | `Take` | Place が Take を提供し、Movable Place の条件（§15.1.5）を満たす |
 | `ExclusiveAccess` | 貸与点が排他的に書き込み可能（§15.1.5） |
 | `UsageLegality` | 選ばれた操作と、影響を受ける Place の以後の各使用が、使用合法性（§10.6：初期化と Move の状態、Loan、寿命）を満たす |
 | `Structure` | 既存の名前の可視範囲、破棄と `defer` の順序、各式の評価 Context と結果の供給、既存の制御転送の対象が変わらない |
 
 候補に**関係する条件**は、診断と kind の組で決まる（本書 3.7）。検査は、関係する各条件を自身の事実から **verified**（確立した）、**required**（判定できない）、**不成立**（成立しないと確定した）のいずれかに判定する。不成立の条件が一つでもある候補は提示しない。再検査はしないので、修正後の解析を要する `UsageLegality` はこの改版では常に required である。
-
-`Selection` は、競合した呼出しの committed function group（§10.1）全体を、名前の探索結果と他の引数の型付けを再利用して、編集後の引数で §10.1–§10.4 の判定にかけ、ちょうど一つの候補が選ばれたとき verified とする。編集前に除外された宣言も対象であり（本書 4.1）、他の引数の競合が残れば一つに選ばれないので候補は出ない。試行は計画を記録するだけで状態を変えず（§10.1）、呼出しに期待型を待つ引数（§10.5）は対象外とする。作業量の上限を超えたときは候補を提示しない。
 
 #### 3.1.3. 編集の規則
 
@@ -122,9 +118,6 @@ CheckOutput := {
 
 | 診断（SPEC） | kind と編集 | 判定 | 提示条件 |
 | --- | --- | --- | --- |
-| `AcquisitionRequired_Kd`（§10.6） | `Repair.Borrow`：引数全体に `@ref` | Selection：再評価。UsageLegality：required | Selection が verified |
-| 〃 | `Repair.Copy`：`@copy` | Selection：再評価。Copy：保留した証明。UsageLegality：required | Selection と Copy が verified |
-| 〃 | `Repair.Transfer`：`@move` | Selection：再評価。Take：取得計画で verified か required。UsageLegality：required | Selection と Take が verified |
 | `TransferRequired_Kd`（§3.5） | `Repair.Transfer`：`@move` | Take：取得計画で verified か required、Take を提供しない Place（借用先、公開された Place、static、動的要素）は不成立。UsageLegality：required | Take が不成立でない |
 | 〃 の Capture エントリ（§7.6.2） | `Repair.Transfer`：`x@move`。`Repair.Borrow`：`x@ref` | 転送は上の行と同じ。借用は UsageLegality：required | 転送は上の行と同じ。借用は常に |
 | `ExclusiveBorrowRequired_Kd`（§7.3、§15.1.5） | `Repair.BorrowExclusively`：`@uniq`、オブジェクト handle なら `@objuniq` | ExclusiveAccess：取得計画で verified か required、`let` 根・所有型の引数・getter 結果は不成立。UsageLegality：required | ExclusiveAccess が不成立でない |
@@ -154,37 +147,28 @@ CheckOutput := {
 
 ## 4. 例
 
-### 4.1. 取得競合
+### 4.1. 転送
 
 ```kimi
-func process(value: Node) -> i32 => 1
-func process(value: ref/Node) -> i32 => 2
+func consume(value: Resource) -> i32 => 1
 
-func run(node: Node) -> i32
-    return process(node)        // エラー：AcquisitionRequired_Kd
+func run() -> i32
+    let resource = makeResource()
+    return consume(resource)    // エラー：TransferRequired_Kd
 ```
 
-`kimi check --Format json` の該当レコード（抜粋。`Node` は Copy 未証明）：
+`kimi check --Format json` の該当レコード（抜粋。`Resource` は Copy でない）：
 
 ```json
 {
-  "code": "AcquisitionRequired_Kd", "severity": "Error", "category": "Language",
-  "source": 1, "span": { "start": 118, "length": 4 },
-  "reason": [{ "name": "type", "kind": "Text", "value": "Node" }],
-  "related": [
-    { "role": "candidate", "source": 1, "span": { "start": 20, "length": 4 }, "label": "process acquires it by value as Node" },
-    { "role": "candidate", "source": 1, "span": { "start": 62, "length": 8 }, "label": "process borrows it as ref/Node" }
-  ],
-  "note": "Node is not proven Copy, so a by-value candidate cannot Copy this Place",
+  "code": "TransferRequired_Kd", "severity": "Error", "category": "Language",
+  "source": 1, "span": { "start": 114, "length": 8 },
+  "reason": [{ "name": "target", "kind": "Text", "value": "resource" }],
   "repairs": [
-    { "kind": "Repair.Borrow", "title": "Append @ref to borrow node for process(value: ref/Node)",
-      "edits": [{ "source": 1, "span": { "start": 122, "length": 0 }, "text": "@ref" }],
-      "verified": ["Selection"],
-      "required": [{ "condition": "UsageLegality", "phrase": "the call and later uses of node satisfy the initialization, Loan and lifetime conditions" }] },
-    { "kind": "Repair.Transfer", "title": "Append @move to transfer node to process(value: Node)",
+    { "kind": "Repair.Transfer", "title": "Append @move to transfer resource to consume(value: Resource)",
       "edits": [{ "source": 1, "span": { "start": 122, "length": 0 }, "text": "@move" }],
-      "verified": ["Selection", "Take"],
-      "required": [{ "condition": "UsageLegality", "phrase": "the call and later uses of node satisfy the initialization, Loan and lifetime conditions" }] }
+      "verified": ["Take"],
+      "required": [{ "condition": "UsageLegality", "phrase": "the call and later uses of resource satisfy the initialization, Loan and lifetime conditions" }] }
   ]
 }
 ```
@@ -192,25 +176,19 @@ func run(node: Node) -> i32
 コマンドの描画（Advice の後）：
 
 ```text
-Repair: Append @ref to borrow node for process(value: ref/Node)
- = Main.kimi:5:21: insert '@ref'
- = verified: Selection; requires: the call and later uses of node satisfy the initialization, Loan and lifetime conditions
-Repair: Append @move to transfer node to process(value: Node)
- = Main.kimi:5:21: insert '@move'
- = verified: Selection, Take; requires: the call and later uses of node satisfy the initialization, Loan and lifetime conditions
+Repair: Append @move to transfer resource to consume(value: Resource)
+ = Main.kimi:5:28: insert '@move'
+ = verified: Take; requires: the call and later uses of resource satisfy the initialization, Loan and lifetime conditions
 ```
 
-`Node` が Copy 証明済みなら `Repair.Copy`（`@copy`、verified は Selection, Copy）が加わる。
-
-編集前に除外された宣言も再評価する。次では `f(node)` の競合は第一・第二宣言の間に起きるが、`node@ref` では第三宣言が `T = ref/Node` で適用可能になり、第二宣言と順位が並ぶ。再評価が二つの候補を返すので、`Repair.Borrow` は提示しない。
+借用先の Place は Take を提供しない（§15.1.5）ので、次の Take は不成立であり、`Repair.Transfer` を提示せず Advice だけを残す。
 
 ```kimi
-func f(value: Node) -> i32 => 1
-func f<T>(value: ref/T, extra: i32 = 0) -> i32 => 2
-func f<T>(value: T, extra: i32 = 0) -> i32
-    T is Copy
-    return 3
-f(node)                        // エラー：取得競合。候補は Repair.Transfer だけ
+struct Holder
+    var item: Resource
+
+func total(holder: ref/Holder) -> i32
+    return consume(holder.item)    // エラー：TransferRequired_Kd。候補なし
 ```
 
 ### 4.2. 不要な unsafe
@@ -253,18 +231,15 @@ func run() -> Result<(), Error>
 
 ### 4.5. 言語サーバー
 
-カーソル（空範囲）が診断の範囲 4:19–4:23 の中にある要求：
+カーソル（空範囲）が診断の範囲 4:19–4:27 の中にある要求：
 
 ```text
-→ {"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///C:/work/Main.kimi"},"range":{"start":{"line":4,"character":21},"end":{"line":4,"character":21}},"context":{"diagnostics":[]}}}
+→ {"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///C:/work/Main.kimi"},"range":{"start":{"line":4,"character":22},"end":{"line":4,"character":22}},"context":{"diagnostics":[]}}}
 ← {"jsonrpc":"2.0","id":3,"result":[
-     {"title":"Append @ref to borrow node for process(value: ref/Node); requires the call and later uses of node satisfy the initialization, Loan and lifetime conditions",
+     {"title":"Append @move to transfer resource to consume(value: Resource); requires the call and later uses of resource satisfy the initialization, Loan and lifetime conditions",
       "kind":"quickfix","diagnostics":[{…送信済みの診断…}],
       "edit":{"documentChanges":[{"textDocument":{"uri":"file:///C:/work/Main.kimi","version":3},
-              "edits":[{"range":{"start":{"line":4,"character":23},"end":{"line":4,"character":23}},"newText":"@ref"}]}]}},
-     {"title":"Append @move to transfer node to process(value: Node); requires …","kind":"quickfix","diagnostics":[{…}],
-      "edit":{"documentChanges":[{"textDocument":{"uri":"file:///C:/work/Main.kimi","version":3},
-              "edits":[{"range":{"start":{"line":4,"character":23},"end":{"line":4,"character":23}},"newText":"@move"}]}]}}]}
+              "edits":[{"range":{"start":{"line":4,"character":27},"end":{"line":4,"character":27}},"newText":"@move"}]}]}}]}
 ```
 
 この後に `didChange` が届くと（version が変わらなくても）結果は held になり、次の採用までは同じ要求に `[]` を返す。
@@ -273,13 +248,13 @@ func run() -> Result<(), Error>
 
 **メリット。** 原則4の修正候補を CSP を待たずに提供する。エージェントは JSON の `edits` と `sha256` で検査と同じバイト列に編集を当て、`required` で引き受ける条件を知る。既存の判定が散文ではなく事実として残り、候補と Advice の役割が分かれる。言語の妥当性は変わらない。
 
-**費用。** §23 に目録（kind）と語彙（条件）が増え、候補の追加は仕様変更になる。診断を加える作業に「候補か Advice か」の判断が加わる。`Selection` の再評価は競合した呼出しの宣言グループ全体に及ぶが、作業量の上限で抑える。誤った verified は利用者を誤らせるので、記録箇所ごとに不成立・required の対照例を試験で固定する。
+**費用。** §23 に目録（kind）と語彙（条件）が増え、候補の追加は仕様変更になる。診断を加える作業に「候補か Advice か」の判断が加わる。誤った verified は利用者を誤らせるので、記録箇所ごとに不成立・required の対照例を試験で固定する。
 
-**複雑性。** 利用者から見える概念は「候補」「条件」「verified／required」で、条件は六語である。実装は、記録側の構造体一つ、目録一つ、最終化の再配置と契約検査、CLI オプション一つ、LSP の要求一つで、関連位置と同じ経路を使う。U1–U2 で CLI、U3 で取得競合、U4 で JSON、U5 で quick fix と段階的に価値が出る。
+**複雑性。** 利用者から見える概念は「候補」「条件」「verified／required」で、条件は四語である。実装は、記録側の構造体一つ、目録一つ、最終化の再配置と契約検査、CLI オプション一つ、LSP の要求一つで、関連位置と同じ経路を使う。U1–U2 で CLI、U3 で転送と排他借用、U4 で JSON、U5 で quick fix と段階的に価値が出る。
 
 ## 6. 既存の提案との関係
 
-- **`2026-10-02 Parameter Acquisition Shape.md`（提案中）：** 採用されると `AcquisitionRequired_Kd` と取得競合がなくなり、本書 3.7.1 の最初の三行と `Selection` の再評価を削除する。`TransferRequired_Kd` と `ExclusiveBorrowRequired_Kd` の候補は残る。先にその提案を採用するなら、本書 U3 の取得競合の部分は省ける。
+- **`2026-10-02 Parameter Acquisition Shape.md`（提案中）：** 本書はその採用を前提とする。同提案は `AcquisitionRequired_Kd`、取得競合と Copy 証明の保留を削除するので、本書はそれらに候補を定めず、候補の選択を再評価する条件も Copy の条件も持たない。本書の取り込みは、同提案の取り込みと同時かその後とする。同提案を採用しない場合は、取得競合の候補を本書とは別に設計する。
 - **`2026-09-28 Language Server and Compiler Services.md`（凍結）：** 「automatic fixes は範囲外」は言語サーバーの初版の範囲であり、本書はその基盤の上に候補を加える。
 - **`2026-09-29 Diagnostics.md`（凍結）：** 将来項目「Repair は、前提条件と保証を示せる修正から導入する。古い入力や編集の競合は拒否する」を本書が実現する。
 
@@ -292,19 +267,18 @@ func run() -> Result<(), Error>
 | 単位 | 作業 | 完了条件 |
 | --- | --- | --- |
 | U1：レコードモデル | 候補の公開レコードと、記録側の候補（Koto と span に基づく編集、条件名＋判定＋事実）。kind の目録を要求の目録と同じ方式で置き、整合テストを添える。報告 API の拡張、同一キーへの再報告で候補が異なれば契約違反、最終化での編集の再配置、三つの制限と Omissions、本書 3.2 の契約違反の検査、レコードの等価性、スナップショットの差分種別 `repair` | 候補の最終化・順序・制限・等価・各契約違反の試験と `DiagnosticContractTest` が通る。診断のない経路で割当てが増えない。既存スナップショットに差分がない |
-| U2：構造・構文の候補とコマンド描画 | `&&`・`\|\|` の置換（区切りの補完を含む）、閉じ記号の挿入、`during` への置換。`unsafe` 除去の候補（文の位置、`unsafe` 行の末尾と複数行リテラルは SourceDocument のテキストとリテラル節の span で判定）。コマンドの候補描画 | `SyntaxDiagnosticTest`（`syntax.json` に `Repairs` 期待欄）・`UnnecessaryUnsafeBlockTest`・`DiagnosticRelationTest`（空行の追加で編集位置だけが動く）が通る。提示条件を満たさない対照例（`a&&b`、`do => unsafe => 42`、名前を宣言する本体）で期待どおり。CLI 出力の目視レビューを `review/` に残す |
-| U3：取得の候補 | 競合した呼出しの宣言グループ全体を差し替えた計画で再評価する試行（名前探索と他の引数の型付けを再利用、状態を変えない、作業量の上限つき）を Binding の候補評価に加え、取得競合の報告で本書 3.7.1 の候補を作る。現行の Advice 定数を削除する。`TransferRequired_Kd`・`ExclusiveBorrowRequired_Kd` の候補（Binding と所有権解析の両方の報告箇所で Take・ExclusiveAccess の三つの判定） | `AcquisitionConflictTest`：SPEC §10.2.2 の例と本書 4.1 の三宣言、複数引数の競合、`let` 根と借用先の不成立で、候補の有無と判定が期待どおり。候補のある記録に重複する Advice がない。温まった再 Binding の割当てゼロを維持する |
+| U2：構造・構文の候補とコマンド描画 | `&&`・`\|\|` の置換（区切りの補完を含む）、閉じ記号の挿入、`during` への置換。`unsafe` 除去の候補（本書 3.7.2 の提示条件）。コマンドの候補描画 | `SyntaxDiagnosticTest`（`syntax.json` に `Repairs` 期待欄）・`UnnecessaryUnsafeBlockTest`・`DiagnosticRelationTest`（空行の追加で編集位置だけが動く）が通る。提示条件を満たさない対照例（`a&&b`、`do => unsafe => 42`、名前を宣言する本体）で期待どおり。CLI 出力の目視レビューを `review/` に残す |
+| U3：取得の候補 | `TransferRequired_Kd`・`ExclusiveBorrowRequired_Kd` と Capture エントリの候補（Binding と所有権解析の両方の報告箇所で Take・ExclusiveAccess の三つの判定）。`TransferRequired_Kd` の文にある修正の勧めは、候補と Advice に分ける | `LendingRuleTest` と Capture の既存テスト：本書 4.1 の二例、借用先・static・動的要素の Take の不成立、`let` 根・所有型の引数・getter 結果の ExclusiveAccess の不成立で、候補の有無と判定が期待どおり。候補のある記録に重複する Advice がない。温まった再 Binding の割当てゼロを維持する |
 | U4：JSON 出力 | `--Format`。JSON のとき `kimi check` は共有の検査入口でディスク入力の一単位を検査し、`schema`・`compiler`・`unit`・`sources[].sha256` を付けて標準出力に書く。`docs/spec/schemas/check-output.schema.json` | 標準出力が JSON だけ、Blocked・Faulted も JSON、順序の安定、ハッシュの一致、テキスト形式が不変、同じ入力でテキスト形式と同じ記録、スキーマとの一致 |
 | U5：code action | 要求・応答の型とクライアント機能、機能の条件付き広告。言語サーバーは単位ごとの候補一覧を結果の採用時に更新して保持し、state owner で結果の有効性、範囲の照合、contributor の一致を判定して同期に応答する | publish 後に候補が返る、同じ version の変更・依存ファイルの変更・再オープン・同期不成立の後は返らない、再採用で戻る、空範囲の照合、required が title に出る、`only` の尊重、機能未宣言なら広告しない、contributor の候補が異なれば返らない、他文書への編集は返らない。実サーバーで VS Code の Quick Fix を手動確認する。拡張（`src/kimi-ext`）はコードを変えない |
 | U6：破棄と伝播の候補 | `DiscardedResult_Kd` と try 成功値の警告に、位置判定つきの `Repair.PropagateFailure`（戻り先の適合は Binding の結果で判定）と `Repair.ExplicitDiscard` | 既存の破棄警告テストに候補と対照例（単一項目本体、分岐の末尾、適合しない戻り先）を加える |
-| U7：評価と閉鎖 | コーパス全体のスナップショット、CLI・LSP の目視レビュー、`Benchmark --diagnostics` の前後比較（大きい `unsafe` 本体、多数の引数競合、候補の多い呼出しを含む）、DIAGNOSTICS §9 の評価、STATUS・PLAN の更新 | Session 検証が通る。診断のない経路の割当て差がゼロであること、300 エラーのプログラムで候補 1 件あたりのバイト数と再評価の時間を記録する |
+| U7：評価と閉鎖 | コーパス全体のスナップショット、CLI・LSP の目視レビュー、`Benchmark --diagnostics` の前後比較（大きい `unsafe` 本体、多数の転送不足を含む）、DIAGNOSTICS §9 の評価、STATUS・PLAN の更新 | Session 検証が通る。診断のない経路の割当て差がゼロであること、300 エラーのプログラムで候補 1 件あたりのバイト数を記録する |
 
 ### 7.2. 性能方針
 
 - 診断のない経路に割当てを加えない。候補は失敗した検査と警告にだけ付き、編集の文字列は定数か、報告時にだけ作る小さな文字列である。制限（候補数、編集数、総データ量）が生成・保持・応答の費用を抑える。
-- 条件は検査自身の事実だけから立て、再検査しない。`Selection` の再評価は編集に依存しない判定結果を再利用し、作業量の上限を超えたら候補を提示しない。
+- 条件は検査自身の事実だけから立て、再検査しない。
 - code action は検査を起こさず、state owner が保持する候補一覧と有効性を読むだけである。受信ループを止めない。
-- `sha256` は JSON 出力のときだけ、読取り時に計算する。
 
 ### 7.3. 検証
 
@@ -322,7 +296,7 @@ func run() -> Result<(), Error>
 | SPEC §23.3.6.9（新設） | 本書 3.1 と目録 | 取り込み時 |
 | SPEC §23.4.1、§23.4.8（新設）、§23.4.9–§23.4.10（繰り下げ） | 本書 3.5。繰り下げる節へのリンクを更新する | 取り込み時 |
 | SPEC §23.5.2、§23.5.3、Appendix D | 本書 3.6 | 取り込み時 |
-| SPEC §10.6、§7.3、§14.3.3、§14.5.1、§17.2.4、§17.4.2、§17.4.3、§2.4、§3.3.6、§3.5、§7.6.2 | 本書 3.7 のとおり、各文を候補か Advice に分類して書き改める | 取り込み時 |
+| SPEC §7.3、§14.3.3、§14.5.1、§17.2.4、§17.4.2、§17.4.3、§2.4、§3.3.6、§3.5、§7.6.2 | 本書 3.7 のとおり、各文を候補か Advice に分類して書き改める | 取り込み時 |
 | SPEC Appendix E | Repair candidate、Condition（verified／required） | 取り込み時 |
 | `docs/SPEC.md` | §23 の要約に候補・JSON・code action を加える | 取り込み時 |
 | `docs/spec/schemas/check-output.schema.json`（新設） | 本書 3.4 の文書形 | 取り込み時 |
@@ -330,7 +304,7 @@ func run() -> Result<(), Error>
 | `AGENTS.md` | Diagnostic Development Workflow の Review に「修正は候補か Advice かを決め、候補の verified は事実から確立した条件に限り、不成立の条件がある候補は提示しない」を加える | 取り込み時 |
 | `draft/INTEGRATED.md` | 本書の取り込みを記録する | 取り込み時 |
 | `README.md` | Check の JSON 出力と Visual Studio Code の Quick Fix | 実装時（U4、U5） |
-| `docs/dev/DIAGNOSTICS.md` | 新 §4.5（記録側の API、目録、条件の判定規則、再評価、契約）、§7（出力）、§9（評価） | 実装時 |
+| `docs/dev/DIAGNOSTICS.md` | 新 §4.5（記録側の API、目録、条件の判定規則、契約）、§7（出力）、§9（評価） | 実装時 |
 | `docs/dev/PLAN.md` | Repair track R1–R7 の行。200 行以内を保つ | 実装時 |
 | `docs/dev/CODEMAP.md` | Diagnostics and LSP 行に新しい入口を加える | 実装時 |
 | `docs/STATUS.md` | Compiler services 行。境界が変わる単位ごとに更新する | 実装時（U2–U5、U7） |
@@ -356,11 +330,10 @@ func run() -> Result<(), Error>
 
 | 案 | 不採用の理由 |
 | --- | --- |
-| `Selection` を残った候補だけで判定する | 編集前に除外された宣言が編集後に適用可能になる（本書 4.1）。宣言グループ全体を再評価する |
 | `unsafe` 除去を単一項目本体でも許す | `do => unsafe => 42` のように結果の供給が変わる。文の位置に限る |
 | 編集を固定文字列の置換で生成する | `a&&b` が `aandb` になる。境界の区切りを補完する規則にする |
 | 候補数だけを制限する | 一つの候補が大量の編集を持てる。編集数と総データ量も制限し、超過は候補ごと省く |
-| 候補に優先順位（`isPreferred`）を付ける | 意味の違う編集を自動で選ばない規則（SPEC §10.6）に反する |
+| 候補に優先順位（`isPreferred`）を付ける | 候補は意味の違う代替案であり、ツールに選ばせない（本書 3.1.4） |
 | Result 破棄の候補を明示破棄だけにする | §17.4.3 は伝播を先に挙げる。戻り先が適合するときの伝播は事実から決まる |
 | kind と title を自由文字列で記録する | 「自由文字列を受け付けない」（SPEC §23.3.6.1）と一貫しない |
 
@@ -385,15 +358,12 @@ func run() -> Result<(), Error>
 ### 9.2. Kimigayo Principles との対応
 
 - **原則1：** 修正は候補という一つの形、条件は一つの語彙で表す。Advice は候補が表せない条件と代替案だけを述べる。
-- **原則2：** 候補の効果と条件の判定は検査の事実だけから決まり、記録の中に明示される。再評価は競合した呼出しの宣言グループに閉じ、作業量に上限がある。
+- **原則2：** 候補の効果と条件の判定は検査の事実だけから決まり、記録の中に明示される。
 - **原則3：** verified・required・不成立の判定を語彙で表し、散文に埋めない。
 - **原則4：** 診断の「明示的な前提条件と保証を伴う修正候補」を基盤として提供する。
 
 ### 9.3. 未確認事項
 
-- **再評価の実装：** Binding の候補評価は候補ごとの適用可能性の状態と計画を持つが、一つの引数の計画を差し替えて宣言グループ全体を再評価する経路は未実装である。規模と作業量の上限の値は U3 で見積もる。
-- **`unsafe` の提示条件：** `unsafe` 行の末尾と複数行リテラルの判定に、制御フロー解析から SourceDocument のテキストとリテラル節の span に届く必要がある。届かなければ、インデント本体の候補を見送り、直接項目の `unsafe => stmt` だけにする。
 - **有効性の判定：** state owner が結果の valid を同期に判定するために、記録された入力ごとの revision と mark を単位の結果から引ける必要がある。既存の再検証の経路を再利用できるかは U5 で確認する。
 - **制限値：** 候補数、編集数、総データ量の上限は U1 で定める。
-- **オプション名：** `--Format` は既存の `--Target`・`--Debug` に合わせた文字列値である。
-- **費用：** 候補 1 件あたりの割当て、再評価の時間、`sha256` の時間は、実装後に測ってから記録する。本書は数値を主張しない。
+- **費用：** 候補 1 件あたりの割当てと `sha256` の時間は、実装後に測ってから記録する。本書は数値を主張しない。
