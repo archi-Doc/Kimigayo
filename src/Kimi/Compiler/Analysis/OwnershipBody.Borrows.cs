@@ -22,7 +22,6 @@ public sealed partial class OwnershipBody
     private bool[] dependencyRoots = [];
     private List<int>? borrowRoots;
     private List<int>? liveBorrowPlaces;
-    private Dictionary<(int Place, int Root), int>? storedBorrowStarts;
 
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
     internal int BorrowDependencyCapacity => this.borrowDependencies.Capacity;
@@ -45,7 +44,7 @@ public sealed partial class OwnershipBody
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
     {
-        this.storedBorrowStarts?.Clear();
+        this.ClearStoredBorrows();
         this.borrowRoots?.Clear();
         this.preparedLoanConflicts?.Clear();
         this.activatedLoans?.Clear();
@@ -135,7 +134,7 @@ public sealed partial class OwnershipBody
                     if (this.borrowDependencies[(entry.Input * count) + root] != LoanRequirement.None ||
                         this.borrowDependencies[(this.OperationSteps[id] * count) + root] != LoanRequirement.None)
                     {
-                        (this.storedBorrowStarts ??= new()).TryAdd((entry.Place, root), id);
+                        this.AddStoredBorrowStart(entry.Place, root, id);
                     }
                 }
             }
@@ -143,6 +142,7 @@ public sealed partial class OwnershipBody
 
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
+        this.PrepareStoredBorrowActivity();
         Grow(ref this.borrowDefinitions, count);
         this.borrowDefinitions.AsSpan(0, count).Fill(-1);
         for (var id = 0; id < this.Operations.Count; id++)
@@ -177,7 +177,7 @@ public sealed partial class OwnershipBody
                 {
                     var p = this.liveBorrowPlaces[slot];
                     var live = Uses(op, p);
-                    if (!Kills(this.Operations[op], p))
+                    if (!DefinesBorrowHolder(this.Operations[op], p))
                     {
                         for (var e = this.EdgeHeads[op]; e >= 0 && !live; e = this.Edges[e].Next)
                         {
@@ -729,11 +729,6 @@ public sealed partial class OwnershipBody
             };
         }
 
-        static bool Kills(OwnershipOperation operation, int place)
-            => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer) ||
-                (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
-                (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
-
         static bool Observes(BoundType type, int depth = 0)
         {
             if (depth > 64)
@@ -920,6 +915,13 @@ public sealed partial class OwnershipBody
             return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, owner);
         }
     }
+
+    // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
+    // ends there. Liveness stops at it, and so does a stored dependency.
+    private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
+        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer) ||
+            (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
+            (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
 
     private static int ValuePlaceForBorrow(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
@@ -1132,19 +1134,35 @@ public sealed partial class OwnershipBody
                 switch (operation.Kind)
                 {
                     case OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern:
-                        Merge(operation.Input, operation.Place);
+                        Merge(operation.Input, operation.Place, id);
                         break;
                     case OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.PayloadPlacement:
-                        Merge(operation.Place, operation.Input);
+                        Merge(operation.Place, operation.Input, id);
                         break;
                     case OwnershipOperationKind.StoreDictionaryEntry:
-                        Merge(operation.Place, operation.Input);
-                        Merge(operation.Place, this.OperationSteps[id]);
+                        Merge(operation.Place, operation.Input, id);
+                        Merge(operation.Place, this.OperationSteps[id], id);
+                        break;
+                    case OwnershipOperationKind.CompleteConstruction:
+                        var construction = this.Constructions[this.OperationSteps[id]];
+                        for (var p = 0; p < construction.PayloadCount; p++)
+                        {
+                            Merge(construction.Place, construction.PayloadStart + p, id);
+                        }
+
+                        break;
+                    case OwnershipOperationKind.DecomposeCase:
+                        var decomposition = this.Decompositions[this.OperationSteps[id]];
+                        for (var p = 0; p < decomposition.PayloadCount; p++)
+                        {
+                            Merge(decomposition.PayloadStart + p, decomposition.Place, id);
+                        }
+
                         break;
                     case OwnershipOperationKind.Call:
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                         {
-                            Merge(operation.Place, input.Place);
+                            Merge(operation.Place, input.Place, id);
                             // A writable referent may retain another argument when its complete stored Type names that
                             // argument's Origin. Carry actual input capabilities through that public contract, not its body.
                             if (input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } && RetainsInput(storage))
@@ -1156,12 +1174,12 @@ public sealed partial class OwnershipBody
                                         continue;
                                     }
 
-                                    Merge(input.Place, incoming.Place, storage, id);
+                                    Merge(input.Place, incoming.Place, id, storage);
                                     for (var borrow = entry - 1; borrow >= 0; borrow--)
                                     {
                                         if (this.Operations[borrow] is { Kind: OwnershipOperationKind.Borrow } receiver && receiver.Input == input.Place)
                                         {
-                                            Merge(receiver.Place, incoming.Place, storage, id);
+                                            Merge(receiver.Place, incoming.Place, id, storage);
                                         }
                                     }
                                 }
@@ -1173,33 +1191,15 @@ public sealed partial class OwnershipBody
 
                 if (this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } alias && this.ValueOperands[alias.Start] is >= 0 and var value)
                 {
-                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[value]));
+                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[value]), id);
                 }
                 else if (this.Values[id] is { Kind: OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField, Count: 1 } loaded)
                 {
-                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[this.ValueOperands[loaded.Start]]));
+                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[this.ValueOperands[loaded.Start]]), id);
                 }
                 else if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence })
                 {
-                    Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)sequence].Receiver);
-                }
-            }
-
-            for (var i = 0; i < this.Constructions.Count; i++)
-            {
-                var plan = this.Constructions[i];
-                for (var p = 0; p < plan.PayloadCount; p++)
-                {
-                    Merge(plan.Place, plan.PayloadStart + p);
-                }
-            }
-
-            for (var i = 0; i < this.Decompositions.Count; i++)
-            {
-                var plan = this.Decompositions[i];
-                for (var p = 0; p < plan.PayloadCount; p++)
-                {
-                    Merge(plan.PayloadStart + p, plan.Place);
+                    Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)sequence].Receiver, id);
                 }
             }
         }
@@ -1219,7 +1219,14 @@ public sealed partial class OwnershipBody
             return false;
         }
 
-        void Merge(int destination, int source, BoundType? storage = null, int storedAt = 0)
+        // Records when the destination's dependency on root exists: after the call at `at` that retains the referent through the
+        // storage Type of its contract, or after `at` where the source holds a stored dependency; null when it exists everywhere.
+        bool? Store(int destination, int source, int root, int at, BoundType? storage)
+            => storage is not null ? this.AddStoredBorrowStart(destination, root, at)
+                : this.IsStoredBorrow(source, root) ? this.AddStoredBorrowTransfer(source, destination, root, at) : null;
+
+        // The destination takes the source's dependencies at operation `at`.
+        void Merge(int destination, int source, int at, BoundType? storage = null)
         {
             if (destination < 0 || source < 0 || destination == source)
             {
@@ -1238,24 +1245,17 @@ public sealed partial class OwnershipBody
                 var original = this.retainedBorrowAuthority[(destination * count) + root];
                 var target = original;
                 var input = this.retainedBorrowAuthority[(source * count) + root];
-                var start = this.storedBorrowStarts?.GetValueOrDefault((source, root)) ?? 0;
-                start = Math.Max(start, storedAt);
                 if (input != LoanRequirement.None && target == LoanRequirement.None && this.IsExclusiveBorrowInput(root) &&
                     NamedOriginRequirement(this.Places[destination].Type, this.Places[root].Type.Origin!) is not LoanRequirement.None and var requirement)
                 {
                     this.borrowDependencies[(destination * count) + root] = requirement;
                     target = requirement;
                     changed = true;
-                    if (start > 0)
-                    {
-                        (this.storedBorrowStarts ??= new())[(destination, root)] = start;
-                    }
+                    _ = Store(destination, source, root, at, storage);
                 }
-                else if (input != LoanRequirement.None && target != LoanRequirement.None &&
-                    this.storedBorrowStarts is { } starts && starts.TryGetValue((destination, root), out var previous) && start < previous)
+                else if (input != LoanRequirement.None && target != LoanRequirement.None && this.HasStoredBorrowRecord(destination, root))
                 {
-                    starts[(destination, root)] = start;
-                    changed = true;
+                    changed |= Store(destination, source, root, at, storage) ?? this.SetStoredBorrowEverywhere(destination, root);
                 }
 
                 if (target != LoanRequirement.None && input > target)

@@ -138,6 +138,47 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 15.6.4: a referent stored in a Dictionary stays borrowed from the store until the Dictionary's last use, also on the
+    // next iteration of a loop, whose earlier operations follow the store at run time. A write through the reference before the
+    // store and the second exclusive store of the same reference are each a conflict.
+    [Fact]
+    public void AStoreInALoopRetainsTheReferentOnLaterIterations()
+    {
+        const string Source = "func run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    var i: i32 = 0\n    while i < 2\n" +
+            "        value@follow = 7\n        _ = entries.tryInsert(i, value)\n        i += 1\n    let found = entries[0]@follow@ref\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(Source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
+        Assert.Equal(["ComparisonLoanConflict_Kd", "CallActivationConflict_Kd"], records.Select(static x => x.Code));
+        Assert.Equal(Source.IndexOf("value@follow = 7", StringComparison.Ordinal), records[0].Span!.Value.Start);
+        Assert.Equal("value", Source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
+        Assert.Equal("entries.tryInsert(i, value)", Source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
+    }
+
+    // A Dictionary declared in the loop drops the stored reference at the end of each iteration, and a write after the
+    // Dictionary's last use is unconstrained.
+    [Fact]
+    public void AStoredReferenceEndsWithItsHolder()
+    {
+        const string Source = """
+            func run(value: uniq/i32 during a) -> i32
+                var total: i32 = 0
+                var i: i32 = 0
+                while i < 2
+                    var entries: Dictionary<i32, uniq/i32 during a> = [:]
+                    value@follow = 7 + i
+                    _ = entries.tryInsert(0, value)
+                    let found = entries[0]@follow@ref
+                    total += found
+                    i += 1
+                value@follow = 1
+                return total
+            var number: i32 = 0
+            let total = run(number@uniq)
+            require total == 15 and number == 1 else => $abort("value")
+            Console.writeLine("stored")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceLoopHolder", Source, "stored\n");
+    }
+
     [Theory]
     [InlineData("Call", "change(entries[1])")]
     [InlineData("Store", "entries[1]@follow = 99")]

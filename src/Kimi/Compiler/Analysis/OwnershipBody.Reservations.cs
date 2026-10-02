@@ -264,9 +264,8 @@ public sealed partial class OwnershipBody
 
     private LoanRequirement BorrowModeAt(int place, int root, int point, LoanRequirement mode)
     {
-        var start = 0;
-        var recorded = this.storedBorrowStarts is not null && this.storedBorrowStarts.TryGetValue((place, root), out start);
-        if (mode != LoanRequirement.None && recorded && point <= start)
+        var recorded = this.HasStoredBorrowRecord(place, root);
+        if (mode != LoanRequirement.None && recorded && !this.StoredBorrowActive(place, root, point))
         {
             return LoanRequirement.None;
         }
