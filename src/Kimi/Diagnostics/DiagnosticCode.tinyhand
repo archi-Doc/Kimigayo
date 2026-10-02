@@ -641,6 +641,13 @@
     Category="Language"
     Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
 
+  + Name="AccessorReceiverShape_Kd"
+    Category="Language"
+    Message="An accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set; this {0} receiver is {1}"
+    Arguments="accessor:Text,written:Text"
+    Evidence="required:Text"
+    Label="a {0} receiver is {2}"
+
   + Name="BareOwningShorthand_Kd"
     Category="Language"
     Message="A bare owning Semantics shorthand (@owner, @obj, @rc or @arc) names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"

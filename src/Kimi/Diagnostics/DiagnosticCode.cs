@@ -133,6 +133,7 @@ public enum DiagnosticCode
     ExclusivePathTake_Kd,
     PlaceRequired_Kd,
     ReceiverShapeMismatch_Kd,
+    AccessorReceiverShape_Kd,
     BareOwningShorthand_Kd,
     NonCopyOperand_Kd,
     InvalidWrapConversion_Kd,

@@ -558,6 +558,9 @@
   + Name="Binding.ReceiverShapeMismatch"
     Description="the functions of one Name share a receiver shape"
 
+  + Name="Binding.AccessorReceiverShape"
+    Description="the accessor receiver has the shape of its operation"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 

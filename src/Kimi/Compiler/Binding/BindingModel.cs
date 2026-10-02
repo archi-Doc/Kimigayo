@@ -145,6 +145,9 @@ internal enum BindingFailure : byte
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
 
+    // SPEC 11.2: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.
+    AccessorReceiverShape,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,

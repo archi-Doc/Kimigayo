@@ -16,6 +16,10 @@ public sealed partial class Binding
     private const string AcquisitionAdviceMove = "Append @ref to the whole argument to borrow the Place, or @move to transfer it";
     private const string AcquisitionAdviceCopyMove = "Append @ref to the whole argument to borrow the Place, @copy to pass a Copy of it, or @move to transfer it";
 
+    // SPEC 11.2: the Advice keeps the written receiver in a function and never proposes another receiver Type.
+    private const string AccessorGetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R) -> T, named by SPEC 4.7.1: into + noun when it consumes the receiver, verb + noun when it advances state";
+    private const string AccessorSetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R, value: U) -> (), named by SPEC 4.7.1";
+
     // SPEC 12.3.3, 13.3: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.3.3, 13.3)";
     private const string StringBuildingAdvice = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
@@ -438,6 +442,23 @@ public sealed partial class Binding
             var note = conflict.CopyProven ? null : $"{type} is not proven Copy, so a by-value candidate cannot Copy this Place";
             call.Report(requirement, DiagnosticCode.AcquisitionRequired_Kd, note: note, at: conflict.Argument, evidence: [type], advice: advice, related: related, condition: (ushort)k);
         }
+    }
+
+    // SPEC 11.2: an accessor receiver has the shape of its operation. The report is located at the written receiver Type and
+    // relates the Property header; the written Type is a bounded display value, as the message argument of a transfer is.
+    private void ReportAccessorReceiverShape(PropertyAccessorKoto accessor, Koto written, DiagnosticRequirement requirement)
+    {
+        var property = (PropertyKoto)accessor.Parent!;
+        var getter = accessor.AccessorKind == PropertyAccessorKind.Get;
+        accessor.Report(
+            requirement,
+            DiagnosticCode.AccessorReceiverShape_Kd,
+            accessor.AccessorText,
+            written.ToString(),
+            at: written,
+            evidence: [getter ? "ref/Self" : "uniq/Self"],
+            advice: getter ? AccessorGetterShapeAdvice : AccessorSetterShapeAdvice,
+            related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 
     private void ResetPrerequisites()

@@ -1084,7 +1084,8 @@ public sealed partial class Binding
                     // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
                     if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
-                        return this.Fail(node, BindingFailure.TypeMismatch);
+                        // SPEC 11.2: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
+                        return this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update) ? null : this.Fail(node, BindingFailure.TypeMismatch);
                     }
 
                     var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol);

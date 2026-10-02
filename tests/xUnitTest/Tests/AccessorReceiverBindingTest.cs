@@ -30,25 +30,29 @@ public class AccessorReceiverBindingTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 11.2: a function keeps every receiver form, while a computed getter reads through ref/Self only; the Core of a
+    // wrongly shaped receiver is still Self, so the formation check passes and the shape check reports it.
     [Theory]
     [InlineData("Self")]
-    [InlineData("ref/Self")]
     [InlineData("uniq/Self")]
     [InlineData("obj/Self")]
     [InlineData("rc/Self")]
     [InlineData("arc/Self")]
     [InlineData("objref/Self")]
     [InlineData("objuniq/Self")]
-    public void ComputedAccessorsRetainOrdinaryFunctionReceiverForms(string receiver)
+    public void ComputedGetterTakesOnlyTheSharedReceiver(string receiver)
     {
-        var c = MinimalEmissionTest.Analyze($"public struct Api<T>\n    public computed item: i32\n        get(self: {receiver}) -> i32 => 1\n        set(self: {receiver}, value: i32) -> () => ()\n    public func read(self: {receiver}) -> i32 => 1");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Property(c).BoundSymbol!.Property!.IsVerified);
+        var c = MinimalEmissionTest.Analyze($"public struct Api<T>\n    public computed item: i32\n        get(self: {receiver}) -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self: {receiver}) -> i32 => 1");
+        Assert.False(c.Binding.Result.IsComplete);
+        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.AccessorReceiverShape);
+        Assert.Equal(PropertyAccessorKind.Get, ((PropertyAccessorKoto)issue.Node).AccessorKind);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        Assert.False(Property(c).BoundSymbol!.Property!.IsVerified);
     }
 
     [Theory]
     [InlineData("struct Api\n    var item: i32\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
-    [InlineData("public contract Api\n    property item: i32\n        get(self: Self) -> i32\n        set(self: uniq/Self, value: i32) -> ()")]
+    [InlineData("public contract Api\n    property item: i32\n        get(self: ref/Self) -> i32\n        set(self: uniq/Self, value: i32) -> ()")]
     [InlineData("public group Api\n    public computed item: i32\n        get() -> i32 => 1\n        set(value: i32) -> () => ()")]
     [InlineData("public group Api\n    public var item: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
     [InlineData("struct Api<T> {source}\n    public computed item: i32\n        get(self: ref/Self during static) -> i32 => 1")]
@@ -65,7 +69,7 @@ public class AccessorReceiverBindingTest
     public void AccessorInputExposureStillUsesItsOwnDomain(string access, bool valid)
     {
         var restriction = access == "public" ? string.Empty : access + " ";
-        var c = MinimalEmissionTest.Analyze($"struct Hidden\npublic struct Api\n    public computed item: i32\n        get() -> i32 => 1\n        {restriction}set(self: Self, value: Hidden) -> () => ()");
+        var c = MinimalEmissionTest.Analyze($"struct Hidden\npublic struct Api\n    public computed item: i32\n        get() -> i32 => 1\n        {restriction}set(self: uniq/Self, value: Hidden) -> () => ()");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
@@ -110,7 +114,7 @@ public class AccessorReceiverBindingTest
     [Fact]
     public void WarmAccessorReceiverChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Api<T>\n    public computed item: i32\n        get() -> i32 => 1\n        set(self: Self, value: i32) -> () => ()\n    public func read(self) -> i32 => 1");
+        var c = MinimalEmissionTest.Analyze("public struct Api<T>\n    public computed item: i32\n        get() -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self) -> i32 => 1");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

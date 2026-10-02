@@ -389,6 +389,10 @@ public sealed partial class Binding
             {
                 this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
             }
+            else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
+            {
+                this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
+            }
             else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
             {
                 this.ReportEffectBound(effect, requirement);
@@ -756,6 +760,7 @@ public sealed partial class Binding
                     BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
                     BindingFailure.PlaceRequired => DiagnosticCode.PlaceRequired_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
+                    BindingFailure.AccessorReceiverShape => DiagnosticCode.AccessorReceiverShape_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
                     BindingFailure.NonNumericOperand => DiagnosticCode.NonNumericOperand_Kd,
