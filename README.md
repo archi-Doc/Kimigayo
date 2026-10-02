@@ -115,6 +115,8 @@ For a source checkout, replace `kimi` in these examples with `dotnet src/Kimi/bi
 
 `check` accepts the same input paths as `emit` and requires no LLVM installation. It checks source semantics, including all Project dependency bodies, without generating artifacts or running the program. Direct dependency names and aliases resolve in each defining module's environment.
 
+`check <project> --Format json` checks one project through the same entry the language server uses and writes a single JSON document (`kimi.check/1`, schema in [docs/spec/schemas/check-output.schema.json](docs/spec/schemas/check-output.schema.json)) to standard output: the outcome, the source table with the SHA-256 of every input that was read, and the diagnostic records with their repair candidates, which are structured edits with their verified and required conditions. Everything else goes to standard error, and the exit code follows acceptance as in the text form.
+
 Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
 
 See the [transitive source dependency example](docs/examples/SourceDependencies/README.md).
