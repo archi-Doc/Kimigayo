@@ -1,12 +1,12 @@
 # 仕様変更案：構造化した修正候補
 
-日付：2026-10-02（第 3 版：精査後）
+日付：2026-10-02（第 4 版：精査後）
 
 状態：提案。採否は未決定。正式仕様への取り込みと実装は未実施。
 
 本書は、診断レコードに**修正候補（repair candidate）**を加え、`kimi check` の JSON 出力と言語サーバーの code action で機械が受け取れるようにする。本書で変更する事項は SPEC とその参照先より優先し、変更しない事項には既存仕様を適用する。SPEC の節は「SPEC §n」、本書の節は「本書 n」と表記する。例は独立した断片であり、「エラー」と記した行は意図した拒否例である。
 
-改版：第 2 版は保証と前提条件を一つの条件の語彙に統合した。第 3 版は、`Selection` の確立を宣言グループ全体の再評価に改め、条件の判定に「不成立」を加え、Loan・寿命の条件を `UsageLegality` として明示し、`unsafe` 除去を文の位置に限り、編集の生成規則と制限を定め、code action の照合・有効性・クライアント機能・contributor の規則を改めた。
+改版：第 2 版は保証と前提条件を一つの条件の語彙に統合した。第 3 版は、`Selection` の確立を宣言グループ全体の再評価に改め、条件の判定に「不成立」を加え、Loan・寿命の条件を `UsageLegality` として明示し、`unsafe` 除去を文の位置に限り、編集の生成規則と制限を定め、code action の照合・有効性・クライアント機能・contributor の規則を改めた。第 4 版は、破棄・伝播の候補から `Structure` を外し、実装単位の細部を削った。
 
 ## 1. 現仕様の問題
 
@@ -132,7 +132,7 @@ CheckOutput := {
 | `MisplacedSyntax_Kd` の `AmpersandAmpersand`・`BarBar`（§2.4） | `Repair.ReplaceToken`：`and`・`or` | なし | 常に |
 | `BorrowOriginKeyword_Kd`（§3.3.6） | `Repair.ReplaceToken`：`during` | なし | 常に |
 | `MissingSyntax_Kd` の閉じ記号（DIAGNOSTICS §4.4） | `Repair.InsertToken`：挿入点に閉じ記号 | なし | 挿入点が確定している閉じ記号 |
-| `DiscardedResult_Kd`、try 成功値の破棄警告（§17.4.3） | `Repair.PropagateFailure`：`_ = try ` を挿入（Result 破棄のとき）。`Repair.ExplicitDiscard`：`_ = ` を挿入 | Structure：verified | 式がインデント本体の直接項目である。伝播は、囲む関数の失敗の戻り先が §17.2.4 で適合するとき。順序は §17.4.3 のとおり伝播、明示破棄 |
+| `DiscardedResult_Kd`、try 成功値の破棄警告（§17.4.3） | `Repair.PropagateFailure`：`_ = try ` を挿入（Result 破棄のとき）。`Repair.ExplicitDiscard`：`_ = ` を挿入 | なし。`_ =` は右辺を Value Context にする（§14.2.4）ので、`Structure` は付けない | 式がインデント本体の直接項目である。伝播は、囲む関数の失敗の戻り先が §17.2.4 で適合するとき。順序は §17.4.3 のとおり伝播、明示破棄 |
 | `DiscardedValue_Kd`（§17.4.2）、§7.3 の受信者式、§14.5.1 のコロン、§15.3.2・§15.4.3 の Origin | 候補なし | — | 選択か、Loan 条件の検証を要する。Advice が述べる |
 
 ### 3.8. 変更しないこと
@@ -234,7 +234,7 @@ func run() -> Result<(), Error>
     return .Ok(())
 ```
 
-候補は `Repair.PropagateFailure`（`_ = try prepare()`：戻り先 `Result<(), Error>` に `Error` が適合する）と `Repair.ExplicitDiscard`（`_ = prepare()`）。verified はどちらも Structure。`if ready => prepare()` の単一項目本体では、`_ =` が Context を変えるので提示しない。
+候補は `Repair.PropagateFailure`（`_ = try prepare()`：戻り先 `Result<(), Error>` に `Error` が適合する）と `Repair.ExplicitDiscard`（`_ = prepare()`）。条件はない。`if ready => prepare()` の単一項目本体では、`_ =` が分岐の結果を変えるので提示しない。
 
 ### 4.5. 言語サーバー
 
@@ -276,10 +276,10 @@ func run() -> Result<(), Error>
 
 | 単位 | 作業 | 完了条件 |
 | --- | --- | --- |
-| U1：レコードモデル | `DiagnosticRepair.cs`（`DiagnosticRepair`・`DiagnosticEdit`・`RepairCondition` 列挙と判定状態）。内部表現は「条件名＋判定＋事実」に統一し、公開形式で verified と required に分ける。手書きの `RepairKind` 列挙と `DiagnosticRepair.tinyhand`（Title テンプレート、事実、条件の句。`DiagnosticRequirement.tinyhand` と同じ方式で整合テストを置く）。`DiagnosticFact` に記録側の候補（Koto と span に基づく編集）を加え、`Koto.Report(repairs:)` と `DiagnosticCollection.Report` を拡張する。`DiagnosticOwner` は同一キーへの再報告で候補が異なれば契約違反とし、最終化で編集を source table に再配置し、`DiagnosticLimits` の三つの制限と Omissions、本書 3.2 の契約違反を検査する。`CheckDiagnostic.Repairs` と等価性、スナップショットの差分種別 `repair` | `DiagnosticRepairTest`（最終化、順序、制限、等価、各契約違反）と `DiagnosticContractTest` が通る。診断のない経路で割当てが増えない。既存スナップショットに差分がない |
+| U1：レコードモデル | 候補の公開レコードと、記録側の候補（Koto と span に基づく編集、条件名＋判定＋事実）。kind の目録を要求の目録と同じ方式で置き、整合テストを添える。報告 API の拡張、同一キーへの再報告で候補が異なれば契約違反、最終化での編集の再配置、三つの制限と Omissions、本書 3.2 の契約違反の検査、レコードの等価性、スナップショットの差分種別 `repair` | 候補の最終化・順序・制限・等価・各契約違反の試験と `DiagnosticContractTest` が通る。診断のない経路で割当てが増えない。既存スナップショットに差分がない |
 | U2：構文・unsafe の候補とコマンド描画 | `TokenReader.Diagnostics.cs` で `&&`・`\|\|` の置換（区切りの補完を含む）と閉じ記号の挿入、`BorrowOriginKeyword_Kd` の置換。`WarnUnnecessaryUnsafe` の候補（文の位置、`unsafe` 行の末尾と複数行リテラルは SourceDocument のテキストとリテラル節の span で判定）。`Kimigayo.Render` の候補描画 | `SyntaxDiagnosticTest`（`syntax.json` に `Repairs` 期待欄）・`UnnecessaryUnsafeBlockTest`・`DiagnosticRelationTest`（空行の追加で編集位置だけが動く）が通る。提示条件を満たさない対照例（`a&&b`、`do => unsafe => 42`、名前を宣言する本体）で期待どおり。CLI 出力の目視レビューを `review/` に残す |
 | U3：取得の候補 | `Binding.CandidateEvaluation` に、競合した呼出しの宣言グループ全体を差し替えた計画で再評価する試行（名前探索と他の引数の型付けを再利用、状態を変えない、作業量の上限つき）を加え、`ReportAcquisitionConflicts` で本書 3.7 の候補を作る。`AcquisitionAdvice*` の四定数を削除する。`TransferRequired_Kd`・`ExclusiveBorrowRequired_Kd` の候補（Binding と所有権解析の両方の報告箇所で Take・ExclusiveAccess の三つの判定） | `AcquisitionConflictTest`：SPEC §10.2.2 の例と本書 4.1 の三宣言、複数引数の競合、`let` 根と借用先の不成立で、候補の有無と判定が期待どおり。候補のある記録に重複する Advice がない。温まった再 Binding の割当てゼロを維持する |
-| U4：JSON 出力 | `KimiOptions.Format`。JSON のとき `kimi check` は `CheckService.Run` でディスク入力の一単位を検査し、`CheckOutput` に `schema`・`compiler`・`unit`・`sources[].sha256` を付けて標準出力に書く。`docs/spec/schemas/check-output.schema.json` | `CheckCommandJsonTest`：標準出力が JSON だけ、Blocked・Faulted も JSON、順序の安定、ハッシュの一致、テキスト形式が不変、同じ入力でテキスト形式と同じ記録。スキーマはライブラリーを足さず、固定のフィールド名・列挙値の対照表で検査する |
+| U4：JSON 出力 | `KimiOptions.Format`。JSON のとき `kimi check` は `CheckService.Run` でディスク入力の一単位を検査し、`CheckOutput` に `schema`・`compiler`・`unit`・`sources[].sha256` を付けて標準出力に書く。`docs/spec/schemas/check-output.schema.json` | 標準出力が JSON だけ、Blocked・Faulted も JSON、順序の安定、ハッシュの一致、テキスト形式が不変、同じ入力でテキスト形式と同じ記録、スキーマとの一致 |
 | U5：code action | `Json.cs` の要求・応答型とクライアント機能、`LspMethods.CodeAction`、機能の条件付き広告。`LspSession` は単位ごとの候補一覧を結果の採用時に更新して保持し（`LspDiagnostic` には載せない）、state owner で結果の有効性、範囲の照合、contributor の一致を判定して同期に応答する | `LspCodeActionTest`：publish 後に候補が返る、同じ version の変更・依存ファイルの変更・再オープン・同期不成立の後は返らない、再採用で戻る、空範囲の照合、required が title に出る、`only` の尊重、機能未宣言なら広告しない、contributor の候補が異なれば返らない、他文書への編集は返らない。実サーバーで VS Code の Quick Fix を手動確認する。拡張（`src/kimi-ext`）はコードを変えない |
 | U6：破棄と伝播の候補 | `ControlFlowAnalysis` の `DiscardedResult_Kd` と try 成功値の警告に、位置判定つきの `Repair.PropagateFailure`（戻り先の適合は Binding の結果で判定）と `Repair.ExplicitDiscard` | 既存の破棄警告テストに候補と対照例（単一項目本体、分岐の末尾、適合しない戻り先）を加える |
 | U7：評価と閉鎖 | コーパス全体のスナップショット、CLI・LSP の目視レビュー、`Benchmark --diagnostics` の前後比較（大きい `unsafe` 本体、多数の引数競合、候補の多い呼出しを含む）、DIAGNOSTICS §9 の評価、STATUS・PLAN の更新 | Session 検証が通る。診断のない経路の割当て差がゼロであること、300 エラーのプログラムで候補 1 件あたりのバイト数と再評価の時間を記録する |
@@ -337,6 +337,7 @@ func run() -> Result<(), Error>
 | `unsafe` 除去を単一項目本体でも許す | `do => unsafe => 42` のように結果の供給が変わる。文の位置に限る |
 | 編集を固定文字列の置換で生成する | `a&&b` が `aandb` になる。境界の区切りを補完する規則にする |
 | 候補数だけを制限する | 一つの候補が大量の編集を持てる。編集数と総データ量も制限し、超過は候補ごと省く |
+| 破棄・伝播の候補に `Structure` を付ける | `_ =` は右辺を Value Context にする（§14.2.4）ので、定義と矛盾する。候補に条件を付けない |
 | 初版から修正後の再検査で Loan・寿命を確立する | 診断ごとに再コンパイルが要る。CSP の検証可能な変更として別に設計する |
 | 候補に優先順位（`isPreferred`）を付ける | 意味の違う編集を自動で選ばない規則（SPEC §10.6）に反する |
 | `codeAction/resolve` で編集を遅延生成する | 送信済みの結果から答えられる。状態の保持が二重になる |
