@@ -87,6 +87,35 @@ public class RawPlaceAccessTest
     public void AReturnedRawPlaceBorrowTakesTheResultOrigin()
         => ScalarEmissionTest.EmitFixture("RawPlaceBorrowResult", "func get(p: raw/i32, owner: ref/i32) -> ref/i32 during owner\n    unsafe => return (*p)@ref\nfunc generic<T>(p: raw/T, owner: ref/T) -> ref/T during owner\n    unsafe => return (*p)@ref\nvar number: i32 = 5\nlet r = get(number@raw, number@ref)\nlet g = generic(number@raw, number@ref)\nrequire r == 5 and g == 5 else => $abort(\"value\")\nConsole.writeLine(\"returned\")", "returned\n");
 
+    // SPEC 5.2.2, 15.6.7: an exclusive borrow of a raw Place, its Field or element, passed at an exclusive argument or as an
+    // exclusive receiver is reserved and Reborrowed for the call like any other exclusive argument; the callee's writes reach
+    // the storage.
+    [Fact]
+    public void ARawPlaceBorrowIsAReservedArgument()
+    {
+        const string Source = """
+            struct Counter
+                public var value: i32
+                public init(value: i32) => self.value = value
+                public func bump(self: uniq/Self, by: i32) => self.value += by
+            func change(item: uniq/i32, by: i32) => item@follow += by
+            func reset(counter: uniq/Counter) => counter.value = 10
+            func run(number: raw/i32, counter: raw/Counter)
+                unsafe
+                    change((*number)@uniq, 2)
+                    reset((*counter)@uniq)
+                    change((*counter).value@uniq, 3)
+                    (*counter).bump(4)
+                    change(number[0]@uniq, 1)
+            var number: i32 = 5
+            var counter = Counter.init(0)
+            run(number@raw, counter@raw)
+            require number == 8 and counter.value == 17 else => $abort("value")
+            Console.writeLine("changed")
+            """;
+        ScalarEmissionTest.EmitFixture("RawPlaceReservedArgument", Source, "changed\n");
+    }
+
     // Two borrows of raw Places are not compared: their non-overlap is the unsafe obligation.
     [Fact]
     public void FreshAnchorsAreNotCompared()

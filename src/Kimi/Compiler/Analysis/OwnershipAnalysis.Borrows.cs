@@ -47,7 +47,10 @@ public sealed partial class OwnershipAnalysis
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
         if (ElementAccess.IsRawPlace(unwrapped))
         {
-            return this.BorrowRawPlace(source, unwrapped, type);
+            // Like a selected element, a reserved argument Reborrows the converted reference, so its reservation and
+            // activation refer to a real exclusive borrow (SPEC 15.6.7).
+            var raw = this.BorrowRawPlace(source, unwrapped, type);
+            return raw >= 0 && reservation >= 0 ? this.BorrowThrough(source, raw, type, reservation) : raw;
         }
 
         if (this.ImplicitlyFollowsReference(unwrapped, type))
