@@ -8,12 +8,14 @@ internal group Storage
         internal let storage: raw/E
         internal var position: isize
         internal var count: isize
+        internal let loan: Loan<ref/E during source>
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
     internal struct UniqRemainder<E> {source}
         internal let storage: raw/E
         internal var position: isize
         internal var count: isize
+        internal let loan: Loan<uniq/E during source>
 
     /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
     internal struct OwnedRemainder<E>
@@ -36,6 +38,7 @@ internal group Storage
         internal let stride: isize
         internal var link: isize
         internal var count: isize
+        internal let loan: Loan<ref/(K, V) during source>
 
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
@@ -44,6 +47,7 @@ internal group Storage
         internal let stride: isize
         internal var link: isize
         internal var count: isize
+        internal let loan: Loan<uniq/(K, V) during source>
 
     /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
     /// are the last `count` live entries ending at `tail`.

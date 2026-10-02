@@ -432,7 +432,7 @@ internal sealed partial class BodyLowering
 
         // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
         var remainder = result;
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) ||
+        if (remainder is not { IsArray: false } || remainder.Fields.Length != 4 || (!owning && remainder.Fields[3].Layout.Size != 0) ||
             (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
         {
             return Fail("Storage operation records do not have the boundary's shape.", out failure);

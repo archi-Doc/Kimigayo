@@ -81,7 +81,7 @@ internal sealed partial class BodyLowering
 
         var entryLayout = GetDictionaryEntryLayout(key, value);
         // The remainder record is {storage, stride, link, count}.
-        if (this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder || !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 4 ||
+        if (this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder || !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 5 || remainder.Fields[4].Layout.Size != 0 ||
             remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24 || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Dictionary remainder does not have the boundary's shape.", out failure);
@@ -112,7 +112,7 @@ internal sealed partial class BodyLowering
 
         var returnType = SignatureType(this, plan.ReturnType);
         if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
-            !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 3 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
+            !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 4 || remainder.Fields[3].Layout.Size != 0 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
         {
             return Fail("Fixed-array storage borrow result is not the contiguous remainder.", out failure);
         }

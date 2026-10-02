@@ -219,6 +219,14 @@ public sealed partial class KimiLibrary
         field.NameKoto.IdentifierName == name &&
         (name == "storage" ? field.TypeKoto is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, type) : BareName(field.TypeKoto, type));
 
+    // SPEC 15.3.5: the trailing `loan: Loan<s/T during source>` Field that keeps a boundary record's source Loan; a null element
+    // names the entry Tuple (K, V).
+    private static bool ValidLoanField(DeclarationContainerKoto declaration, int index, SemanticsKind semantics, string? element)
+        => StorageField(declaration, index) is { InitializerKoto: null, AttributeChain: null, VariableKind: VariableKind.Let, Modifier: ModifierKind.Internal } field &&
+        field.NameKoto.IdentifierName == "loan" && BareType(field.TypeKoto) is GenericsKoto { TypeArguments: [TypeSemanticsKoto { SemanticsParameter: null, OriginName: "source" } borrowed] } loan &&
+        BareName(loan.Identifier, "Loan") && borrowed.SemanticsKind == semantics &&
+        (element is not null ? BareName(borrowed.Type, element) : BareType(borrowed.Type) is TupleTypeKoto { ElementNodes: [var key, var value] } && BareName(key, "K") && BareName(value, "V"));
+
     // Every member from `index` on is a function: the declaration adds no storage the compiler does not lay out.
     private static bool OnlyFunctionsFrom(DeclarationContainerKoto declaration, int index)
     {
@@ -586,9 +594,10 @@ public sealed partial class KimiLibrary
         symbol.Declaration is StructKoto { HasIncompatibleBindingHeader: false, Bases.Count: 0, ConstraintNodes.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Internal, AttributeChain: null, GenericParameterNodes: [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] } declaration &&
         declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.StorageScope.Owner) &&
         declaration.OriginNames.Count == (id == KimiDeclarationId.OwnedRemainder ? 0 : 1) && (id == KimiDeclarationId.OwnedRemainder || declaration.OriginNames[0] == "source") &&
-        StorageFields(declaration, id == KimiDeclarationId.OwnedRemainder) == (id == KimiDeclarationId.OwnedRemainder ? 4 : 3) &&
+        StorageFields(declaration, id == KimiDeclarationId.OwnedRemainder) == 4 &&
         ValidStorageField(declaration, 0, VariableKind.Let, "storage", "E", true) && ValidStorageField(declaration, 1, VariableKind.Var, "position", "isize", true) && ValidStorageField(declaration, 2, VariableKind.Var, "count", "isize", true) &&
-        (id != KimiDeclarationId.OwnedRemainder || ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize", true));
+        (id == KimiDeclarationId.OwnedRemainder ? ValidStorageField(declaration, 3, VariableKind.Var, "capacity", "isize", true)
+            : ValidLoanField(declaration, 3, id == KimiDeclarationId.UniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, "E"));
 
     // PLAN G33: InlineStorage<A> is an internal Storage struct with exactly one Field `value: A` and no destructor; the
     // compiler never destroys it, so its owner destroys the contents it still holds.
@@ -608,11 +617,12 @@ public sealed partial class KimiLibrary
             declaration.Name == (owned ? "DictionaryOwnedRemainder" : id == KimiDeclarationId.DictionaryUniqRemainder ? "DictionaryUniqRemainder" : "DictionaryRefRemainder") &&
             (owned ? declaration.OriginNames.Count == 0 : declaration.OriginNames is ["source"]) &&
             declaration.GenericParameterNodes is [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] &&
-            ReferenceEquals(declaration.Parent, this.StorageScope.Owner) && StorageFields(declaration, owned) == (owned ? 5 : 4) &&
+            ReferenceEquals(declaration.Parent, this.StorageScope.Owner) && StorageFields(declaration, owned) == 5 &&
             ValidStorageField(declaration, 0, VariableKind.Let, "storage", "u8", true) && ValidStorageField(declaration, 1, VariableKind.Let, "stride", "isize", true) &&
             ValidStorageField(declaration, 2, VariableKind.Var, "link", "isize", true) &&
             (owned ? ValidStorageField(declaration, 3, VariableKind.Var, "tail", "isize", true) && ValidStorageField(declaration, 4, VariableKind.Var, "count", "isize", true)
-                : ValidStorageField(declaration, 3, VariableKind.Var, "count", "isize", true));
+                : ValidStorageField(declaration, 3, VariableKind.Var, "count", "isize", true) &&
+                    ValidLoanField(declaration, 4, id == KimiDeclarationId.DictionaryUniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, null));
     }
 
     // SPEC 22.1.2.5: bodiless internal operations over Dictionary<K, V> that the compiler implements: borrowStorage takes

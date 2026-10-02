@@ -55,6 +55,23 @@ public sealed partial class KimiLibrary
             }
         }
 
+        return id == KimiDeclarationId.OwnedRemainder ||
+            (BoundLoanField(declaration, count, id == KimiDeclarationId.UniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, symbol, out var lent) && ReferenceEquals(lent, element));
+    }
+
+    // SPEC 15.3.5: the trailing Loan Field keeps the record's source Loan, in the record's mode, over the stored Type it returns.
+    private static bool BoundLoanField(StructKoto declaration, int index, SemanticsKind semantics, BindingSymbol symbol, out BoundType? lent)
+    {
+        lent = null;
+        if (StorageField(declaration, index) is not { BoundSymbol.Type: { } type } field || !ReferenceEquals(field.TypeKoto?.BoundType, type) || StorageField(declaration, index + 1) is not null ||
+            type is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [{ Kind: BoundTypeKind.Semantics, Components: [var stored] } borrowed] } ||
+            type.Symbol?.LibraryDeclaration != KimiDeclarationId.Loan || borrowed.Semantics != semantics ||
+            symbol.Schema is not { Origins: [var source] } || !ReferenceEquals(borrowed.Origin, source.Origin))
+        {
+            return false;
+        }
+
+        lent = stored;
         return true;
     }
 
@@ -167,8 +184,9 @@ public sealed partial class KimiLibrary
             id >= KimiDeclarationId.DictionaryUniqRemainder ? KimiDeclarationId.DictionaryUniqRemainder : KimiDeclarationId.DictionaryRefRemainder;
         if (id is KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder)
         {
-            var fields = id == KimiDeclarationId.DictionaryOwnedRemainder ? 5 : 4;
-            if (symbol.Declaration is not StructKoto declaration || StorageField(declaration, fields) is not null)
+            var owned = id == KimiDeclarationId.DictionaryOwnedRemainder;
+            var fields = owned ? 5 : 4;
+            if (symbol.Declaration is not StructKoto declaration || StorageField(declaration, owned ? fields : fields + 1) is not null)
             {
                 return false;
             }
@@ -182,7 +200,10 @@ public sealed partial class KimiLibrary
                 }
             }
 
-            return true;
+            // The borrowing remainders keep their source Loan over the entry Tuple (K, V).
+            return owned || (BoundLoanField(declaration, fields, id == KimiDeclarationId.DictionaryUniqRemainder ? SemanticsKind.Uniq : SemanticsKind.Ref, symbol, out var entry) &&
+                entry is { Kind: BoundTypeKind.Tuple, Components: [var entryKey, var entryValue] } && declaration.GenericParameterNodes is [var keyNode, var valueNode] &&
+                ReferenceEquals(entryKey, keyNode.BoundType) && ReferenceEquals(entryValue, valueNode.BoundType));
         }
 
         if (id is >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt)
