@@ -9,7 +9,7 @@ namespace Kimi.Lsp;
 internal sealed class LspSettings
 {
     /// <summary>The default quiet period in milliseconds.</summary>
-    public const int DefaultQuietPeriod = 250;
+    public const int DefaultQuietPeriod = 1000;
 
     /// <summary>Gets the quiet period in milliseconds.</summary>
     public int QuietPeriod { get; private init; } = DefaultQuietPeriod;

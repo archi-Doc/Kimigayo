@@ -262,7 +262,7 @@ The **required units** are derived after discovery. Only adopted results change 
 
 ### 23.4.6. Scheduling and consistency
 
-- **Quiet period.** At most one workspace check is pending, eligible at `lastEvent + quietPeriod` (250 ms by default). Every input event resets the deadline, and there is no maximum wait. `initialized` also schedules a check when projects are selected.
+- **Quiet period.** At most one workspace check is pending, eligible at `lastEvent + quietPeriod` (1000 ms by default). Every input event resets the deadline, and there is no maximum wait. `initialized` also schedules a check when projects are selected.
 - **Base.** A workspace check is fixed to its **base**, the latest input event number when it starts. A unit is **pending** while one of its known inputs, or an input it read in the check, has an event after the base; its known inputs are its members and the inputs recorded by its prepared unit or previous result.
 - **Base rule.** Work that needs an input with an event after the base takes no effect: its comparison is not committed, discovery keeps that project's previous state, a pending unit is skipped, and a result that recorded such an input is discarded at adoption. The state owner decides this; the worker may skip early from a published set of changed inputs, and a stale view of that set only wastes work.
 - **Start.** (1) The state owner fixes the base, takes an immutable copy of every changed open document and routes later input to the next check. (2) The worker re-validates, and the state owner commits the comparisons. (3) The worker runs discovery, derives the required units and returns a Blocked result for each required unit without a prepared unit, unless its last result is still valid.
@@ -270,7 +270,7 @@ The **required units** are derived after discovery. Only adopted results change 
 - **Adoption.** The state owner adopts a result only if none of its recorded inputs has an event after the base and its unit is in the adopted required set; otherwise it discards the result. A test result is kept only if the adopted product results require the test unit.
 - **Retention.** Content and derived data are kept only while an open document, a current discovery, a required unit or the running check needs them; a project that discovery no longer reaches is released with the inputs only it retained.
 
-Example: edits at 0, 90 and 180 ms start one workspace check no earlier than 430 ms. An edit at 460 ms comes after that check's base. The unit running at 460 ms completes, and its result is discarded if it read the edited source; later units that need the source are skipped; URIs whose contributors all remain valid are published as each unit finishes. The next check starts at 710 ms or when the worker becomes free, whichever is later, and rechecks only the invalid and skipped units, starting with the edited project.
+Example: with the default quiet period, edits at 0, 90 and 180 ms start one workspace check no earlier than 1180 ms. An edit at 1210 ms comes after that check's base. The unit running at 1210 ms completes, and its result is discarded if it read the edited source; later units that need the source are skipped; URIs whose contributors all remain valid are published as each unit finishes. The next check starts at 2210 ms or when the worker becomes free, whichever is later, and rechecks only the invalid and skipped units, starting with the edited project.
 
 ### 23.4.7. Publication
 
@@ -292,7 +292,7 @@ Example: edits at 0, 90 and 180 ms start one workspace check no earlier than 430
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `checkQuietPeriodMs` | `250` | Quiet period, 0–10000. |
+| `checkQuietPeriodMs` | `1000` | Quiet period, 0–10000. |
 | `selectedProjects` | `[]` | Absolute paths or `file:` URIs of `.kimiproj` files to treat as roots. |
 | `target` | none | The target of product units (§23.4.4). |
 | `allTargets` | `false` | Checks every configured target. |

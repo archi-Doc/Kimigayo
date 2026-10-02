@@ -26,14 +26,14 @@ public sealed class CheckSchedulerTest : IDisposable
     [Fact]
     public async Task EditsWithinTheQuietPeriodStartOneCheck()
     {
-        await using var harness = new SchedulerHarness();
+        await using var harness = new SchedulerHarness(quietPeriod: null);
         var path = this.PathOf("A.kimi");
         harness.At(0).Open(path, "error");
         harness.At(90).Change(path, 2, "error error");
         harness.At(180).Change(path, 3, "error");
-        harness.At(429);
+        harness.At(1179);
         Assert.Equal(0, harness.Starts);
-        harness.At(430);
+        harness.At(1180);
         Assert.Equal(1, harness.Starts);
 
         await harness.RunCheckAsync();
@@ -45,15 +45,15 @@ public sealed class CheckSchedulerTest : IDisposable
     [Fact]
     public async Task AnEditAfterTheBaseDiscardsTheResultAndSchedulesTheNextCheck()
     {
-        await using var harness = new SchedulerHarness();
+        await using var harness = new SchedulerHarness(quietPeriod: null);
         var path = this.PathOf("A.kimi");
         harness.At(0).Open(path, "error");
-        harness.At(250);
-        await harness.RunCheckAsync(block: true, whileBlocked: () => harness.At(460).Change(path, 2, "error error"));
+        harness.At(1000);
+        await harness.RunCheckAsync(block: true, whileBlocked: () => harness.At(1210).Change(path, 2, "error error"));
         Assert.Empty(await harness.PublishesAsync(path));
-        Assert.Equal(710, harness.Session.Deadline);
+        Assert.Equal(2210, harness.Session.Deadline);
 
-        harness.At(710);
+        harness.At(2210);
         await harness.RunCheckAsync();
         var publish = Assert.Single(await harness.PublishesAsync(path));
         Assert.Equal(2, publish.GetProperty("version").GetInt32());
@@ -352,11 +352,13 @@ public sealed class CheckSchedulerTest : IDisposable
         private int blockNext;
         private int runs;
 
-        public SchedulerHarness()
+        // A null quiet period leaves the server default in effect.
+        public SchedulerHarness(int? quietPeriod = 250)
         {
             this.Sender = new(this.output);
             this.Session = new(this.Sender, this.Start, item => this.posted.Writer.TryWrite(item)) { Runner = this.Run };
-            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{\"target\":\"{WindowsProfile.Target}\"}}}}}}");
+            var period = quietPeriod is { } value ? $"\"checkQuietPeriodMs\":{value}," : string.Empty;
+            this.Message($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"capabilities\":{{}},\"initializationOptions\":{{{period}\"target\":\"{WindowsProfile.Target}\"}}}}}}");
             this.Message("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}");
         }
 

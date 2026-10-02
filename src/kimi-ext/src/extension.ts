@@ -126,7 +126,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
           { scheme: 'file', language: 'kimi' },
           { scheme: 'file', language: 'kimiproj' }
         ],
-        initializationOptions: { checkQuietPeriodMs: 250 },
+        initializationOptions: { checkQuietPeriodMs: 1000 },
         uriConverters: { code2Protocol: toProtocolUri, protocol2Code: value => Uri.parse(value) },
         outputChannel: output,
         // ServerManager reports startup failures; avoid a second languageclient popup.
