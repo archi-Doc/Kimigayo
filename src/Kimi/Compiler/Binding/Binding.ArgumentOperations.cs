@@ -306,9 +306,6 @@ public sealed partial class Binding
     private bool transferRequired;
     private bool lendingRequired;
 
-    // The plan the last AdaptInput chose for a bare Place, read by candidate evaluation right after the call (SPEC 10.2.2).
-    private ArgumentAcquisition argumentAcquisition;
-
     // SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
     // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
@@ -668,12 +665,9 @@ public sealed partial class Binding
     /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
     /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
     /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
-    /// <paramref name="holdCopy"/> holds the Copy proof of a bare Place's by-value acquisition for overload resolution's
-    /// conflict check (SPEC 10.2.2); <see cref="argumentAcquisition"/> names the plan chosen for a bare Place.
     /// </summary>
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool holdCopy = false)
+    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false)
     {
-        this.argumentAcquisition = ArgumentAcquisition.Other;
         actual = this.ContractType(actual, scope);
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
@@ -713,15 +707,13 @@ public sealed partial class Binding
             }
             else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source))
             {
-                // SPEC 3.5, 10.2: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value;
-                // overload resolution decides this held proof after its conflict check (SPEC 10.2.2).
-                if (!holdCopy && this.ProveCopy(actual, source) != ConstraintProof.Proven)
+                // SPEC 3.5, 10.1: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value, and
+                // the candidate that needs the Copy is inapplicable.
+                if (this.ProveCopy(actual, source) != ConstraintProof.Proven)
                 {
                     this.transferRequired = true;
                     return false;
                 }
-
-                this.argumentAcquisition = ArgumentAcquisition.Copy;
             }
 
             return true;
@@ -824,11 +816,6 @@ public sealed partial class Binding
                 {
                     this.lendingRequired = true;
                     return false;
-                }
-
-                if (!exclusive && !explicitBorrow && !receiver && !projected && IsBarePlace(source))
-                {
-                    this.argumentAcquisition = ArgumentAcquisition.SharedBorrow; // SPEC 10.2.2: a new shared borrow of the Place.
                 }
             }
             else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||

@@ -1,19 +1,19 @@
 // Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.1.2.5).
-// Borrowed results depend on the remainder's source, never on the state borrow or slot. Each shared overload precedes
-// its exclusive overload.
+// Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
+// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.3.1).
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
-internal func borrowStorage<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
+internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
 internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
     K is Equatable
-internal func borrowStorage<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
+internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
     K is Equatable
 internal func ownStorage<K, V>(value: Dictionary<K, V>) -> DictionaryOwnedRemainder<K, V>
     K is Equatable
 internal unsafe func keyAt<K, V>(slot: raw/u8) -> raw/K
 internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
 internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
-internal func borrowStorage<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
+internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
 internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
 // Private physical projection: mutable handle address and entry stride. No entry is acquired.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)

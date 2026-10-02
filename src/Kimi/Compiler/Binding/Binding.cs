@@ -385,9 +385,9 @@ public sealed partial class Binding
                 var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
                 issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
             }
-            else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
+            else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
             {
-                this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
+                this.ReportParameterShapes(issue.Node, requirement, shapes);
             }
             else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
             {
@@ -526,11 +526,12 @@ public sealed partial class Binding
         => InvalidDeclarationContextCause(declaration) is not null;
 
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
+    // A function whose only failure is a group shape rule (SPEC 7.3, 7.3.1) keeps a valid signature and body, so it is no such context.
     private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid && !IsGroupShapeFailure(node))
             {
                 return node;
             }
@@ -752,7 +753,7 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
-                    BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
+                    BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
@@ -891,6 +892,13 @@ public sealed partial class Binding
         {
             foreach (var first in scope.Values.Values)
             {
+                // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode; a Contract's
+                // requirements are checked below with the ones they inherit.
+                if (scope.Owner is not ContractKoto)
+                {
+                    this.ValidateParameterShapes(first);
+                }
+
                 for (var a = first; a is not null; a = a.Next)
                 {
                     if (a.Declaration is not FunctionKoto fa || fa.IsSpecialization)
@@ -949,6 +957,7 @@ public sealed partial class Binding
 
             foreach (var members in shape.MembersByName.Values)
             {
+                this.ValidateContractParameterShapes(contract, members);
                 SemanticsKind? expected = null;
                 for (var i = 0; i < members.Count; i++)
                 {

@@ -116,25 +116,26 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryShrinkToFit, "shrinkToFit", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.Indexable, "Indexable"),
         new(KimiDeclarationId.UniqIndexable, "UniqIndexable"),
-        // SPEC 22.1.2.5: the standard storage boundary; the shared overload of each operation precedes the exclusive one.
+        // SPEC 22.1.2.5: the standard storage boundary; the exclusive borrow of each family is borrowStorageUniq (SPEC 7.3.1), and
+        // the overload index counts the declarations of one Name in source order (Array, Dictionary, fixed array).
         new(KimiDeclarationId.RefRemainder, "RefRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.UniqRemainder, "UniqRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.OwnedRemainder, "OwnedRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageBorrowShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowShared, Overload: 0),
-        new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 1),
+        new(KimiDeclarationId.StorageBorrowExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowExclusive, Overload: 0),
         new(KimiDeclarationId.StorageOwn, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwn, Overload: 0),
         // SPEC 22.1.2.5: the distinct Dictionary family traverses live entries in insertion order.
         new(KimiDeclarationId.DictionaryRefRemainder, "DictionaryRefRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 2),
+        new(KimiDeclarationId.StorageBorrowDictionary, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionary, Overload: 1),
         new(KimiDeclarationId.DictionaryUniqRemainder, "DictionaryUniqRemainder", KimiLibraryContainer.Storage),
-        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 3),
+        new(KimiDeclarationId.StorageBorrowDictionaryExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowDictionaryExclusive, Overload: 1),
         new(KimiDeclarationId.DictionaryOwnedRemainder, "DictionaryOwnedRemainder", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageOwnDictionary, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnDictionary, Overload: 1),
         new(KimiDeclarationId.StorageKeyAt, "keyAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageKeyAt),
         new(KimiDeclarationId.StorageValueAt, "valueAt", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageValueAt),
         // SPEC 22.1.2.5: the fixed-array overloads of the contiguous borrowing remainders.
-        new(KimiDeclarationId.StorageBorrowFixedShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedShared, Overload: 4),
-        new(KimiDeclarationId.StorageBorrowFixedExclusive, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedExclusive, Overload: 5),
+        new(KimiDeclarationId.StorageBorrowFixedShared, "borrowStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedShared, Overload: 2),
+        new(KimiDeclarationId.StorageBorrowFixedExclusive, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowFixedExclusive, Overload: 2),
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),

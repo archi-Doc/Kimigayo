@@ -561,6 +561,9 @@
   + Name="Binding.AccessorReceiverShape"
     Description="the accessor receiver has the shape of its operation"
 
+  + Name="Binding.ParameterShapeMismatch"
+    Description="the functions of one Name acquire corresponding parameters of overlapping Types in one mode"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 
@@ -599,9 +602,6 @@
 
   + Name="Binding.NotIndexable"
     Description="the receiver can be indexed by the key"
-
-  + Name="Binding.AcquisitionRequired"
-    Description="the acquisition of a Place argument is written where candidates disagree"
 
   + Name="Binding.InvalidEffectBound"
     Description="the effect item declares a bound of its Contract"

@@ -148,6 +148,9 @@ internal enum BindingFailure : byte
     // SPEC 11.2: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.
     AccessorReceiverShape,
 
+    // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.
+    ParameterShapeMismatch,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
@@ -173,9 +176,6 @@ internal enum BindingFailure : byte
 
     // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
-
-    // SPEC 10.2.2: candidates disagree on acquiring a bare Place argument by value or by a new shared borrow.
-    AcquisitionRequired,
 
     // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
     InvalidEffectBound,

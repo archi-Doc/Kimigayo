@@ -631,7 +631,7 @@ public sealed partial class KimiLibrary
         var (name, semantics, source, result, lent) = id switch
         {
             KimiDeclarationId.StorageBorrowDictionary => ("borrowStorage", SemanticsKind.Ref, "Dictionary", "DictionaryRefRemainder", SemanticsKind.Owner),
-            KimiDeclarationId.StorageBorrowDictionaryExclusive => ("borrowStorage", SemanticsKind.Uniq, "Dictionary", "DictionaryUniqRemainder", SemanticsKind.Owner),
+            KimiDeclarationId.StorageBorrowDictionaryExclusive => ("borrowStorageUniq", SemanticsKind.Uniq, "Dictionary", "DictionaryUniqRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageOwnDictionary => ("ownStorage", SemanticsKind.Owner, "Dictionary", "DictionaryOwnedRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageKeyAt => ("keyAt", SemanticsKind.Raw, "u8", "K", SemanticsKind.Raw),
             _ => ("valueAt", SemanticsKind.Raw, "u8", "V", SemanticsKind.Raw),
@@ -668,14 +668,14 @@ public sealed partial class KimiLibrary
             BareName(remainder.Identifier, result) && BareName(resultKey, "K") && BareName(resultValue, "V");
     }
 
-    // SPEC 22.1.2.5: borrowStorage over ref/[N of E] or uniq/[N of E] during a returns the contiguous RefRemainder<E> or
-    // UniqRemainder<E> during a; the compiler implements it.
+    // SPEC 22.1.2.5: borrowStorage over ref/[N of E] during a, or borrowStorageUniq over uniq/[N of E] during a, returns the
+    // contiguous RefRemainder<E> or UniqRemainder<E> during a; the compiler implements it.
     private bool ValidFixedStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var exclusive = id == KimiDeclarationId.StorageBorrowFixedExclusive;
         return symbol.CompilerFunction == KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function &&
-            symbol.Declaration is FunctionKoto { Name: "borrowStorage", AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, Modifier: ModifierKind.Internal } function &&
-            ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            symbol.Declaration is FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, Modifier: ModifierKind.Internal } function &&
+            function.Name == (exclusive ? "borrowStorageUniq" : "borrowStorage") && ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
             function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
             function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { OriginName: "a", Type: FixedArrayTypeKoto array } input }] &&
             input.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && BareName(array.ElementType, "E") && BareName(array.Length, "N") &&
@@ -709,7 +709,7 @@ public sealed partial class KimiLibrary
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
-            KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
+            KimiDeclarationId.StorageBorrowExclusive => ("borrowStorageUniq", "value", SemanticsKind.Uniq, "Array"),
             _ => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
         };
         if (symbol.CompilerFunction != kind ||

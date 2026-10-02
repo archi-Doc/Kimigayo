@@ -147,8 +147,11 @@ public class ConstraintBindingTest
     [Fact]
     public void OuterSlotsAreNotAlphaRenamedAsFunctionSlots()
     {
+        // The Signatures are distinct (no duplicate); the pair is rejected only by the parameter acquisition shape of SPEC 7.3.1,
+        // because the outer slot T and the own slot V are different bindings that may take different Semantics.
         var c = Parse("struct Box<T>\n    func f<U>(x: T) => ()\n    func f<V>(x: V) => ()");
-        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([DiagnosticCode.ParameterShapeMismatch_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Theory]
