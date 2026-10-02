@@ -141,4 +141,32 @@ public class ArrayMembersTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
+
+    [Theory]
+    [InlineData("raw/Array<i32>", "length")]
+    [InlineData("raw/Array<i32>", "capacity")]
+    [InlineData("raw/Array<i32>", "isEmpty")]
+    [InlineData("raw/Array<i32>", "indices")]
+    [InlineData("obj/Array<i32>", "length")]
+    [InlineData("raw/[3 of i32]", "length")]
+    public void MetadataIsNotSelectedThroughARawPointerOrObjectHandle(string type, string member)
+    {
+        // SPEC 3.4.1, 12.4.1: selection continues only through safe value references; a raw pointer is never dereferenced
+        // implicitly, so its sequence metadata is not reachable from safe code.
+        var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal($"p.{member}", issue.Node.ToString());
+    }
+
+    [Theory]
+    [InlineData("ref/Array<i32>", "length")]
+    [InlineData("uniq/Array<i32>", "capacity")]
+    [InlineData("ref/Array<i32>", "isEmpty")]
+    [InlineData("uniq/Array<i32>", "indices")]
+    public void MetadataIsSelectedThroughASafeReference(string type, string member)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
 }

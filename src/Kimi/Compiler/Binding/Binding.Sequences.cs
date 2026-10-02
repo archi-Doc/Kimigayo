@@ -19,9 +19,11 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
+        // SPEC 3.4.1, 4.6.1, 12.4.1: metadata shares access through a safe value reference to the sequence; a raw pointer or
+        // an object handle is not followed.
+        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver))
         {
-            receiver = receiver!.Components[0]; // SPEC 4.6.1: metadata shares access through a reference to the sequence.
+            receiver = receiver!.Components[0];
         }
 
         var utf8 = FormattingTypes.IsUtf8Slice(receiver);
