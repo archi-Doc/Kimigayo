@@ -86,6 +86,20 @@ public class StructEmissionTest
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
     }
 
+    // A missing field is one record per exit that completes construction: at the constructor's signature for the normal end,
+    // checked before and after the body's cleanup, and at an early return.
+    [Theory]
+    [InlineData("if false => self.value = 1")]
+    [InlineData("defer => self.value = 1")]
+    public void IncompleteConstructionIsReportedOncePerExit(string body)
+    {
+        var source = "struct S\n    var value: i32\n    public init(flag: bool)\n        " + body + "\n        if flag => return\nlet s = S.init(true)\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
+        Assert.Equal(["UninitializedPlace_Kd", "UninitializedPlace_Kd"], records.Select(static x => x.Code));
+        Assert.Equal("init(flag: bool)", source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
+        Assert.Equal("return", source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
+    }
+
     [Fact]
     public void MovedFieldReadUsesTheOwnershipDiagnostic()
     {

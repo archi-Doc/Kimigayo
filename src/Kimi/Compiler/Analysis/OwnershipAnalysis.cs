@@ -146,7 +146,7 @@ public sealed partial class OwnershipAnalysis
             if (issue.Failure == OwnershipFailure.StorageLimit)
             {
                 var requirement = DiagnosticRequirement.Ownership(issue.Failure);
-                var span = issue.Source is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : issue.Source.Span;
+                var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
                 issue.Source.DiagnosticCollection?.Report(DiagnosticPartition.Ownership, issue.Source.KeyOf(requirement), span, issue.Code, issue.RequiredBytes, issue.LimitBytes, null, null, null, issue.Source.CodeContext.SourceDocument, evidence: [issue.StorageTable]);
                 continue;
             }
@@ -177,13 +177,15 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            // A use at the function itself, such as a constructor's completion, is shown at its signature, not its whole body.
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
                 note: AcquisitionNote(issue),
                 evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
                 advice: issue.Failure == OwnershipFailure.TransferRequired && issue.Source is DereferenceKoto ? $"Write ({issue.Source})@move to take the value; without the parentheses, @move applies to the pointer" : null,
-                related: RelatedLocations(issue));
+                related: RelatedLocations(issue),
+                span: SignatureSpan(issue.Source));
         }
 
         // SPEC 23.3.3: an unverified result without an Error in this or an earlier phase reports one fallback at its first
@@ -227,6 +229,9 @@ public sealed partial class OwnershipAnalysis
                 advice: $"End the use of {holder} before this call, or require a Contract that declares preserves results for {name}, when every use Type conforms to it",
                 related: related);
         }
+
+        static SourceSpan? SignatureSpan(Koto source)
+            => source is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : null;
 
         static Koto? FirstPending(ControlFlowAnalysis flow)
         {
@@ -649,7 +654,9 @@ public sealed partial class OwnershipAnalysis
 
         if (ReferenceEquals(block, this.body.Function.Body))
         {
-            this.CheckConstruction(block);
+            // Before the body's cleanup, so a deferred initialization does not complete construction. The constructor is the
+            // use, as after cleanup, so one missing field is one record.
+            this.CheckConstruction(this.body.Function);
         }
 
         // Keep the terminal source state before this body's implicit cleanup and
