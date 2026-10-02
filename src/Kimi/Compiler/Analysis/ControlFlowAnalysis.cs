@@ -56,7 +56,7 @@ public sealed class ControlFlowNodeInfo
 /// </remarks>
 public sealed class ControlFlowAnalysis
 {
-    private const string PointerPrefix = "unsafe/";
+    private const string PointerPrefix = "raw/";
     private static readonly ControlFlowType IsizeType = new("isize");
 
     private readonly ControlFlowTypeSystem types;

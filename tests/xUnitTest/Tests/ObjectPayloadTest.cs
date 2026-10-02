@@ -25,7 +25,7 @@ public class ObjectPayloadTest
     }
 
     [Theory]
-    [InlineData("func f(x: Parser, y: ref/Parser, z: uniq/Parser, p: unsafe/Parser) => ()")]
+    [InlineData("func f(x: Parser, y: ref/Parser, z: uniq/Parser, p: raw/Parser) => ()")]
     [InlineData("struct Box<T>\n    let item: T\nfunc f(x: obj/Box<Parser>, y: rc/(Parser, i32)) => ()")]
     [InlineData("func f(x: Array<Parser>, y: Option<Parser>) => ()")]
     [InlineData("struct Parser2\n    Self is not ObjectPayload\n    let inner: Parser\nfunc f(x: ref/Parser2) => ()")]
@@ -117,7 +117,7 @@ public class ObjectPayloadTest
     [Theory]
     [InlineData("s is ref or objref", true)]
     [InlineData("s is borrow", true)]
-    [InlineData("s is not (owning or unsafe)", true)]
+    [InlineData("s is not (owning or raw)", true)]
     [InlineData("s is ref or obj", false)]
     [InlineData("s is reference", false)]
     public void SemanticsRequirementsAreProvenFromTheAdmittedSet(string constraint, bool expected)

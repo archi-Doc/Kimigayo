@@ -157,7 +157,7 @@ public class DiagnosticPrecisionTest
     [InlineData("let a = v[0..1]", "NotIndexable_Kd", "v[0..1]", null)]
     [InlineData("let x: i32 = 5\nlet a = x[0]", "NotIndexable_Kd", "x[0]", null)]
     [InlineData("var d: Dictionary<isize, string> = [1: \"x\"]\nlet a = d[^1]", "TypeMismatch_Kd", "^1", "expected isize, found Kimi.FromEnd<i32>")]
-    [InlineData("func f(p: unsafe/i32) -> i32\n    unsafe\n        return p[0..4]", "TypeMismatch_Kd", "0..4", "expected isize, found Kimi.Range<i32, i32>")]
+    [InlineData("func f(p: raw/i32) -> i32\n    unsafe\n        return p[0..4]", "TypeMismatch_Kd", "0..4", "expected isize, found Kimi.Range<i32, i32>")]
     public void IndexKeysReportOneExplainedError(string statement, string code, string text, string? label)
     {
         const string View = "struct View\n    Self is Indexable<isize>\n    associate Element is i32\n    var value: i32\n    public init(value: i32) => self.value = value\n" +

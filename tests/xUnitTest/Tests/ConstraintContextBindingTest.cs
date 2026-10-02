@@ -13,7 +13,7 @@ public class ConstraintContextBindingTest
     [InlineData("#Layout(\"C\")", "Invalid.S")]
     [InlineData("#Unknown", "Box<Invalid.S>")]
     [InlineData("#Unknown", "(i32, Invalid.S)")]
-    [InlineData("#Unknown", "unsafe/Invalid.S")]
+    [InlineData("#Unknown", "raw/Invalid.S")]
     public void InvalidTypeContextCannotProveIdentity(string attribute, string argument)
     {
         var c = MinimalEmissionTest.Analyze(attribute + "\ngroup Invalid\n    public struct S\nstruct Box<T>\ngroup Consumer\n    func query<T>()\n        T is " + argument + "\n        ()");

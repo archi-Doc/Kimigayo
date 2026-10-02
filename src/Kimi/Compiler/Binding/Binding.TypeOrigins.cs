@@ -90,7 +90,7 @@ public sealed partial class Binding
 
                 var condition = type.Kind == BoundTypeKind.SemanticsApplication ? type.Symbol : null;
                 var mayBeExclusive = IsExclusive(type.Semantics) || (condition?.WholeType is { } whole &&
-                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe, scope));
+                    !this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Raw, scope));
                 origin = this.OmittedOrigin(use, scope, type.Kind == BoundTypeKind.Slice ? context with { Direct = false } : context, mayBeExclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, type.Kind == BoundTypeKind.Slice ? 0 : -1, condition);
                 if (type.Kind == BoundTypeKind.SemanticsApplication && origin?.Kind == OriginKind.Input && context.Direct)
                 {
@@ -284,7 +284,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;
@@ -381,7 +381,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Semantics == SemanticsKind.Unsafe || type.Kind == BoundTypeKind.Function)
+        if (type.Semantics == SemanticsKind.Raw || type.Kind == BoundTypeKind.Function)
         {
             return false;
         }

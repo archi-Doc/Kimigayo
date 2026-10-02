@@ -10,7 +10,7 @@ public class PatternTypeFormationBindingTest
 {
     [Theory]
     [InlineData("Box<string>", "_")]
-    [InlineData("unsafe/Box<string>", "_")]
+    [InlineData("raw/Box<string>", "_")]
     [InlineData("Option<Box<string>>", ".Some(_)\n    .None")]
     [InlineData("Option<Box<string>>", ".Some(_)")]
     [InlineData("Box<string>", "_\n    _")]
@@ -41,7 +41,7 @@ public class PatternTypeFormationBindingTest
 
     [Theory]
     [InlineData("Box<i32>", "_")]
-    [InlineData("unsafe/Box<i32>", "_")]
+    [InlineData("raw/Box<i32>", "_")]
     [InlineData("Option<Box<i32>>", ".Some(_)\n    .None")]
     public void ValidSubjectTypesRetainCoverage(string type, string pattern)
     {

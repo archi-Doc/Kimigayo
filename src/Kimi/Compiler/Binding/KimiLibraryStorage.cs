@@ -15,11 +15,11 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
         new(KimiDeclarationId.StorageLend, KimiDeclarationId.RefRemainder, SemanticsKind.Ref, Capability: true),
         new(KimiDeclarationId.StorageSplit, KimiDeclarationId.UniqRemainder, SemanticsKind.Uniq, Capability: true),
-        new(KimiDeclarationId.StorageRelease, null, SemanticsKind.Unsafe),
+        new(KimiDeclarationId.StorageRelease, null, SemanticsKind.Raw),
     ];
 
     private static bool BoundStoragePointer(BoundType? type, BoundType element)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Symbol: null, Origin: null, OriginArguments.Count: 0, Components: [var pointee] } && ReferenceEquals(pointee, element);
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Symbol: null, Origin: null, OriginArguments.Count: 0, Components: [var pointee] } && ReferenceEquals(pointee, element);
 
     private static bool StorageInputOrigin(BoundOrigin? origin, FunctionKoto function)
         => origin is { Kind: OriginKind.Input, InputIndex: 0 } && ReferenceEquals(origin.Binder, function);
@@ -52,7 +52,7 @@ public sealed partial class KimiLibrary
     {
         if (id == KimiDeclarationId.StorageAddressOfI64)
         {
-            return symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var result] } &&
+            return symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var result] } &&
                 ReferenceEquals(result, BoundType.Primitives["i64"]) && symbol.Declaration is FunctionKoto function &&
                 function.Parameters[0].Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var input] } &&
                 ReferenceEquals(input, result);

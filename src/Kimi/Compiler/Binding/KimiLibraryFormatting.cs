@@ -53,7 +53,7 @@ public sealed partial class KimiLibrary
         var exposed = expected is "capacity" or "length" or "written" or "remaining";
         return expected is not null && field.NameKoto.IdentifierName == expected && field.DeclarationKind == PropertyDeclarationKind.Let &&
             field.Modifier == (exposed ? ModifierKind.Public : ModifierKind.NoModifier) && field.AttributeChain is null && field.InitializerKoto is null && field.Accessors.Count == 0 &&
-            (pointer ? FormattingBorrow(field.TypeKoto, SemanticsKind.Unsafe, "u8") : expected == "value" ? FormattingValue(field.TypeKoto, "Slice") : BareName(field.TypeKoto, expected == "failed" ? "bool" : "isize"));
+            (pointer ? FormattingBorrow(field.TypeKoto, SemanticsKind.Raw, "u8") : expected == "value" ? FormattingValue(field.TypeKoto, "Slice") : BareName(field.TypeKoto, expected == "failed" ? "bool" : "isize"));
     }
 
     private static bool ValidFormattingFunction(FunctionKoto function, KimiDeclarationId id)
@@ -77,7 +77,7 @@ public sealed partial class KimiLibrary
             KimiDeclarationId.TextValidateUtf8 => FormattingValue(first, "Slice") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
             KimiDeclarationId.TextToString => FormattingBorrow(first, SemanticsKind.Ref, "T") && BareName(result, "string") && FormattingPremise(function, "T", "Utf8Format"),
             KimiDeclarationId.TextTryFormat => FormattingBorrow(first, SemanticsKind.Ref, "T") && FormattingBytes(second) && FormattingResult(result, "Utf8Slice", "BufferFull") && FormattingPremise(function, "T", "Utf8Format"),
-            KimiDeclarationId.TextRelease => first is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } && result is null,
+            KimiDeclarationId.TextRelease => first is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } && result is null,
             KimiDeclarationId.FixedBufferBytes or KimiDeclarationId.HeapBufferBytes => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingValue(result, "Slice"),
             KimiDeclarationId.FixedBufferText or KimiDeclarationId.HeapBufferText => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
             KimiDeclarationId.FixedBufferValidate or KimiDeclarationId.HeapBufferValidate => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingResult(result, "()", "InvalidUtf8"),

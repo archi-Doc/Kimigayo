@@ -4,25 +4,25 @@
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
     internal struct RefRemainder<E> {source}
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
     internal struct UniqRemainder<E> {source}
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
 
     /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
     internal struct OwnedRemainder<E>
-        internal let storage: unsafe/E
+        internal let storage: raw/E
         internal var position: isize
         internal var count: isize
         internal var capacity: isize
 
         drop
-            let storage: unsafe/E = self.storage
+            let storage: raw/E = self.storage
             while self.count > 0
                 self.count -= 1
                 unsafe => _ = storage[self.position + self.count]
@@ -31,7 +31,7 @@ internal group Storage
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
     internal struct DictionaryRefRemainder<K, V> {source}
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var count: isize
@@ -39,7 +39,7 @@ internal group Storage
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
     internal struct DictionaryUniqRemainder<K, V> {source}
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var count: isize
@@ -47,7 +47,7 @@ internal group Storage
     /// The slot buffer and destruction responsibility transferred from a Dictionary for its unreturned entries, which
     /// are the last `count` live entries ending at `tail`.
     internal struct DictionaryOwnedRemainder<K, V>
-        internal let storage: unsafe/u8
+        internal let storage: raw/u8
         internal let stride: isize
         internal var link: isize
         internal var tail: isize
@@ -55,20 +55,20 @@ internal group Storage
 
         // Unreturned entries are destroyed in reverse insertion order, each value before its key (SPEC 4.7.6).
         drop
-            let storage: unsafe/u8 = self.storage
+            let storage: raw/u8 = self.storage
             unsafe
                 destroyDictionaryEntries<K, V>(storage, self.stride, self.tail, self.count)
                 release(storage)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
-    internal unsafe func destroyDictionaryEntries<K, V>(storage: unsafe/u8, stride: isize, tail: isize, count: isize)
+    internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
         var link = tail
         var remaining = count
         while remaining > 0
             remaining -= 1
             unsafe
                 let slot = storage + (link - 1) * stride
-                link = (slot@unsafe/isize)[0]
+                link = (slot@raw/isize)[0]
                 _ = *valueAt<K, V>(slot)
                 _ = *keyAt<K, V>(slot)
 
@@ -117,7 +117,7 @@ internal group Storage
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
             // Each slot starts with its previous and next links.
-            state.link = (slot@unsafe/isize)[1]
+            state.link = (slot@raw/isize)[1]
             return .Some((lendKey(state, slot), lendValue(state, slot)))
 
     /// Lends the first untaken key for shared access, splits its value off as a child Loan and advances.
@@ -126,7 +126,7 @@ internal group Storage
         state.count -= 1
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
-            state.link = (slot@unsafe/isize)[1]
+            state.link = (slot@raw/isize)[1]
             return .Some((lendKey(state, slot), splitValue(state, slot)))
 
     /// Transfers the key and value of the first unreturned entry to their new owner and advances the owning remainder.
@@ -135,7 +135,7 @@ internal group Storage
         state.count -= 1
         unsafe
             let slot = state.storage + (state.link - 1) * state.stride
-            state.link = (slot@unsafe/isize)[1]
+            state.link = (slot@raw/isize)[1]
             return .Some((*keyAt<K, V>(slot), *valueAt<K, V>(slot)))
 
     /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, whose contents the compiler never destroys
@@ -153,7 +153,7 @@ internal group Storage
 
         // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
         drop
-            var elements: unsafe/E = null
+            var elements: raw/E = null
             unsafe => elements = inlineBase<E, A>(self.storage@uniq)
             while self.count > 0
                 self.count -= 1

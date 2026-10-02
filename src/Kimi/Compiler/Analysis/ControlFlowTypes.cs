@@ -145,7 +145,7 @@ public abstract class ControlFlowTypeSystem
 /// <summary>Provides facts available before general name, overload, and Origin Binding.</summary>
 public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
 {
-    private const string PointerPrefix = "unsafe/";
+    private const string PointerPrefix = "raw/";
     private static readonly ControlFlowType CharType = new("char");
     private static readonly ControlFlowType StringType = new("string");
     private static readonly ControlFlowType IntegerLiteralType = new("integer literal");
@@ -159,7 +159,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override bool? RequiresUnsafeContext(Koto expression) => expression switch
     {
         DereferenceKoto => true,
-        ConversionKoto conversion when GetOuterSemantics(conversion.Right) == SemanticsKind.Unsafe => true,
+        ConversionKoto conversion when GetOuterSemantics(conversion.Right) == SemanticsKind.Raw => true,
         _ => null,
     };
 
@@ -190,8 +190,8 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
         ParenthesizedTypeKoto t => this.GetDeclaredType(t.Type),
         TupleTypeKoto t when t.ElementNodes.Count == 0 => ControlFlowType.Unit,
         TypeSemanticsKoto { Type: not null, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
-            when t.SemanticsKind is SemanticsKind.Unsafe or SemanticsKind.Owner && this.GetDeclaredType(t.Type) is { } core
-            => t.SemanticsKind == SemanticsKind.Unsafe ? this.PointerType(core) : core,
+            when t.SemanticsKind is SemanticsKind.Raw or SemanticsKind.Owner && this.GetDeclaredType(t.Type) is { } core
+            => t.SemanticsKind == SemanticsKind.Raw ? this.PointerType(core) : core,
         TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, Type: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
             => PrimitiveTypes.GetValueOrDefault(t.Identifier),
         _ => null,

@@ -25,7 +25,7 @@ public class DependentPointerEmissionTest
     [InlineData("[2 of ref/i32 during a]")]
     public void RawReadsAndReplacementKeepExplicitPointeeOrigins(string type)
     {
-        var source = "func read(pointer: unsafe/(" + type + ")) -> " + type + "\n    unsafe => return *pointer\nfunc replace(pointer: unsafe/(" + type + "), value: " + type + ")\n    unsafe => *pointer = value@move\npublic func main() => ()";
+        var source = "func read(pointer: raw/(" + type + ")) -> " + type + "\n    unsafe => return *pointer\nfunc replace(pointer: raw/(" + type + "), value: " + type + ")\n    unsafe => *pointer = value@move\npublic func main() => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
@@ -55,7 +55,7 @@ public class DependentPointerEmissionTest
     [Fact]
     public void RawAcquisitionCannotExtendThePointeesOrigin()
     {
-        var c = MinimalEmissionTest.Analyze("func read(pointer: unsafe/(ref/i32 during a)) -> ref/i32 during static\n    unsafe => return *pointer");
+        var c = MinimalEmissionTest.Analyze("func read(pointer: raw/(ref/i32 during a)) -> ref/i32 during static\n    unsafe => return *pointer");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
     }

@@ -188,7 +188,7 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || (entry && plan.ArgumentToParameter[2] != 2) || plan.TypeArguments.Length != 2 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } handleType ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
             !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
             SignatureType(this, plan.TypeArguments[0]) is not { } keyType || SignatureType(this, plan.TypeArguments[1]) is not { } valueType ||
             (entry && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType)) ||

@@ -410,7 +410,7 @@ public sealed partial class Binding
                 return depth > 32;
             }
 
-            if (type.Semantics == SemanticsKind.Unsafe)
+            if (type.Semantics == SemanticsKind.Raw)
             {
                 return true;
             }

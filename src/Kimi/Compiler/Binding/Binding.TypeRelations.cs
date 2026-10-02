@@ -42,7 +42,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < left.Components.Count; i++)
             {
-                var covariant = left.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe) &&
+                var covariant = left.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw) &&
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
                 if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
@@ -147,7 +147,7 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
+            else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
             {
                 if (!FitsTypeCore(a, b, binding, use, true))
                 {
@@ -206,7 +206,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Unsafe)
+            if (actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
             {
                 if (!ReferenceEquals(actual.Components[i], expected.Components[i]))
                 {

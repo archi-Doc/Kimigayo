@@ -482,7 +482,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentToParameter[stateArgument] != 0 || plan.ArgumentToParameter[pointerArgument] != 1 ||
             SignatureType(this, plan.ArgumentOperations[stateArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [var remainder] } state || state.Semantics != semantics ||
             remainder.Symbol?.LibraryDeclaration != remainderId || remainder.Components is not [var element] ||
-            SignatureType(this, plan.ArgumentOperations[pointerArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } pointer || !ReferenceEquals(pointee, element) ||
+            SignatureType(this, plan.ArgumentOperations[pointerArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } pointer || !ReferenceEquals(pointee, element) ||
             SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Components: [var referent] } result || result.Semantics != semantics || !ReferenceEquals(referent, element) ||
             !ReferenceEquals(SignatureType(this, call.BoundType), result))
         {
@@ -513,7 +513,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } pointer ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } pointer ||
             !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
         {
             return Fail("Storage release requires one raw region pointer and a Unit result.", out failure);

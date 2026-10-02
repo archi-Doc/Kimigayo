@@ -136,7 +136,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && kind == IntrinsicKind.Copy)
         {
-            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Unsafe ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Raw ? ConstraintProof.Proven : ConstraintProof.Refuted;
             return true;
         }
 
@@ -523,7 +523,7 @@ public sealed partial class Binding
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {
-                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Unsafe;
+                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
                     const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
                     if (fact.Mask == SemanticsMask.Owner)
                     {
@@ -541,7 +541,7 @@ public sealed partial class Binding
                     {
                         evidence = ConstraintProof.Refuted;
                     }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Unsafe)
+                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Raw)
                     {
                         var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
                         if (target is not null && !ReferenceEquals(target, work.Type))

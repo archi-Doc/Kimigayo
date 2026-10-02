@@ -64,7 +64,7 @@ public class BlockSyntaxParseTest
     [InlineData("defer\n    let result = if ready() => 1 else => 2")]
     [InlineData("unsafe => return *pointer")]
     [InlineData("let unsafe = 1\nlet from = unsafe")]
-    [InlineData("let pointer: unsafe/i32 = obtainPointer()")]
+    [InlineData("let pointer: raw/i32 = obtainPointer()")]
     [InlineData("let dictionary = [unsafe: 1, from:2]")]
     [InlineData("call(from: work(), unsafe: 1)")]
     public void AcceptsInlineStatementsAndContextualNames(string source)
@@ -170,7 +170,7 @@ public class BlockSyntaxParseTest
     public void ParsesUnsafeFunctionModifierWithoutReservingNamesOrSemantics()
     {
         var tree = ParseSuccess("""
-            public unsafe func read(pointer: unsafe/i32) -> i32
+            public unsafe func read(pointer: raw/i32) -> i32
                 unsafe => return *pointer
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));

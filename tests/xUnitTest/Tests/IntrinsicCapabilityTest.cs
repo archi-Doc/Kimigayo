@@ -17,7 +17,7 @@ public class IntrinsicCapabilityTest
     [InlineData("()", true, true)]
     [InlineData("string", false, true)]
     [InlineData("ref/i32 during static", true, true)]
-    [InlineData("unsafe/i32", true, true)]
+    [InlineData("raw/i32", true, true)]
     [InlineData("(i32, string)", false, true)]
     [InlineData("(i32, bool)", true, true)]
     [InlineData("[0 of string]", false, true)]
@@ -119,7 +119,7 @@ public class IntrinsicCapabilityTest
     [InlineData("ref", ConstraintProof.Proven)]
     [InlineData("object", ConstraintProof.Refuted)]
     [InlineData("borrow", ConstraintProof.Unknown)]
-    [InlineData("unsafe", ConstraintProof.Proven)]
+    [InlineData("raw", ConstraintProof.Proven)]
     public void PairCapabilityUsesDeclaredSemantics(string semantics, ConstraintProof expected)
     {
         var c = CompilationTestHelper.ParseSuccess($"func inspect<s/T>(x: s/T)\n    s is {semantics}\n    ()");
@@ -170,7 +170,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void CopyCycleTerminatingAtAPointerIsProven()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct A\n    Self is Copy\n    let b: B\nstruct B\n    Self is Copy\n    let a: unsafe/A\nfunc inspect(x: A) => ()");
+        var c = CompilationTestHelper.ParseSuccess("struct A\n    Self is Copy\n    let b: B\nstruct B\n    Self is Copy\n    let a: raw/A\nfunc inspect(x: A) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
@@ -306,7 +306,7 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void UnusedTypeArgumentsAndPointerPointeesRetainOwnedDependencies()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct Phantom<T>\nstruct Pointer<T>\n    let value: unsafe/T\nfunc inspect(x: Phantom<ref/i32 during a>, y: Pointer<ref/i32 during a>) => ()");
+        var c = CompilationTestHelper.ParseSuccess("struct Phantom<T>\nstruct Pointer<T>\n    let value: raw/T\nfunc inspect(x: Phantom<ref/i32 during a>, y: Pointer<ref/i32 during a>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(p.Type.BoundType!, f)));

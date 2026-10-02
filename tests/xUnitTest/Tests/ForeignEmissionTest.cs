@@ -100,7 +100,7 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerSignaturesDeclareOpaquePointers()
     {
-        var ir = Emit("group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: unsafe/i32, other: unsafe/f64) -> unsafe/u8\npublic func main() => ()", "static");
+        var ir = Emit("group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch(value: raw/i32, other: raw/f64) -> raw/u8\npublic func main() => ()", "static");
         Assert.Contains("declare ptr @touch(ptr, ptr)\n", ir);
     }
 
@@ -132,17 +132,17 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
                 var freed: i32 = 0
-                var p: unsafe/u8 = null
+                var p: raw/u8 = null
                 require p == null else => $abort("initial")
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 require p != null else => $abort("allocate")
                 require null != p else => $abort("reversed")
-                let q: unsafe/u8 = p
+                let q: raw/u8 = p
                 require q == p else => $abort("copy")
                 unsafe => freed = Native.free(q, 0, 32768)
                 require freed != 0 else => $abort("free")
@@ -157,10 +157,10 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: unsafe/i32 = null\nlet q: unsafe/i32 = null\nlet r = p < q", true)]
-    [InlineData("let p: unsafe/i32 = null\nlet q: unsafe/u32 = null\nlet r = p == q", true)]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet r = p < q", true)]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/u32 = null\nlet r = p == q", true)]
     [InlineData("let r = null == null", false)]
-    [InlineData("let p: unsafe/i32 = null\nlet r = p == null", false)]
+    [InlineData("let p: raw/i32 = null\nlet r = p == null", false)]
     public void PointerEqualityRequiresOneKnownPointerType(string body, bool mismatch)
     {
         var c = MinimalEmissionTest.Analyze(body);
@@ -170,7 +170,7 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: unsafe/i32 = null\nlet a = unsafe => p as usize")]
+    [InlineData("let p: raw/i32 = null\nlet a = unsafe => p as usize")]
     public void UnimplementedPointerOperationsDoNotGenerate(string body)
     {
         var c = MinimalEmissionTest.Analyze(body);
@@ -185,27 +185,27 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
-                var p: unsafe/u8 = null
+                var p: raw/u8 = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 var address: usize = 0
                 unsafe => address = p@usize
                 require address != 0 else => $abort("address")
                 require address % 4096 == 0 else => $abort("alignment")
-                var back: unsafe/u8 = null
-                unsafe => back = address@unsafe/u8
+                var back: raw/u8 = null
+                unsafe => back = address@raw/u8
                 require back == p else => $abort("round trip")
-                var words: unsafe/i32 = null
-                unsafe => words = p@unsafe/i32
-                let same = words@unsafe/i32
-                var bytes: unsafe/u8 = null
-                unsafe => bytes = same@unsafe/u8
+                var words: raw/i32 = null
+                unsafe => words = p@raw/i32
+                let same = words@raw/i32
+                var bytes: raw/u8 = null
+                unsafe => bytes = same@raw/u8
                 require bytes == p else => $abort("pointer cast")
-                var zero: unsafe/u8 = p
-                unsafe => zero = 0@unsafe/u8
+                var zero: raw/u8 = p
+                unsafe => zero = 0@raw/u8
                 require zero == null else => $abort("zero")
                 var freed: i32 = 0
                 unsafe => freed = Native.free(p, 0, 32768)
@@ -219,10 +219,10 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: unsafe/i32 = null\nlet a = unsafe => p@u64", true)]
-    [InlineData("let n: i32 = 1\nlet p = unsafe => n@unsafe/u8", true)]
-    [InlineData("let p: unsafe/i32 = null\nvar q: unsafe/u8 = null\nq = p@unsafe/u8", false)]
-    [InlineData("let p: unsafe/i32 = null\nvar a: usize = 0\na = p@usize", false)]
+    [InlineData("let p: raw/i32 = null\nlet a = unsafe => p@u64", true)]
+    [InlineData("let n: i32 = 1\nlet p = unsafe => n@raw/u8", true)]
+    [InlineData("let p: raw/i32 = null\nvar q: raw/u8 = null\nq = p@raw/u8", false)]
+    [InlineData("let p: raw/i32 = null\nvar a: usize = 0\na = p@usize", false)]
     public void PointerConversionsRequireTheirTypesAndUnsafeContext(string body, bool mismatch)
     {
         var c = MinimalEmissionTest.Analyze(body);
@@ -242,15 +242,15 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var words: unsafe/i64 = null
-                unsafe => words = bytes@unsafe/i64
-                var third: unsafe/i64 = null
+                var words: raw/i64 = null
+                unsafe => words = bytes@raw/i64
+                var third: raw/i64 = null
                 let count: isize = 3
                 unsafe => third = words + count
                 var start: usize = 0
@@ -265,7 +265,7 @@ public class ForeignEmissionTest
                 unsafe => moved = third@usize
                 require moved - start == 24 else => $abort("compound plus")
                 unsafe => third -= 2
-                var back: unsafe/i64 = null
+                var back: raw/i64 = null
                 unsafe => back = third - 1
                 require back == words else => $abort("back")
                 var freed: i32 = 0
@@ -279,11 +279,11 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: unsafe/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n")]
-    [InlineData("var p: unsafe/i32 = null\nlet n: i32 = 1\nunsafe => p += n")]
-    [InlineData("var p: unsafe/i32 = null\nunsafe => p *= 2")]
-    [InlineData("let p: unsafe/i32 = null\nlet q = unsafe => 1 + p")]
-    [InlineData("let p: unsafe/i32 = null\nlet q: unsafe/i32 = null\nlet d = unsafe => p - q")]
+    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nlet q = unsafe => p + n")]
+    [InlineData("var p: raw/i32 = null\nlet n: i32 = 1\nunsafe => p += n")]
+    [InlineData("var p: raw/i32 = null\nunsafe => p *= 2")]
+    [InlineData("let p: raw/i32 = null\nlet q = unsafe => 1 + p")]
+    [InlineData("let p: raw/i32 = null\nlet q: raw/i32 = null\nlet d = unsafe => p - q")]
     public void InvalidPointerArithmeticIsRejected(string body)
     {
         var c = MinimalEmissionTest.Analyze(body);
@@ -315,7 +315,7 @@ public class ForeignEmissionTest
     [Fact]
     public void DereferenceRequiresAnUnsafeContext()
     {
-        var c = MinimalEmissionTest.Analyze("let p: unsafe/i32 = null\nvar v: i32 = 0\nv = *p");
+        var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
     }
@@ -326,23 +326,23 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var words: unsafe/i64 = null
-                unsafe => words = bytes@unsafe/i64
+                var words: raw/i64 = null
+                unsafe => words = bytes@raw/i64
                 var value: i64 = 1
                 unsafe => value = *(words + 3)
                 require value == 0 else => $abort("zeroed")
                 unsafe => *(words + 3) = 1234567890123
                 unsafe => value = *(words + 3)
                 require value == 1234567890123 else => $abort("written")
-                var link: unsafe/u8 = bytes
-                var links: unsafe/unsafe/u8 = null
-                unsafe => links = bytes@unsafe/unsafe/u8
+                var link: raw/u8 = bytes
+                var links: raw/raw/u8 = null
+                unsafe => links = bytes@raw/raw/u8
                 unsafe => link = *links
                 require link == null else => $abort("pointer")
                 var freed: i32 = 0
@@ -362,21 +362,21 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func target(p: unsafe/i32) -> unsafe/i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func target(p: raw/i32) -> raw/i32
                 Console.writeLine("target")
                 return p
-            unsafe func amount(p: unsafe/i32) -> i32
+            unsafe func amount(p: raw/i32) -> i32
                 Console.writeLine("amount")
                 unsafe => *p = 100
                 return 3
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var p: unsafe/i32 = null
-                unsafe => p = bytes@unsafe/i32
+                var p: raw/i32 = null
+                unsafe => p = bytes@raw/i32
                 unsafe => *p = 10
                 unsafe => *target(p) += amount(p)
                 var value: i32 = 0
@@ -393,18 +393,18 @@ public class ForeignEmissionTest
                 unsafe => *p >>= 1
                 unsafe => value = *p
                 require value == 24 else => $abort("operators")
-                var links: unsafe/unsafe/i32 = null
-                unsafe => links = (bytes + 16)@unsafe/unsafe/i32
+                var links: raw/raw/i32 = null
+                unsafe => links = (bytes + 16)@raw/raw/i32
                 unsafe => *links = p
                 unsafe => *links += 2
                 unsafe => *links -= 1
-                var link: unsafe/i32 = null
+                var link: raw/i32 = null
                 unsafe => link = *links
-                var expected: unsafe/i32 = null
+                var expected: raw/i32 = null
                 unsafe => expected = p + 1
                 require link == expected else => $abort("pointer update")
-                var floats: unsafe/f64 = null
-                unsafe => floats = (bytes + 32)@unsafe/f64
+                var floats: raw/f64 = null
+                unsafe => floats = (bytes + 32)@raw/f64
                 unsafe => *floats = 1.5
                 unsafe => *floats *= 2.0
                 var real: f64 = 0.0
@@ -428,9 +428,9 @@ public class ForeignEmissionTest
         var source = $$"""
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/i32, size: u64, kind: u32, protect: u32) -> unsafe/i32
+                public unsafe func allocate(address: raw/i32, size: u64, kind: u32, protect: u32) -> raw/i32
             public func main()
-                var p: unsafe/i32 = null
+                var p: raw/i32 = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 unsafe => *p = {{initial}}
                 unsafe => *p {{update}}
@@ -445,14 +445,14 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/i32, size: u64, kind: u32, protect: u32) -> unsafe/i32
+                public unsafe func allocate(address: raw/i32, size: u64, kind: u32, protect: u32) -> raw/i32
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/i32, size: u64, kind: u32) -> i32
-            unsafe func early(p: unsafe/i32)
+                public unsafe func free(address: raw/i32, size: u64, kind: u32) -> i32
+            unsafe func early(p: raw/i32)
                 unsafe
                     *p += do => return
             public func main()
-                var p: unsafe/i32 = null
+                var p: raw/i32 = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 unsafe => *p = 5
                 unsafe => early(p)
@@ -473,14 +473,14 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var flags: unsafe/bool = null
-                unsafe => flags = bytes@unsafe/bool
+                var flags: raw/bool = null
+                unsafe => flags = bytes@raw/bool
                 var flag = true
                 unsafe => flag = *flags
                 require not flag else => $abort("zero false")
@@ -509,16 +509,16 @@ public class ForeignEmissionTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("func update(p: unsafe/bool, n: unsafe/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: unsafe/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
-    [InlineData("func update(p: unsafe/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: unsafe/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: unsafe/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: unsafe/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
-    [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: unsafe/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value@move\npublic func main() => ()")]
-    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    drop => ()\nfunc update(p: unsafe/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
-    [InlineData("func update(p: unsafe/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
-    [InlineData("struct P\n    public var a: u8\n    public var b: (i32, [2 of u16])\nfunc update(p: unsafe/P)\n    unsafe\n        (*p).b.1[1] += 1\n        let a = (*p).a\n        p[1].b.0 = 3\npublic func main() => ()")]
-    [InlineData("func compare(p: unsafe/string, h: unsafe/(string, i32))\n    unsafe\n        let a = *p == \"x\"\n        let b = (*h).0 < p[1]\npublic func main() => ()")]
+    [InlineData("func update(p: raw/bool, n: raw/i32)\n    unsafe\n        *p = not *p\n        *n += 1\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc take(p: raw/R) -> R\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("struct R\n    public var n: i32\n    drop => ()\nfunc update(p: raw/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("func update(p: raw/string, value: string)\n    unsafe => *p = value@move\nfunc take(p: raw/string) -> string\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("enum E\n    Empty\n    Value(string)\nfunc update(p: raw/E, value: E)\n    unsafe => *p = value@move\nfunc take(p: raw/E) -> E\n    unsafe => return *p\npublic func main() => ()")]
+    [InlineData("enum E<T>\n    Empty\n    Value(T)\nfunc update(p: raw/E<E<string>>, value: E<E<string>>)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("#Layout(\"C\")\nstruct R\n    public var a: u8\n    public var b: u64\n    drop => ()\nfunc update(p: raw/R, value: R)\n    unsafe => *p = value@move\npublic func main() => ()")]
+    [InlineData("func update(p: raw/(i32, i64))\n    unsafe\n        let value = *p\n        *p = value\npublic func main() => ()")]
+    [InlineData("struct P\n    public var a: u8\n    public var b: (i32, [2 of u16])\nfunc update(p: raw/P)\n    unsafe\n        (*p).b.1[1] += 1\n        let a = (*p).a\n        p[1].b.0 = 3\npublic func main() => ()")]
+    [InlineData("func compare(p: raw/string, h: raw/(string, i32))\n    unsafe\n        let a = *p == \"x\"\n        let b = (*h).0 < p[1]\npublic func main() => ()")]
     public void WarmPointerReadWriteAnalysisAndEmissionAllocateNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -544,10 +544,10 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/i64, size: u64, kind: u32, protect: u32) -> unsafe/i64
+                public unsafe func allocate(address: raw/i64, size: u64, kind: u32, protect: u32) -> raw/i64
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/i64, size: u64, kind: u32) -> i32
-            func target(p: unsafe/i64) -> unsafe/i64
+                public unsafe func free(address: raw/i64, size: u64, kind: u32) -> i32
+            func target(p: raw/i64) -> raw/i64
                 Console.writeLine("target")
                 return p
             func index() -> isize
@@ -556,14 +556,14 @@ public class ForeignEmissionTest
             func amount() -> i64
                 Console.writeLine("amount")
                 return 9
-            unsafe func skipIndex(p: unsafe/i64)
+            unsafe func skipIndex(p: raw/i64)
                 unsafe => p[do => return] += amount()
-            unsafe func skipRight(p: unsafe/i64)
+            unsafe func skipRight(p: raw/i64)
                 unsafe => target(p)[index()] = do => return
             public func main()
-                var p: unsafe/i64 = null
+                var p: raw/i64 = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
-                var next: unsafe/i64 = null
+                var next: raw/i64 = null
                 unsafe => next = p + 1
                 unsafe => target(next)[index()] = amount()
                 unsafe => target(next)[index()] += amount()
@@ -608,10 +608,10 @@ public class ForeignEmissionTest
     }
 
     [Theory]
-    [InlineData("let p: unsafe/i32 = null\nlet n: i32 = 1\nunsafe\n    let v = p[n]")]
-    [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[^1]")]
-    [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[0..1]")]
-    [InlineData("let p: unsafe/i32 = null\nunsafe\n    let v = p[true]")]
+    [InlineData("let p: raw/i32 = null\nlet n: i32 = 1\nunsafe\n    let v = p[n]")]
+    [InlineData("let p: raw/i32 = null\nunsafe\n    let v = p[^1]")]
+    [InlineData("let p: raw/i32 = null\nunsafe\n    let v = p[0..1]")]
+    [InlineData("let p: raw/i32 = null\nunsafe\n    let v = p[true]")]
     public void PointerIndexingRejectsInvalidOffsets(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -625,7 +625,7 @@ public class ForeignEmissionTest
     [Fact]
     public void AMalformedPointerOffsetRestsOnItsSyntaxError()
     {
-        var c = MinimalEmissionTest.Analyze("let p: unsafe/i32 = null\nunsafe\n    let v = p[0...1]");
+        var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nunsafe\n    let v = p[0...1]");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         using var writer = new StringWriter();
@@ -639,7 +639,7 @@ public class ForeignEmissionTest
     [InlineData("p[0] += 1")]
     public void PointerIndexingRequiresAnUnsafeContext(string body)
     {
-        var c = MinimalEmissionTest.Analyze("let p: unsafe/i32 = null\n" + body);
+        var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
         using var writer = new StringWriter();
@@ -653,7 +653,7 @@ public class ForeignEmissionTest
     [InlineData("p -= 1")]
     public void BoundPointerArithmeticRequiresAnUnsafeContext(string body)
     {
-        var c = MinimalEmissionTest.Analyze("var p: unsafe/i32 = null\n" + body);
+        var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("Unsafe", StringComparison.Ordinal));
         using var writer = new StringWriter();
@@ -666,17 +666,17 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/i32, size: u64, kind: u32, protect: u32) -> unsafe/i32
+                public unsafe func allocate(address: raw/i32, size: u64, kind: u32, protect: u32) -> raw/i32
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/i32, size: u64, kind: u32) -> i32
-            func target(p: unsafe/i32) -> unsafe/i32
+                public unsafe func free(address: raw/i32, size: u64, kind: u32) -> i32
+            func target(p: raw/i32) -> raw/i32
                 Console.writeLine("target")
                 return p
             func index() -> isize
                 Console.writeLine("index")
                 return 0
             public func main()
-                var p: unsafe/i32 = null
+                var p: raw/i32 = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 unsafe => *p = 5
                 var a: i32 = 0
@@ -706,9 +706,9 @@ public class ForeignEmissionTest
         var source = $$"""
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/{{type}}, size: u64, kind: u32, protect: u32) -> unsafe/{{type}}
+                public unsafe func allocate(address: raw/{{type}}, size: u64, kind: u32, protect: u32) -> raw/{{type}}
             public func main()
-                var p: unsafe/{{type}} = null
+                var p: raw/{{type}} = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 unsafe => *p = {{initial}}
                 unsafe => {{operation}}
@@ -723,7 +723,7 @@ public class ForeignEmissionTest
     [InlineData("bool", "++p[0]")]
     public void PointerIncrementsRequireIntegerPointees(string type, string operation)
     {
-        var c = MinimalEmissionTest.Analyze($"var p: unsafe/{type} = null\nunsafe => {operation}");
+        var c = MinimalEmissionTest.Analyze($"var p: raw/{type} = null\nunsafe => {operation}");
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
@@ -745,16 +745,16 @@ public class ForeignEmissionTest
                     self.flag = flag
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            unsafe func snapshot(p: unsafe/Pair) -> Pair
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            unsafe func snapshot(p: raw/Pair) -> Pair
                 unsafe => return *p
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var pairs: unsafe/Pair = null
-                unsafe => pairs = bytes@unsafe/Pair
+                var pairs: raw/Pair = null
+                unsafe => pairs = bytes@raw/Pair
                 unsafe
                     let zero = *pairs
                     require zero.first == 0 and zero.second == 0 and not zero.flag else => $abort("zero")
@@ -767,14 +767,14 @@ public class ForeignEmissionTest
                     require first.first == 9 and first.second == 11 and not first.flag else => $abort("replace")
                     require second.first == 7 and second.second == 1234567890123 and second.flag else => $abort("copy")
                     require old.first == 7 else => $abort("retained")
-                var tuples: unsafe/(u8, (u64, bool)) = null
-                unsafe => tuples = (bytes + 64)@unsafe/(u8, (u64, bool))
+                var tuples: raw/(u8, (u64, bool)) = null
+                unsafe => tuples = (bytes + 64)@raw/(u8, (u64, bool))
                 unsafe
                     *tuples = (3, (99, true))
                     let tuple = *tuples
                     require tuple.0 == 3 and tuple.1.0 == 99 and tuple.1.1 else => $abort("tuple")
-                var arrays: unsafe/[3 of i16] = null
-                unsafe => arrays = (bytes + 128)@unsafe/[3 of i16]
+                var arrays: raw/[3 of i16] = null
+                unsafe => arrays = (bytes + 128)@raw/[3 of i16]
                 unsafe
                     arrays[0] = [4, 5, 6]
                     let array = arrays[0]
@@ -806,17 +806,17 @@ public class ForeignEmissionTest
                 public var count: i32
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func pick(p: unsafe/Pair) -> unsafe/Pair
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func pick(p: raw/Pair) -> raw/Pair
                 Console.writeLine("pick")
                 return p
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var pairs: unsafe/Pair = null
-                unsafe => pairs = bytes@unsafe/Pair
+                var pairs: raw/Pair = null
+                unsafe => pairs = bytes@raw/Pair
                 unsafe
                     (*pairs).second = 1234567890123
                     (*pairs).first = 7
@@ -828,24 +828,24 @@ public class ForeignEmissionTest
                     let next = pairs[1]
                     require whole.first == 8 and whole.second == 1234567890128 else => $abort("fields")
                     require next.first == 9 and next.second == 1234567890128 else => $abort("indexed")
-                var wide: unsafe/Wide = null
-                unsafe => wide = (bytes + 64)@unsafe/Wide
+                var wide: raw/Wide = null
+                unsafe => wide = (bytes + 64)@raw/Wide
                 unsafe
                     (*wide).tail = 3
                     (*wide).head = 1
-                    let tail = *((bytes + 72)@unsafe/u64)
+                    let tail = *((bytes + 72)@raw/u64)
                     let head = *(bytes + 64)
                     require tail == 3 and head == 1 and (*wide).tail == 3 else => $abort("c layout")
-                var tuples: unsafe/(u8, (u64, bool)) = null
-                unsafe => tuples = (bytes + 128)@unsafe/(u8, (u64, bool))
+                var tuples: raw/(u8, (u64, bool)) = null
+                unsafe => tuples = (bytes + 128)@raw/(u8, (u64, bool))
                 unsafe
                     (*tuples).1.0 = 99
                     (*tuples).1.1 = true
                     (*tuples).0 = 3
                     let tuple = *tuples
                     require tuple.0 == 3 and tuple.1.0 == 99 and tuple.1.1 and (*tuples).1.0 == 99 else => $abort("tuple")
-                var arrays: unsafe/[3 of i16] = null
-                unsafe => arrays = (bytes + 192)@unsafe/[3 of i16]
+                var arrays: raw/[3 of i16] = null
+                unsafe => arrays = (bytes + 192)@raw/[3 of i16]
                 unsafe
                     (*arrays)[2] = -4
                     arrays[1][0] = 5
@@ -853,8 +853,8 @@ public class ForeignEmissionTest
                     arrays[1][0] -= 1
                     let array = *arrays
                     require array[0] == 6 and array[1] == 0 and array[2] == -4 and arrays[1][0] == 4 else => $abort("array")
-                var holders: unsafe/Holder = null
-                unsafe => holders = (bytes + 256)@unsafe/Holder
+                var holders: raw/Holder = null
+                unsafe => holders = (bytes + 256)@raw/Holder
                 unsafe
                     // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
                     (*holders).label = "kept"
@@ -878,10 +878,10 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func pick(p: unsafe/(u8, [3 of i32])) -> unsafe/(u8, [3 of i32])
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func pick(p: raw/(u8, [3 of i32])) -> raw/(u8, [3 of i32])
                 Console.writeLine("pick")
                 return p
             func at(i: isize) -> isize
@@ -891,12 +891,12 @@ public class ForeignEmissionTest
                 Console.writeLine("value")
                 return n
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var p: unsafe/(u8, [3 of i32]) = null
-                unsafe => p = bytes@unsafe/(u8, [3 of i32])
-                var grid: unsafe/[2 of [2 of u16]] = null
-                unsafe => grid = (bytes + 64)@unsafe/[2 of [2 of u16]]
+                var p: raw/(u8, [3 of i32]) = null
+                unsafe => p = bytes@raw/(u8, [3 of i32])
+                var grid: raw/[2 of [2 of u16]] = null
+                unsafe => grid = (bytes + 64)@raw/[2 of [2 of u16]]
                 unsafe
                     (*pick(p)).1[at(2)] = value(7)
                     (*pick(p)).1[at(1)] += value(5)
@@ -930,10 +930,10 @@ public class ForeignEmissionTest
         var source = $$"""
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
             public func main()
-                var p: unsafe/[3 of i32] = null
-                unsafe => p = Native.allocate(null, 4096, 12288, 4)@unsafe/[3 of i32]
+                var p: raw/[3 of i32] = null
+                unsafe => p = Native.allocate(null, 4096, 12288, 4)@raw/[3 of i32]
                 var i: isize = {{index}}
                 unsafe => (*p)[i] = 1
                 Console.writeLine("bad")
@@ -948,10 +948,10 @@ public class ForeignEmissionTest
         const string Source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
             public func main()
-                var p: unsafe/[3 of i32] = null
-                unsafe => p = Native.allocate(null, 4096, 12288, 4)@unsafe/[3 of i32]
+                var p: raw/[3 of i32] = null
+                unsafe => p = Native.allocate(null, 4096, 12288, 4)@raw/[3 of i32]
                 var i: isize = 1
                 let flag = true
                 var ok = false
@@ -970,7 +970,7 @@ public class ForeignEmissionTest
     public void IncompletePointerProjectionPlansRejectBeforeWriting(string mutation, bool computed)
     {
         var place = computed ? "(*p).1[i]" : "(*p).1[1]";
-        var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func update(p: raw/(u8, [2 of i16]), i: isize)\n    unsafe => {place} = 1\npublic func main() => ()");
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
         var projection = body.Values.FindLastIndex(x => x.Kind == OwnershipValueKind.PointerProject);
@@ -1004,7 +1004,7 @@ public class ForeignEmissionTest
     [InlineData("(ref/i32 during static, i32)")]
     public void DependentPointerReadsPreserveTheirCompleteType(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func read(p: unsafe/({type}))\n    unsafe\n        let value = *p\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func read(p: raw/({type}))\n    unsafe\n        let value = *p\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         CompilationTestHelper.WriteIr(c);
@@ -1016,7 +1016,7 @@ public class ForeignEmissionTest
     [InlineData("[2 of string]")]
     public void OwnedAggregatePointerWritesHaveCompleteCleanupPlans(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func update(p: unsafe/{type}, value: {type})\n    unsafe => *p = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func update(p: raw/{type}, value: {type})\n    unsafe => *p = value@move\npublic func main() => ()");
         var ir = CompilationTestHelper.WriteIr(c);
     }
 
@@ -1028,12 +1028,12 @@ public class ForeignEmissionTest
         var source = """
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/string, size: u64, kind: u32, protect: u32) -> unsafe/string
+                public unsafe func allocate(address: raw/string, size: u64, kind: u32, protect: u32) -> raw/string
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/string, size: u64, kind: u32) -> i32
-            func take(p: unsafe/string) -> string
+                public unsafe func free(address: raw/string, size: u64, kind: u32) -> i32
+            func take(p: raw/string) -> string
                 unsafe => return *p
-            func use(p: unsafe/string, flag: bool)
+            func use(p: raw/string, flag: bool)
                 unsafe
                     // Zeroed handles are valid empty Static strings (SPEC 22.5.5).
                     *p = "first"
@@ -1049,7 +1049,7 @@ public class ForeignEmissionTest
                     require not skipped else => $abort("short circuit")
                     Console.writeLine("done")
             public func main()
-                var p: unsafe/string = null
+                var p: raw/string = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 use(p, true)
                 var freed: i32 = 0
@@ -1069,7 +1069,7 @@ public class ForeignEmissionTest
     public void StringPointerComparisonsDoNotInventAnOwningRead(string expression)
     {
         // SPEC 5.2: the handle is inspected in place; no temporary owner, Move or cleanup.
-        var c = MinimalEmissionTest.Analyze($"func compare(p: unsafe/string)\n    unsafe\n        let equal = {expression} == \"text\"\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"func compare(p: raw/string)\n    unsafe\n        let equal = {expression} == \"text\"\npublic func main() => ()");
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "compare");
         Assert.DoesNotContain(body.Values, x => x.Kind == OwnershipValueKind.PointerLoad);
@@ -1086,14 +1086,14 @@ public class ForeignEmissionTest
                 public var count: i32
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/string, size: u64, kind: u32, protect: u32) -> unsafe/string
+                public unsafe func allocate(address: raw/string, size: u64, kind: u32, protect: u32) -> raw/string
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/string, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/string, size: u64, kind: u32) -> i32
             public func main()
-                var p: unsafe/string = null
+                var p: raw/string = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
-                var holder: unsafe/Holder = null
-                unsafe => holder = (p@unsafe/u8 + 256)@unsafe/Holder
+                var holder: raw/Holder = null
+                unsafe => holder = (p@raw/u8 + 256)@raw/Holder
                 unsafe
                     *p = "alpha"
                     p[1] = "beta"
@@ -1131,14 +1131,14 @@ public class ForeignEmissionTest
                     else => Console.writeLine("two")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func take(p: unsafe/E<R>) -> E<R>
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func take(p: raw/E<R>) -> E<R>
                 unsafe => return *p
-            func values(bytes: unsafe/u8)
+            func values(bytes: raw/u8)
                 unsafe
-                    let p = bytes@unsafe/E<R>
+                    let p = bytes@raw/E<R>
                     // Tag zero denotes Empty, so no payload is read or destroyed.
                     *p = .Value(R.init(1))
                     p[0] = .Value(R.init(2))
@@ -1147,24 +1147,24 @@ public class ForeignEmissionTest
                         .Value(let value)
                             require value.n == 2 else => $abort("payload")
                             Console.writeLine("value")
-                    let text = (bytes + 64)@unsafe/E<string>
+                    let text = (bytes + 64)@raw/E<string>
                     *text = .Value("first")
                     *text = .Empty
                     text[1] = .Value("second")
                     let retained = text[1]
-                    let aligned = (bytes + 192)@unsafe/E<u128>
+                    let aligned = (bytes + 192)@raw/E<u128>
                     aligned[1] = .Value(340282366920938463463374607431768211455)
                     let wide = aligned[1]
                     match wide@move
                         .Empty => $abort("wide tag")
                         .Value(let value)
                             require value == 340282366920938463463374607431768211455 else => $abort("wide value")
-                    let nested = (bytes + 320)@unsafe/E<E<string>>
+                    let nested = (bytes + 320)@raw/E<E<string>>
                     *nested = .Value(.Value("nested"))
                     let nestedResult = *nested
                     Console.writeLine("done")
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
                 values(bytes)
                 var freed: i32 = 0
@@ -1191,39 +1191,39 @@ public class ForeignEmissionTest
                 drop => Console.writeLine("empty")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             func make() -> Resource
                 Console.writeLine("rhs")
                 return Resource.init(1)
-            func target(p: unsafe/Resource) -> unsafe/Resource
+            func target(p: raw/Resource) -> raw/Resource
                 Console.writeLine("target")
                 return p
-            func early(p: unsafe/Resource)
+            func early(p: raw/Resource)
                 unsafe
                     p[do => return] = make()
-            func replace(bytes: unsafe/u8)
+            func replace(bytes: raw/u8)
                 unsafe
-                    let p = bytes@unsafe/Resource
+                    let p = bytes@raw/Resource
                     *target(p) = make()
                     Console.writeLine("stored")
                     p[0] = if true => Resource.init(2) else => Resource.init(1)
                     let result = *p
                     require result.value == 2 else => $abort("value")
-                    let empty = (bytes + 16)@unsafe/Empty
+                    let empty = (bytes + 16)@raw/Empty
                     *empty = Empty.init()
                     let emptyResult = *empty
-                    let tuples = (bytes + 32)@unsafe/(Resource, Resource)
+                    let tuples = (bytes + 32)@raw/(Resource, Resource)
                     *tuples = (Resource.init(1), Resource.init(2))
                     let tuple = *tuples
-                    let stopped = (bytes + 64)@unsafe/Resource
+                    let stopped = (bytes + 64)@raw/Resource
                     early(stopped)
                     let untouched = *stopped
                     require untouched.value == 0 else => $abort("early store")
                     Console.writeLine("scope")
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
                 replace(bytes)
                 var freed: i32 = 0
@@ -1247,38 +1247,38 @@ public class ForeignEmissionTest
                 drop => Console.writeLine("empty")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func take(p: unsafe/Resource) -> Resource
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func take(p: raw/Resource) -> Resource
                 unsafe => return *p
             func use(value: Resource)
                 Console.writeLine("use")
-            func choose(p: unsafe/Resource, flag: bool) -> Resource
+            func choose(p: raw/Resource, flag: bool) -> Resource
                 unsafe
                     if flag => return p[0]
                     return p[1]
-            func early(p: unsafe/Resource)
+            func early(p: raw/Resource)
                 unsafe
                     let value = *p
                     defer => Console.writeLine("defer")
                     return
-            func reads(bytes: unsafe/u8)
+            func reads(bytes: raw/u8)
                 unsafe
                     // VirtualAlloc's zero bytes are valid initialized scalar fields.
                     // Each Non-Copy source is read exactly once; no raw owner is destroyed.
-                    let first = take(bytes@unsafe/Resource)
+                    let first = take(bytes@raw/Resource)
                     use(first@move)
-                    let tuple = *((bytes + 16)@unsafe/(Resource, Resource))
-                    let array = ((bytes + 32)@unsafe/[2 of Resource])[0]
-                    let empty = *((bytes + 64)@unsafe/Empty)
-                    use(choose((bytes + 80)@unsafe/Resource, true))
-                    use(choose((bytes + 96)@unsafe/Resource, false))
-                    early((bytes + 112)@unsafe/Resource)
-                    *((bytes + 128)@unsafe/Resource)
+                    let tuple = *((bytes + 16)@raw/(Resource, Resource))
+                    let array = ((bytes + 32)@raw/[2 of Resource])[0]
+                    let empty = *((bytes + 64)@raw/Empty)
+                    use(choose((bytes + 80)@raw/Resource, true))
+                    use(choose((bytes + 96)@raw/Resource, false))
+                    early((bytes + 112)@raw/Resource)
+                    *((bytes + 128)@raw/Resource)
                     Console.writeLine("scope")
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
                 reads(bytes)
                 var freed: i32 = 0
@@ -1292,7 +1292,7 @@ public class ForeignEmissionTest
     [Fact]
     public void MovingAPointerReadValuePreventsItsReuse()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: unsafe/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R)\n    unsafe\n        let value = *p\n        let moved = value@move\n        let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1303,7 +1303,7 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerReplacementConsumesTheSourceOwner()
     {
-        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: unsafe/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("struct R\n    public var n: i32\n    drop => ()\nfunc test(p: raw/R, value: R)\n    unsafe => *p = value@move\n    let again = value@move\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.ErrorCount > 0);
         using var writer = new StringWriter();
@@ -1323,9 +1323,9 @@ public class ForeignEmissionTest
                     Console.writeLine("new cleanup")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/R, size: u64, kind: u32, protect: u32) -> unsafe/R
+                public unsafe func allocate(address: raw/R, size: u64, kind: u32, protect: u32) -> raw/R
             public func main()
-                var p: unsafe/R = null
+                var p: raw/R = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 let value = R.init(1)
                 Console.writeLine("rhs")
@@ -1345,22 +1345,22 @@ public class ForeignEmissionTest
                 drop => Console.writeLine("marker")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             func offset() -> isize
                 Console.writeLine("offset")
                 return 7
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var units: unsafe/() = null
-                unsafe => units = bytes@unsafe/()
-                var moved: unsafe/() = null
+                var units: raw/() = null
+                unsafe => units = bytes@raw/()
+                var moved: raw/() = null
                 unsafe => moved = units + offset() - 3
                 require moved == units else => $abort("displacement")
-                var markers: unsafe/Marker = null
-                unsafe => markers = bytes@unsafe/Marker
+                var markers: raw/Marker = null
+                unsafe => markers = bytes@raw/Marker
                 unsafe
                     markers[offset()] = Marker.init() // Replacement destroys the value already at *markers.
                     _ = markers[-2]                   // Moves out the new value, the same Place, and destroys it.
@@ -1381,29 +1381,29 @@ public class ForeignEmissionTest
                 public init() => ()
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
-            func target(p: unsafe/()) -> unsafe/()
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
+            func target(p: raw/()) -> raw/()
                 Console.writeLine("target")
                 return p
             func value()
                 Console.writeLine("value")
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
-                var units: unsafe/() = null
-                unsafe => units = bytes@unsafe/()
+                var units: raw/() = null
+                unsafe => units = bytes@raw/()
                 unsafe
                     let unit = *target(units)
                     *target(units) = value()
-                var empty: unsafe/Empty = null
-                unsafe => empty = bytes@unsafe/Empty
+                var empty: raw/Empty = null
+                unsafe => empty = bytes@raw/Empty
                 unsafe
                     let item = *empty
                     *empty = item
-                var arrays: unsafe/[0 of i32] = null
-                unsafe => arrays = bytes@unsafe/[0 of i32]
+                var arrays: raw/[0 of i32] = null
+                unsafe => arrays = bytes@raw/[0 of i32]
                 unsafe
                     let array = *arrays
                     *arrays = array
@@ -1422,7 +1422,7 @@ public class ForeignEmissionTest
     [InlineData("operation")]
     public void IncompletePointerAggregatePlansRejectBeforeWriting(string mutation)
     {
-        var c = MinimalEmissionTest.Analyze("func update(p: unsafe/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("func update(p: raw/(i32, i64))\n    unsafe => *p = (1, 2)\npublic func main() => ()");
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "update");
         var store = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.PointerStore);
@@ -1452,7 +1452,7 @@ public class ForeignEmissionTest
     [Fact]
     public void PointerTransfersUseTheCLayoutRepresentation()
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\nfunc read(p: unsafe/Pair)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct Pair\n    Self is Copy\n    public var a: u8\n    public var b: u64\nfunc read(p: raw/Pair)\n    unsafe\n        let value = *p\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var ir = CompilationTestHelper.WriteIr(c);
@@ -1473,17 +1473,17 @@ public class ForeignEmissionTest
                     self.b = b
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/Pair, size: u64, kind: u32, protect: u32) -> unsafe/Pair
+                public unsafe func allocate(address: raw/Pair, size: u64, kind: u32, protect: u32) -> raw/Pair
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/Pair, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/Pair, size: u64, kind: u32) -> i32
             public func main()
-                var p: unsafe/Pair = null
+                var p: raw/Pair = null
                 unsafe => p = Native.allocate(null, 4096, 12288, 4)
                 unsafe
                     *p = Pair.init(7, 42)
                     let value = *p
                     require value.a == 7 and value.b == 42 else => $abort("fields")
-                    require *(p@unsafe/u64) == 42 else => $abort("order")
+                    require *(p@raw/u64) == 42 else => $abort("order")
                 var freed: i32 = 0
                 unsafe => freed = Native.free(p, 0, 32768)
                 require freed != 0 else => $abort("free")
@@ -1507,7 +1507,7 @@ public class ForeignEmissionTest
         // SPEC 5.3: a zero stride makes every displacement zero; ZeroStrideArithmeticAndIndexingKeepThePointer executes it.
         foreach (var operation in new[] { "p + 0", "p - 0", "p += 0", "p -= 0", "p[0]" })
         {
-            var c = MinimalEmissionTest.Analyze($"open struct Empty\nstruct Nested\n    public var value: (Empty, [4 of ()])\nstruct Derived: Empty\nstruct Box<T>\n    public var value: T\nfunc test()\n    var p: unsafe/{type} = null\n    unsafe => {operation}\npublic func main() => ()");
+            var c = MinimalEmissionTest.Analyze($"open struct Empty\nstruct Nested\n    public var value: (Empty, [4 of ()])\nstruct Derived: Empty\nstruct Box<T>\n    public var value: T\nfunc test()\n    var p: raw/{type} = null\n    unsafe => {operation}\npublic func main() => ()");
             Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         }
     }
@@ -1518,17 +1518,17 @@ public class ForeignEmissionTest
     [InlineData("[1 of i32]")]
     [InlineData("Box<i32>")]
     [InlineData("Derived")]
-    [InlineData("unsafe/()")]
+    [InlineData("raw/()")]
     public void NonzeroPointerStrideIsNotRejected(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"open struct Base\n    public var value: i32\nstruct Derived: Base\nstruct Box<T>\n    public var value: T\nfunc test(p: unsafe/{type})\n    unsafe\n        let next = p + 1\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze($"open struct Base\n    public var value: i32\nstruct Derived: Base\nstruct Box<T>\n    public var value: T\nfunc test(p: raw/{type})\n    unsafe\n        let next = p + 1\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]
     public void SymbolicArrayLengthIsNotMistakenForZeroStride()
     {
-        var c = MinimalEmissionTest.Analyze("func test<length N>(p: unsafe/[N of i32])\n    unsafe\n        let next = p + 1\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("func test<length N>(p: raw/[N of i32])\n    unsafe\n        let next = p + 1\npublic func main() => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -1569,34 +1569,34 @@ public class ForeignEmissionTest
                     else => Console.writeLine("new")
             group Native
                 #LibraryImport("kernel32", "VirtualAlloc")
-                public unsafe func allocate(address: unsafe/u8, size: u64, kind: u32, protect: u32) -> unsafe/u8
+                public unsafe func allocate(address: raw/u8, size: u64, kind: u32, protect: u32) -> raw/u8
                 #LibraryImport("kernel32", "VirtualFree")
-                public unsafe func free(address: unsafe/u8, size: u64, kind: u32) -> i32
+                public unsafe func free(address: raw/u8, size: u64, kind: u32) -> i32
             public func main()
-                var bytes: unsafe/u8 = null
+                var bytes: raw/u8 = null
                 unsafe => bytes = Native.allocate(null, 4096, 12288, 4)
                 unsafe
-                    let p = bytes@unsafe/Record
+                    let p = bytes@raw/Record
                     p[0] = Record.init(7, 42, 9)
                     p[1] = Record.init(11, 99, 13)
                     let value = p[1]
                     require value.a == 11 and value.b == 99 and value.c == 13 else => $abort("value")
                     require bytes[0] == 7 and bytes[16] == 9 and bytes[24] == 11 and bytes[40] == 13 else => $abort("C offsets")
-                    require *((bytes + 8)@unsafe/u64) == 42 and *((bytes + 32)@unsafe/u64) == 99 else => $abort("C alignment")
-                    let compact = (bytes + 64)@unsafe/Compact
+                    require *((bytes + 8)@raw/u64) == 42 and *((bytes + 32)@raw/u64) == 99 else => $abort("C alignment")
+                    let compact = (bytes + 64)@raw/Compact
                     let other = *compact
                     require (p + 1)@usize - p@usize == 24 else => $abort("C stride")
                     require (compact + 1)@usize - compact@usize == 16 else => $abort("Kimigayo stride")
-                    let outer = (bytes + 128)@unsafe/Outer
+                    let outer = (bytes + 128)@raw/Outer
                     bytes[136] = 21
                     let nested = *outer
                     require nested.record.a == 21 else => $abort("nested offset")
                     require (outer + 1)@usize - outer@usize == 32 else => $abort("nested stride")
-                    let generic = (bytes + 192)@unsafe/Generic<u64>
+                    let generic = (bytes + 192)@raw/Generic<u64>
                     bytes[200] = 23
                     let instantiated = *generic
                     require instantiated.value == 23 else => $abort("generic offset")
-                    let resource = (bytes + 256)@unsafe/Resource
+                    let resource = (bytes + 256)@raw/Resource
                     *resource = Resource.init(1)
                     let moved = *resource
                 var freed: i32 = 0
@@ -1616,7 +1616,7 @@ public class ForeignEmissionTest
     [InlineData("struct S\n    var empty: [2 of ()]")]
     public void InvalidCLayoutsCannotGenerate(string declaration)
     {
-        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: unsafe/S)\n    unsafe\n        let value = *p\npublic func main() => ()");
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\n" + declaration + "\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\npublic func main() => ()");
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

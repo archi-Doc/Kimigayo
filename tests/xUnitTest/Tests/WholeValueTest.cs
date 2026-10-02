@@ -22,7 +22,7 @@ public class WholeValueTest
     [InlineData("(i32) -> i32", true)]
     [InlineData("ref/i32", false)]
     [InlineData("uniq/S", false)]
-    [InlineData("unsafe/i32", false)]
+    [InlineData("raw/i32", false)]
     [InlineData("obj/S", false)]
     [InlineData("rc/S", false)]
     public void SealedTestsOnlyOuterCore(string type, bool expected)

@@ -17,7 +17,7 @@ public sealed partial class KimiLibrary
         }
 
         return parameter.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, OriginName: null, OriginExpression: null } input &&
-            function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, OriginName: null, OriginExpression: null } result &&
+            function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, OriginName: null, OriginExpression: null } result &&
             BareName(input.Type, "i64") && BareName(result.Type, "i64");
     }
 }

@@ -49,10 +49,10 @@ public class LayoutAttributeBindingTest
 
     [Theory]
     [InlineData("func f(p: P<()>) => ()", false)]
-    [InlineData("func f() -> i32\n    var p: unsafe/P<[0 of i32]> = null\n    return 0", false)]
-    [InlineData("struct E\nfunc f(p: unsafe/P<E>) => ()", false)]
+    [InlineData("func f() -> i32\n    var p: raw/P<[0 of i32]> = null\n    return 0", false)]
+    [InlineData("struct E\nfunc f(p: raw/P<E>) => ()", false)]
     [InlineData("func f(p: P<i32>) => ()", true)]
-    [InlineData("func f(p: unsafe/P<[1 of u8]>) => ()", true)]
+    [InlineData("func f(p: raw/P<[1 of u8]>) => ()", true)]
     public void WrittenCLayoutInstantiationsRejectZeroSizedFields(string use, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\n" + use);

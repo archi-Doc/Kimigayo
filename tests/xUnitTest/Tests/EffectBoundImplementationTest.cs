@@ -36,9 +36,9 @@ public class EffectBoundImplementationTest
     // SPEC 8.4.10.2: an environment effect obtains authority over mutable state from the environment; accesses made with
     // authority from the inputs are none, even through a raw pointer or a borrow of static storage.
     [Theory]
-    [InlineData("struct RawSink\n    Self is Sink\n    var slot: unsafe/i32\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            *self.slot = value\n        return .Ok(())\n", true)]
-    [InlineData("struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@unsafe/i32\n            *register = value\n        return .Ok(())\n", false)]
-    [InlineData("group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: unsafe/i64) -> i32\nstruct ForeignSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        let output: unsafe/i64 = null\n        unsafe => _ = Native.query(output)\n        return .Ok(())\n", false)]
+    [InlineData("struct RawSink\n    Self is Sink\n    var slot: raw/i32\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            *self.slot = value\n        return .Ok(())\n", true)]
+    [InlineData("struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@raw/i32\n            *register = value\n        return .Ok(())\n", false)]
+    [InlineData("group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\nstruct ForeignSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n        return .Ok(())\n", false)]
     [InlineData("struct Counter\n    var count: isize = 0\n    public func increment(self: uniq/Self) => self.count += 1\ncontract Tally\n    func add(self: ref/Self, total: uniq/Counter)\n        effect confined\nstruct Adder\n    Self is Tally\n    public func add(self: ref/Self, total: uniq/Counter)\n        total.increment()\n", true)]
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
     {
@@ -54,9 +54,9 @@ public class EffectBoundImplementationTest
     [Fact]
     public void PreservesResultsAdmitsForeignCalls()
     {
-        const string Declarations = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: unsafe/i64) -> i32\n" +
+        const string Declarations = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n" +
             "struct Polled<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n" +
-            "        let output: unsafe/i64 = null\n        unsafe => _ = Native.query(output)\n        return self.inner.next()\n";
+            "        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n        return self.inner.next()\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }

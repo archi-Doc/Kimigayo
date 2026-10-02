@@ -14,7 +14,7 @@ public class EnumGenericConstraintBindingTest
     [InlineData("Box<string>", "E<Box<string>>.Empty")]
     [InlineData("(i32, Box<string>)", ".Empty")]
     [InlineData("[2 of Box<string>]", ".Empty")]
-    [InlineData("unsafe/Box<string>", ".Empty")]
+    [InlineData("raw/Box<string>", ".Empty")]
     public void InvalidNestedArgumentCannotPublishConstruction(string argument, string expression)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nenum E<T>\n    Empty\ngroup Consumer\n    func make() -> E<" + argument + "> => " + expression);

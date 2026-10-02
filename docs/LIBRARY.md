@@ -455,8 +455,8 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 
 | Function | Guarantee |
 | --- | --- |
-| `Windows.queryPerformanceCounter(value: unsafe/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
-| `Windows.queryPerformanceFrequency(value: unsafe/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
+| `Windows.queryPerformanceCounter(value: raw/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
+| `Windows.queryPerformanceFrequency(value: raw/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
 
 `Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
 

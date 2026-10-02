@@ -14,7 +14,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
             plan.ArgumentOperations[0].ParameterType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var input] } storage ||
             !ReferenceEquals(input, BoundType.Primitives["i64"]) ||
-            plan.ReturnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var result] } ||
+            plan.ReturnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var result] } ||
             !ReferenceEquals(input, result) || !ReferenceEquals(call.BoundType, plan.ReturnType))
         {
             return Fail("Raw i64 address requires its verified exclusive input and pointer result.", out failure);

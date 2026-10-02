@@ -175,13 +175,13 @@ public class SpecRevisionAnalysisTest
     }
 
     [Theory]
-    [InlineData("let pointer: unsafe/i32 = null")]
-    [InlineData("let pointer: unsafe/i32 = null\nlet empty = pointer == null")]
-    [InlineData("let pointer: unsafe/i32 = null\nlet empty = null != pointer")]
-    [InlineData("let pointer: unsafe/i32 = null\nlet empty = pointer == (null)")]
-    [InlineData("func f(flag: bool, pointer: unsafe/i32) -> unsafe/i32 => if flag => pointer else => null")]
-    [InlineData("func f(flag: bool, pointer: unsafe/i32) -> unsafe/i32 => if flag => (null) else => pointer")]
-    [InlineData("func f() -> unsafe/i32 => null")]
+    [InlineData("let pointer: raw/i32 = null")]
+    [InlineData("let pointer: raw/i32 = null\nlet empty = pointer == null")]
+    [InlineData("let pointer: raw/i32 = null\nlet empty = null != pointer")]
+    [InlineData("let pointer: raw/i32 = null\nlet empty = pointer == (null)")]
+    [InlineData("func f(flag: bool, pointer: raw/i32) -> raw/i32 => if flag => pointer else => null")]
+    [InlineData("func f(flag: bool, pointer: raw/i32) -> raw/i32 => if flag => (null) else => pointer")]
+    [InlineData("func f() -> raw/i32 => null")]
     public void NullIsAContextuallyTypedLiteral(string source)
     {
         var tree = Parse(source);
@@ -189,7 +189,7 @@ public class SpecRevisionAnalysisTest
         Assert.Empty(analysis.Issues);
         var nulls = analysis.Nodes.Where(x => x.Key is NullLiteralKoto).ToArray();
         Assert.NotEmpty(nulls);
-        Assert.All(nulls, x => Assert.Equal("unsafe/i32", x.Value.ExpressionType!.Name));
+        Assert.All(nulls, x => Assert.Equal("raw/i32", x.Value.ExpressionType!.Name));
         Parse(tree.GeneratedFunction!.ToString());
     }
 
@@ -205,33 +205,33 @@ public class SpecRevisionAnalysisTest
         => Assert.NotEmpty(Analyze(source).Issues);
 
     [Theory]
-    [InlineData("unsafe func f(pointer: unsafe/i32) -> i32\n    return *pointer", false)]
-    [InlineData("func f(pointer: unsafe/i32) -> i32\n    unsafe => return *pointer", true)]
-    [InlineData("unsafe\n    func f(pointer: unsafe/i32) -> i32\n        return *pointer", false)]
-    [InlineData("func f(pointer: unsafe/i32)\n    unsafe\n        defer => *pointer", true)]
-    [InlineData("func f(pointer: unsafe/i32)\n    defer => unsafe => *pointer", true)]
-    [InlineData("func f(pointer: unsafe/i32)\n    defer => *pointer", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nlet next = pointer + 1", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe\n    let next = pointer + 1", true)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer[^1]", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer[(^1)]", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer[0..4]", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer[(0..4)]", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer@i32", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer - pointer", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => 1 + pointer", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nlet address = pointer@usize", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe\n    let address = pointer@usize", true)]
-    [InlineData("let a: unsafe/i32 = null\nlet b: unsafe/u8 = null\na == b", false)]
-    [InlineData("let a: unsafe/i32 = null\na < a", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer * pointer", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer / 2", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => pointer << 1", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe => -pointer", false)]
+    [InlineData("unsafe func f(pointer: raw/i32) -> i32\n    return *pointer", false)]
+    [InlineData("func f(pointer: raw/i32) -> i32\n    unsafe => return *pointer", true)]
+    [InlineData("unsafe\n    func f(pointer: raw/i32) -> i32\n        return *pointer", false)]
+    [InlineData("func f(pointer: raw/i32)\n    unsafe\n        defer => *pointer", true)]
+    [InlineData("func f(pointer: raw/i32)\n    defer => unsafe => *pointer", true)]
+    [InlineData("func f(pointer: raw/i32)\n    defer => *pointer", false)]
+    [InlineData("let pointer: raw/i32 = null\nlet next = pointer + 1", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe\n    let next = pointer + 1", true)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer[^1]", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer[(^1)]", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer[0..4]", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer[(0..4)]", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer@i32", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer - pointer", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => 1 + pointer", false)]
+    [InlineData("let pointer: raw/i32 = null\nlet address = pointer@usize", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe\n    let address = pointer@usize", true)]
+    [InlineData("let a: raw/i32 = null\nlet b: raw/u8 = null\na == b", false)]
+    [InlineData("let a: raw/i32 = null\na < a", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer * pointer", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer / 2", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => pointer << 1", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe => -pointer", false)]
     [InlineData("unsafe => *1", false)]
-    [InlineData("let pointer: unsafe/i32 = 1", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nlet other: unsafe/u8 = pointer", false)]
-    [InlineData("let pointer: unsafe/i32 = null\nunsafe\n    let other: unsafe/u8 = pointer@unsafe/u8", true)]
+    [InlineData("let pointer: raw/i32 = 1", false)]
+    [InlineData("let pointer: raw/i32 = null\nlet other: raw/u8 = pointer", false)]
+    [InlineData("let pointer: raw/i32 = null\nunsafe\n    let other: raw/u8 = pointer@raw/u8", true)]
     public void ChecksKnownUnsafeOperationsAndLexicalPermission(string source, bool valid)
     {
         var analysis = Analyze(source);

@@ -163,13 +163,13 @@ public class DictionaryLibraryTest
     public void PointerReturningCallbacksUseOrdinaryCallAbi()
     {
         const string Source = """
-            func invoke(f: (isize) -> unsafe/u8) -> unsafe/u8 => f(0)
+            func invoke(f: (isize) -> raw/u8) -> raw/u8 => f(0)
             unsafe
                 let address: usize = 4096
-                let expected = address@unsafe/u8
-                let concrete = func [address] (offset: isize) -> unsafe/u8
-                    unsafe => return address@unsafe/u8
-                let erased: (isize) -> unsafe/u8 = concrete
+                let expected = address@raw/u8
+                let concrete = func [address] (offset: isize) -> raw/u8
+                    unsafe => return address@raw/u8
+                let erased: (isize) -> raw/u8 = concrete
                 require concrete(0) == expected and erased(0) == expected else => $abort("pointer result")
                 require invoke(erased@move) == expected else => $abort("forwarded result")
             """;

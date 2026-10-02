@@ -5,11 +5,11 @@ public group Windows
     /// - safety: `value` points to live, writable, eight-byte-aligned i64 storage, with no conflicting
     ///   access during the call. The API does not retain the pointer.
     #LibraryImport("kernel32", "QueryPerformanceCounter")
-    public unsafe func queryPerformanceCounter(value: unsafe/i64) -> i32
+    public unsafe func queryPerformanceCounter(value: raw/i64) -> i32
 
     /// Writes the counter frequency in counts per second and returns nonzero on success.
     ///
     /// - safety: `value` points to live, writable, eight-byte-aligned i64 storage, with no conflicting
     ///   access during the call. The API does not retain the pointer.
     #LibraryImport("kernel32", "QueryPerformanceFrequency")
-    public unsafe func queryPerformanceFrequency(value: unsafe/i64) -> i32
+    public unsafe func queryPerformanceFrequency(value: raw/i64) -> i32

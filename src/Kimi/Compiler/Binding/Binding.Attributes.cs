@@ -242,7 +242,7 @@ public sealed partial class Binding
 
     // SPEC 22.3.2: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
     // pointers, with Unit only as a result. The signature is one physical code per result and
-    // parameter (i8/u8 share i8, every unsafe/T is ptr); it is null when a Type failed to bind,
+    // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
     // since that Type already has its own diagnostic.
     private bool TryGetImportAbi(FunctionKoto function, int ordinal, out string? signature)
     {
@@ -291,7 +291,7 @@ public sealed partial class Binding
         return true;
 
         static char PhysicalCode(BoundType type)
-            => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } ? 'p' :
+            => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
                 type.Kind != BoundTypeKind.Primitive ? '\0' :
                 type.Underlying.Name switch
                 {

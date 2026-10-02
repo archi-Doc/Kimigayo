@@ -143,7 +143,7 @@ public class DictionaryStorageValidationTest
 
     [Theory]
     [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
-    [InlineData("unsafe => _ = Kimi.Storage.lendKey(map@ref, null@unsafe/u8)")]
+    [InlineData("unsafe => _ = Kimi.Storage.lendKey(map@ref, null@raw/u8)")]
     [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
     [InlineData("Kimi.Storage.missingDictionaryKey()")]
     [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]

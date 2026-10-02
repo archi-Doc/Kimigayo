@@ -10,7 +10,7 @@ public class CallTypeCompletionBindingTest
 {
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     public void LateInvalidGenericArgumentCannotRemainCallable(string type)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + type + ">()");
@@ -36,7 +36,7 @@ public class CallTypeCompletionBindingTest
 
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void LateInvalidSignatureTypeCannotRemainCallable(string type)
     {
@@ -49,7 +49,7 @@ public class CallTypeCompletionBindingTest
 
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void ValidInstantiatedTypesRetainCallPlan(string type)
     {
@@ -96,7 +96,7 @@ public class CallTypeCompletionBindingTest
     [Fact]
     public void WarmInstantiatedCallChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: unsafe/E<Source>) => take(value)");
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + "group Consumer\n    func take<T>(value: T) -> T => value@move\n    func call(value: raw/E<Source>) => take(value)");
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

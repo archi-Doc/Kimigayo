@@ -54,7 +54,7 @@ internal static class ReferenceTypes
         && ScalarTypes.Supports(type.Components[0]);
 
     // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
-    internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 };
+    internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
 
     internal static bool IsValue(BoundType? type) => ScalarTypes.Supports(type) || IsBorrow(type) || IsPointer(type);
 

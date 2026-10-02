@@ -16,7 +16,7 @@ public class NestedTypeParseTest
     [InlineData("ref/uniq/T")]
     [InlineData("uniq/ref/T")]
     [InlineData("ref/obj/Node")]
-    [InlineData("unsafe/ref/i32")]
+    [InlineData("raw/ref/i32")]
     [InlineData("ref/ref/ref/T during outer")]
     [InlineData("ref/(ref/T during inner) during outer")]
     [InlineData("uniq/(ref/(ref/T during a) during b) during c")]
@@ -152,15 +152,15 @@ public class NestedTypeParseTest
         Assert.Equal(new ControlFlowType("i32"), types.GetDeclaredType(ParseParameterType("(i32)")));
         Assert.Null(types.GetDeclaredType(ParseParameterType("(i32,)")));
         Assert.Null(types.GetDeclaredType(ParseParameterType("ref/ref/i32")));
-        Assert.Equal(new ControlFlowType("unsafe/unsafe/i32"), types.GetDeclaredType(ParseParameterType("unsafe/(unsafe/i32)")));
-        Assert.NotEmpty(TestDiagnostics.Of(Parse("func f(x: unsafe/(unsafe/i32 during inner))")));
+        Assert.Equal(new ControlFlowType("raw/raw/i32"), types.GetDeclaredType(ParseParameterType("raw/(raw/i32)")));
+        Assert.NotEmpty(TestDiagnostics.Of(Parse("func f(x: raw/(raw/i32 during inner))")));
     }
 
     [Theory]
-    [InlineData("unsafe/ref/T", true)]
-    [InlineData("(unsafe/ref/T)", true)]
-    [InlineData("owner/(unsafe/ref/T)", true)]
-    [InlineData("ref/unsafe/T", false)]
+    [InlineData("raw/ref/T", true)]
+    [InlineData("(raw/ref/T)", true)]
+    [InlineData("owner/(raw/ref/T)", true)]
+    [InlineData("ref/raw/T", false)]
     public void GroupingCannotHideKnownUnsafeTargetSemantics(string type, bool requiresUnsafe)
     {
         var tree = ParseSuccess($"let result = value@{type}");

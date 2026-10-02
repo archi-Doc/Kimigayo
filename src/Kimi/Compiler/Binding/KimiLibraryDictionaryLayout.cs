@@ -36,7 +36,7 @@ public sealed partial class KimiLibrary
         function.GenericArguments is [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] &&
         function.TypeConstraints is [IsKoto { IsNegated: false } constraint] &&
         function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: GenericsKoto { TypeArguments: [var key, var value] } input } }] &&
-        function.ReturnType is TupleTypeKoto { ElementNodes: [TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } address, var stride] } &&
+        function.ReturnType is TupleTypeKoto { ElementNodes: [TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } address, var stride] } &&
         ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
         BareName(constraint.Left, "K") && BareName(constraint.Right, "Equatable") && BareName(input.Identifier, "Dictionary") &&
         BareName(key, "K") && BareName(value, "V") && BareName(address.Type, "u8") &&
@@ -52,7 +52,7 @@ public sealed partial class KimiLibrary
             function.Name != (entry ? "placeEntry" : "placeValue") || !ReferenceEquals(function.Parent, this.StorageScope.Owner) ||
             function.GenericArguments is not [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] ||
             function.Parameters.Count != (entry ? 3 : 2) || !PlacementInput(function.Parameters[0], entry ? "handle" : "slot") ||
-            function.Parameters[0].Type is not TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } address || !BareName(address.Type, "u8"))
+            function.Parameters[0].Type is not TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } address || !BareName(address.Type, "u8"))
         {
             return false;
         }

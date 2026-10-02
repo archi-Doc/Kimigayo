@@ -14,7 +14,7 @@ internal sealed partial class BodyLowering
             SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
             SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
-            address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
             !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), result) ||
             this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } layout || layout.Offset(0) != 0 || layout.Offset(1) != 8)
         {
@@ -72,7 +72,7 @@ internal sealed partial class BodyLowering
         var pointer = borrow ? null : SignatureType(this, plan.ArgumentOperations[1].ParameterType);
         var returnType = SignatureType(this, plan.ReturnType);
         if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) ||
-            (!borrow && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            (!borrow && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
                 returnType is not { Kind: BoundTypeKind.Semantics, Components: [var lent] } ||
                 returnType.Semantics != (kind == CompilerFunctionKind.StorageSplitValue ? SemanticsKind.Uniq : SemanticsKind.Ref) || !ReferenceEquals(lent, lendsKey ? keyType : valueType))))
         {
@@ -187,8 +187,8 @@ internal sealed partial class BodyLowering
         var returnType = SignatureType(this, plan.ReturnType);
         var pointer = owning ? null : input;
         if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) ||
-            (!owning && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-                returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var addressed] } ||
+            (!owning && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+                returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var addressed] } ||
                 !ReferenceEquals(addressed, plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? keyType : valueType))))
         {
             return Fail("Owned Dictionary storage operation result does not match its entry Types.", out failure);

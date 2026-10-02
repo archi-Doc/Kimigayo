@@ -69,7 +69,7 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
             SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Symbol.LibraryDeclaration: KimiDeclarationId.InlineStorage }] } storage ||
-            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe } result || !ReferenceEquals(SignatureType(this, call.BoundType), result))
+            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } result || !ReferenceEquals(SignatureType(this, call.BoundType), result))
         {
             return Fail("Inline storage base does not match its storage and pointer Types.", out failure);
         }

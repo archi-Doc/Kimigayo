@@ -18,7 +18,7 @@
     Category="Language"
     Message="A borrow Origin annotation requires safe-borrow Semantics"
     Label="this Semantics cannot carry a borrow Origin"
-    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, unsafe/(ref/T during a)."
+    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, raw/(ref/T during a)."
 
   + Name="BorrowOriginTarget_Kd"
     Category="Language"
@@ -507,7 +507,7 @@
 
   + Name="UnsupportedImportSignature_Kd"
     Category="Language"
-    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or unsafe/T, and Unit only as the result"
+    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or raw/T, and Unit only as the result"
 
   + Name="ConflictingImportSignature_Kd"
     Category="Language"
