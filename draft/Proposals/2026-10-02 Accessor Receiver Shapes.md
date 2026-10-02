@@ -147,9 +147,9 @@ Property 読み取り `x.p`（custom、computed、required `get`）の受け手�
 
 ### 3.3. setter の受け手取得
 
-`x.p = v`、複合代入、インクリメント・デクリメントの受け手は代入先（SPEC §13.7）であり、書き込み権限つきで排他に取得する。所有 setter がなくなるので、`holder@move.item = value` の形は存在せず、Copy の `Self` に対して setter が走ることもない。`objuniq/T` の経路は SPEC §7.3 の経路規則で `uniq/Self` を満たす。
+`x.p = v`、複合代入、インクリメント・デクリメントでは、代入先を書き込み権限つきで特定した後、custom・computed・required `set` の受け手を受信者式として取得する（SPEC §13.7.1、§7.3）。要求型が `uniq/Self` に固定されるので、`set` 自身の受け手取得による暗黙の Copy と所有権移転はなくなる。明示の `@move`・`@copy` は既存規則（SPEC §3.6.1、§15.1.5）に従い、`holder@move.item = value` や `point@copy.x = 10` は、明示的に作った一時値や Copy を更新する操作として書ける。`objuniq/T` の経路は SPEC §7.3 の経路規則で `uniq/Self` を満たす。
 
-複合代入（SPEC §13.7.2）は受け手を一度だけ特定し、`get`（共有）と `set`（排他）を順に呼ぶ。stored custom accessor では既にこの組合せであり、computed でも同じになる。
+複合代入（SPEC §13.7.2）は受け手を一度だけ特定し、`get`（共有）と `set`（排他）を順に呼ぶ。stored custom accessor と同じ組合せになる。
 
 ### 3.4. Non-Copy 結果と消費
 
@@ -190,24 +190,13 @@ SPEC §4.7.1 の命名対表と STYLE §1.2 の表に次の行を加え、既存
 
 ### 4.1. 診断
 
-Language Error `AccessorReceiverShape_Kd` を新設する（要件 `Binding.AccessorReceiverShape`：「the accessor receiver has the shape of its operation」）。現行の形成エラーを流用しない。原因は型の形成ではなく形状規則だからである。
+Language Error `AccessorReceiverShape_Kd` を新設する（要件 `Binding.AccessorReceiverShape`：「the accessor receiver has the shape of its operation」）。原因は型の形成ではなく形状規則なので、現行の形成エラーは流用しない。
 
 - **単位：** accessor 宣言ごとに一件。
 - **位置：** 主範囲は書かれた受け手の型。関連位置は Property の見出し。
 - **Reason：** accessor の種類（`get`/`set`）、書かれた Semantics、要求される形（`ref/Self` または `uniq/Self`）。
-- **Advice（条件つき）：**
-
-  | 書かれた受け手 | Advice |
-  | --- | --- |
-  | `get` に `uniq/Self`、`objuniq/Self` | `func name(self: uniq/Self) -> T` にし、使用側を `x.name()` にする |
-  | `get` に `Self`、`obj`/`rc`/`arc` 形式 | `func intoName(self: Self) -> T` にし、使用側を `x@move.intoName()` にする |
-  | `get` に `objref/Self` | `get()`（`ref/Self`）にする。object 経由の呼び出しは経路規則で成立する |
-  | `set` に `ref/Self`、`objref/Self` | `set(value: U)`（`uniq/Self`）にする |
-  | `set` に `Self`、`obj`/`rc`/`arc`/`objuniq` 形式 | `set(value: U)` にするか、`func withName(self: Self, value: U) -> Self` にする |
-
-- **構造化修復候補（SPEC §23.3.6）：** 次の二つを提示する。前提を満たさない場合は Advice のみとする。
-  - 「関数に書き換える」：前提は computed Property で `set` を持たず、Contract 要件でないこと。編集は `computed name: T` と `get(self: R) -> T` の見出しを `func name(self: R) -> T` に置き換え、本体・Origin 節・Attribute・アクセス修飾子を保つ。保証は宣言が形状検査を満たすこと。使用側の `x.name` は既存の診断（関数には呼び出しが必要）で別に報告する。
-  - 「受け手を既定形にする」：前提は `set` に `ref/Self`／`objref/Self` が書かれていること。編集は `uniq/Self` への置換。保証は宣言が形状検査を満たすこと（共有受け手で有効な本体は排他受け手でも有効）。
+- **Advice：** 書かれた受け手・Origin・本体を保ったまま関数へ移す（`func name(self: R) -> T`、setter なら `func name(self: R, value: U) -> ()`）。名前は本書 3.6 に従う。受け手の型を置き換える助言はしない。object 形式や所有形式の本体は値形式では成立しないことがあり、共有受け手で有効な本体（`self@copy` など）が排他受け手で有効とも限らないからである。
+- **構造化修復候補（SPEC §23.3.6）：** 「関数へ移す」一つを提示する。対象は `set` を持たず Contract 要件でない computed Property で、`computed name: T` と `get(self: R) -> T` の見出しを `func name(self: R) -> T` に置き換え、本体・Origin 節・Attribute・アクセス修飾子を保つ。受け手を保つので本体の意味は変わらず、関係する条件はない。使用側の `x.name` は既存の診断（関数には呼び出しが必要）で別に報告する。それ以外の対象は Advice にとどめる。
 - **SPEC §7.3 の診断表：** 「Only shared permission」行の提案「enclosing method に `self: uniq/Self`」は、enclosing の宣言が getter のときは提示せず、操作を関数へ移す Advice にする。
 
 ### 4.2. 回復と相互作用
@@ -252,7 +241,7 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 | 単位 | 作業 | 完了条件 |
 | --- | --- | --- |
 | U1：仕様・文書の取り込み | 本書 8 の更新、`docs/SETTLED.md` の項目追加、`draft/INTEGRATED.md` の記録、Milestone24 の再綴りと README・PLAN の更新 | 仕様が本書 3 と一致し、draft への依存がない |
-| U2：形状検査と診断 | `Binding.Properties.cs` の accessor 検証（`IsReceiverType` 判定の直後）に形状検査を加え、`BindingModel.cs` と `Binding.cs` のコード対応、`DiagnosticCode.cs`・`DiagnosticCode.tinyhand`・`DiagnosticRequirement.tinyhand` の項目、修復候補、SPEC §7.3 診断表の条件を実装する。`Binding.Expressions.cs` の受け手取得（受信者式の適応）は共有形式しか来なくなるので変更しない | 本書 2 の拒否例と正当な対が通り、CLI と language server の代表出力を確認し、DIAGNOSTICS §10 の手順を満たす |
+| U2：形状検査と診断 | `Binding.Properties.cs` の accessor 検証に形状検査を加え、`BindingModel.cs` と `Binding.cs` のコード対応、`DiagnosticCode.cs`・`DiagnosticCode.tinyhand`・`DiagnosticRequirement.tinyhand` の項目、修復候補、SPEC §7.3 診断表の条件を実装する。受け手取得処理（`Binding.Expressions.cs` の受信者式の適応）は変更しない | 本書 2 の拒否例と正当な対が通り、CLI と language server の代表出力を確認し、DIAGNOSTICS §10 の手順を満たす |
 | U3：テストと検証 | 本書 6 のテスト更新、fixture の置き換え、スナップショットの再基準化、STATUS の更新 | `verify.ps1 -Class AccessorReceiverBindingTest,PropertyBindingTest,ReceiverShorthandTest,CopyPropertyEmissionTest,DiagnosticSnapshotTest -Fixtures 'CopyProperty*.ll' -Milestone 24` が通り、最後に `-Mode Session` が通る |
 
 性能：検査は accessor 宣言ごとに Semantics の一比較で、使用ごとの費用はない。`WarmAccessorReceiverChecksAllocateNothing` の割当て回帰を維持する。
@@ -269,7 +258,7 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 | SPEC §11.4 | 明示要件シグネチャの受け手制限を一文加える（例 `ReplaceableItem` は既に適合） |
 | SPEC §7.3 | 例の `Meter.reading` を `func nextReading(self: uniq/Self)` に、`let seen = meter.reading` と `Registry.meter.reading` を呼び出し形に置き換える。「The `get` and `set` of one Property are distinct operations and are exempt」に形状が §11.2 で固定される旨を添える。診断表の「Only shared permission」行に本書 4.1 の条件を加える |
 | SPEC §4.7.1 | 命名対表に本書 3.6 の行を加える |
-| SPEC §3.4、§15.1.5、§15.6.7 | 定義は変えない。accessor の受け手取得が getter で共有、setter で代入先であることを一語添える |
+| SPEC §3.4、§13.7.1、§15.1.5、§15.6.7 | 変更なし。受信者式の定義と取得規則は現行どおりで、要求型の固定は §11.2 に書く |
 | Appendix F | `AccessorReceiver` の構文は変えない。散文（F.6 の accessor の段落）に形状規則を一文加える |
 | Appendix E | 変更なし（「Receiver Expression」「Getter result Type」はそのまま） |
 | STYLE §1.2、§3.3 | 命名対表の行を加える。§3.3 の `[Advice]` を `[Language]`（SPEC §11.2 への参照）にし、`into` 命名の `[Kimi]` 規則を一行加える |
@@ -296,7 +285,7 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 - **原則 1：** 読み取りは Property、更新と消費は関数という一つの形に揃え、accessor の受け手形式を操作ごとに一つにする。
 - **原則 2：** `x.p` と `x.p = v` が `x` に何をするかを、宣言を読まずに字面から決められる。
 - **原則 3：** 排他借用は `()` と名前、消費は `@move` と名前に必ず現れる。
-- **原則 4：** 問題を宣言で一度だけ報告し、前提つきの修復候補を提示する。
+- **原則 4：** 問題を宣言で一度だけ報告し、条件を明示した修復候補を提示する。
 
 ### 9.3. 残る確認
 
