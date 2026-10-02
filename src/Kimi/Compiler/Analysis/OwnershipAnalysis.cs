@@ -136,7 +136,8 @@ public sealed partial class OwnershipAnalysis
 
     public void ReportDiagnostics()
     {
-        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure.
+        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure. The result that a
+        // Block body leaves undelivered where it falls through rests on the fallthrough that control flow reported there.
         var diagnostics = this.compilation.Diagnostics;
         diagnostics.Invalidate(DiagnosticPartition.Ownership);
         for (var i = 0; i < this.issues.Count; i++)
@@ -167,11 +168,21 @@ public sealed partial class OwnershipAnalysis
                 continue; // SPEC 8.4.10.6: a destruction the bound excludes, reported at the violating effect.
             }
 
+            // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
+            // discarded body never falls through; a return delivers at its jump.
+            if (issue.Failure == OwnershipFailure.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&
+                this.flow?.Reported(body, DiagnosticCode.FunctionFallthrough_Kd) == true)
+            {
+                issue.Source.ReportDerived(DiagnosticRequirement.Ownership(issue.Failure), [body.KeyOf(DiagnosticRequirement.ControlFlow)]);
+                continue;
+            }
+
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
                 note: AcquisitionNote(issue),
                 evidence: issue.Failure == OwnershipFailure.TransferRequired ? [issue.Source.ToString()] : null,
+                advice: issue.Failure == OwnershipFailure.TransferRequired && issue.Source is DereferenceKoto ? $"Write ({issue.Source})@move to take the value; without the parentheses, @move applies to the pointer" : null,
                 related: RelatedLocations(issue));
         }
 
@@ -880,6 +891,21 @@ public sealed partial class OwnershipAnalysis
                     return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                 }
 
+                if (conversion.ConversionBinding == ConversionBinding.Address)
+                {
+                    // SPEC 5.4: P@raw checks P as an immediately ending shared borrow and converts the borrowed address. The
+                    // pointer carries no Origin, so the Loan ends with the borrow's only use.
+                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!);
+                    if (borrowed < 0)
+                    {
+                        return -1;
+                    }
+
+                    var address = this.Temporary(conversion);
+                    this.SetValue(this.Value(address), OwnershipValueKind.Convert, [this.Value(borrowed)]);
+                    return address;
+                }
+
                 if (this.ReadsStoredReference(conversion))
                 {
                     var stored = this.StoredReference(conversion);
@@ -899,8 +925,8 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 return this.ConversionValue(conversion);
-            case BinaryKoto element when ElementAccess.IsSyntax(element) && IsPointerPlace(element):
-                return this.ReadPointer(element, use);
+            case BinaryKoto element when ElementAccess.IsSyntax(element) && ElementAccess.IsRawPlace(element):
+                return this.ReadPointer(element, use, acquisition);
             case MemberAccessKoto member when member.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || ReferenceTypes.IsArray(member.Left.BoundType) || ReferenceTypes.IsDynamicArray(member.Left.BoundType) || ReferenceTypes.IsDictionary(member.Left.BoundType) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" or "isEmpty" or "indices" } && ReferenceTypes.IsSlice(member.Left.BoundType)):
@@ -909,7 +935,7 @@ public sealed partial class OwnershipAnalysis
                 ElementAccess.BorrowedPathRoot(member) is not null:
                 return this.ReadBorrowedField(member);
             case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
-                return this.ReadPointer(element, use);
+                return this.ReadPointer(element, use, acquisition);
             case IndexKoto slice when ElementAccess.IsSlicing(slice):
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
@@ -967,7 +993,7 @@ public sealed partial class OwnershipAnalysis
 
                 return this.RegisterTemporary(blockValue);
             case DereferenceKoto dereference:
-                return this.ReadPointer(dereference, use);
+                return this.ReadPointer(dereference, use, acquisition);
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 return this.UnaryValue(unary);
             default:
@@ -1026,7 +1052,7 @@ public sealed partial class OwnershipAnalysis
                 return this.WritePlaceCall(binary, exclusiveIndexer); // SPEC 4.6.9: an update selects indexUniq.
             }
 
-            if (IsPointerPlace(target))
+            if (ElementAccess.IsRawPlace(target))
             {
                 return this.WritePointer(binary, target);
             }

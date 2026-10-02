@@ -45,7 +45,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (call.ArgumentOperations.Length != 1 || SignatureType(this, call.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } input ||
             input.Semantics != SemanticsKind.Uniq || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
-            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 8 } layout)
+            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[8].Layout.Size != 0)
         {
             return Fail("Writer erasure requires a concrete exclusive input and its verified adapter layout.", out failure);
         }

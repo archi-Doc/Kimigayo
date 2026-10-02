@@ -37,7 +37,7 @@ A Signature determines whether declarations may coexist in one scope:
 | Field / computed / Property Requirement | Name |
 | Enum Case | Name within its enum; no payload overloads |
 
-**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts a Type declaration's own scalar schema slots, whether explicit or implicitly discovered; inherited slots and internal Type-argument dependencies are separate. OriginArity is not a callable-contract equality test: function contracts are compared by their completed quantifiers and relations (§15.3.7), not by a written binder count. Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
+**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts the own scalar schema slots that a Type declaration's header declares; inherited slots and internal Type-argument dependencies are separate. OriginArity is not a callable-contract equality test: function contracts are compared by their completed quantifiers and relations (§15.3.7), not by a written binder count. Origin schemas govern binding and fragment compatibility, not additional overloads: `View<T> {source}` and `View<T> {left, right}` cannot coexist as same-name, same-arity Type overloads.
 
 Types are normalized by resolved Symbol and Kotonoha/version: transparent aliases and resolved associated-Type projections are expanded, and grouping and redundant `owner` prefixes are removed. Every Semantics layer is preserved. Generic expressions are represented structurally by declared binder and slot position:
 

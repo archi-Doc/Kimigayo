@@ -25,14 +25,14 @@ The following declarations are required. The default Kimi alias makes `Text` vis
 | --- | --- | --- |
 | `Kimi` | `Utf8Format`, `BufferWriter` | Static Contracts above |
 | `Kimi` | `BufferFull` | Ordinary, stateless Copy struct; public `init()` |
-| `Kimi` | `WriteWindow {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload (§8.4.7.2) |
-| `Kimi` | `Utf8Writer {target}` | Verified intrinsic, Non-Copy; covariant `target`, required Loan `uniq`; opts out of ObjectPayload |
-| `Kimi.Text` | `FixedBuffer {source}` | Verified intrinsic, Non-Copy; covariant `source`, required Loan `uniq`; opts out of ObjectPayload |
+| `Kimi` | `WriteWindow {source}` | Non-Copy struct with a `Loan<uniq/u8 during source>` Field, so `source` is covariant with required Loan `uniq`; opts out of ObjectPayload (§8.4.7.2) |
+| `Kimi` | `Utf8Writer {target}` | Non-Copy struct with a `Loan<uniq/u8 during target>` Field, so `target` is covariant with required Loan `uniq`; opts out of ObjectPayload |
+| `Kimi.Text` | `FixedBuffer {source}` | Non-Copy struct with a `Loan<uniq/u8 during source>` Field, so `source` is covariant with required Loan `uniq`; opts out of ObjectPayload |
 | `Kimi.Text` | `HeapBuffer` | Ordinary Non-Copy struct owning a growable allocation |
 | `Kimi.Text` | `Utf8Slice {source}` | Ordinary Copy struct with a private `Slice<u8>`; required Loan `ref` |
 | `Kimi.Text` | `InvalidUtf8` | Ordinary, stateless Copy struct; public `init()` |
 
-Only the error types expose initializers; the other types are obtained through the operations below. Intrinsic Origin slots and permissions are fixed compiler metadata (§15.3.5), and neither raw pointers nor a source-declared phantom Origin can reproduce their authority. Window, view and adapter management performs no heap allocation, reference-count update or management callback. The three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads; the no-allocation requirement is a separate requirement on the operations.
+Only the error types expose initializers; the other types are obtained through the operations below. Their slot properties follow from their `Loan<T>` Fields (§15.3.5); the Loan values are formed by the compiler-known creation operations `Text.fixed`, `Text.writer` and `reserve`. Window, view and adapter management performs no heap allocation, reference-count update or management callback. The three ObjectPayload opt-outs forbid making these Loan-bound adapters object payloads; the no-allocation requirement is a separate requirement on the operations.
 
 ### 1.2. Effects and erasure
 

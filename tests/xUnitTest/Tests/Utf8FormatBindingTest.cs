@@ -48,7 +48,7 @@ public class Utf8FormatBindingTest
     [Theory]
     [InlineData("(1, 2)")]
     [InlineData("[2 of 1]")]
-    [InlineData("null@unsafe/i32")]
+    [InlineData("null@raw/i32")]
     public void UnspecifiedTypesDoNotAcquireImplicitFormatting(string value)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "_ = (writer@uniq).write(" + value + ")");

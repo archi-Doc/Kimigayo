@@ -50,7 +50,7 @@ public sealed partial class Binding
     // A fixed-array member receives some `[N of E]`, in the ref, uniq or owning form (PLAN G32); the integer Position
     // witness receives an integer Type parameter (SPEC 4.6.2).
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
-        => type is not null && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter) &&
+        => type is not null && type.Semantics is not (SemanticsKind.Raw or SemanticsKind.Parameter) &&
             (ReferenceEquals(owner.Declaration, this.Library.FixedArrayMembers)
                 ? EffectiveCore(type) is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner }
                 : ReferenceEquals(owner.Declaration, this.Library.IntegerPositionMembers)

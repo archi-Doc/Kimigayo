@@ -12,7 +12,7 @@ public class AssociatedTypeFormationBindingTest
     [InlineData("Box<string>")]
     [InlineData("(Box<string>, i32)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("(unsafe/Box<string>, i32)")]
+    [InlineData("(raw/Box<string>, i32)")]
     public void InvalidAssociatedDefinitionCannotCertifyConformance(string type)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ncontract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + type);

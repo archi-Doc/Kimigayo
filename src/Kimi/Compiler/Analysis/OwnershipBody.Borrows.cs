@@ -432,10 +432,12 @@ public sealed partial class OwnershipBody
                     if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && entry.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
-                        if (origin.Kind == OriginKind.Input && this.Places[entry.Value].Type is { Kind: BoundTypeKind.Slice, Semantics: SemanticsKind.Owner })
+                        if (origin.Kind == OriginKind.Input && this.Places[entry.Value].Type.Semantics == SemanticsKind.Owner &&
+                            (origin.Occurrence is not null || this.Places[entry.Value].Type.Kind == BoundTypeKind.Slice))
                         {
-                            // SPEC 4.6.5, 4.6.6: a by-value Slice parameter is a Copy handle whose source is the caller's
-                            // storage; a result retaining that source depends on no local root.
+                            // SPEC 15.2.1, 15.3.1, 4.6.5: the slot of an owned input, such as value.source or a by-value Slice's
+                            // source, names the caller's Loan, not the input's storage; a result retaining it depends on no
+                            // local root, so the input itself may be moved into that result.
                             continue;
                         }
 

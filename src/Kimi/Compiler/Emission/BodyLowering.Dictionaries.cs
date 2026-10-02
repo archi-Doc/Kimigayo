@@ -46,7 +46,6 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.Find => new(name, "i64", [handle, new("ptr", "key")]),
                 DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
-                DictionaryHelperKind.PlaceValue => new(name, "void", [new("ptr", "slot"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value")]),
                 _ => new(name, "void", [handle, location, length]),
             };
             var layout = GetDictionaryEntryLayout(key, value);
@@ -183,15 +182,14 @@ internal sealed partial class BodyLowering
     private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
-        var entry = plan.Target.CompilerFunction == CompilerFunctionKind.StoragePlaceDictionaryEntry;
-        var inputs = entry ? 3 : 2;
+        const int inputs = 3;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
-            plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || (entry && plan.ArgumentToParameter[2] != 2) || plan.TypeArguments.Length != 2 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } handleType ||
+            plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || plan.ArgumentToParameter[2] != 2 || plan.TypeArguments.Length != 2 ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
             !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
             SignatureType(this, plan.TypeArguments[0]) is not { } keyType || SignatureType(this, plan.TypeArguments[1]) is not { } valueType ||
-            (entry && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType)) ||
+            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType) ||
             !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[inputs - 1].ParameterType), valueType) ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
             !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
@@ -209,24 +207,14 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        EmissionOperand keyArgument = default;
         if (!this.ScalarArrayArgument(body, id, 0, handleType, out var handle) ||
-            (entry && !this.ArrayValueArgument(body, id, 1, key, out keyArgument)) || !this.ArrayValueArgument(body, id, inputs - 1, value, out var valueArgument))
+            !this.ArrayValueArgument(body, id, 1, key, out var keyArgument) || !this.ArrayValueArgument(body, id, 2, value, out var valueArgument))
         {
             return Fail("Dictionary placement inputs are not acquired values.", out failure);
         }
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
-        if (!entry)
-        {
-            this.callOperands.Add(valueArgument);
-            function.AddCall(id, this.GetDictionaryHelper(DictionaryHelperKind.PlaceValue, key, value).Abi, CollectionsMarshal.AsSpan(this.callOperands));
-            this.dictionaryRuntimeUsed = true;
-            this.arrayRuntimeUsed = true;
-            return true;
-        }
-
         this.callOperands.Add(keyArgument);
         this.callOperands.Add(valueArgument);
         if (function.Abi.CallerLocation)

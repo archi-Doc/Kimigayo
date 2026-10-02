@@ -224,7 +224,7 @@ Outside comments and literals, the longest punctuation spelling is matched: `..=
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
 
-Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name, and only a Type declaration header may be empty `{}` (§15.3.1). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
+Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name; empty braces are an error in both roles (§15.3.1, §15.3.2). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
 
 ## 2.5. Names
 
@@ -286,7 +286,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
 | Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1). |
 | Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
-| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe` in Semantics positions, including requirements and the mode of a Place result. `unsafe` is also recognized before `func` and before a Body that introduces an Unsafe Statement. |
+| Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `raw` in Semantics positions, including requirements and the mode of a Place result; `raw` also immediately after `@` (§5.4). Elsewhere `raw` is an ordinary Name, such as a Field `raw`. `unsafe` is recognized only before `func` and before a Body that introduces an Unsafe Statement. |
 | Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`; `wrap` and `bits` immediately after `@` and followed by an adjacent `<`, as the [wrapping and bit conversions](13-operators-and-assignment.md#1354-numeric-conversions-and-literals) `E@wrap<U>` and `E@bits<U>`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
@@ -294,7 +294,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 
 Further notes on individual keywords:
 
-- After `@`, a built-in Semantics name selects a shorthand target (§13.5.1). There is no prefix `move` operator and no `*` operator for safe references.
+- After `@`, a built-in Semantics name selects a shorthand target (§13.5.1), except bare `raw`, which takes an address (§5.4). There is no prefix `move` operator and no `*` operator for safe references.
 - The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](09-names-signatures-and-access.md#93-accessibility-and-reachability).
 - `init`, `drop` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).

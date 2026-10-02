@@ -255,7 +255,7 @@ struct View<T> {source}
   Create with `makeObj`, `makeRc` or `makeArc` in `Kimi.Intrinsics`, moving Non-Copy inputs explicitly;
   duplicate counted handles with `Kimi.Intrinsics.clone(handle@ref)`. Bare `@obj`/`@rc`/`@arc` are invalid.
   See [§13.5](spec/13-operators-and-assignment.md#135-explicit-operations) before using views or Weak.
-- Raw pointers are `unsafe/T`; dereference `*p` only in `unsafe` code. Safe references use `@follow`.
+- Raw pointers are `raw/T`; dereference `*p` only in `unsafe` code. Safe references use `@follow`.
   See [§5](spec/05-raw-pointers-and-unsafe-memory.md) for validity and conversion obligations.
 - Target selection uses `#if condition` or `#switch` with indented `#case condition` / `#case _` arms;
   conditions read compilation symbols, not runtime locals. See [§19](spec/19-compile-time-directives.md).

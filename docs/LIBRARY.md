@@ -50,6 +50,15 @@ The floating-point Equatable mapping treats all NaNs as equal and signed zeros a
 
 `try` propagates `None` or `Err` from a compatible enclosing function; Result propagation keeps the same error Type. Payload Origins and Loans follow ordinary enum rules.
 
+### 1.3.1. Loan<T>
+
+[Specification: Kimi.Loan<T>](spec/15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins).
+
+| Declaration | Guarantee |
+| --- | --- |
+| `struct Loan<T>` | Zero-sized; formed only over a complete `ref`, `uniq`, `objref` or `objuniq` borrow Type `T`. A `Loan<T>` Field is analyzed as storing a `T`: the slots it uses take their Loan requirements and variance from it and are not Phantom Origins. It has no address, reads nothing, grants no access, and is Copy exactly when `T` is Copy. |
+| `Loan<T>.init(value: T)` | Safe. Keeps the dependency of `value` (a `ref` is Copied, a `uniq` transferred) and creates no authority. |
+
 ### 1.4. Wrapping integers
 
 [Specification: wrapping integer Types](spec/03-types-and-values.md#3111-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals).
@@ -439,6 +448,19 @@ The following functions belong to `Intrinsics`:
 
 Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure and reference-count overflow Abort.
 
+### 5.4. Raw Storage
+
+[Specification: raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations). All functions belong to `Raw`.
+
+| Function | Guarantee |
+| --- | --- |
+| `allocate<T>(count: isize) -> raw/T` | Safe. Allocates uninitialized storage for `count` elements; a negative count, an overflow of `count * stride(T)` or an allocation failure Aborts. Zero bytes allocate nothing and return a nonnull address aligned for `T`. An element alignment above 16 is unsupported at compile time. |
+| `unsafe release<T>(storage: raw/T) -> ()` | Releases an `allocate` result at its start address without destroying any element; null and zero-byte results are ignored. |
+| `unsafe initialize<T>(storage: raw/T, value: T) -> ()` | Moves `value` into live, aligned, writable storage that holds no value, destroying nothing. |
+| `unsafe slice<T>(storage: raw/T, length: isize) -> Slice<T> during s` | Forms a shared Slice of `length` elements at `storage` without reading them; `s` is fixed by the caller's expected Type. A positive length requires nonnull, aligned, initialized and valid elements that stay unwritten for `s`; a zero length accepts any storage. |
+
+Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@move`). None of these operations is an environment effect: `allocate` is an allocation and the others are raw accesses.
+
 ## 6. Console and Test Utilities
 
 | Function | Guarantee | Specification |
@@ -451,12 +473,12 @@ Cyclic construction calls build once. Upgrading its Weak returns None while cons
 
 [Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time).
 
-`Windows` groups Windows x64 native APIs. Both unsafe functions take a valid, exclusively writable, eight-byte-aligned i64 pointer and retain no pointer; they return the native i32 success flag (nonzero on success).
+`Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
 
 | Function | Guarantee |
 | --- | --- |
-| `Windows.queryPerformanceCounter(value: unsafe/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
-| `Windows.queryPerformanceFrequency(value: unsafe/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
+| `Windows.queryPerformanceCounter(value: uniq/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
+| `Windows.queryPerformanceFrequency(value: uniq/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
 
 `Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
 

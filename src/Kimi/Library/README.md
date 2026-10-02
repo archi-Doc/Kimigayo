@@ -45,15 +45,15 @@ embedded, validated and implemented.
   `Storage.addressOfI64` is the sole new compiler operation: it exposes the existing exclusive
   argument's address for the synchronous native output call, without a copy or allocation.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
-- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi` and `StorageOperations.kimi` contain signatures without source bodies.
-  Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, or the
-  internal `Storage` group of `Storage.kimi` for the standard storage boundary; a struct also admits bodiless `init` signatures).
+- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi`, `StorageOperations.kimi` and `RawOperations.kimi` contain signatures without source bodies.
+  Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
+  internal `Storage` group of `Storage.kimi` for the standard storage boundary, or the public `Raw` group of `Raw.kimi` for raw storage; a struct also admits bodiless `init` signatures).
   Within these signature resources, only catalog-registered compiler implementations may omit bodies
   without an ordinary `#LibraryImport` declaration. Ordinary
   helpers in these containers use the normal compilation pipeline; this is not
   public syntax for declaring a user intrinsic or omitting a function body.
-- `Storage.kimi` implements contiguous shared/exclusive `splitFirst` over the internal
-  unsafe `lend`/`split` capabilities, and owning `takeFirst` through typed raw reads.
+- `Storage.kimi` implements contiguous shared/exclusive `splitFirst` by borrowing raw element
+  Places (SPEC 5.2.2), and owning `takeFirst` by taking them with `@move`.
   Array and fixed-array `tryGetPairUniq` share its ordinary Kimigayo position resolution
   and disjoint pair splitting, using logical positions even for zero-sized elements.
   Its owning remainder destroys unreturned elements in reverse order in a concrete

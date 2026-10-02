@@ -486,6 +486,10 @@ public sealed partial class Binding
                     input.BindingState = target.BindingState = BindingState.Resolved;
                     target.BoundOrigin = result;
                 }
+                else if (type?.Symbol?.Schema is not null)
+                {
+                    this.RecordAbsentSlot(syntax, type);
+                }
             }
         }
 

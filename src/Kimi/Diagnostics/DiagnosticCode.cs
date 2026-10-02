@@ -204,6 +204,7 @@ public enum DiagnosticCode
     InvalidPointerComparison_Kd,
     NonNumericOperand_Kd,
     UnsafeBlockRequired_Kd,
+    UnnecessaryUnsafeBlock_Kd,
     StaticWhileTrue_Kd,
     DiscardedTail_Kd,
     DiscardedResult_Kd,

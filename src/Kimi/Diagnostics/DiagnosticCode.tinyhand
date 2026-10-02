@@ -18,7 +18,7 @@
     Category="Language"
     Message="A borrow Origin annotation requires safe-borrow Semantics"
     Label="this Semantics cannot carry a borrow Origin"
-    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, unsafe/(ref/T during a)."
+    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, raw/(ref/T during a)."
 
   + Name="BorrowOriginTarget_Kd"
     Category="Language"
@@ -159,10 +159,14 @@
   + Name="InvalidOriginBinding_Kd"
     Category="Language"
     Message="The Origin name, mapping, or annotation is invalid in this type position"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="MissingOriginBinding_Kd"
     Category="Language"
     Message="This Origin must be explicitly bound or resolved by the position's omission rules"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="InvalidTypeFormation_Kd"
     Category="Language"
@@ -503,7 +507,7 @@
 
   + Name="UnsupportedImportSignature_Kd"
     Category="Language"
-    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or unsafe/T, and Unit only as the result"
+    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or raw/T, and Unit only as the result"
 
   + Name="ConflictingImportSignature_Kd"
     Category="Language"
@@ -848,6 +852,12 @@
     Category="Language"
     Message="This operation requires an Unsafe Block"
     Advice="Write the operation inside an Unsafe Block; unsafe func does not grant permission to its body"
+
+  + Name="UnnecessaryUnsafeBlock_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="No operation in this Unsafe Block uses its permission"
+    Label="no operation in this block requires an unsafe context"
 
   + Name="StaticWhileTrue_Kd"
     Severity="Warning"

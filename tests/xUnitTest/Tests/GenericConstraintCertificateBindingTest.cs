@@ -13,7 +13,7 @@ public class GenericConstraintCertificateBindingTest
     [InlineData("Box<string>")]
     [InlineData("(i32, Box<string>)")]
     [InlineData("[2 of Box<string>]")]
-    [InlineData("unsafe/Box<string>")]
+    [InlineData("raw/Box<string>")]
     [InlineData("() -> Box<string>")]
     public void InvalidGenericPropertyTypeCannotCertify(string type)
     {

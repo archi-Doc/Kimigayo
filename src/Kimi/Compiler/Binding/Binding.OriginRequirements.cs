@@ -41,18 +41,10 @@ public sealed partial class Binding
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
-            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer && schema.Origins.Count == 1)
+            // SPEC 15.3.5: a Loan<T> Field is analyzed as storing its borrow Type T.
+            if (node.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Loan && schema.GenericSlots.Count == 1)
             {
-                schema.Origins[0].Variance = OriginVariance.Covariant;
-                schema.Origins[0].LoanRequirement = LoanRequirement.Uniq;
-            }
-
-            // SPEC 22.1.2.5, 15.3.5: a storage remainder holds the shared or the parent exclusive Loan of its source slot
-            // without a safe stored reference; as a verified boundary Type it keeps that established Loan requirement.
-            if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.RefRemainder or KimiDeclarationId.UniqRemainder or KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder && schema.Origins.Count == 1)
-            {
-                schema.Origins[0].Variance = OriginVariance.Covariant;
-                schema.Origins[0].LoanRequirement = node.BoundSymbol.LibraryDeclaration is KimiDeclarationId.UniqRemainder or KimiDeclarationId.DictionaryUniqRemainder ? LoanRequirement.Uniq : LoanRequirement.Ref;
+                schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
             if (!this.originRequirementNodes.TryGetValue(node, out var work))

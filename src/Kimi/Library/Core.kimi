@@ -59,6 +59,15 @@ public enum Result<T, E>
     Ok(T)
     Err(E)
 
+/// A zero-sized Field that keeps the dependency of a borrow value of Type `T` without storing it (SPEC 15.3.5). `T` is a
+/// complete `ref`, `uniq`, `objref` or `objuniq` borrow Type. A `Loan<T>` Field is analyzed as storing a `T`, so the slots
+/// it uses take their Loan requirements and variance from it; it has no address, reads nothing and grants no access.
+public struct Loan<T>
+    Self is Copy when T is Copy
+
+    /// Keeps the dependency of `value`: a `ref` is Copied and a `uniq` transferred. It creates no authority.
+    public init(value: T) => ()
+
 /// The wrapping integer Type over `T` (SPEC 3.1.1.1): the same representation, order, comparison and formatting as `T`,
 /// with arithmetic that wraps modulo 2ᴺ instead of Aborting.
 ///

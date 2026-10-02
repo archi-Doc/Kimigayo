@@ -58,9 +58,9 @@ public class PairAnnotationBindingTest
     // annotation is valid whatever `s` admits.
     [Theory]
     [InlineData("s/T during a", "owner")]
-    [InlineData("s/T during a", "unsafe")]
+    [InlineData("s/T during a", "raw")]
     [InlineData("s/U during a", "owner")]
-    [InlineData("s/U during a", "unsafe")]
+    [InlineData("s/U during a", "raw")]
     [InlineData("s/T during a", "owner or ref")]
     [InlineData("s/U during a", "value or valueborrow")]
     [InlineData("s/U during static", "owner or ref")]
@@ -94,10 +94,10 @@ public class PairAnnotationBindingTest
 
     [Theory]
     [InlineData("s/U", "owner")]
-    [InlineData("s/U", "unsafe")]
+    [InlineData("s/U", "raw")]
     [InlineData("s/(U)", "owner")]
     [InlineData("s/T", "owner")]
-    [InlineData("s/T", "unsafe")]
+    [InlineData("s/T", "raw")]
     public void UnannotatedTypesKeepTheirExistingProofs(string type, string semantics)
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
@@ -142,7 +142,7 @@ public class PairAnnotationBindingTest
     [Fact]
     public void NestedAnnotationsDoNotAddSemanticsLayers()
     {
-        var c = Parse("func f<s/T>(value: (unsafe/(s/T during a), [2 of s/T during a])) => ()");
+        var c = Parse("func f<s/T>(value: (raw/(s/T during a), [2 of s/T during a])) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
         var tuple = f.Parameters[0].Type.BoundType!;

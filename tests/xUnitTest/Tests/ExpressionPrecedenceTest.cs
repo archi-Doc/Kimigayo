@@ -80,7 +80,7 @@ public class ExpressionPrecedenceTest
     [InlineData("try try nested@move", "try (try (nested@move))")]
     [InlineData("*pointer + offset", "(*pointer) + offset")]
     [InlineData("^count + offset", "(^count) + offset")]
-    [InlineData("pointer@unsafe/i32 + offset", "(pointer@unsafe/i32) + offset")]
+    [InlineData("pointer@raw/i32 + offset", "(pointer@raw/i32) + offset")]
     [InlineData("make<A<B>>(x)[^1].value * -count@i64", "(make<A<B>>(x)[^1].value) * ((-count)@i64)")]
     [InlineData("start + 1..end - 1", "(start + 1)..(end - 1)")]
     [InlineData("start + 1..=end - 1", "(start + 1)..=(end - 1)")]

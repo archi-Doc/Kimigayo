@@ -23,7 +23,7 @@ public class SingleSlotBindingTest
     [InlineData("func maybe(x: V<i32>) -> V<i32>? during x.source => .Some(x@move)")]
     [InlineData("func tail(values: Slice<i32> during source) -> Slice<i32> during source => values[1..]")]
     [InlineData("struct W {s}\n    let value: V<i32> during s")]
-    [InlineData("struct Headerless\n    let value: V<i32> during s")]
+    [InlineData("struct Outer {s}\n    struct Inner\n        let value: V<i32> during s")]
     [InlineData("func f(x: ref/i32)\n    let v: V<i32> during x = V<i32>.init(x)")]
     [InlineData("func nested(x: ref/(V<i32> during b) during a) -> ref/V<i32> during a => x@follow@ref")]
     public void BindsTheOnlySlot(string source)

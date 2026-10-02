@@ -106,7 +106,7 @@ public class WrapConversionTest
     [InlineData("let y = true@wrap<u8>")]
     [InlineData("let y = 'a'@wrap<u32>")]
     [InlineData("let y = \"x\"@wrap<u8>")]
-    [InlineData("let x: isize = 1\nlet p: unsafe/u8 = null\nlet y = p@wrap<usize>")]
+    [InlineData("let x: isize = 1\nlet p: raw/u8 = null\nlet y = p@wrap<usize>")]
     [InlineData("let r = 0..3\nlet y = r@wrap<u8>")]
     public void InvalidFormsAreRejected(string source)
     {

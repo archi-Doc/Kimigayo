@@ -85,7 +85,7 @@ public class RuntimeTypeTest
     [InlineData("Dog", "x")]
     [InlineData("ref/Dog", "x")]
     [InlineData("ref/obj/Dog", "x")]
-    [InlineData("unsafe/Dog", "x")]
+    [InlineData("raw/Dog", "x")]
     [InlineData("(i32, i32)", "x")]
     [InlineData("Choice", "x")]
     public void NonObjectOperandsAreRejected(string type, string operand)

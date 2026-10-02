@@ -320,24 +320,9 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var kind = plan.Target.CompilerFunction;
         var owning = kind == CompilerFunctionKind.StorageOwn;
-        if (kind == CompilerFunctionKind.StorageAddressOfI64)
-        {
-            return this.LowerAddressOfI64(body, function, id, call, plan, out failure);
-        }
-
-        if (kind == CompilerFunctionKind.StorageRelease)
-        {
-            return this.LowerStorageRelease(body, function, constants, directory, id, call, plan, out failure);
-        }
-
         if (kind == CompilerFunctionKind.StorageOwnFixed)
         {
             return this.LowerFixedStorageOwn(body, function, id, call, plan, out failure);
-        }
-
-        if (kind == CompilerFunctionKind.StorageInlineBase)
-        {
-            return this.LowerStorageInlineBase(body, function, id, call, plan, out failure);
         }
 
         if (kind == CompilerFunctionKind.StorageDictionaryLayout)
@@ -345,7 +330,7 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryLayout(body, function, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StoragePlaceDictionaryEntry or CompilerFunctionKind.StoragePlaceDictionaryValue)
+        if (kind == CompilerFunctionKind.StoragePlaceDictionaryEntry)
         {
             return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
         }
@@ -367,9 +352,9 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (kind is >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageSplitValue)
+        if (kind is CompilerFunctionKind.StorageBorrowDictionary or CompilerFunctionKind.StorageBorrowDictionaryExclusive)
         {
-            return this.LowerDictionaryStorageOperation(body, function, id, call, plan, out failure);
+            return this.LowerDictionaryStorageBorrow(body, function, id, call, plan, out failure);
         }
 
         if (kind is CompilerFunctionKind.StorageBorrowFixedShared or CompilerFunctionKind.StorageBorrowFixedExclusive)
@@ -380,11 +365,6 @@ internal sealed partial class BodyLowering
         if (kind is >= CompilerFunctionKind.StorageOwnDictionary and <= CompilerFunctionKind.StorageValueAt)
         {
             return this.LowerOwnedDictionaryStorage(body, function, id, call, plan, out failure);
-        }
-
-        if (kind is CompilerFunctionKind.StorageLend or CompilerFunctionKind.StorageSplit)
-        {
-            return this.LowerStorageCapability(body, function, id, call, plan, out failure);
         }
 
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
@@ -447,7 +427,7 @@ internal sealed partial class BodyLowering
 
         // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
         var remainder = result;
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != (owning ? 4 : 3) ||
+        if (remainder is not { IsArray: false } || remainder.Fields.Length != 4 || (!owning && remainder.Fields[3].Layout.Size != 0) ||
             (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
         {
             return Fail("Storage operation records do not have the boundary's shape.", out failure);
@@ -464,77 +444,6 @@ internal sealed partial class BodyLowering
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        return true;
-    }
-
-    // The validated, internal unsafe primitives publish the remainder's source Origin; their runtime value is the
-    // supplied element pointer. Storage.kimi checks the untaken range and advances it before making this call.
-    private bool LowerStorageCapability(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        var exclusive = plan.Target.CompilerFunction == CompilerFunctionKind.StorageSplit;
-        var semantics = exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref;
-        var remainderId = exclusive ? KimiDeclarationId.UniqRemainder : KimiDeclarationId.RefRemainder;
-        var stateArgument = plan.ArgumentToParameter.Length == 2 && plan.ArgumentToParameter[0] == 1 ? 1 : 0;
-        var pointerArgument = 1 - stateArgument;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || plan.ArgumentToParameter.Length != 2 || target.Parameters.Count != 2 ||
-            plan.ArgumentToParameter[stateArgument] != 0 || plan.ArgumentToParameter[pointerArgument] != 1 ||
-            SignatureType(this, plan.ArgumentOperations[stateArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [var remainder] } state || state.Semantics != semantics ||
-            remainder.Symbol?.LibraryDeclaration != remainderId || remainder.Components is not [var element] ||
-            SignatureType(this, plan.ArgumentOperations[pointerArgument].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components: [var pointee] } pointer || !ReferenceEquals(pointee, element) ||
-            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Components: [var referent] } result || result.Semantics != semantics || !ReferenceEquals(referent, element) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), result))
-        {
-            return Fail("Storage capability does not match its element and remainder Types.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        if (!this.ScalarArrayArgument(body, id, 0, state, out _) || !this.ScalarArrayArgument(body, id, 1, pointer, out var address))
-        {
-            return Fail("Storage capability arguments are unavailable at the call.", out failure);
-        }
-
-        function.AddScalar(EmissionOpcode.BorrowAddress, id, [address]);
-        return true;
-    }
-
-    private bool LowerStorageRelease(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe, Components.Count: 1 } pointer ||
-            !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
-        {
-            return Fail("Storage release requires one raw region pointer and a Unit result.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        if (!this.ScalarArrayArgument(body, id, 0, pointer, out var address) || !this.TryGetLocation(call, directory, constants, out var location))
-        {
-            return Fail("Storage release argument or location is unavailable at the call.", out failure);
-        }
-
-        function.AddCall(id, WindowsLowering.StorageRelease, [address, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         return true;
     }
 

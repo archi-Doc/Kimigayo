@@ -21,7 +21,7 @@ A Core is distinct from the **outer** Semantics and Origins. Its elements and ge
 
 The basic form has two extensions:
 
-- `ref`, `uniq` and `unsafe` may enclose a complete Type, as in `ref/obj/Dog` ([nested Semantics](#336-nested-semantics-and-type-grouping)).
+- `ref`, `uniq` and `raw` may enclose a complete Type, as in `ref/obj/Dog` ([nested Semantics](#336-nested-semantics-and-type-grouping)).
 - Object Semantics may target a permitted runtime Contract View instead of a Core; the Contract itself is not a Core ([object views](#335-object-views-and-identity)).
 
 The following tree classifies components. It shows neither inheritance nor legal combinations:
@@ -33,7 +33,7 @@ Type
 │  ├─ Value Borrow: ref, uniq
 │  ├─ Object: obj, rc, arc
 │  ├─ Object Borrow: objref, objuniq
-│  └─ Unsafe: unsafe
+│  └─ Raw: raw
 ├─ Core
 │  ├─ Scalar: Integer, Wrapping integer, Floating-point, Boolean, Character
 │  ├─ String
@@ -249,7 +249,7 @@ let nested: i32?? = .Some(.None)
 let missingBorrow: ref/i32? during static = .None
 ```
 
-There is no implicit wrapping, unwrapping, default initialization or argument omission. `null` cannot construct None; for `unsafe/T?`, `.None` differs from `.Some(null)`. Layout follows §21.1.5: an `Option` whose payload is a safe reference or object handle uses the one-word nonnull representation defined there, and every other enum keeps an explicit tag.
+There is no implicit wrapping, unwrapping, default initialization or argument omission. `null` cannot construct None; for `raw/T?`, `.None` differs from `.Some(null)`. Layout follows §21.1.5: an `Option` whose payload is a safe reference or object handle uses the one-word nonnull representation defined there, and every other enum keeps an explicit tag.
 
 ## 3.3. Type semantics
 
@@ -269,7 +269,7 @@ In the table, `T` denotes a Core; in object forms it may also denote a valid run
 | Object        | Arc          | `arc/T`        | Atomic counted ownership              |
 | Object Borrow | SharedRef    | `objref/T`     | Shared borrow of an object            |
 | Object Borrow | ExclusiveRef | `objuniq/T`    | Exclusive mutable borrow of an object |
-| Unsafe        | Pointer      | `unsafe/T`     | Unsafe pointer                        |
+| Raw           | Pointer      | `raw/T`        | Raw pointer                           |
 
 **Semantics categories.** The following source-level categories are closed sets. Their names occupy the Requirement role of the Type namespace when the subject is a Semantics binding; they are neither Cores nor concrete Semantics prefixes. In that role their built-in meaning cannot be shadowed; elsewhere they are ordinary contextual Names. A category cannot be used as a value Type or as a shorthand adaptation target.
 
@@ -281,11 +281,11 @@ In the table, `T` denotes a Core; in object forms it may also denote a valid run
 | objectborrow | objref, objuniq |
 | borrow | ref, uniq, objref, objuniq |
 | owning | owner, obj, rc, arc |
-| reference | ref, uniq, obj, rc, arc, objref, objuniq, unsafe |
+| reference | ref, uniq, obj, rc, arc, objref, objuniq, raw |
 
-A Requirement on a Semantics binding may also name a concrete Semantics (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe`), which tests equality with it. Concrete names and categories combine under the [Requirement expression rules](08-generics-constraints-and-contracts.md#83-requirement-expressions), as in `s is ref or obj`. In generic checking, every such requirement is decided by the binding's [admitted set](08-generics-constraints-and-contracts.md#87-constraint-proof-system): the Semantics its premises allow.
+A Requirement on a Semantics binding may also name a concrete Semantics (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `raw`), which tests equality with it. Concrete names and categories combine under the [Requirement expression rules](08-generics-constraints-and-contracts.md#83-requirement-expressions), as in `s is ref or obj`. In generic checking, every such requirement is decided by the binding's [admitted set](08-generics-constraints-and-contracts.md#87-constraint-proof-system): the Semantics its premises allow.
 
-`reference` includes every non-`owner` representation, including raw pointers, and establishes no safe-borrow guarantee. `s is borrow` requires an outer safe borrow; `s is owning or borrow` permits every outer Semantics except `unsafe`. These tests apply to the outer layer only; they guarantee nothing about nested Types or payloads. The category `owning` is distinct from the recursive `Owned` guarantee. There are no categories named `owned`, `counted`, `pointer`, `safe` or `all`.
+`reference` includes every non-`owner` representation, including raw pointers, and establishes no safe-borrow guarantee. `s is borrow` requires an outer safe borrow; `s is owning or borrow` permits every outer Semantics except `raw`. These tests apply to the outer layer only; they guarantee nothing about nested Types or payloads. The category `owning` is distinct from the recursive `Owned` guarantee. There are no categories named `owned`, `counted`, `pointer`, `safe` or `all`.
 
 ### 3.3.1. Value ownership
 
@@ -373,7 +373,7 @@ Written order is **body, `?` suffixes, `during`**; application order is **body, 
 | `ref/T?? during a` | `Option<Option<ref/T during a>>` |
 | `ref/(T?) during a` | `ref/Option<T> during a` |
 | `ref/(uniq/T during b) during a` | Separate outer a and inner b |
-| `unsafe/ref/T during a`, `owner/ref/T during a` | Invalid target Semantics; use `unsafe/(ref/T during a)` or `owner/(ref/T during a)` for the inner borrow |
+| `raw/ref/T during a`, `owner/ref/T during a` | Invalid target Semantics; use `raw/(ref/T during a)` or `owner/(ref/T during a)` for the inner borrow |
 | `Slice<T> during a`, `Slice<T>? during a` | Binds Slice's single slot to `a`; the second is `Option<Slice<T> during a>` |
 | `(ref/T)? during a`, `(ref/T?) during a`, `Option<ref/T> during a`, `T during a` for a Type parameter `T` | No target |
 | `ref/T during a?`, `ref/T during (a and b)?`, `ref/T during a during b` | Invalid suffix order or extra annotation |
@@ -383,7 +383,7 @@ Type suffixes never search inside grouping. `?` wraps the preceding complete Typ
 
 Each Tuple or array element and each Type argument has its own Type expression. A function's trailing `during` belongs to its result: `(A) -> ref/B? during b` returns `Option<ref/B during b>`. Borrowing the function value requires `ref/((A) -> B) during a`; `((A) -> ref/B) during a` has no target.
 
-Long Types use the existing header and delimiter continuation rules; `during` alone cannot continue a closed header:
+Long Types use the existing header and delimiter continuation rules; `during` alone cannot continue a header:
 
 ```kimi
 func borrow<T>(x: ref/Long<T>)
@@ -396,14 +396,14 @@ func borrowWrapped<T>(x: ref/Long<T>)
     return x
 ```
 
-`ref/V`, `uniq/V` and `unsafe/V` take a complete value Type `V`, including its own Semantics and Origins, as their immediate **Referent Type**. The outer layer refers to storage holding a value of `V`; it neither replaces `V`'s Semantics nor refers directly to `V`'s eventual referent.
+`ref/V`, `uniq/V` and `raw/V` take a complete value Type `V`, including its own Semantics and Origins, as their immediate **Referent Type**. The outer layer refers to storage holding a value of `V`; it neither replaces `V`'s Semantics nor refers directly to `V`'s eventual referent.
 
 ```kimi
 ref/ref/T                           // Shared borrow of a shared-reference value.
 ref/uniq/T                          // Shared borrow of an exclusive-reference value.
 uniq/ref/T                          // Exclusive borrow of a shared-reference value.
 ref/obj/T                           // Borrow of object-handle storage, not objref/T.
-unsafe/ref/T                        // Raw pointer to shared-reference storage.
+raw/ref/T                           // Raw pointer to shared-reference storage.
 ref/(ref/T during inner) during outer    // Separate inner and outer Origins.
 ```
 
@@ -424,7 +424,7 @@ The outer Semantics determines Copy: `ref/uniq/T` is Copy, while `uniq/ref/T` is
 
 A Non-Copy referent is never extracted through a reference ([§15.1.3](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)); it is inspected through the reference by selecting a part, by [comparison](13-operators-and-assignment.md#134-comparison-and-logical-operators) or by borrowing the selected Place.
 
-There is no safe `*` operator and no conversion between pointers and safe references. Explicit [borrows](13-operators-and-assignment.md#1355-follow-borrow-and-reborrow) always borrow the immediately written slot; implicit borrows at positions with a fixed expected Type follow the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), and the [bare acquisition](#35-copy-and-move) of a stored exclusive reference Reborrows it.
+There is no safe `*` operator. A safe reference becomes a raw pointer only by taking an address with `@raw`, and a raw pointer a safe reference only by borrowing a raw Place in an unsafe context (§5.2.2, §5.4). Explicit [borrows](13-operators-and-assignment.md#1355-follow-borrow-and-reborrow) always borrow the immediately written slot; implicit borrows at positions with a fixed expected Type follow the [common adaptation](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), and the [bare acquisition](#35-copy-and-move) of a stored exclusive reference Reborrows it.
 
 ## 3.4. Values, places, and storage
 
@@ -493,7 +493,7 @@ Reference slots and owners protected to keep the target valid are not part of th
 
 Value lifetime separates three steps: acquisition (Copy or Move), placement (Initialization or Replacement) and Destruction. One assignment may contain both a Move and a Replacement.
 
-A Move of an owned value prevents a second destruction at the source. Copying or moving a borrow value duplicates or transfers its access capability without owning the referent, and destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under the object lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage. Move, Take and Consume are distinct: Take is a Place capability, Move transfers a value and its responsibility, and Consume is the analysis judgment that records an acquisition's effect.
+A Move of an owned value prevents a second destruction at the source. Copying or moving a borrow value duplicates or transfers its access capability without owning the referent, and destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under the object lifetime rules. A non-owning `raw/T` neither destroys its referent nor frees its storage. Move, Take and Consume are distinct: Take is a Place capability, Move transfers a value and its responsibility, and Consume is the analysis judgment that records an acquisition's effect.
 
 The [initialization-state rules](15-ownership-and-lifetime-analysis.md#1511-storage-state-and-responsibility) define Initialized, Uninitialized and Moved. A **Partial Move** transfers an inline part and leaves the aggregate incomplete; supported paths and permissions follow [Move Paths](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move).
 
@@ -608,7 +608,8 @@ Complete Types are classified by Core, Semantics and stored components:
 | Type | Classification |
 | --- | --- |
 | Integers, wrapping integers, floating-point values, `bool`, `char`, Unit under `owner` Semantics | Copy |
-| `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of the referent `T` |
+| `ref/T`, `objref/T`, `raw/T` | Copy regardless of the referent `T` |
+| `Kimi.Loan<T>` | Copy exactly when `T` is Copy (§15.3.5) |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
 | `Slice<T>{source}` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |

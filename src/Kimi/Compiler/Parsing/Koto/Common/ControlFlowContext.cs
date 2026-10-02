@@ -167,36 +167,7 @@ public static partial class KotoHelper
 
     internal static bool IsBodyExpression(Koto body) => body is ExpressionKoto and not CodeBlockKoto or FunctionKoto { IsAnonymous: true };
 
-    private static bool IsParameterDefault(FunctionKoto function, Koto expression)
-    {
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (ReferenceEquals(function.Parameters[i].DefaultValue, expression))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsUnitType(Koto? type)
-        => type is TupleTypeKoto { ElementNodes.Count: 0 } || ReferenceEquals(type?.BoundType, BoundType.Unit) ||
-            (type is ParenthesizedTypeKoto p && IsUnitType(p.Type));
-
-    private static bool IsFunctionBody(Koto parent, Koto child)
-        => (parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
-            (parent is PropertyAccessorKoto accessor && child == accessor.Body);
-
-    private static bool IsIterationBody(Koto parent, Koto child) => parent switch
-    {
-        ForKoto f => child == f.Body,
-        WhileKoto w => child == w.Body,
-        LoopKoto l => child == l.Body,
-        _ => false,
-    };
-
-    private static bool IsSelectionBody(Koto parent, Koto child)
+    internal static bool IsSelectionBody(Koto parent, Koto child)
     {
         if (parent is IfKoto conditional)
         {
@@ -228,4 +199,33 @@ public static partial class KotoHelper
 
         return false;
     }
+
+    private static bool IsParameterDefault(FunctionKoto function, Koto expression)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (ReferenceEquals(function.Parameters[i].DefaultValue, expression))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsUnitType(Koto? type)
+        => type is TupleTypeKoto { ElementNodes.Count: 0 } || ReferenceEquals(type?.BoundType, BoundType.Unit) ||
+            (type is ParenthesizedTypeKoto p && IsUnitType(p.Type));
+
+    private static bool IsFunctionBody(Koto parent, Koto child)
+        => (parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
+            (parent is PropertyAccessorKoto accessor && child == accessor.Body);
+
+    private static bool IsIterationBody(Koto parent, Koto child) => parent switch
+    {
+        ForKoto f => child == f.Body,
+        WhileKoto w => child == w.Body,
+        LoopKoto l => child == l.Body,
+        _ => false,
+    };
 }

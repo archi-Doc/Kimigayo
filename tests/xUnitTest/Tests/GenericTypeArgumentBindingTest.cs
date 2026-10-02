@@ -17,7 +17,7 @@ public class GenericTypeArgumentBindingTest
     [InlineData("([0 of i32])")]
     [InlineData("([2 of [3 of i32]])")]
     [InlineData("([(1 + 2) of i32])")]
-    [InlineData("(unsafe/[2 of i32])")]
+    [InlineData("(raw/[2 of i32])")]
     [InlineData("(Box<[2 of i32]>)")]
     [InlineData("(([2 of i32]) -> i32)")]
     public void CompleteArrayTypesAreValidGenericArguments(string type)

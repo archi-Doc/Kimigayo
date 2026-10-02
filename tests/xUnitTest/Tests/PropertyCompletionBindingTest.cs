@@ -10,7 +10,7 @@ public class PropertyCompletionBindingTest
 {
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void LateInvalidPropertyTypeCannotRemainVerified(string type)
     {
@@ -28,7 +28,7 @@ public class PropertyCompletionBindingTest
 
     [Theory]
     [InlineData("E<Source>")]
-    [InlineData("unsafe/E<Source>")]
+    [InlineData("raw/E<Source>")]
     [InlineData("(E<Source>, i32)")]
     public void ValidApiTypesRemainVerified(string type)
     {

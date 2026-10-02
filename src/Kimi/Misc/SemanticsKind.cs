@@ -51,9 +51,9 @@ public enum SemanticsKind : byte
     ObjUniq,
 
     /// <summary>
-    /// An unsafe pointer expressed as <c>unsafe/T</c>.
+    /// A raw pointer expressed as <c>raw/T</c> (SPEC 5).
     /// </summary>
-    Unsafe,
+    Raw,
 
     /// <summary>
     /// A generic semantics parameter expressed as <c>s/T</c>.

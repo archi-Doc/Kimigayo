@@ -347,6 +347,15 @@ public sealed partial class Binding
                 var (code, evidence, note) = this.TryFailure(issue.Node);
                 issue.Node.Report(requirement, code, note: note, evidence: evidence);
             }
+            else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
+            {
+                // SPEC 15.3.5: the formation condition of Loan<T>.
+                issue.Node.Report(
+                    requirement,
+                    issue.Code,
+                    note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
+                    advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
+            }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
                 // FailObjectPayload records the declaring Type before it fails the use.
@@ -387,6 +396,14 @@ public sealed partial class Binding
             else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
             {
                 // SPEC 8.4.10.6: reported at the violating effect.
+            }
+            else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: an undeclared storage name, at the name.
+            }
+            else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
             }
             else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
             {
@@ -672,7 +689,7 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && this.IsDerived(node))
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && (this.IsDerived(node) || this.RestsOnAbsentSlot(node)))
             {
                 this.derivedIssues.Add(node);
             }

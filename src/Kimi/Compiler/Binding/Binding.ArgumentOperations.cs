@@ -281,7 +281,10 @@ public sealed partial class Binding
 
     // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
     // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
-    private static bool IsExclusivePlaceResultSource(Koto node)
+    private static bool IsExclusivePlaceResultSource(Koto node) => ResultFunction(node) is { ReturnType: PlaceResultKoto { IsExclusive: true } };
+
+    // The function whose result the expression is: the operand of a return, or the single-item body.
+    private static FunctionKoto? ResultFunction(Koto node)
     {
         var parent = node.Parent;
         while (parent is ParenthesizedKoto)
@@ -289,14 +292,13 @@ public sealed partial class Binding
             parent = parent.Parent;
         }
 
-        var function = parent switch
+        return parent switch
         {
             ReturnKoto jump => KotoHelper.ResolveTransferTarget(jump) as FunctionKoto,
             CodeBlockKoto { IsExpressionBody: true, Parent: FunctionKoto owner } => owner,
             FunctionKoto owner when ReferenceEquals(owner.ExpressionBody, node) => owner,
             _ => null,
         };
-        return function is { ReturnType: PlaceResultKoto { IsExclusive: true } };
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,

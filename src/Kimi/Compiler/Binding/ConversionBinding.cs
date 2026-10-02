@@ -33,4 +33,7 @@ internal enum ConversionBinding : byte
 
     // SPEC 5.4-5.5: between raw pointer Types, or a raw pointer and usize.
     Pointer,
+
+    // SPEC 5.4: P@raw takes the address of the written slot through an immediately ending shared borrow.
+    Address,
 }

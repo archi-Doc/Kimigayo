@@ -192,6 +192,7 @@ Explicit @ Operation
 ├─ Type / Semantics Adaptation: @Type, @ref, @uniq, ...
 ├─ Transfer: @move
 ├─ Copy: @copy
+├─ Address: @raw (§5.4)
 └─ Follow: @follow (postfix, §13.5.5.1)
 ```
 
@@ -204,6 +205,8 @@ Explicit @ Operation
 | `E@move` | The [transfer](#1353-defined-adaptations) of a Movable Place; no effect on a Temporary Value |
 | `E@copy` | A [Copy](#1353-defined-adaptations) of a proven-Copy value; never a transfer |
 | `E@follow` | Selection of the Place that the reference or complete object handle `E` points to (§13.5.5.1) |
+| `E@raw` | The [address](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions) of the Place `E`; not Semantics shorthand |
+| `E@raw/U` | Raw pointer [acquisition and conversion](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions) |
 | `E@wrap<U>` | The [wrapping conversion](#13543-wrapping-conversion) of an integer value to `U` |
 | `E@bits<U>` | The [bit conversion](#13544-bit-conversion) between a floating-point value and a same-width integer |
 
@@ -217,7 +220,7 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name, `move`, `copy` or `follow` not followed by a slash completes the operation, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move`, `copy` and `follow` cannot be prefixes, take no Type, `?` or `during`, and are never reinterpreted as Type or Semantics names. A slash after `follow` is division. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
+**Syntactic extent.** After `@`, an identifier-shaped head followed by a slash is consumed as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed for this decision. Each prefix must later resolve to a concrete Semantics or a declared Semantics binding. A bare built-in Semantics name, `move`, `copy` or `follow` not followed by a slash completes the operation; a bare `raw` is the address operation of §5.4, and a following `.`, `(` or `[` continues the postfix chain (§13.1); `move`, `copy` and `follow` cannot be prefixes, take no Type, `?` or `during`, and are never reinterpreted as Type or Semantics names. A slash after `follow` is division. Otherwise the remaining primitive, named, qualified, generic, grouped, Tuple or fixed-array Type head is consumed as the target, including optional suffixes. Generic adjacency follows §12.4.2. Named aggregate occurrences may introduce binding sets governed by the enclosing declaration's relations (§15.4.4). A following slash is division only after that head is complete and cannot begin another Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses the target `T/b` and fails Semantics lookup if `T` is only a Core; whitespace cannot change this. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping, as in `x@(i32)`, preserves the adaptation. A grouped target is always a Type: `x@(ref)` names no Type and `x@(copy)` is not an operation, while a grouped bare owning shorthand keeps the diagnostic of §13.5.3. Group a complete Function Type target, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and is never retried after a conversion failure.
 
@@ -290,8 +293,9 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type, the operand a value or its value read (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
-| Raw Pointer Conversion | The [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-pointer-conversions) |
-| Typed Null Formation | Contextually typing `null` as a raw pointer; no Unsafe context required |
+| Raw Pointer Conversion | `@raw/U` under the [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions); no Unsafe context required |
+| Address | Bare `@raw` on a Place (§5.4); no Unsafe context required |
+| Typed Null Formation | `null@raw/U`, or contextually typing `null` as a raw pointer; no Unsafe context required |
 
 **Transfer.** `E@move` requires a Movable Place (§15.1.5) and transfers its value and destruction responsibility, marking the Place Moved even when its Type is Copy. A borrow value's transfer moves the reference, not its referent; a Place reached through a reference offers no Take and is never transferred. Applied to a Temporary Value, including a getter result, `@move` has no effect. `@` applies to its direct operand only: `holder.item@move` transfers the Field or the getter result, never the receiver, which is acquired under §7.3. `@move/T`, `@move?` and `@move{...}` are invalid, and `x@move@ref` shared-borrows the transferred temporary.
 
@@ -320,7 +324,7 @@ A target that changes both Core and Semantics must be one defined operation; no 
 inspect(number@i64@ref)
 ```
 
-There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and only the numeric, wrapping and bit conversions and Identity Acquisition to a read Type read a referent through its reference (§13.5.2). Conversions between raw pointers and safe references, and ownership acquisition from raw storage, are not specified in this revision (§5.6). `as` remains reserved; it is not an alias of `@`.
+There is no elementwise Tuple or array conversion, structural struct conversion, checked dynamic cast through `@`, string parsing, numeric conversion involving `bool` or `char`, arbitrary bit reinterpretation or user-defined conversion; same-Type acquisition of these Types remains possible. A safe reference is read as its referent only by the [value read](03-types-and-values.md#353-value-read), by the one shared reference of §10.2 when that referent is itself a reference, or after an explicit `@follow`; a Non-Copy referent is never extracted through a reference, and only the numeric, wrapping and bit conversions and Identity Acquisition to a read Type read a referent through its reference (§13.5.2). A raw pointer is obtained from a Place only by `@raw` (§5.4), and a safe reference from raw storage only by borrowing a raw Place (§5.2.2); values are taken from raw storage only by `@move` on a raw Place (§5.2.3). `as` remains reserved; it is not an alias of `@`.
 
 ### 13.5.4. Numeric conversions and literals
 
@@ -525,6 +529,7 @@ func viewUniq<s/T>(c: uniq/Collection<s/T>, i: isize) -> uniq/T during c
 | `objref/T` | `@objref` | Copy of the shared object reference |
 | `objuniq/T` | `@objref` | Shared object Reborrow |
 | `objuniq/T` | `@objuniq` | Exclusive object Reborrow |
+| Raw Place storing `V`, in an unsafe context | `@ref`, `@uniq`, `@objref`, `@objuniq` as for the corresponding owned Place | New reference with a fresh Loan anchor (§5.2.2) |
 
 A **Reborrow** of a value reference is written through the referent: `r@follow@ref` and `r@follow@uniq` lend the referent's capability without moving the parent reference. A position with a fixed expected `ref/T` or `uniq/T` Reborrows a `uniq/T` value implicitly (§10.2), and the bare acquisition of a Place storing `uniq/T` Reborrows it as `r@follow@uniq` does (§3.5). While a child Loan is live, conflicting access through the parent is forbidden; a `let` binding holding an exclusive reference does not prevent Reborrow. A new Borrow depends on the borrowed slot and on the owner's validity; a Reborrow depends on the referent and the parent Loan, not on the variable holding the parent. `@move` transfers the reference itself.
 

@@ -22,7 +22,8 @@ public class EffectBoundDeclarationTest
             "contract View\n    func read(self: ref/Self) -> ref/i32\n        effect confined\n" +
             "contract Lending\n    associate LentItem(step) for uniq/Self during step\n    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>\n" +
             "contract Stepping: Lending\n    associate Item\n    associate Lending.LentItem(step) is Item\n    effect Lending.next preserves results\n" +
-            "contract Indexed<K>\n    func at(self: ref/Self, key: K) -> i32\ncontract StrictIndexed: Indexed<i32>\n    effect (Indexed<i32>).at confined\n";
+            "contract Indexed<K>\n    func at(self: ref/Self, key: K) -> i32\ncontract StrictIndexed: Indexed<i32>\n    effect (Indexed<i32>).at confined\n" +
+            "contract Settled: StableSource\n    effect Source.take preserves results\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
@@ -32,7 +33,7 @@ public class EffectBoundDeclarationTest
     [InlineData("contract Peek\n    associate Item\n    func peek(self: ref/Self) -> Option<ref/Self.Item>\n        effect preserves results\n", "effect preserves results", "ref/Self.Item may depend on the receiver borrow", "omitted Origin")]
     [InlineData("contract Taker\n    func take(self: Self) -> i32\n        effect preserves results\n", "effect preserves results", "take has no borrowed receiver", "borrowed receiver")]
     [InlineData("contract Loose: Lending\n    effect Lending.next preserves results\ncontract Lending\n    associate LentItem(step) for uniq/Self during step\n    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>\n", "effect Lending.next preserves results", "Self.LentItem(step) may depend on the receiver borrow", null)]
-    [InlineData("contract Bounded: Source\n    effect Source.take confined\n    effect Source.take confined\n", "effect Source.take confined", "take already has confined", "Bounded declares confined")]
+    [InlineData("contract Bounded: Source\n    effect Source.take confined\n    effect Source.take confined\n", "effect Source.take confined", "take already has confined", "Bounded already declares confined")]
     [InlineData("contract Bounded: Source\n    effect Source.size confined\n", "effect Source.size confined", "size names 2 function requirements of Source", "exactly one")]
     [InlineData("contract Bounded: Source\n    effect Source.missing confined\n", "effect Source.missing confined", "Source has no function requirement missing", null)]
     [InlineData("contract Other\n    func run(self: ref/Self) -> ()\ncontract Bounded: Source\n    effect Other.run confined\n", "effect Other.run confined", "Other is not an ancestor of Bounded", null)]
@@ -56,11 +57,12 @@ public class EffectBoundDeclarationTest
         }
     }
 
-    // SPEC 8.4.10.6: the related locations are the target requirement and, for a duplicate, the bound declared earlier.
+    // SPEC 8.4.10.1, 8.4.10.6: a bound declared twice in one Contract relates the target requirement and the earlier bound;
+    // restating an ancestor's bound is valid (AcceptsClausesAndSpecifications).
     [Fact]
     public void RelatesTheRequirementAndTheEarlierBound()
     {
-        var result = DiagnosticCorpus.Check(Source + "contract StableSource: Source\n    effect Source.take preserves results\ncontract Stricter: StableSource\n    effect Source.take preserves results\n" + Main);
+        var result = DiagnosticCorpus.Check(Source + "contract StableSource: Source\n    effect Source.take preserves results\n    effect Source.take preserves results\n" + Main);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), error.Code);
         Assert.Equal(["bound", "requirement"], error.Related!.Select(static x => x.Role).ToArray());
