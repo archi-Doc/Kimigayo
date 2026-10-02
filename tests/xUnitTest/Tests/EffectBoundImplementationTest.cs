@@ -93,7 +93,8 @@ public class EffectBoundImplementationTest
     }
 
     // SPEC 8.4.10.5: replacing the stepped value between calls through another member needs a new value, whose source the
-    // caller can borrow again only after the earlier results end, so the caller's own Loans reject the replacement.
+    // caller can borrow again only after the earlier results end, so the caller's own Loans reject the replacement. The Loan
+    // `drain` retains on `values` is one conflict, stated once at the activation of the new value's acquisition (SPEC 15.6.7).
     [Fact]
     public void AReplacementBetweenCallsMeetsTheCallerLoans()
     {
@@ -105,7 +106,8 @@ public class EffectBoundImplementationTest
         var c = MinimalEmissionTest.Analyze(Source + Declarations);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Ownership.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd) && x.Text == "values");
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((nameof(DiagnosticCode.CallActivationConflict_Kd), "values.iterateUniq()"), (error.Code, error.Text));
     }
 
     // SPEC 8.4.10.1: the bound is the Contract's guarantee, so only Self is StableSource is checked against it.
