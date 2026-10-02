@@ -546,7 +546,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.PendingOrigin(use, scope, context, requirement, aggregateSlot) is { } pending)
+        if (this.PendingOrigin(use, scope, context, requirement, aggregateSlot, borrowCondition) is { } pending)
         {
             return pending;
         }

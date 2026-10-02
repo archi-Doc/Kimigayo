@@ -346,7 +346,7 @@ public sealed partial class Binding
             : this.BindType(syntax, scope);
     }
 
-    private BoundOrigin? PendingOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement, int slot)
+    private BoundOrigin? PendingOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement, int slot, BindingSymbol? borrowCondition)
     {
         var owner = OriginOwner(use);
         if (owner is null || !this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.State != 1 ||
@@ -364,7 +364,7 @@ public sealed partial class Binding
         }
 
         var origin = this.OriginAtom(use, OriginKind.Unbound, slot);
-        declaration.Pending.Add(new(use, scope, context, requirement, slot, origin));
+        declaration.Pending.Add(new(use, scope, context, requirement, slot, origin, borrowCondition));
         return origin;
     }
 
@@ -506,7 +506,8 @@ public sealed partial class Binding
             }
             else
             {
-                completed = this.OmittedOrigin(pending.Use, pending.Scope, pending.Context, pending.Requirement, pending.Slot);
+                // SPEC 15.4.1: the slot completes as it would have without the clauses, including its Semantics condition.
+                completed = this.OmittedOrigin(pending.Use, pending.Scope, pending.Context, pending.Requirement, pending.Slot, pending.BorrowCondition);
             }
 
             if (completed is not null && !ReferenceEquals(completed, origin))
@@ -746,7 +747,7 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin);
+    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
 
     private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }
