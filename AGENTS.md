@@ -56,6 +56,7 @@ The specification and implementation are not set in stone. The specification gui
 # Implementation Workflow
 
 - Work in units of reproducer, implementation and focused tests; formally verify each before committing with a descriptive message.
+- Commit each completed unit and push the current branch to `origin` without waiting to be asked. Push only commits whose required verification passed, and never force-push. Stage only the files the unit changed, since other sessions may share this working tree.
 - For intermediate feedback, incrementally build `tests/xUnitTest/xUnitTest.csproj` and directly run selected test methods. Do not run formal Verify after every edit. Feedback is not completion evidence: only Verify's build counts, since direct `dotnet build` can hide analyzer warnings from later incremental builds.
 - Unit: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` — non-incremental Release build of Kimi/tests with warnings as errors, related tests, native O0/O2 fixtures and milestone harnesses. Benchmark/Playground changes also require the whole-solution Session build before completion.
 - Session, once at session end: `./scripts/verify.ps1 -Mode Session [...]` — non-incremental whole-solution Release build and all functional and allocation/reuse regressions.
