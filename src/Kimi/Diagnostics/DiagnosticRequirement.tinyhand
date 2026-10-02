@@ -393,6 +393,21 @@
     Phrase="Origin slot Name"
     Advice="A header names the Type's own Origin slots, as {source}; a Type without own slots omits the header, so remove empty braces (SPEC 15.3.2)."
 
+  + Name="Syntax.AmpersandAmpersand"
+    Description="logical conjunction is written 'and', not '&&'"
+    Phrase="'&&'"
+    Advice="If '&&' is meant as logical conjunction, write 'and'; Kimigayo defines no '&&' operator (SPEC 13.8)."
+
+  + Name="Syntax.BarBar"
+    Description="logical disjunction is written 'or', not '||'"
+    Phrase="'||'"
+    Advice="If '||' is meant as logical disjunction, write 'or'; Kimigayo defines no '||' operator (SPEC 13.8)."
+
+  + Name="Syntax.MatchArms"
+    Description="the match arm list follows its header"
+    Phrase="match arm list"
+    Advice="Write the arms on indented lines after the match header, each a Pattern followed by its body; a match has no '=>' body (SPEC 14.8)."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

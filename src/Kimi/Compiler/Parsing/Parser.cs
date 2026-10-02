@@ -2904,12 +2904,24 @@ CloseParameters:
 
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.Expect(SyntaxForm.Body);
-            return new MatchKoto(
-                ref reader,
-                SourceSpan.FromBounds(matchToken.Span.Start, end),
-                expression,
-                arms);
+            // A token left on the header's line, before the indented arms that follow, is where the line should end; the arms are
+            // still the match's. Without them, the armless match stands for the missing arms, so its exhaustiveness rests on the
+            // Error (DIAGNOSTICS.md §4.3).
+            if (!reader.IndentedBodyFollows())
+            {
+                var cause = reader.Expect(SyntaxForm.MatchArms);
+                reader.SkipHeaderLine();
+                var armless = new MatchKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(matchToken.Span.Start, end),
+                    expression,
+                    arms);
+                reader.CodeContext.RecordRecovery(armless, cause);
+                return armless;
+            }
+
+            reader.Expect(SyntaxForm.LineEnd);
+            reader.SkipHeaderLine();
         }
 
         reader.Advance();
@@ -3056,18 +3068,33 @@ CloseParameters:
         }
     }
 
-    private static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader)
+    private static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader, bool statementHeader = false)
     {
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             return ParseBlock(ref reader);
         }
 
+        // A token left on a statement header's line, before the indented body that follows, is where the header's line should
+        // end, as after a function header; the body is still the header's.
+        if (statementHeader && reader.IndentedBodyFollows())
+        {
+            reader.Expect(SyntaxForm.LineEnd);
+            reader.SkipHeaderLine();
+            return ParseBlock(ref reader);
+        }
+
         // An empty body is supplied where the body is missing. It is a recovery: a check that reads its Type or its normal
-        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3).
+        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3). The rest of a statement header's line
+        // goes with it, so an aligned else on the next line still continues the header.
         var cause = reader.Expect(SyntaxForm.Body);
         var supplied = new CodeBlockKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0), []);
         reader.CodeContext.RecordRecovery(supplied, cause);
+        if (statementHeader)
+        {
+            reader.SkipHeaderLine();
+        }
+
         return supplied;
     }
 
@@ -3080,7 +3107,7 @@ CloseParameters:
                 reader.Expect(SyntaxForm.ArrowBody);
             }
 
-            return ParseRequiredBlock(ref reader);
+            return ParseRequiredBlock(ref reader, true);
         }
 
         var expression = ParseSingleBodyItem(ref reader, ifBody);

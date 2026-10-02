@@ -81,6 +81,9 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
     [InlineData("missing-body")]
     [InlineData("trailing-token")]
     [InlineData("stray-closer")]
+    [InlineData("require-and-symbol")]
+    [InlineData("or-symbol")]
+    [InlineData("while-stray-token-body")]
     public void CliAndLspShowTheFormsLabelAndAdvice(string name)
     {
         var syntaxCase = DiagnosticCorpus.Syntax(name);

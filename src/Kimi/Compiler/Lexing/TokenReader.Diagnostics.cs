@@ -83,6 +83,36 @@ public ref partial struct TokenReader
         this.SkipUntil(bodyMayFollow ? TokenKind.StartBlock : TokenKind.Separator, TokenKind.Separator, TokenKind.EndBlock);
     }
 
+    /// <summary>Gets whether an indented body follows the line of a token left on a header's line; the reader is unchanged.</summary>
+    /// <returns><see langword="true"/> when the rest of the line can be skipped to the start of an indented body.</returns>
+    internal readonly bool IndentedBodyFollows()
+    {
+        var index = this.HeaderLineEnd();
+        while ((uint)index < (uint)this.tokens.Length && this.tokens[index].Kind == TokenKind.Separator)
+        {
+            index++;
+        }
+
+        return (uint)index < (uint)this.tokens.Length && this.tokens[index].Kind == TokenKind.StartBlock;
+    }
+
+    /// <summary>
+    /// Skips, without reporting, the rest of a header's line after its token was blamed, so an indented body that follows is still
+    /// the header's and an aligned else on the next line still continues it.
+    /// </summary>
+    /// <returns><see langword="true"/> when the reader stands at the start of an indented body.</returns>
+    internal bool SkipHeaderLine()
+    {
+        var end = this.HeaderLineEnd();
+        if (end < 0)
+        {
+            return false;
+        }
+
+        this.MoveTo(end);
+        return this.TrySkipSeparatorsTo(TokenKind.StartBlock);
+    }
+
     /// <summary>
     /// Reports that a form is expected at the current position. When the line ended before it, the form is missing at an insertion
     /// point after the last written token; otherwise the current token is where the form was expected. The reader is unchanged.
@@ -104,6 +134,12 @@ public ref partial struct TokenReader
         if (found.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || found.Length == 0)
         {
             return this.Missing(form, this.PreviousSyntaxEnd);
+        }
+
+        if (found.Kind is TokenKind.AmpersandAmpersand or TokenKind.BarBar)
+        {
+            // Recognized but no operator anywhere (SPEC 2.4, 13.8): the token, not the form expected at it, is the problem.
+            return this.Unexpected(found.Kind == TokenKind.AmpersandAmpersand ? SyntaxForm.AmpersandAmpersand : SyntaxForm.BarBar, found.Span);
         }
 
         if (IsCloser(form))
@@ -155,6 +191,33 @@ public ref partial struct TokenReader
 
     private static bool IsCloser(SyntaxForm form)
         => form is SyntaxForm.CloseParenthesis or SyntaxForm.CloseBracket or SyntaxForm.CloseBrace or SyntaxForm.CloseAngleBracket;
+
+    // The line boundary after a token left on a header's line, or -1 at a line boundary or inside a grouping that encloses the
+    // header: a grouping ends on its line with its closer, so nothing past that closer belongs to the header.
+    private readonly int HeaderLineEnd()
+    {
+        var depth = 0;
+        var index = this.Position;
+        for (; (uint)index < (uint)this.tokens.Length; index++)
+        {
+            var kind = this.tokens[index].Kind;
+            if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+            {
+                break;
+            }
+
+            if (kind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+            {
+                depth++;
+            }
+            else if (kind is (TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace) && depth-- == 0)
+            {
+                return -1;
+            }
+        }
+
+        return index == this.Position ? -1 : index;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void NoteMissingCloser(int index)
