@@ -63,7 +63,6 @@ public static partial class Parser
         var groupStart = scan.CurrentTokenRange.Start;
         var header = scan.CurrentTokenRange;
         scan.Advance(2); // #switch has no subject or condition on its header.
-        var groupEnd = scan.CurrentTokenRange.Start;
         var invalidSyntax = false;
         if (scan.CanRead && scan.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
         {
@@ -90,7 +89,7 @@ public static partial class Parser
             scan.SkipSeparators();
             if (scan.CurrentTokenKind == TokenKind.EndBlock)
             {
-                groupEnd = scan.Read().Span.End;
+                scan.Advance();
                 break;
             }
 
@@ -106,7 +105,6 @@ public static partial class Parser
                 SkipCompileTimeHeaderRemainder(ref scan);
                 if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    groupEnd = scan.CurrentTokenRange.End;
                     scan.SkipCurrentBlock(false);
                 }
 
@@ -151,11 +149,9 @@ public static partial class Parser
                 invalidSyntax = true;
             }
 
-            groupEnd = Math.Max(groupEnd, scan.PreviousEnd);
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
                 scan.SkipCurrentBlock(false);
-                groupEnd = Math.Max(groupEnd, scan.PreviousEnd);
             }
 
             invalidCondition |= result == CompileTimeConditionResult.Error;
@@ -180,8 +176,9 @@ public static partial class Parser
 
         if (selected < 0 && !reader.InExcludedSyntax && !reader.IsExcluded)
         {
-            // A valid #switch with no True arm and no catch-all, where selection actually happens (SPEC 19.3).
-            scan.Diagnostic.Add(SourceSpan.FromBounds(groupStart, groupEnd), DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
+            // A valid #switch with no True arm and no catch-all, where selection actually happens (SPEC 19.3). The Case Group ends
+            // at its last written token, before the blank and comment lines that precede the dedented line.
+            scan.Diagnostic.Add(SourceSpan.FromBounds(groupStart, scan.PreviousSyntaxEnd), DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
         }
 
         return new(selected, armCount);
