@@ -11,6 +11,10 @@ public sealed partial class Binding
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
 
+    // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
+    private static bool IsGenericParameter(BindingSymbol symbol)
+        => symbol.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter;
+
     private void ValidateBaseDeclarations(BindingMode? mode = null)
     {
         this.inheritanceStates.Clear();
@@ -137,6 +141,11 @@ public sealed partial class Binding
         {
             for (var candidate = member; candidate is not null; candidate = candidate.Next)
             {
+                if (IsGenericParameter(candidate))
+                {
+                    continue;
+                }
+
                 if (this.Accessible(candidate, use, receiverType: receiver))
                 {
                     return new(candidate, type, path);

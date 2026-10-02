@@ -32,6 +32,17 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // A qualified Type Name selects the declarations of the qualifier's scope, never its generic parameters (SPEC 9.1).
+    private static BindingSymbol? QualifiedTypeMember(BindingSymbol? head)
+    {
+        while (head is not null && IsGenericParameter(head))
+        {
+            head = head.Next;
+        }
+
+        return head;
+    }
+
     private bool ParameterVisible(BindingSymbol candidate, Koto use)
     {
         if (this.defaultBindingDepth == 0 || candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
@@ -319,7 +330,7 @@ public sealed partial class Binding
         {
             var qualifier = this.TypeName(member.Left, scope, false);
             if (qualifier is not null && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName &&
-                this.SelectTypeCandidate(members.Types.GetValueOrDefault(rightName), scope, syntax, core, arity) is { } target)
+                this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
             {
                 var right = member.Right;
                 member.Left.BoundSymbol = qualifier;
