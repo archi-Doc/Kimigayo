@@ -325,7 +325,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (this.HasOriginHeader)
         {
-            OriginNameList.WriteTo(this.OriginNames, ref builder, true);
+            OriginNameList.WriteTo(this.OriginNames, ref builder);
         }
 
         if (this.bases is { Length: > 0 } bases)

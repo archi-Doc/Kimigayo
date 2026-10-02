@@ -85,6 +85,9 @@ public sealed partial class Binding
             ((OriginNameList)names).Spans.Clear();
         }
 
+        this.absentSlotProjections?.Clear();
+        this.absentSlotFunctions?.Clear();
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];

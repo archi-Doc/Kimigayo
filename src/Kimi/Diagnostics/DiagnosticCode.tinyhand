@@ -159,10 +159,14 @@
   + Name="InvalidOriginBinding_Kd"
     Category="Language"
     Message="The Origin name, mapping, or annotation is invalid in this type position"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="MissingOriginBinding_Kd"
     Category="Language"
     Message="This Origin must be explicitly bound or resolved by the position's omission rules"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="InvalidTypeFormation_Kd"
     Category="Language"

@@ -607,7 +607,8 @@ public abstract class Koto
     /// <param name="related">Syntax related to the problem, with its role and label.</param>
     /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
     /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null)
+    /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -615,12 +616,19 @@ public abstract class Koto
         }
 
         DiagnosticRelatedFact[]? locations = null;
-        if (related is not null)
+        var count = (related?.Length ?? 0) + (relatedSpans?.Length ?? 0);
+        if (count != 0)
         {
-            locations = new DiagnosticRelatedFact[related.Length];
-            for (var i = 0; i < related.Length; i++)
+            locations = new DiagnosticRelatedFact[count];
+            var next = 0;
+            for (var i = 0; related is not null && i < related.Length; i++)
             {
-                locations[i] = collection.Relate(related[i].Role, related[i].At.Span, related[i].At.CodeContext.SourceDocument, related[i].Label);
+                locations[next++] = collection.Relate(related[i].Role, related[i].At.Span, related[i].At.CodeContext.SourceDocument, related[i].Label);
+            }
+
+            for (var i = 0; relatedSpans is not null && i < relatedSpans.Length; i++)
+            {
+                locations[next++] = collection.Relate(relatedSpans[i].Role, relatedSpans[i].Span, relatedSpans[i].In.CodeContext.SourceDocument, relatedSpans[i].Label);
             }
         }
 

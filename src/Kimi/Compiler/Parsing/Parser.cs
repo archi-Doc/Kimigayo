@@ -594,7 +594,7 @@ Exit:
 
     private static List<string>? ParseOriginParameters(ref TokenReader reader)
     {
-        if (!reader.TryConsume(TokenKind.OpenBrace))
+        if (!reader.TryConsume(TokenKind.OpenBrace, out var open, false))
         {
             return null;
         }
@@ -636,12 +636,14 @@ Exit:
             reader.Expect(SyntaxForm.OriginSlotName);
         }
 
-        if (!reader.TryConsume(TokenKind.CloseBrace, out _, true))
+        if (!reader.TryConsume(TokenKind.CloseBrace, out var close, true))
         {
             reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
-            reader.TryConsume(TokenKind.CloseBrace);
+            reader.TryConsume(TokenKind.CloseBrace, out close, false);
         }
 
+        // The header is a related location of the diagnostics that name its slots (SPEC 15.3.2).
+        list.HeaderSpan = new(open.Start, Math.Max(close.End, list.Spans.Count == 0 ? open.End : list.Spans[^1].End) - open.Start);
         return list.Count == 0 ? null : list;
     }
 

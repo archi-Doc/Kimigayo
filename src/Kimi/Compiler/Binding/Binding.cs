@@ -388,6 +388,14 @@ public sealed partial class Binding
             {
                 // SPEC 8.4.10.6: reported at the violating effect.
             }
+            else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: an undeclared storage name, at the name.
+            }
+            else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+            {
+                // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
+            }
             else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
             {
                 this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
@@ -672,7 +680,7 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && this.IsDerived(node))
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && (this.IsDerived(node) || this.RestsOnAbsentSlot(node)))
             {
                 this.derivedIssues.Add(node);
             }
