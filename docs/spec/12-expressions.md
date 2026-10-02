@@ -161,7 +161,7 @@ let message = "first = \(values[0])"
 
 An interpolated literal produces an owning `string`. Each embedded expression fits the shared input of `Utf8Writer.write` under §10.2 and requires `Utf8Format` for the selected referent Type. Borrow Types do not forward conformance. The [formatting profile](utf8-formatting.md#5-interpolation-and-internal-adapters) defines evaluation, temporary lifetime, failure, representations and capacity planning. No intermediate owning string per value is required, and a bare Place is not Moved.
 
-`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). String concatenation (§13.3) still accepts only string operands.
+`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). `string` has no `+` ([§13.3](13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators)): an interpolated literal is the one form that joins strings.
 
 ### 12.3.4. Dictionary construction and duplicate keys
 
