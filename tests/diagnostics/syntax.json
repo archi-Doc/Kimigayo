@@ -275,5 +275,7 @@
   { "Name": "guessed-body-without-else", "Source": "func f(a: i32) -> i32\n    if a == 1\npublic func main() => ()\n", "Intended": "an if without else completes when its condition fails, so the fallthrough is independent of the supplied body",
     "Records": [ { "Code": "FunctionFallthrough_Kd", "At": "if a == 1\n" },{ "Code": "MissingSyntax_Kd", "Form": "Body", "After": "a == 1" } ] },
   { "Name": "written-discarded-tail", "Source": "func compute() -> i32 => 1\npublic func main()\n    let x = do\n        if true\n        else => compute()\n", "Intended": "a written else body whose tail is discarded; the warning is independent of the supplied then-body",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Body", "After": "if true" }, { "Code": "DiscardedTail_Kd", "At": "=> compute()", "Skip": 3 } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Body", "After": "if true" }, { "Code": "DiscardedTail_Kd", "At": "=> compute()", "Skip": 3 } ] },
+  { "Name": "written-fallthrough", "Source": "func f(a: i32) -> i32\n    if a == 1 => return 1\n    else => 2\npublic func main() => ()\n", "Intended": "every body is written and the else body discards 2 and falls through: the fallthrough and the discarded value are the problems, and the result left undelivered at the end of the body rests on the fallthrough",
+    "Records": [ { "Code": "FunctionFallthrough_Kd", "At": "if a == 1 => return 1\n    else => 2\n" }, { "Code": "DiscardedValue_Kd", "At": "=> 2", "Skip": 3 } ] }
 ]

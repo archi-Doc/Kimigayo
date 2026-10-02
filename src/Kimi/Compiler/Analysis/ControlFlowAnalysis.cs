@@ -205,6 +205,9 @@ public sealed class ControlFlowAnalysis
     // reachability. Dead transfers still supply result Types, not normal arrivals.
     internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
 
+    // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
+    internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
+
     // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
     private static DiagnosticKey[]? Causes(ControlFlowIssue issue)
     {

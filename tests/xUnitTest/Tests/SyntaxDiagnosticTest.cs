@@ -107,11 +107,13 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
     }
 
     // DIAGNOSTICS.md §4.3: a fallthrough or a discarded tail reached only through a body the parser supplied rests on the body's
-    // syntax Error, so the console and the language server show the syntax record alone; one that written syntax reaches stays.
+    // syntax Error, so the console and the language server show the syntax record alone; one that written syntax reaches stays,
+    // and the result it leaves undelivered rests on the fallthrough (§2 rule 1).
     [Theory]
     [InlineData("guessed-then-body", "MissingSyntax_Kd")]
     [InlineData("guessed-discarded-tail", "MissingSyntax_Kd")]
     [InlineData("written-branch-falls-through", "FunctionFallthrough_Kd,MissingSyntax_Kd,DiscardedValue_Kd")]
+    [InlineData("written-fallthrough", "FunctionFallthrough_Kd,DiscardedValue_Kd")]
     public void CliAndLspShowTheRecordsOfSuppliedBodies(string name, string codes)
     {
         var check = DiagnosticCorpus.Check(DiagnosticCorpus.Syntax(name).Source);
