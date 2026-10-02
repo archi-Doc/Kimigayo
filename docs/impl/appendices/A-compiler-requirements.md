@@ -202,7 +202,7 @@ Preserve complete Type slots rather than flattening a pair into two independent 
 ```text
 DeclarationSchema
     GenericSlots: ordered index, kind (ordinary Type, pair Type, or function length), bound names
-    OriginSchema: ordered binders, bounds, inferred variance and Loan requirements
+    OriginSchema: ordered header slots, inferred variance and Loan requirements
 PairSlot
     WholeType: complete or dependent Type
     OuterSemantics, DirectTarget, OuterOrigin: projections of WholeType
@@ -214,7 +214,7 @@ DeferredObligation
 
 Use Origin schemas for argument correspondence, fragment-header matching and artifact compatibility, not for overload identity. Preserve Binding Identities through alias expansion and Signature normalization. Prove role restrictions before using a projection, or keep only a legitimate obligation. Semantic metadata must not discard Origin information merely because runtime descriptors omit it.
 
-Parse each brace group once, then validate its schema or binding-set role (§15.3.1). Preserve explicit empty headers, postfix borrow attachment, set labels and attached relations through a parse-write-parse round trip and artifact reload. Reject the removed callable lists, mappings and brace borrow annotations. Cover headerless single-slot discovery, typo-induced second names, nearest-scope wrong-role errors, isolated field sets, split closed headers and intermediate qualifier obligations.
+Parse each brace group once, then validate its schema or binding-set role (§15.3.1). Determine each Type's own slots from its header alone, before its storage is bound; storage Origin names are never collected into a schema. Write a header only when it declares slots, and preserve postfix borrow attachment, set labels and attached relations through a parse-write-parse round trip, artifact reload and documentation generation. Reject empty braces, the removed callable lists, mappings and brace borrow annotations. Cover undeclared storage Origin names reported once at the name with the header or Type name as related location, projections of absent slots without derived records, nested Types without headers, split headers, enum payloads, wrong-role matches, `during self` in storage, isolated field sets and intermediate qualifier obligations (§15.3.2).
 
 **Borrow suffix output and diagnostics.** Emit `ref/T? during a`, `during (a and b)` and `ref/(uniq/T during b) during a`, with the required function and adaptation grouping. Write the body, optional suffixes and annotation together, and never emit `ref/T during a?`. Keep annotation and target source positions without breaking parent and child ranges. These requirements add no general diagnostic-string reparsing or serialization-format guarantee.
 
@@ -230,7 +230,7 @@ Keep the canonical contract of §15.3.7, including independent anonymous slots f
 
 Lower and emit only after Origin and Loan obligations are verified. Test positive execution, and rejected escapes and conflicting mutation, with omitted aggregate Origins, including nested occurrences and several inputs. Origins add neither runtime payload fields nor machine-code copies solely for different Origin bindings.
 
-Verify declared Origin bounds at both definition and use: forward binder references, unknown and duplicate binders, equality cycles, `static`, substituted call and Type bounds, fragment agreement, nonstrengthening Contract implementations and inherited specialization bounds. Bounds never supply a Loan or add overload candidates. Distinguish a local borrow's carried Origin from its slot's inferred Origin, reject bare owned-local names as Origins, and preserve independent nested dependencies.
+Verify declared Origin relations at both definition and use: unknown and duplicate header names, equality cycles, `static`, substituted call and Type relations, fragment agreement, nonstrengthening Contract implementations and inherited specialization relations. Relations never supply a Loan or add overload candidates. Distinguish a local borrow's carried Origin from its slot's inferred Origin, reject bare owned-local names as Origins, and preserve independent nested dependencies.
 
 Fixed-array verification must cover contextual `of` and `length`, explicit slot kinds and conflicts, parenthesized constant expressions, constant-readable eligibility, expected-Type boundaries, candidate-local literals, element counts, zero length, zero-sized elements, recursive and nested layout and stride, normalized dependent expressions, negative intermediates, public ValidLength failures, universal body checking, specialization keys and artifact invalidation after constant changes. Check whole initial construction, static-path reinitialization after a Partial Move, reverse partial cleanup and literal-only Move Paths.
 

@@ -224,7 +224,7 @@ Outside comments and literals, the longest punctuation spelling is matched: `..=
 
 The [notation table](01-overview.md#12-conventions-and-notation) summarizes the meaning of punctuation. Expression grouping, generic/comparison boundaries and the token rules for `@` follow [precedence and associativity](13-operators-and-assignment.md#131-precedence-and-associativity).
 
-Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name, and only a Type declaration header may be empty `{}` (§15.3.1). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
+Origin braces `{` `}` form one delimiter pair under the ordinary continuation rules and open no executable scope. Their syntactic position selects their role, a Type schema header or a binding-set name; empty braces are an error in both roles (§15.3.1, §15.3.2). `during` is recognized by position alone, independently of lookup or target eligibility (§3.3.6), and adds no line-continuation rule. The contexts of `during`, `origin` and `outlives` are listed in §2.5.1. `from` has no Origin role.
 
 ## 2.5. Names
 

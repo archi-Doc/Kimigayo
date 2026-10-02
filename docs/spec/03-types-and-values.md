@@ -383,7 +383,7 @@ Type suffixes never search inside grouping. `?` wraps the preceding complete Typ
 
 Each Tuple or array element and each Type argument has its own Type expression. A function's trailing `during` belongs to its result: `(A) -> ref/B? during b` returns `Option<ref/B during b>`. Borrowing the function value requires `ref/((A) -> B) during a`; `((A) -> ref/B) during a` has no target.
 
-Long Types use the existing header and delimiter continuation rules; `during` alone cannot continue a closed header:
+Long Types use the existing header and delimiter continuation rules; `during` alone cannot continue a header:
 
 ```kimi
 func borrow<T>(x: ref/Long<T>)

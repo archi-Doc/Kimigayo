@@ -118,7 +118,7 @@ PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128
                       | "f32" | "f64" | "bool" | "char" | "string"
 Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
                       | "objref" | "objuniq" | "raw" | Name
-OriginHeader         := "{" TrailingList<Name>? "}" // struct/enum only, closed schema.
+OriginHeader         := "{" TrailingList<Name> "}" // struct/enum only; at least one Name.
 OriginBindingSet     := "{" Name ","? "}" // Introduces a fresh set name.
 BorrowOrigin         := "during" OriginAtom
 OriginExpression     := OriginAtom ("and" OriginAtom)*

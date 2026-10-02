@@ -49,7 +49,7 @@ User-defined Types, Contracts and Declaration Containers conventionally use Pasc
 | `[]` | Array and Dictionary construction, fixed-array Types, indexing, range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions and operator precedence. |
 | `<>` | Type arguments and [function length arguments](04-arrays-indexing-and-slices.md#44-function-length-parameters). |
-| `{...}` | A closed struct or enum Origin schema (possibly empty), or a fresh binding-set name after a named Type (§15.3). Never a body or collection. Borrow annotations use `during` (§3.3.6). |
+| `{...}` | A struct or enum Origin schema header listing the Type's own slots, or a fresh binding-set name after a named Type (§15.3). Never a body or collection. Borrow annotations use `during` (§3.3.6). |
 | `=` | Initialization, parameter default or assignment, depending on context. Acquisition follows [Copy and Move](03-types-and-values.md#35-copy-and-move). |
 | `@` | An explicit operation: Type/Semantics adaptation, transfer (`@move`), copy (`@copy`) or follow (`@follow`); see [explicit operations](13-operators-and-assignment.md#135-explicit-operations). |
 | `->` | Introduces the result Type of a function declaration or Function Type. |
