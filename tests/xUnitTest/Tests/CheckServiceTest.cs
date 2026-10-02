@@ -352,6 +352,16 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Contains(output.Diagnostics, static x => x.Note?.Contains("Windows x64", StringComparison.Ordinal) == true);
     }
 
+    // SPEC 23.4.6: a pending input is the state owner's decision; loading a project never turns it into a load failure.
+    [Fact]
+    public void APendingProjectFileReadIsNotALoadFailure()
+    {
+        var project = this.WriteProject("Pending", ("main.kimi", Valid));
+        var exception = new PendingInputException(project);
+        var thrown = Record.Exception(() => Project.TryCreate(Kimigayo.CreateSilent(), null, project, new FailingInputSource(project, exception), out _, out _));
+        Assert.Same(exception, thrown);
+    }
+
     // SPEC 23.3.3: a check that an input or its configuration blocks before the entry runs publishes one Input Error without a range.
     [Fact]
     public void ABlockedOutputPublishesOneInputErrorAtItsInput()
@@ -451,7 +461,7 @@ public sealed class CheckServiceTest : IDisposable
 
     private sealed class FailingInputSource(string failing, Exception failure) : CheckInputSource
     {
-        public override byte[] ReadAllBytes(string path) => Disk.ReadAllBytes(path);
+        public override byte[] ReadAllBytes(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadAllBytes(path);
 
         public override SourceContent ReadSource(string path) => SourceIdentity.PathComparer.Equals(path, failing) ? throw failure : Disk.ReadSource(path);
 

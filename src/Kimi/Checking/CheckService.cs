@@ -37,9 +37,9 @@ internal static class CheckService
                 ? project.Check(context, cancellationToken)
                 : project.PrepareTests(cancellationToken, context) is not null;
         }
-        catch (InvalidDataException ex)
+        catch (InvalidDataException ex) when (context.Compilation is null)
         {
-            // Test preparation reports configuration and test-definition failures as exceptions.
+            // Test preparation reports an invalid configuration as an exception before the front end (SPEC 23.3.3: Blocked).
             context.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.ProjectPreparationFailed_Kd, location, note: ex.Message);
         }
         catch (DiagnosticContractException ex)

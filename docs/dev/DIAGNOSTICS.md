@@ -145,7 +145,7 @@ Unterminated strings keep an invalid operand token at their opening delimiter, w
 
 - Violations (SPEC §23.3.6.7) go through one fault path. It discards the partial records and reports `CheckFaulted_Kd` with fixed text and the fault kind as its Reason. The fault path depends on neither the catalog nor ordinary formatting; its fixed values live in one place, and a test checks them against the catalog.
 - When an analysis throws while the diagnostic path is intact, the valid facts are kept, `CheckFaulted_Kd` (kind `Exception`) is added, and the result is Faulted. `CheckService` no longer formats its own records.
-- The check entry decides Blocked from whether the front end ran (`CheckContext.Compilation`), never from the categories of the records.
+- An exception after the front end ran is the `Exception` fault on both paths, including an `InvalidDataException` of test discovery; only an invalid test configuration thrown before the front end blocks the check (`ProjectPreparationFailed_Kd`). The check entry decides Blocked from whether the front end ran (`CheckContext.Compilation`), never from the categories of the records.
 - Cancellation and waiting for an unestablished input keep their current handling: both propagate as exceptions, and a cancelled check has no output.
 
 ## 7. Outputs

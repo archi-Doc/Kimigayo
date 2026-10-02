@@ -75,7 +75,7 @@ public partial class Project
             project = default;
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PendingInputException)
         {
             failure = $"The project '{path}' could not be loaded: {ex.Message}";
             logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
