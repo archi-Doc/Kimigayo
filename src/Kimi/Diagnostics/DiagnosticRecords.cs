@@ -132,12 +132,15 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets the presentation data.</summary>
     public DiagnosticDisplay? Display { get; init; }
 
+    /// <summary>Gets the repair candidates (SPEC 23.3.6.9): alternative structured edits that resolve the problem, in catalog order then position.</summary>
+    public RepairCandidate[]? Repairs { get; init; }
+
     public bool Equals(CheckDiagnostic? other)
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Category == other.Category &&
             this.Message == other.Message && this.Source == other.Source && this.Span == other.Span && this.Label == other.Label &&
             this.Note == other.Note && this.Advice == other.Advice && Equals(this.Display, other.Display) &&
             (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []) &&
-            (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []);
+            (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []) && (this.Repairs ?? []).AsSpan().SequenceEqual(other.Repairs ?? []);
 
     public override int GetHashCode()
         => HashCode.Combine(this.Code, this.Source, this.Span, this.Message);

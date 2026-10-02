@@ -117,7 +117,7 @@ public partial record class DiagnosticEntry
             return "a message without arguments contains a brace.";
         }
 
-        if (Parse(this.Arguments) is not { } arguments || Parse(this.Evidence) is not { } evidence)
+        if (ParseSchema(this.Arguments) is not { } arguments || ParseSchema(this.Evidence) is not { } evidence)
         {
             return "a fact is not written as name:Kind.";
         }
@@ -148,6 +148,13 @@ public partial record class DiagnosticEntry
     }
 
     internal void ValidateValue(DiagnosticParameter parameter, object? value)
+        => ValidateValue(this.Name, parameter, value);
+
+    /// <summary>Checks that a reported value has the kind its definition names; a mismatch is a contract violation.</summary>
+    /// <param name="owner">The name of the code or repair kind that defines the fact.</param>
+    /// <param name="parameter">The fact's definition.</param>
+    /// <param name="value">The reported value.</param>
+    internal static void ValidateValue(string owner, DiagnosticParameter parameter, object? value)
     {
         var valid = parameter.Kind switch
         {
@@ -161,11 +168,14 @@ public partial record class DiagnosticEntry
         };
         if (!valid)
         {
-            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{this.Name}: {parameter.Name} requires {parameter.Kind}.");
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{owner}: {parameter.Name} requires {parameter.Kind}.");
         }
     }
 
-    private static DiagnosticParameter[]? Parse(string? schema)
+    /// <summary>Parses a schema of <c>name:Kind</c> pairs, as a code's Arguments and Evidence and a repair kind's Facts are written.</summary>
+    /// <param name="schema">The schema text; empty for no facts.</param>
+    /// <returns>The parameters, or <see langword="null"/> when a pair is malformed.</returns>
+    internal static DiagnosticParameter[]? ParseSchema(string? schema)
     {
         if (string.IsNullOrWhiteSpace(schema))
         {

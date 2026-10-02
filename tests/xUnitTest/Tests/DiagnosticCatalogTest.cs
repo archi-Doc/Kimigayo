@@ -97,6 +97,71 @@ public sealed class DiagnosticCatalogTest
         Assert.Null(table[(int)DiagnosticCode.IndentationLevelMismatch_Kd]);
     }
 
+    // SPEC 23.3.6.9: every repair kind has one catalog entry whose title, facts and conditions are consistent.
+    [Fact]
+    public void TheRepairCatalogDefinesEveryKindOnce()
+    {
+        Assert.Empty(RepairKinds.Anomalies);
+        for (var kind = (RepairKind)0; kind < RepairKind.Count; kind++)
+        {
+            Assert.True(RepairKinds.TryGet(kind, out var entry), kind.ToString());
+            Assert.Equal(RepairKinds.NameOf(kind), entry.Name);
+        }
+
+        Assert.True(RepairKinds.TryGet(RepairKind.Transfer, out var transfer));
+        Assert.Equal(RepairConditionSet.Take | RepairConditionSet.UsageLegality, transfer.Relevant);
+        Assert.Equal("Append @move to transfer x to f(a: T)", transfer.FormatTitle(["x", "f(a: T)"]));
+        Assert.Equal("x offers Take and is a Movable Place", RepairConditions.Phrase(RepairCondition.Take, ["x"]));
+    }
+
+    [Fact]
+    public void LoadingTheRepairCatalogReportsEveryAnomaly()
+    {
+        var text = """
+              + Name="Repair.Transfer"
+                Title="First {0} {1}"
+                Facts="place:Text,target:Text"
+                Conditions="Take,UsageLegality"
+
+              + Name="Repair.Transfer"
+                Title="Second"
+
+              + Name="Repair.NoSuch"
+                Title="Unknown"
+
+              + Name="Repair.Borrow"
+                Title="Borrow {0}"
+                Facts="place"
+
+              + Name="Repair.BorrowExclusively"
+                Title="Borrow {2}"
+                Facts="place:Text,spelling:Text"
+
+              + Name="Repair.RemoveUnsafe"
+                Title="Remove"
+                Conditions="Scope"
+
+              + Name="Repair.ReplaceToken"
+                Title="Replace"
+                Conditions="Take"
+
+              + Name="Repair.InsertToken"
+                Title=""
+            """;
+        var (table, anomalies) = RepairKinds.Load(Encoding.UTF8.GetBytes(text));
+        Assert.Contains(anomalies, static x => x == "Repair.Transfer: the entry is duplicated.");
+        Assert.Contains(anomalies, static x => x == "Repair.NoSuch: no RepairKind has this name.");
+        Assert.Contains(anomalies, static x => x == "Repair.Borrow: a fact is not written as name:Kind.");
+        Assert.Contains(anomalies, static x => x == "Repair.BorrowExclusively: the title references a fact that the kind does not name.");
+        Assert.Contains(anomalies, static x => x == "Repair.RemoveUnsafe: Scope is not a repair condition.");
+        Assert.Contains(anomalies, static x => x == "Repair.ReplaceToken: the phrase of Take references a fact that the kind does not name.");
+        Assert.Contains(anomalies, static x => x == "Repair.InsertToken: the entry has no title.");
+        Assert.Contains(anomalies, static x => x == "Repair.PropagateFailure: the kind has no catalog entry.");
+        Assert.Equal("First {0} {1}", table[(int)RepairKind.Transfer]!.Title);
+        Assert.Null(table[(int)RepairKind.Borrow]);
+        Assert.Equal(["The repair catalog resource is missing."], RepairKinds.Load(null).Anomalies);
+    }
+
     [Fact]
     public void AMissingCatalogIsAnAnomaly()
     {

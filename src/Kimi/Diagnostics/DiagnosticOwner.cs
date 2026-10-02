@@ -201,8 +201,10 @@ public sealed class DiagnosticOwner
         }
 
         // Select supplements before building the table. Its order is consumption order, never the order in which a
-        // related location happened to be reported; omitted locations do not introduce unused table entries.
+        // related location happened to be reported; omitted locations and candidates do not introduce unused table entries.
         var related = new DiagnosticRelatedFact[order.Count][];
+        var repairs = new DiagnosticRepairFact[]?[order.Count];
+        var omittedRepairs = new int[order.Count];
         var remap = new int[this.sources.Count];
         Array.Fill(remap, -1);
         for (var i = 0; i < order.Count; i++)
@@ -221,6 +223,18 @@ public sealed class DiagnosticOwner
                     remap[item.Source] = 0;
                 }
             }
+
+            if (fact.Repairs is { } candidates)
+            {
+                repairs[i] = SelectRepairs(candidates, out omittedRepairs[i]);
+                foreach (var candidate in repairs[i] ?? [])
+                {
+                    foreach (var edit in candidate.Edits)
+                    {
+                        remap[edit.Source] = 0;
+                    }
+                }
+            }
         }
 
         var table = new List<DiagnosticSource>();
@@ -236,7 +250,7 @@ public sealed class DiagnosticOwner
         var records = new CheckDiagnostic[order.Count];
         for (var i = 0; i < order.Count; i++)
         {
-            records[i] = this.CreateRecord(facts[order[i]], related[i], remap);
+            records[i] = this.CreateRecord(facts[order[i]], related[i], repairs[i], omittedRepairs[i], remap);
         }
 
         // SPEC 23.3.3: every rejected result publishes at least one Error; the fallbacks make this hold, so a violation is a defect.
@@ -311,7 +325,8 @@ public sealed class DiagnosticOwner
             // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
             if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
                 !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice) ||
-                (existing.Evidence is { } recorded && fact.Evidence is { } reported && !recorded.SequenceEqual(reported)))
+                (existing.Evidence is { } recorded && fact.Evidence is { } reported && !recorded.SequenceEqual(reported)) ||
+                (existing.Repairs is { } recordedRepairs && fact.Repairs is { } reportedRepairs && !DiagnosticRepairFact.SameAs(recordedRepairs, reportedRepairs)))
             {
                 throw new DiagnosticContractException(DiagnosticFault.ConflictingProblem, $"{fact.Code} was reported twice with different locations or facts: [{existing.Start}+{existing.Length}] {existing.First} {existing.Second} {existing.Note} and [{fact.Start}+{fact.Length}] {fact.First} {fact.Second} {fact.Note}.");
             }
@@ -323,6 +338,7 @@ public sealed class DiagnosticOwner
                 Evidence = existing.Evidence ?? fact.Evidence,
                 Related = fact.Related is { } related ? OrderRelated(Union(existing.Related, related)) : existing.Related,
                 DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
+                Repairs = existing.Repairs ?? fact.Repairs,
             };
 
             return;
@@ -428,6 +444,40 @@ public sealed class DiagnosticOwner
     private static bool Conflicts(string? left, string? right)
         => left is not null && right is not null && left != right;
 
+    // SPEC 23.3.6.5, 23.3.6.9: the first candidates up to the limit are kept; a candidate with too many edits or too much
+    // replacement text is omitted whole, never truncated, and every omission is counted.
+    private static DiagnosticRepairFact[]? SelectRepairs(DiagnosticRepairFact[] candidates, out int omitted)
+    {
+        omitted = 0;
+        List<DiagnosticRepairFact>? kept = null;
+        foreach (var candidate in candidates)
+        {
+            var text = 0;
+            foreach (var edit in candidate.Edits)
+            {
+                text += edit.Text.Length;
+            }
+
+            if ((kept?.Count ?? 0) >= DiagnosticLimits.Repairs || candidate.Edits.Length > DiagnosticLimits.RepairEdits || text > DiagnosticLimits.RepairText)
+            {
+                omitted++;
+                continue;
+            }
+
+            (kept ??= new(Math.Min(candidates.Length, DiagnosticLimits.Repairs))).Add(candidate);
+        }
+
+        return kept?.ToArray();
+    }
+
+    // The full display text of a captured fact value, before bounding.
+    private static string Display(object? value) => value switch
+    {
+        bool flag => flag ? "true" : "false",
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+        _ => value?.ToString() ?? string.Empty,
+    };
+
     // SPEC 23.3.6.2, 23.3.6.5: the code's facts, typed by its catalog schema (arguments, then evidence) and bounded once here;
     // the message and the label display the bounded values. The Types of one record are bounded as a pair.
     private static (DiagnosticValue[]? Reason, string Message, string? Label) Describe(DiagnosticEntry entry, in DiagnosticFact fact)
@@ -449,13 +499,7 @@ public sealed class DiagnosticOwner
         {
             var parameter = i < arguments.Length ? arguments[i] : evidence[i - arguments.Length];
             var value = i < arguments.Length ? (i == 0 ? fact.First : fact.Second) : fact.Evidence![i - arguments.Length];
-            full[i] = value switch
-            {
-                bool flag => flag ? "true" : "false",
-                IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-                _ => value?.ToString() ?? string.Empty,
-            };
-
+            full[i] = Display(value);
             if (parameter.IsType)
             {
                 secondType = firstType >= 0 && secondType < 0 ? i : secondType;
@@ -797,7 +841,57 @@ public sealed class DiagnosticOwner
         return (span, source >= 0 && this.sources[source].Document is { } document ? document.GetSourceRange(span) : null);
     }
 
-    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, DiagnosticRelatedFact[] locations, int[] remap)
+    // SPEC 23.3.6.9: the candidate's facts are typed by the kind's schema and bounded once; the title and the phrases of its required
+    // conditions display the bounded values, and each edit gets its display range and the bounded text it replaces.
+    private RepairCandidate Describe(in DiagnosticRepairFact repair, int[] remap)
+    {
+        RepairKinds.TryGet(repair.Kind, out var found);
+        var kind = found!; // Every recorded kind was validated against the catalog.
+        var schema = kind.FactSchema;
+        DiagnosticValue[]? facts = null;
+        var shown = Array.Empty<object?>();
+        if (schema.Length > 0)
+        {
+            facts = new DiagnosticValue[schema.Length];
+            shown = new object?[schema.Length];
+            for (var i = 0; i < schema.Length; i++)
+            {
+                var value = repair.Facts![i];
+                var full = Display(value);
+                var (bounded, elided) = schema[i].Kind == DiagnosticValueKind.Text ? DiagnosticText.Bound(full) : (full, false);
+                facts[i] = new(schema[i].Name, schema[i].Kind, bounded, elided);
+                shown[i] = schema[i].Kind == DiagnosticValueKind.Number ? value : bounded;
+            }
+        }
+
+        var edits = new RepairEdit[repair.Edits.Length];
+        for (var i = 0; i < edits.Length; i++)
+        {
+            var edit = repair.Edits[i];
+            var (span, range) = this.Locate(edit.Source, edit.Start, edit.Length);
+            var replaced = edit.Length == 0 ? null : DiagnosticText.Bound(this.sources[edit.Source].Document!.SourceText.Substring(edit.Start, edit.Length)).Text;
+            edits[i] = new(remap[edit.Source], span!.Value, range, edit.Text, replaced);
+        }
+
+        var verified = new List<RepairCondition>(2);
+        var required = new List<RequiredCondition>(2);
+        for (var condition = RepairCondition.Take; condition <= RepairCondition.Structure; condition++)
+        {
+            var flag = RepairConditions.Flag(condition);
+            if ((repair.Verified & flag) != 0)
+            {
+                verified.Add(condition);
+            }
+            else if ((repair.Required & flag) != 0)
+            {
+                required.Add(new(condition, RepairConditions.Phrase(condition, shown)));
+            }
+        }
+
+        return new(RepairKinds.NameOf(repair.Kind), kind.FormatTitle(shown), facts, edits, verified.ToArray(), required.ToArray());
+    }
+
+    private CheckDiagnostic CreateRecord(in DiagnosticFact fact, DiagnosticRelatedFact[] locations, DiagnosticRepairFact[]? repairs, int omittedRepairs, int[] remap)
     {
         DiagnosticEntries.TryGet(fact.Code, out var found);
         var entry = found!; // Every recorded code was validated against the catalog.
@@ -867,6 +961,21 @@ public sealed class DiagnosticOwner
             }
         }
 
+        RepairCandidate[]? candidates = null;
+        if (repairs is not null)
+        {
+            candidates = new RepairCandidate[repairs.Length];
+            for (var i = 0; i < repairs.Length; i++)
+            {
+                candidates[i] = this.Describe(repairs[i], remap);
+            }
+        }
+
+        if (omittedRepairs > 0)
+        {
+            (omissions ??= []).Add(new("repair candidates", omittedRepairs));
+        }
+
         return new(entry.Name, entry.Severity, entry.Category, message, fact.Source < 0 ? -1 : remap[fact.Source], span)
         {
             Label = label,
@@ -876,6 +985,7 @@ public sealed class DiagnosticOwner
             Advice = fact.Advice ?? entry.Advice,
             Omissions = omissions?.ToArray(),
             Display = display,
+            Repairs = candidates,
         };
     }
 

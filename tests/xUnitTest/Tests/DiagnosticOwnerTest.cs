@@ -178,6 +178,27 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
+    // SPEC 23.3.6.8, 23.3.6.9: the JSON form keeps every field of a repair candidate, and equality compares candidates.
+    [Fact]
+    public void TheJsonFormKeepsRepairCandidates()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "consume(resource)\n");
+        var target = owner.GetOrAddCollection("main.kimi").For(document);
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs:
+            [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
+        var result = owner.Finalize();
+
+        var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
+        Assert.Contains("\"repairs\":[{\"kind\":\"Repair.Transfer\",\"title\":\"Append @move to transfer resource to consume(value: Resource)\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"edits\":[{\"source\":0,\"span\":{\"start\":16,\"length\":0},\"range\":{\"start\":{\"line\":0,\"character\":16},\"end\":{\"line\":0,\"character\":16}},\"text\":\"@move\"}]", json, StringComparison.Ordinal);
+        Assert.Contains("\"verified\":[\"Take\"],\"required\":[{\"condition\":\"UsageLegality\",\"phrase\":", json, StringComparison.Ordinal);
+        var read = JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult)!;
+        Assert.Equal(result, read);
+        Assert.NotEqual(result, read with { Diagnostics = [read.Diagnostics[0] with { Repairs = null }] });
+    }
+
     [Fact]
     public void TheRequirementTableDescribesEveryRequirementOnce()
     {

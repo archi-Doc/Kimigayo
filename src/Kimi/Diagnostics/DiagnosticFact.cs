@@ -137,9 +137,56 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 /// <param name="DerivedFrom">The check keys of the unmet prerequisites.</param>
 /// <param name="Evidence">The code's evidence facts, captured as values, or <see langword="null"/> when the report has none.</param>
 /// <param name="Related">Locations the recorder relates to the problem, such as the candidates of a failed selection.</param>
+/// <param name="Repairs">The repair candidates the recorder offers (SPEC 23.3.6.9), validated and ordered at the recording boundary, or <see langword="null"/> for none.</param>
 internal readonly record struct DiagnosticFact(
     DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, string? Advice, DiagnosticKey[]? DerivedFrom,
-    object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null);
+    object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null);
+
+/// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.3.6.9).</summary>
+/// <param name="Source">The source table index of the recorded input.</param>
+/// <param name="Start">The span start.</param>
+/// <param name="Length">The span length; zero for an insertion point.</param>
+/// <param name="Text">The replacement text; empty for a deletion.</param>
+internal readonly record struct DiagnosticEditFact(int Source, int Start, int Length, string Text);
+
+/// <summary>A repair candidate as recorded (SPEC 23.3.6.9): its kind, the kind's facts captured as values, its edits and the
+/// judgment of its relevant conditions. A refuted condition is never recorded; the recorder withholds the candidate instead.</summary>
+/// <param name="Kind">The kind.</param>
+/// <param name="Facts">The kind's facts, or <see langword="null"/> when the kind names none.</param>
+/// <param name="Edits">The edits, in position order and none overlapping once recorded.</param>
+/// <param name="Verified">The relevant conditions the check established.</param>
+/// <param name="Required">The relevant conditions the check could not decide.</param>
+internal readonly record struct DiagnosticRepairFact(RepairKind Kind, object?[]? Facts, DiagnosticEditFact[] Edits, RepairConditionSet Verified, RepairConditionSet Required = RepairConditionSet.None)
+{
+    /// <summary>Compares two candidates by value, including their facts and edits.</summary>
+    /// <param name="other">The other candidate.</param>
+    /// <returns><see langword="true"/> when the candidates are the same.</returns>
+    internal bool SameAs(in DiagnosticRepairFact other)
+        => this.Kind == other.Kind && this.Verified == other.Verified && this.Required == other.Required && this.Edits.AsSpan().SequenceEqual(other.Edits) &&
+            (this.Facts ?? []).AsSpan().SequenceEqual(other.Facts ?? []);
+
+    /// <summary>Compares two candidate lists by value.</summary>
+    /// <param name="left">One list.</param>
+    /// <param name="right">The other list.</param>
+    /// <returns><see langword="true"/> when both lists hold the same candidates in the same order.</returns>
+    internal static bool SameAs(DiagnosticRepairFact[] left, DiagnosticRepairFact[] right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (!left[i].SameAs(right[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
 
 /// <summary>A location that a recorder relates to a problem, resolved to lines and columns only when the result is finalized.</summary>
 /// <param name="Role">The role, such as <c>candidate</c>.</param>

@@ -226,8 +226,9 @@ public sealed class DiagnosticCollection
     /// <param name="document">The source the span belongs to; the target's document by default.</param>
     /// <param name="evidence">The code's evidence facts, all of them in catalog order, or <see langword="null"/> for none.</param>
     /// <param name="related">Locations related to the problem, located by <see cref="Relate"/>.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>; <see langword="null"/> or empty for none.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null)
+    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
         document ??= this.Document;
         var entry = Validate(range, code, first, second, document, derivedFrom);
@@ -250,8 +251,36 @@ public sealed class DiagnosticCollection
         var length = document is null ? -1 : range.Length;
         var causes = derivedFrom is { Length: > 0 } ? derivedFrom.Distinct().ToArray() : null;
         var capturedRelated = related is null ? null : DiagnosticOwner.OrderRelated(related.Distinct().ToArray());
-        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, causes, DiagnosticOwner.Capture(evidence), capturedRelated), isError);
+        var candidates = repairs is { Length: > 0 } ? ValidateRepairs(entry, repairs, causes is not null) : null;
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, causes, DiagnosticOwner.Capture(evidence), capturedRelated, candidates), isError);
         return isError;
+    }
+
+    /// <summary>Locates one edit of a repair candidate in a recorded input (SPEC 23.3.6.9): a source whose immutable text the check
+    /// read, never a built-in or generated source.</summary>
+    /// <param name="span">The replaced span; an empty span is an insertion point.</param>
+    /// <param name="text">The replacement text; empty for a deletion.</param>
+    /// <param name="document">The span's source; the target's document by default.</param>
+    /// <returns>The edit.</returns>
+    internal DiagnosticEditFact Edit(SourceSpan span, string text, SourceDocument? document = null)
+    {
+        document ??= this.Document;
+        if (document is null || span.Start < 0 || span.Length < 0 || span.Start > document.SourceText.Length - span.Length)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"Repair edit at {span} in {document?.Path ?? "no source"}.");
+        }
+
+        if (document.Path.StartsWith(Checking.SourceIdentity.BuiltInPrefix, StringComparison.Ordinal))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"Repair edit in the built-in source {document.Path}; edits reach recorded inputs only.");
+        }
+
+        if (text is null)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, "A repair edit needs its replacement text.");
+        }
+
+        return new(this.SourceOf(document), span.Start, span.Length, text);
     }
 
     /// <summary>Locates a related location in the source table.</summary>
@@ -273,6 +302,97 @@ public sealed class DiagnosticCollection
         }
 
         return new(role, this.SourceOf(document), document is null ? 0 : span.Start, document is null ? -1 : span.Length, label);
+    }
+
+    // SPEC 23.3.6.7, 23.3.6.9: a candidate names a catalog kind with that kind's facts, has edits that do not overlap, judges each
+    // relevant condition exactly once, and never belongs to a derived record. Edits are ordered by position with insertions at one
+    // point joined, and the candidates by kind then first edit, so repeated reports and outputs compare one form.
+    private static DiagnosticRepairFact[] ValidateRepairs(DiagnosticEntry entry, DiagnosticRepairFact[] repairs, bool derived)
+    {
+        if (RepairKinds.Anomalies.Count != 0)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.Catalog, RepairKinds.Anomalies[0]);
+        }
+
+        if (derived)
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} is derived and offers repair candidates.");
+        }
+
+        var candidates = new DiagnosticRepairFact[repairs.Length];
+        for (var i = 0; i < repairs.Length; i++)
+        {
+            var repair = repairs[i];
+            if (!RepairKinds.TryGet(repair.Kind, out var kind))
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} offers a repair of the unknown kind {repair.Kind}.");
+            }
+
+            var facts = repair.Facts ?? [];
+            if (facts.Length != kind.FactSchema.Length)
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} takes {kind.FactSchema.Length} facts, not {facts.Length}.");
+            }
+
+            for (var j = 0; j < facts.Length; j++)
+            {
+                DiagnosticEntry.ValidateValue(kind.Name, kind.FactSchema[j], facts[j]);
+            }
+
+            if ((repair.Verified & repair.Required) != 0 || (repair.Verified | repair.Required) != kind.Relevant)
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} judges each of its conditions ({kind.Conditions}) exactly once; verified {repair.Verified}, required {repair.Required}.");
+            }
+
+            if (repair.Edits is not { Length: > 0 })
+            {
+                throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} offers a repair without edits.");
+            }
+
+            candidates[i] = repair with { Facts = facts.Length == 0 ? null : DiagnosticOwner.Capture(facts), Edits = OrderEdits(kind.Name, repair.Edits) };
+        }
+
+        Array.Sort(candidates, static (x, y) =>
+        {
+            var order = x.Kind.CompareTo(y.Kind);
+            order = order != 0 ? order : x.Edits[0].Source.CompareTo(y.Edits[0].Source);
+            return order != 0 ? order : x.Edits[0].Start.CompareTo(y.Edits[0].Start);
+        });
+        return candidates;
+    }
+
+    private static DiagnosticEditFact[] OrderEdits(string kind, DiagnosticEditFact[] edits)
+    {
+        var ordered = (DiagnosticEditFact[])edits.Clone();
+        Array.Sort(ordered, static (x, y) =>
+        {
+            var order = x.Source.CompareTo(y.Source);
+            order = order != 0 ? order : x.Start.CompareTo(y.Start);
+            return order != 0 ? order : x.Length.CompareTo(y.Length);
+        });
+
+        var count = 0;
+        for (var i = 0; i < ordered.Length; i++)
+        {
+            var edit = ordered[i];
+            if (count > 0 && ordered[count - 1] is var previous && previous.Source == edit.Source)
+            {
+                if (previous.Length == 0 && edit.Length == 0 && previous.Start == edit.Start)
+                {
+                    ordered[count - 1] = previous with { Text = previous.Text + edit.Text };
+                    continue;
+                }
+
+                if (previous.Start + previous.Length > edit.Start)
+                {
+                    throw new DiagnosticContractException(DiagnosticFault.InvalidLocation, $"{kind} has overlapping edits at {previous.Start}+{previous.Length} and {edit.Start}+{edit.Length}.");
+                }
+            }
+
+            ordered[count++] = edit;
+        }
+
+        return count == ordered.Length ? ordered : ordered[..count];
     }
 
     private int CurrentModule()

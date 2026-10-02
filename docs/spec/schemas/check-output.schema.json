@@ -111,7 +111,8 @@
         "source": { "type": "integer", "minimum": 0, "description": "The source table index of a recorded input." },
         "span": { "$ref": "#/$defs/span" },
         "range": { "$ref": "#/$defs/range" },
-        "text": { "type": "string", "description": "The replacement text; empty for a deletion." }
+        "text": { "type": "string", "description": "The replacement text; empty for a deletion." },
+        "replaced": { "type": "string", "description": "The bounded text the span covers, for display; absent for an insertion." }
       }
     },
     "requiredCondition": {

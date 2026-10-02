@@ -21,7 +21,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     public DiagnosticSnapshotTest() => Directory.CreateDirectory(this.directory);
 
     /// <summary>Gets the kinds of difference between two snapshots, in the order they are judged.</summary>
-    internal static string[] Kinds { get; } = ["case", "acceptance", "code", "severity", "attribution", "location", "text", "order"];
+    internal static string[] Kinds { get; } = ["case", "acceptance", "code", "severity", "attribution", "location", "text", "repair", "order"];
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
@@ -51,10 +51,12 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         [
             new("same", "Completed", false, [Record("B_Kd", range: "2:1-2:2"), Record("A_Kd")]),
             new("moved", "Completed", true, [Record("A_Kd", path: "b.kimi"), Record("C_Kd", message: "new")]),
+            new("repaired", "Completed", false, [Record("A_Kd") with { Repairs = "Repair.Transfer[1:2-1:2'@move'] verified=Take required=UsageLegality" }]),
         ];
+        baseline = [.. baseline, new("repaired", "Completed", false, [Record("A_Kd")])];
 
         var differences = Classify(baseline, current).Select(static x => string.Join(' ', x.Split('\t')[..2])).ToArray();
-        Assert.Equal(["case gone", "acceptance moved", "attribution moved", "code moved", "order same"], differences);
+        Assert.Equal(["case gone", "acceptance moved", "attribution moved", "code moved", "repair repaired", "order same"], differences);
     }
 
     /// <summary>
@@ -156,7 +158,8 @@ public sealed class DiagnosticSnapshotTest : IDisposable
 
                 var old = removed[index];
                 removed.RemoveAt(index);
-                var kind = old.Severity != diagnostic.Severity ? "severity" : old.Path != diagnostic.Path ? "attribution" : old.Range != diagnostic.Range ? "location" : "text";
+                var kind = old.Severity != diagnostic.Severity ? "severity" : old.Path != diagnostic.Path ? "attribution" : old.Range != diagnostic.Range ? "location" :
+                    old.Message != diagnostic.Message ? "text" : "repair";
                 differences.Add($"{kind}\t{name}\t{old} -> {diagnostic}");
             }
 
@@ -177,6 +180,11 @@ public sealed class DiagnosticSnapshotTest : IDisposable
 
     private static string Format(SourceRange? range)
         => range is { } value ? $"{value.Start.Line + 1}:{value.Start.Character + 1}-{value.End.Line + 1}:{value.End.Character + 1}" : string.Empty;
+
+    // SPEC 23.3.6.9: each candidate as its kind, its edits (range and replacement) and its judged conditions, so a changed candidate is a difference of kind repair.
+    private static string Format(RepairCandidate[]? repairs)
+        => repairs is null ? string.Empty : string.Join("; ", repairs.Select(static x =>
+            $"{x.Kind}[{string.Join(",", x.Edits.Select(static e => $"{Format(e.Range)}'{e.Text}'"))}] verified={string.Join(",", x.Verified)} required={string.Join(",", x.Required.Select(static c => c.Condition))}"));
 
     private SnapshotCase[] Take(IEnumerable<string> names)
         => [.. names.Select(this.Take)];
@@ -208,7 +216,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         Assert.True(Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failure), failure);
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         var root = Path.GetDirectoryName(project)!;
-        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range))).ToArray();
+        var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();
         return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
     }
 
@@ -225,9 +233,10 @@ public sealed class DiagnosticSnapshotTest : IDisposable
     /// <param name="Message">The message.</param>
     /// <param name="Path">The source path relative to the project, a built-in identity, or empty.</param>
     /// <param name="Range">The one-based range, or empty.</param>
-    internal sealed record SnapshotDiagnostic(string Code, string Severity, string Message, string Path, string Range)
+    /// <param name="Repairs">The repair candidates in one line, or empty; a baseline written before candidates existed reads as empty.</param>
+    internal sealed record SnapshotDiagnostic(string Code, string Severity, string Message, string Path, string Range, string Repairs = "")
     {
         public override string ToString()
-            => $"{this.Code} {this.Path}:{this.Range} {this.Severity} \"{this.Message}\"";
+            => $"{this.Code} {this.Path}:{this.Range} {this.Severity} \"{this.Message}\"{(this.Repairs.Length == 0 ? string.Empty : " " + this.Repairs)}";
     }
 }

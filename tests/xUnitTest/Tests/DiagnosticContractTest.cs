@@ -297,6 +297,129 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 23.3.6.9: a candidate is finalized with its title, bounded facts, located edits and judged conditions; candidates are
+    // ordered by kind and then by their first edit, and two insertions at one point are one edit.
+    [Fact]
+    public void RepairCandidatesAreFinalizedInCatalogOrder()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "let a = b\nconsume(resource)\n");
+        var target = owner.GetOrAddCollection("main").For(document);
+        var key = new DiagnosticKey(null, 0, 18, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        DiagnosticRepairFact[] repairs =
+        [
+            new(RepairKind.ReplaceToken, ["b", "c"], [target.Edit(new(8, 1), "c")], RepairConditionSet.None),
+            new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(26, 0), "ve"), target.Edit(new(26, 0), "@mo")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
+        ];
+        target.Report(DiagnosticPartition.Ownership, key, new(18, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+
+        var record = Assert.Single(owner.Finalize().Diagnostics);
+        var candidates = record.Repairs!;
+        Assert.Equal(["Repair.Transfer", "Repair.ReplaceToken"], candidates.Select(static x => x.Kind));
+        var transfer = candidates[0];
+        Assert.Equal("Append @move to transfer resource to consume(value: Resource)", transfer.Title);
+        Assert.Equal([new("place", DiagnosticValueKind.Text, "resource"), new("target", DiagnosticValueKind.Text, "consume(value: Resource)")], transfer.Facts!);
+        Assert.Equal(new RepairEdit(0, new(26, 0), new SourceRange(new(1, 16), new(1, 16)), "ve@mo"), Assert.Single(transfer.Edits));
+        Assert.Equal([RepairCondition.Take], transfer.Verified);
+        Assert.Equal([new RequiredCondition(RepairCondition.UsageLegality, "the edited operation and every later use of resource satisfy the initialization, Loan and lifetime conditions")], transfer.Required);
+        var replace = candidates[1];
+        Assert.Equal("Replace 'b' with 'c'", replace.Title);
+        Assert.Equal(new RepairEdit(0, new(8, 1), new SourceRange(new(0, 8), new(0, 9)), "c", "b"), Assert.Single(replace.Edits));
+        Assert.Empty(replace.Verified);
+        Assert.Empty(replace.Required);
+        Assert.Null(record.Omissions);
+    }
+
+    // SPEC 23.3.6.5, 23.3.6.9: a candidate beyond the count limit, or with too many edits or too much text, is omitted whole and counted.
+    [Fact]
+    public void RepairCandidatesBeyondTheLimitsAreOmittedWhole()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", new string('x', 100));
+        var target = owner.GetOrAddCollection("main").For(document);
+        var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Syntax);
+        var repairs = new List<DiagnosticRepairFact>
+        {
+            new(RepairKind.InsertToken, ["a"], Enumerable.Range(0, DiagnosticLimits.RepairEdits + 1).Select(i => target.Edit(new(i, 0), "a")).ToArray(), RepairConditionSet.None),
+            new(RepairKind.InsertToken, ["b"], [target.Edit(new(0, 0), new string('b', DiagnosticLimits.RepairText + 1))], RepairConditionSet.None),
+        };
+        for (var i = 0; i <= DiagnosticLimits.Repairs; i++)
+        {
+            repairs.Add(new(RepairKind.InsertToken, ["c"], [target.Edit(new(i + 1, 0), "c")], RepairConditionSet.None));
+        }
+
+        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, null, document, repairs: repairs.ToArray());
+        var record = Assert.Single(owner.Finalize().Diagnostics);
+        Assert.Equal(DiagnosticLimits.Repairs, record.Repairs!.Length);
+        Assert.All(record.Repairs, static x => Assert.Equal("c", Assert.Single(x.Edits).Text));
+        Assert.Equal([new DiagnosticOmission("repair candidates", 3)], record.Omissions!);
+    }
+
+    // SPEC 23.3.6.7: a malformed candidate is a compiler defect, never a property of the checked source.
+    [Theory]
+    [InlineData("no edits", DiagnosticFault.InvalidArgument)]
+    [InlineData("overlap", DiagnosticFault.InvalidLocation)]
+    [InlineData("outside", DiagnosticFault.InvalidLocation)]
+    [InlineData("built-in", DiagnosticFault.InvalidLocation)]
+    [InlineData("derived", DiagnosticFault.InvalidArgument)]
+    [InlineData("conditions", DiagnosticFault.InvalidArgument)]
+    [InlineData("facts", DiagnosticFault.InvalidArgument)]
+    [InlineData("conflict", DiagnosticFault.ConflictingProblem)]
+    public void AnInvalidRepairCandidateIsAContractViolation(string shape, DiagnosticFault fault)
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "consume(resource)");
+        var builtIn = new SourceDocument("compiler://Kimi/Core.kimi", "struct Core");
+        var target = owner.GetOrAddCollection("main").For(document);
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var exception = Assert.Throws<DiagnosticContractException>(() =>
+        {
+            DiagnosticRepairFact[] repairs = shape switch
+            {
+                "no edits" => [new(RepairKind.Transfer, ["resource", "consume"], [], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+                "overlap" => [new(RepairKind.Transfer, ["resource", "consume"], [target.Edit(new(8, 8), "x"), target.Edit(new(10, 2), "y")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+                "outside" => [new(RepairKind.Transfer, ["resource", "consume"], [target.Edit(new(17, 1), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+                "built-in" => [new(RepairKind.Transfer, ["resource", "consume"], [target.Edit(new(0, 0), "@move", builtIn)], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+                "conditions" => [new(RepairKind.Transfer, ["resource", "consume"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take | RepairConditionSet.UsageLegality, RepairConditionSet.UsageLegality)],
+                "facts" => [new(RepairKind.Transfer, ["resource"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+                _ => [new(RepairKind.Transfer, ["resource", "consume"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)],
+            };
+            if (shape == "derived")
+            {
+                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [DiagnosticKey.Unresolved], document, repairs: repairs);
+                return;
+            }
+
+            target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+            if (shape == "conflict")
+            {
+                repairs[0] = repairs[0] with { Verified = RepairConditionSet.None, Required = RepairConditionSet.Take | RepairConditionSet.UsageLegality };
+                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+            }
+        });
+        Assert.Equal(fault, exception.Fault);
+    }
+
+    // SPEC 23.3.6.8: a command renders each candidate after the Advice with its title, one line per edit and its conditions.
+    [Fact]
+    public void TheCommandRendersRepairCandidates()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "if a&&b => fire()\nconsume(resource)\n");
+        var target = owner.GetOrAddCollection("main").For(document);
+        var key = new DiagnosticKey(null, 0, 26, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        target.Report(DiagnosticPartition.Ownership, key, new(26, 8), DiagnosticCode.TransferRequired_Kd, null, null, "resource is a let binding of a Non-Copy Type", null, null, document, repairs:
+            [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(34, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
+        target.Report(DiagnosticPartition.Syntax, new(null, 0, 4, 2, DiagnosticRequirement.Syntax), new(4, 2), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, null, document, repairs:
+            [new(RepairKind.ReplaceToken, ["&&", "and"], [target.Edit(new(4, 2), " and ")], RepairConditionSet.None)]);
+        var console = new DiagnosticConsole();
+        new Kimigayo(console).Render(owner.Finalize(), string.Empty);
+        var text = console.Text;
+        output.WriteLine(text);
+        Assert.Contains("Repair: Replace '&&' with 'and'\n = main.kimi:1:5: replace '&&' with ' and '\n", text, StringComparison.Ordinal);
+        Assert.Contains("\nNote: resource is a let binding of a Non-Copy Type\nRepair: Append @move to transfer resource to consume(value: Resource)\n = main.kimi:2:17: insert '@move'\n = verified: Take; requires: the edited operation and every later use of resource satisfy the initialization, Loan and lifetime conditions\n", text, StringComparison.Ordinal);
+    }
+
     internal sealed class DiagnosticConsole : IConsoleService
     {
         private readonly StringBuilder text = new();

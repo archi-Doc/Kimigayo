@@ -233,7 +233,7 @@ A **repair candidate** is a structured edit of a recorded input that resolves a 
 | kind | A stable name from the closed catalog below. It fixes the title template and the names and kinds of the candidate's facts |
 | title | One sentence formed from the kind's template and the facts |
 | facts | Typed facts, as in a Reason |
-| edits | One or more edits, each naming a source table entry that is a recorded input, a span of its immutable text in UTF-16 code units (an empty span is an insertion point) and the replacement text; lines and characters are display data |
+| edits | One or more edits, each naming a source table entry that is a recorded input, a span of its immutable text in UTF-16 code units (an empty span is an insertion point) and the replacement text; lines and characters, and the bounded text the span covers, are display data |
 | verified | The relevant conditions the check established from its own facts |
 | required | The relevant conditions the check could not decide, each with a phrase formed from the condition's template and the facts |
 
