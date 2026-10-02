@@ -3063,8 +3063,12 @@ CloseParameters:
             return ParseBlock(ref reader);
         }
 
-        reader.Expect(SyntaxForm.Body);
-        return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
+        // An empty body is supplied where the body is missing. It is a recovery: a check that reads its Type or its normal
+        // completion reads the parser's guess and rests on the Error (DIAGNOSTICS.md §4.3).
+        var cause = reader.Expect(SyntaxForm.Body);
+        var supplied = new CodeBlockKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0), []);
+        reader.CodeContext.RecordRecovery(supplied, cause);
+        return supplied;
     }
 
     internal static CodeBlockKoto ParseRequiredBody(ref TokenReader reader, bool ifBody = false)
@@ -3089,9 +3093,12 @@ CloseParameters:
         var arrow = reader.Read();
         if (!reader.SameLine(headerEnd, arrow.Span.Start) || !reader.SameLine(arrow.Span.End, reader.CurrentTokenRange.Start) || IsExpressionBoundary(ref reader))
         {
-            // The expression body belongs on the header's line, right after its arrow.
-            reader.Expect(SyntaxForm.Expression);
-            return reader.NewErrorKoto();
+            // The expression body belongs on the header's line, right after its arrow. The Error expression is supplied for the
+            // missing body, a recovery like the empty block of a missing indented body.
+            var cause = reader.Expect(SyntaxForm.Expression);
+            var supplied = reader.NewErrorKoto();
+            reader.CodeContext.RecordRecovery(supplied, cause);
+            return supplied;
         }
 
         var region = (reader.SingleBodyRegion, reader.IfBodyRegion);
