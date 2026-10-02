@@ -376,11 +376,12 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Consumes a token of the specified kind.
+    /// Consumes a token of the specified kind. An attribute at the position is misplaced (SPEC 6.5): it is reported and skipped,
+    /// and the expected token may follow it.
     /// </summary>
     /// <param name="targetKind">The expected token kind.</param>
     /// <param name="range">The source range of the consumed token.</param>
-    /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
+    /// <param name="addDiagnostic">Whether to report the token's form as expected, and skip the rest of the line, when the token is not found.</param>
     /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryConsume(TokenKind targetKind, out SourceSpan range, bool addDiagnostic = true)
@@ -519,6 +520,23 @@ public ref partial struct TokenReader
         }
 
         return default;
+    }
+
+    /// <summary>Advances within the current line until one of the specified token kinds, stopping at the line boundary.</summary>
+    /// <param name="kind1">The first token kind at which to stop.</param>
+    /// <param name="kind2">The second token kind at which to stop.</param>
+    public void SkipUntilInLine(TokenKind kind1, TokenKind kind2)
+    {
+        while (this.CanRead)
+        {
+            var tokenKind = this.currentToken.Kind;
+            if (tokenKind == kind1 || tokenKind == kind2 || tokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+            {
+                return;
+            }
+
+            this.AdvanceOne();
+        }
     }
 
     /// <summary>
@@ -726,6 +744,29 @@ public ref partial struct TokenReader
         return (uint)index < (uint)this.tokens.Length ? this.tokens[index] : this.endToken;
     }
 
+    /// <summary>
+    /// Reports attributes at the current position, where the grammar takes none (SPEC 6.5): an attribute precedes a
+    /// declaration, so one between the parts of a header, before a Type or in an expression is misplaced. Each is reported
+    /// once over its whole extent and kept for the next node, so the source still round-trips through the tree.
+    /// </summary>
+    /// <returns><see langword="true"/> when at least one attribute was read.</returns>
+    internal bool ReportMisplacedAttributes()
+    {
+        var found = false;
+        while (this.currentToken.Kind == TokenKind.Sharp)
+        {
+            if (Parser.ParseAttributeKoto(ref this) is { } attribute)
+            {
+                // The kept attribute is this Error's recovery: Binding lets it mark nothing and checks the node it lands on alone.
+                this.CodeContext.RecordRecovery(attribute, this.Unexpected(SyntaxForm.Attribute, attribute.Span));
+            }
+
+            found = true;
+        }
+
+        return found;
+    }
+
     // Split compound operators only in type context; shift/comparison expressions keep
     // their original tokens. The shared token buffer remains immutable.
     internal bool TryConsumeTypeClose(out SourceSpan range)
@@ -750,29 +791,18 @@ public ref partial struct TokenReader
 
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
-Loop:
-        if (this.CanRead)
+        // An attribute where the grammar takes none is misplaced: it is reported and skipped, and the expected token may follow it.
+        if (this.currentToken.Kind == TokenKind.Sharp && this.ReportMisplacedAttributes() && this.currentToken.Kind == targetKind && this.CanRead)
         {
-            var token = this.currentToken;
-            if (token.Kind == targetKind)
-            {
-                range = token.Span;
-                this.AdvanceOne();
-                return true;
-            }
+            range = this.currentToken.Span;
+            this.AdvanceOne();
+            return true;
+        }
 
-            if (token.Kind == TokenKind.Sharp)
-            {
-                // Attributes may appear between the caller and the expected token.
-                _ = Parser.ParseAttributeKoto(ref this);
-                goto Loop;
-            }
-
-            if (addDiagnostic)
-            {
-                this.Expect(FormOf(targetKind));
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-            }
+        if (addDiagnostic && this.CanRead)
+        {
+            this.Expect(FormOf(targetKind));
+            this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         }
 
         // At the end of the sequence the tokenizer has already reported the missing closers.

@@ -61,6 +61,11 @@ public ref partial struct TokenReader
     /// <param name="bodyMayFollow">Whether an indented body may follow the header; the reader then stops at its start.</param>
     public void ExpectLineEnd(bool bodyMayFollow = false)
     {
+        if (this.currentToken.Kind == TokenKind.Sharp)
+        {
+            this.ReportMisplacedAttributes(); // An attribute continuing the line is misplaced (SPEC 6.5); the line may end after it.
+        }
+
         if (!this.CanRead || this.currentToken.Kind is TokenKind.Separator or TokenKind.EndBlock)
         {
             return;

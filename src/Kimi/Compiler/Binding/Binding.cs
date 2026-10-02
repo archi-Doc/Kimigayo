@@ -983,9 +983,10 @@ public sealed partial class Binding
 
             var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
             if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
-                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null) &&
+                attribute.CodeContext.RecoveryCause(attribute) is null)
             {
-                marker = attribute;
+                marker = attribute; // A misplaced marker the parser kept is its syntax Error's recovery and marks nothing.
             }
 
             if (marker is not null)
@@ -1122,6 +1123,20 @@ public sealed partial class Binding
                 }
 
                 test.VisitChildren(binding.testSyntaxVisitor ??= new(binding));
+                return;
+            }
+
+            if (node is AttributeKoto misplaced && node.CodeContext.RecoveryCause(node) is not null)
+            {
+                // A misplaced attribute the parser kept for the source round trip is its syntax Error's recovery (SPEC 6.5): it
+                // marks nothing, so the node it was kept on is checked on its own.
+                misplaced.BoundType = BoundType.Unit;
+                misplaced.BindingState = BindingState.Resolved;
+                if (misplaced.AttributeChain is { } precedingMisplaced)
+                {
+                    this.Visit(precedingMisplaced);
+                }
+
                 return;
             }
 

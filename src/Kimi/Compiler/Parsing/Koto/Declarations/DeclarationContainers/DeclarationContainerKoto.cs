@@ -667,11 +667,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return false;
         }
 
-        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.EndBlock)
-        {
-            reader.Expect(SyntaxForm.Declaration);
-        }
-
         return !reader.TryConsume(TokenKind.EndBlock);
     }
 
