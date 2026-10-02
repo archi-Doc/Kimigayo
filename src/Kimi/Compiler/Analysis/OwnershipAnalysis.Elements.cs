@@ -12,7 +12,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
         var type = this.Concrete(target.BoundType);
-        if (type is null || operation == KotoKind.Invalid || (operation != KotoKind.Equals && !type.IsNumeric))
+        if (type is null || (operation != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, operation)))
         {
             this.Unsupported(source);
             return -1;
@@ -87,7 +87,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var type = ElementAccess.DestinationType(target, target.BoundType);
-        if (operation == KotoKind.Invalid || type?.IsNumeric != true || ElementAccess.WritableRoot(target) is null)
+        if (!this.SupportsUpdate(target, type, operation) || ElementAccess.WritableRoot(target) is null)
         {
             this.Unsupported(source);
             return -1;

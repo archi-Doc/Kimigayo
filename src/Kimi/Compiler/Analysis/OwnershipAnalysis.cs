@@ -1091,12 +1091,8 @@ public sealed partial class OwnershipAnalysis
             {
                 var op = KotoHelper.CompoundOperation(binary.Akind);
                 var previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
-                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n. A generic integer (SPEC 8.4.7.3)
-                // is numeric in each instance; its universal verification has no values.
-                var updatedType = this.Concrete(binary.Left.BoundType);
-                if (!(updatedType?.IsNumeric == true || updatedType?.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection ||
-                    (updatedType is not null && this.compilation.Binding.IsGenericWrappingInteger(updatedType, binary)) ||
-                    (ReferenceTypes.IsPointer(updatedType) && op is KotoKind.Plus or KotoKind.Minus)) || op == KotoKind.Invalid)
+                // SPEC 5.3: p += n and p -= n displace a pointer local like p + n and p - n.
+                if (!this.SupportsUpdate(binary.Left, binary.Left.BoundType, op, pointer: true))
                 {
                     this.Unsupported(binary);
                 }

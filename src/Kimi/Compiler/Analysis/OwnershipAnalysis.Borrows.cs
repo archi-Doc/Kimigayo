@@ -297,20 +297,26 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(assignment);
     }
 
-    // SPEC 8.4.7.3: a generic integer field is an owner scalar in every instance. Universal verification accepts it,
-    // and each instance plan sees the concrete scalar.
-    // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance.
+    // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance. Universal
+    // verification accepts it, and each instance plan sees the concrete Scalar.
     private bool GenericInteger(Koto source)
         => this.instance is null && source.BoundType is { } type &&
         ((type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && this.compilation.Binding.ProvePrimitiveInteger(type, source) == ConstraintProof.Proven) ||
             this.compilation.Binding.IsGenericWrappingInteger(type, source));
+
+    // SPEC 13.7: every compound update computes `target op right` through the same plan, which exists for a numeric Scalar target,
+    // a generic integer, and a raw pointer displaced by + or - (SPEC 5.3) where the target may hold one. Any other target, such
+    // as a string, is outside the implemented subset on every path that reaches it.
+    private bool SupportsUpdate(Koto target, BoundType? type, KotoKind operation, bool pointer = false)
+        => operation != KotoKind.Invalid && this.Concrete(type) is { } concrete &&
+            (concrete.IsNumeric || this.GenericInteger(target) || (pointer && ReferenceTypes.IsPointer(concrete) && operation is KotoKind.Plus or KotoKind.Minus));
 
     private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var root = ElementAccess.BorrowedPathRoot(field)!;
         var receiverType = ElementAccess.AccessType(root, true);
-        if (receiverType?.Semantics != SemanticsKind.Uniq || !(this.Concrete(field.BoundType)?.IsNumeric == true || this.GenericInteger(field)) || operation == KotoKind.Invalid)
+        if (receiverType?.Semantics != SemanticsKind.Uniq || !this.SupportsUpdate(field, field.BoundType, operation))
         {
             this.Unsupported(source);
             return -1;

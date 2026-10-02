@@ -39,6 +39,47 @@ public class ElementUpdateEmissionTest
     public void UpdatesExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, source, "ok\n");
 
+    // SPEC 8.4.7.3, 13.7: a generic integer is numeric in every instance, so a compound update of one through an Array element,
+    // a followed reference or a fixed-array element verifies in the definition, as through a local or a borrowed Field, and each
+    // instance updates its concrete Scalar.
+    [Fact]
+    public void GenericIntegerUpdatesThroughBorrowsExecute()
+    {
+        const string Source = """
+            func bumpElement<T>(values: uniq/Array<T>, i: isize)
+                T is PrimitiveInteger
+                values[i] += 1
+            func bumpReferent<T>(value: uniq/T)
+                T is PrimitiveInteger
+                value@follow += 2
+            func bumpFixed<T>(values: uniq/[2 of T])
+                T is PrimitiveInteger
+                values[1] *= 3
+            var values: Array<i32> = [1, 2]
+            bumpElement(values@uniq, 1)
+            var small: u8 = 250
+            bumpReferent(small@uniq)
+            var fixed: [2 of i64] = [1, 2]
+            bumpFixed(fixed@uniq)
+            require values[1] == 3 and small == 252 and fixed[1] == 6 else => $abort("bump")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("ElementUpdateGenericInteger", Source, "ok\n");
+    }
+
+    // Every compound update path computes through the same numeric plan: a string target through a raw pointer, which no
+    // emission supports, is rejected by the analysis like a string local, not verified and left to emission.
+    [Theory]
+    [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"")]
+    [InlineData("func append()\n    var s = \"a\"\n    s += \"b\"")]
+    public void AStringCompoundUpdateIsOutsideTheSubset(string function)
+    {
+        var c = MinimalEmissionTest.Analyze(function + "\npublic func main() => ()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported && x.Source.ToString()!.Contains("+=", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("i8")]
     [InlineData("u8")]

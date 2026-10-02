@@ -265,7 +265,8 @@ public sealed partial class OwnershipAnalysis
 
     private int WritePointer(BinaryKoto assignment, Koto target)
     {
-        if (!this.SupportsPointerValue(target))
+        if (!this.SupportsPointerValue(target) ||
+            (assignment.Akind != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, KotoHelper.CompoundOperation(assignment.Akind), pointer: true)))
         {
             this.Unsupported(assignment);
             return -1;
@@ -344,8 +345,8 @@ public sealed partial class OwnershipAnalysis
     {
         var type = call.BoundType;
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
-            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null ||
+            (operation != KotoKind.Equals && !this.SupportsUpdate(call, type, operation)))
         {
             this.Unsupported(source);
             return -1;
@@ -398,8 +399,8 @@ public sealed partial class OwnershipAnalysis
         var reference = followed.Left;
         var type = this.Concrete(followed.BoundType);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
-            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null ||
+            (operation != KotoKind.Equals && !this.SupportsUpdate(followed, followed.BoundType, operation)))
         {
             this.Unsupported(source);
             return -1;
