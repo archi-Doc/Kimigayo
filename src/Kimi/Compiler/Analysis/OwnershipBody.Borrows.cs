@@ -1838,11 +1838,9 @@ public sealed partial class OwnershipBody
         var inputSlot = -1;
         if (target.ReturnType?.BoundType is not { } declaredResult || !FindInput(declaredResult) || inputSlot < 0)
         {
-            var entry = this.ReceiverEntry(call);
-            if (target.Parameters.Count == 1 && entry >= 0 && this.Operations[call].Place >= 0 &&
-                this.ResultOriginsFromInput(this.Places[this.Operations[call].Place].Type, this.Places[this.Operations[entry].Place].Type, out var retained) && retained)
+            if (this.Operations[call].Place >= 0 && this.SoleResultInput(call, this.Places[this.Operations[call].Place].Type) is >= 0 and var sole)
             {
-                return entry; // The sole acquired input supplies every dependency, including those nested in a generic Item.
+                return sole; // The sole input naming the result's Origins supplies every dependency, including those nested in a generic Item.
             }
 
             // SPEC 15.6.3, 22.1.2.4: a result that names only Origins of the receiver's own Type, such as an Iterator's item
@@ -1932,6 +1930,65 @@ public sealed partial class OwnershipBody
             }
 
             return true;
+        }
+    }
+
+    // SPEC 15.6.3: a result whose instantiated Origins are all named by one input's Type, such as the
+    // `Option<(K, V)>` that `Dictionary.remove` returns from its receiver, descends from that input, because
+    // values carrying those Origins reach the result only from it. When another input also names one of them,
+    // as `insertOrReplace`'s `value: V` does, the result may come from either and descends from neither.
+    private int SoleResultInput(int call, BoundType result)
+    {
+        var sole = -1;
+        for (var entry = call - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, this.Operations[call].Source); entry--)
+        {
+            if (input.Place < 0)
+            {
+                return -1;
+            }
+
+            var type = this.Places[input.Place].Type;
+            if (this.ResultOriginsFromInput(result, type, out var retained) && retained)
+            {
+                if (sole >= 0)
+                {
+                    return -1;
+                }
+
+                sole = entry;
+            }
+            else if (NamesResultOrigin(result, type))
+            {
+                return -1;
+            }
+        }
+
+        return sole;
+
+        static bool NamesResultOrigin(BoundType type, BoundType input)
+        {
+            if (type.Origin is { Kind: not OriginKind.Static } origin && NamedOriginRequirement(input, origin) != LoanRequirement.None)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (type.OriginArguments[i].Kind != OriginKind.Static && NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (NamesResultOrigin(type.Components[i], input))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
