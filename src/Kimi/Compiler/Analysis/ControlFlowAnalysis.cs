@@ -154,9 +154,7 @@ public sealed class ControlFlowAnalysis
         // and its warning is dropped. Structural checks stay independent of Binding, but require valid syntax.
         foreach (var issue in this.issues)
         {
-            // A recovered operand does not invalidate independently parsed target syntax.
-            if (issue.Node is LabeledKoto or JumpKoto { Label: "" } &&
-                issue.Node.CodeContext.RecoveryCause(issue.Node) is { } syntax)
+            if (GuessedBy(issue) is { } syntax)
             {
                 issue.Node.ReportDerived(DiagnosticRequirement.ControlFlow, [syntax]);
             }
@@ -184,6 +182,18 @@ public sealed class ControlFlowAnalysis
     // Assumes entry to the resolved target, independently of its outer runtime
     // reachability. Dead transfers still supply result Types, not normal arrivals.
     internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
+
+    // A check rests on a recovery's syntax Error only where the recovery guessed what the check reads: an unlabeled jump or a
+    // label, or a require failure body supplied for a missing one (the empty block or an ErrorKoto). A recovered operand does not
+    // invalidate independently parsed target syntax, and a failure body written in source, even a recovered form, is judged on its own.
+    private static DiagnosticKey? GuessedBy(ControlFlowIssue issue)
+        => issue switch
+        {
+            { Node: LabeledKoto or JumpKoto { Label: "" } } or { Code: DiagnosticCode.RequireFallthrough_Kd, Node: CodeBlockKoto { Items.Count: 0 } } =>
+                issue.Node.CodeContext.RecoveryCause(issue.Node),
+            { Code: DiagnosticCode.RequireFallthrough_Kd, Node: ErrorKoto error } => error.Cause ?? DiagnosticKey.Unresolved,
+            _ => null,
+        };
 
     // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
     private static DiagnosticKey[]? Causes(ControlFlowIssue issue)

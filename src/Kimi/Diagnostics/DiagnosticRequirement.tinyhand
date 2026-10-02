@@ -388,6 +388,16 @@
     Phrase="'confined' or 'preserves results'"
     Advice="An effect item is 'effect confined' or 'effect preserves results' in a requirement's Constraint region, or 'effect Contract.name' followed by a bound in a Contract (SPEC 8.4.10.1)."
 
+  + Name="Syntax.AmpersandAmpersand"
+    Description="logical conjunction is written 'and', not '&&'"
+    Phrase="'&&'"
+    Advice="If '&&' is meant as logical conjunction, write 'and'; Kimigayo defines no '&&' operator (SPEC 13.8)."
+
+  + Name="Syntax.BarBar"
+    Description="logical disjunction is written 'or', not '||'"
+    Phrase="'||'"
+    Advice="If '||' is meant as logical disjunction, write 'or'; Kimigayo defines no '||' operator (SPEC 13.8)."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

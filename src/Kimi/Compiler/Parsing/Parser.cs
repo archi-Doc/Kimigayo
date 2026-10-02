@@ -3052,8 +3052,11 @@ CloseParameters:
             return ParseBlock(ref reader);
         }
 
-        reader.Expect(SyntaxForm.Body);
-        return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
+        // The empty body stands for the missing one, so a check that reads it rests on the Error (DIAGNOSTICS.md §4.3).
+        var cause = reader.Expect(SyntaxForm.Body);
+        var body = new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
+        reader.CodeContext.RecordRecovery(body, cause);
+        return body;
     }
 
     internal static CodeBlockKoto ParseRequiredBody(ref TokenReader reader, bool ifBody = false)

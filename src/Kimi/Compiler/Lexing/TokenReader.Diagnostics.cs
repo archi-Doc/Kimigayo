@@ -106,6 +106,12 @@ public ref partial struct TokenReader
             return this.Missing(form, this.PreviousSyntaxEnd);
         }
 
+        if (found.Kind is TokenKind.AmpersandAmpersand or TokenKind.BarBar)
+        {
+            // Recognized but no operator anywhere (SPEC 2.4, 13.8): the token, not the form expected at it, is the problem.
+            return this.Unexpected(found.Kind == TokenKind.AmpersandAmpersand ? SyntaxForm.AmpersandAmpersand : SyntaxForm.BarBar, found.Span);
+        }
+
         if (IsCloser(form))
         {
             // The tokenizer reported the closer missing at the end of this line, with the grouping it closes: one problem, so the

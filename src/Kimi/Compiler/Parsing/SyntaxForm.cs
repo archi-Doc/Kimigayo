@@ -242,4 +242,10 @@ public enum SyntaxForm : ushort
 
     /// <summary>The bound of an effect item: confined or preserves results.</summary>
     EffectBound,
+
+    /// <summary>'&amp;&amp;', recognized but no operator (SPEC 2.4, 13.8); logical conjunction is 'and'.</summary>
+    AmpersandAmpersand,
+
+    /// <summary>'||', recognized but no operator (SPEC 2.4, 13.8); logical disjunction is 'or'.</summary>
+    BarBar,
 }
