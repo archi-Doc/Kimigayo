@@ -146,6 +146,25 @@ public class TerminalGuardContinuationTest
             x => Assert.False(body.IsReachable(x.id)));
     }
 
+    // A divergent guard that is not state-neutral checks its arm body in a fresh region seeded from the guard's state. Ending
+    // the guard's protection there adds no runtime edge into the body, so the plan stays emittable, and the body's uses are
+    // still checked.
+    [Fact]
+    public void EffectfulDivergentGuardChecksTheBodyWithoutARuntimeEdge()
+    {
+        const string Source = "func work() => ()\nmatch \"held\"\n    let text if (loop => work()) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
+        ScalarEmissionTest.EmitFixture("TerminalGuardWindowEffectfulDivergence", Source, string.Empty, timeoutMilliseconds: 300);
+        var c = MinimalEmissionTest.Analyze(Source);
+        var body = Assert.Single(c.Ownership.Bodies, x => x.Matches.Count != 0);
+        Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
+        Assert.True(body.HasCheckingState(body.MatchArms[0].BodyEntry));
+
+        var moved = MinimalEmissionTest.Analyze("func work() => ()\nfunc f(s: string)\n    let t = s@move\n    match \"held\"\n        let text if (loop => work()) => Console.writeLine(s)\n        _ => ()\npublic func main() => ()");
+        Assert.True(moved.Binding.Result.IsComplete, MinimalEmissionTest.Describe(moved, null));
+        var issue = Assert.Single(moved.Ownership.Issues);
+        Assert.Equal(OwnershipFailure.PossiblyMovedUse, issue.Failure);
+    }
+
     [Theory]
     [InlineData("let s = \"s\"", "return", "_ = s@move", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let x: i32", "if c => return else => false", "x = 2", "x = 3", OwnershipFailure.ReassignedLet)]

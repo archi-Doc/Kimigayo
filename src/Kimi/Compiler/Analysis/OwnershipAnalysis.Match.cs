@@ -249,8 +249,10 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
+                    // The region carries the seed state; no runtime edge enters the checked body, and the Loan head below
+                    // resolves from the seed.
                     var seed = this.checkingRegion != region ? this.body.CheckingRegions[this.checkingRegion].Seed : guardCleanupStart - 1;
-                    this.current = seed;
+                    this.current = -1;
                     this.checkingRegion = this.body.CheckingRegions.Count;
                     this.body.CheckingRegions.Add(new(seed, -1));
                 }
