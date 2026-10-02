@@ -90,13 +90,21 @@ public class DiagnosticPrecisionTest
     }
 
     // A recovered chained comparison is not type-checked, a control-flow check that repeats Binding's is derived, and a
-    // structural control-flow check stays independent of a Binding failure at the same place.
+    // structural control-flow check stays independent of a Binding failure at the same place. The result a Block body leaves
+    // undelivered where it falls through rests on the fallthrough, also in a closure and a getter; other ownership problems, in
+    // that function or elsewhere, stay direct.
     [Theory]
     [InlineData("public func main()\n    let ok = 1 < 2 < 3\n    let wrong: i32 = true\n    missing()", "ChainedComparison_Kd,TypeMismatch_Kd,UnresolvedBinding_Kd")]
     [InlineData("func f() -> i32\n    let wrong: i32 = true\npublic func main() => ()", "FunctionFallthrough_Kd,TypeMismatch_Kd")]
     [InlineData("public func main() -> Missing\n    return ()", "UnresolvedBinding_Kd")]
+    [InlineData("func f(a: i32) -> i32\n    if a == 1 => return 1\n    else => 2\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    [InlineData("func f(a: i32) -> i32\n    if a == 1 => return 1\n    return 2\npublic func main() => ()", "")]
+    [InlineData("func f(a: i32) -> string\n    if a == 1 => return \"x\"\nfunc g()\n    let text = \"a\"\n    let first = text@move\n    let second = text@move\npublic func main() => ()", "FunctionFallthrough_Kd,MovedPlace_Kd")]
+    [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
+    [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
+    [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
-        => Assert.Equal(codes.Split(','), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
+        => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
     // DIAGNOSTICS.md §9.2: the published Errors of a mutation are exactly its expected codes. Every intended problem is
     // reported, including independent ones, nothing depends on another, and no fallback or unexplained derived fact remains.

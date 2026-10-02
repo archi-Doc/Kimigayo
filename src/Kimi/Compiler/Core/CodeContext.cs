@@ -150,6 +150,9 @@ public sealed class CodeContext
     internal DiagnosticKey? RecoveryCause(Koto node)
         => this.recoveries is { } map && map.TryGetValue(node, out var cause) ? cause : null;
 
+    /// <summary>Gets a value indicating whether the parser recorded a recovery in this source; valid source records none.</summary>
+    internal bool HasRecoveries => this.recoveries is not null;
+
     /// <summary>Records excluded syntax, so its diagnostics name the excluding directive (SPEC 19.5, 23.3.6.2).</summary>
     /// <param name="range">The excluded syntax.</param>
     /// <param name="directive">The innermost excluding directive.</param>

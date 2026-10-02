@@ -136,7 +136,8 @@ public sealed partial class OwnershipAnalysis
 
     public void ReportDiagnostics()
     {
-        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure.
+        // Ownership analysis runs only after complete Binding, so its checks never rest on a Binding failure. The result that a
+        // Block body leaves undelivered where it falls through rests on the fallthrough that control flow reported there.
         var diagnostics = this.compilation.Diagnostics;
         diagnostics.Invalidate(DiagnosticPartition.Ownership);
         for (var i = 0; i < this.issues.Count; i++)
@@ -165,6 +166,15 @@ public sealed partial class OwnershipAnalysis
             if (issue.Failure == OwnershipFailure.EffectBound && this.compilation.Binding.ReportEffectViolation(issue.Source, DiagnosticRequirement.Ownership(issue.Failure), issue.Code))
             {
                 continue; // SPEC 8.4.10.6: a destruction the bound excludes, reported at the violating effect.
+            }
+
+            // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
+            // discarded body never falls through; a return delivers at its jump.
+            if (issue.Failure == OwnershipFailure.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&
+                this.flow?.Reported(body, DiagnosticCode.FunctionFallthrough_Kd) == true)
+            {
+                issue.Source.ReportDerived(DiagnosticRequirement.Ownership(issue.Failure), [body.KeyOf(DiagnosticRequirement.ControlFlow)]);
+                continue;
             }
 
             issue.Source.Report(
