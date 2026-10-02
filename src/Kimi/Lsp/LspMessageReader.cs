@@ -121,6 +121,7 @@ internal static class LspMessageReader
         LspMethods.DidClose => LspJsonContext.Default.DidCloseTextDocumentParams,
         LspMethods.DidChangeWatchedFiles => LspJsonContext.Default.DidChangeWatchedFilesParams,
         LspMethods.Initialize => LspJsonContext.Default.InitializeParams,
+        LspMethods.CodeAction => LspJsonContext.Default.CodeActionParams,
         _ => null,
     };
 

@@ -301,7 +301,7 @@ The [current plan](docs/dev/PLAN.md) describes ongoing work; [session history](d
 
 ## Visual Studio Code
 
-The [kimi-ext](src/kimi-ext/) extension provides syntax highlighting, diagnostics and build/run/check commands. It shares the compiler and toolchain described in this README.
+The [kimi-ext](src/kimi-ext/) extension provides syntax highlighting, diagnostics, quick fixes for the repair candidates of diagnostics (VS Code's **Quick Fix** on a diagnostic, applied to the document version the check saw), and build/run/check commands. It shares the compiler and toolchain described in this README.
 
 ### QuickStart
 

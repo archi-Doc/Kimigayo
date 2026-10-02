@@ -11,6 +11,8 @@ namespace Kimi.Lsp;
 [JsonSerializable(typeof(DidCloseTextDocumentParams))]
 [JsonSerializable(typeof(DidChangeWatchedFilesParams))]
 [JsonSerializable(typeof(InitializeResult))]
+[JsonSerializable(typeof(CodeActionParams))]
+[JsonSerializable(typeof(CodeAction[]))]
 [JsonSerializable(typeof(PublishDiagnosticsParams))]
 [JsonSerializable(typeof(LogMessageParams))]
 [JsonSerializable(typeof(RegistrationParams))]

@@ -127,6 +127,17 @@ internal sealed class WorkspaceCheck
     /// <param name="relatedInformation">Whether the client accepts related locations as <c>relatedInformation</c>.</param>
     /// <returns>The diagnostics per report URI.</returns>
     public static Dictionary<SourceIdentity, LspDiagnostic[]> Place(CheckOutput output, IReadOnlyList<SourceIdentity> sources, SourceIdentity display, bool relatedInformation = false)
+        => Place(output, sources, display, relatedInformation, null);
+
+    /// <summary>Places a check output's records in their report URIs and, when asked, each record's repair candidates whose edits all lie in the
+    /// record's own document (SPEC 23.4.8).</summary>
+    /// <param name="output">The output.</param>
+    /// <param name="sources">The checked sources.</param>
+    /// <param name="display">The file where diagnostics without a usable location are shown.</param>
+    /// <param name="relatedInformation">Whether the client accepts related locations.</param>
+    /// <param name="repairs">Receives the candidates per report URI, or <see langword="null"/> to place none.</param>
+    /// <returns>The diagnostics per report URI.</returns>
+    public static Dictionary<SourceIdentity, LspDiagnostic[]> Place(CheckOutput output, IReadOnlyList<SourceIdentity> sources, SourceIdentity display, bool relatedInformation, Dictionary<SourceIdentity, List<LspRepair>>? repairs)
     {
         var reports = new Dictionary<SourceIdentity, LspDiagnostic[]>(sources.Count);
         foreach (var source in sources)
@@ -180,7 +191,12 @@ internal sealed class WorkspaceCheck
                 }
             }
 
-            list.Add(new(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", Text(diagnostic, moved ? entry : null, appended), sent?.ToArray()));
+            var placed = new LspDiagnostic(range, (int)diagnostic.Severity, diagnostic.Code, "kimigayo", Text(diagnostic, moved ? entry : null, appended), sent?.ToArray());
+            list.Add(placed);
+            if (repairs is not null && identity is { } document && diagnostic.Repairs is { } candidates)
+            {
+                PlaceRepairs(placed, candidates, document, diagnostic.Source, identities, repairs);
+            }
         }
 
         foreach (var (uri, list) in lists)
@@ -314,6 +330,40 @@ internal sealed class WorkspaceCheck
         }
 
         this.start.Post(new CheckDone(failure));
+    }
+
+    // SPEC 23.4.8: a candidate becomes a quick fix of its document when every edit lies in that document; its title carries the
+    // required phrases, so the client shows what the edit still rests on.
+    private static void PlaceRepairs(LspDiagnostic placed, RepairCandidate[] candidates, SourceIdentity document, int source, SourceIdentity?[] identities, Dictionary<SourceIdentity, List<LspRepair>> repairs)
+    {
+        foreach (var candidate in candidates)
+        {
+            var edits = new LspTextEdit[candidate.Edits.Length];
+            var placeable = true;
+            for (var i = 0; i < edits.Length && placeable; i++)
+            {
+                var edit = candidate.Edits[i];
+                placeable = edit.Source == source && edit.Range is { } range && identities[edit.Source] == document;
+                if (placeable)
+                {
+                    edits[i] = new(edit.Range!.Value, edit.Text);
+                }
+            }
+
+            if (!placeable)
+            {
+                continue;
+            }
+
+            var title = candidate.Required.Length == 0 ? candidate.Title : candidate.Title + "; requires " + string.Join("; ", candidate.Required.Select(static x => x.Phrase));
+            if (!repairs.TryGetValue(document, out var list))
+            {
+                list = [];
+                repairs.Add(document, list);
+            }
+
+            list.Add(new(placed, title, edits));
+        }
     }
 
     // SPEC 23.4.7: the message, then the label, the text of unsent related locations, omissions, Note, Advice and, for a moved record, its
@@ -860,11 +910,14 @@ internal sealed class WorkspaceCheck
             return null; // A compiler boundary may have translated the pending-input exception.
         }
 
+        var repairs = new Dictionary<SourceIdentity, List<LspRepair>>();
+        var reports = Place(output, source.Sources, plan.Display, this.start.RelatedInformation, repairs);
         var result = new UnitResult
         {
             Key = plan.Key,
             Output = output,
-            Reports = Place(output, source.Sources, plan.Display, this.start.RelatedInformation),
+            Reports = reports,
+            Repairs = repairs.ToDictionary(static x => x.Key, static x => x.Value.ToArray()),
             Inputs = source.GetRecorded(plan.Project?.Inputs),
         };
         this.start.Post(new UnitDone(result));

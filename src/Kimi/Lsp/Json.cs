@@ -30,6 +30,14 @@ public sealed class ClientCapabilities
 public sealed class TextDocumentClientCapabilities
 {
     public PublishDiagnosticsClientCapabilities? PublishDiagnostics { get; set; }
+
+    public CodeActionClientCapabilities? CodeAction { get; set; }
+}
+
+/// <summary>The client's code action support; <c>codeActionLiteralSupport</c> is read as presence (SPEC 23.4.8).</summary>
+public sealed class CodeActionClientCapabilities
+{
+    public JsonElement? CodeActionLiteralSupport { get; set; }
 }
 
 public sealed class PublishDiagnosticsClientCapabilities
@@ -40,6 +48,14 @@ public sealed class PublishDiagnosticsClientCapabilities
 public sealed class WorkspaceClientCapabilities
 {
     public DynamicRegistrationCapability? DidChangeWatchedFiles { get; set; }
+
+    public WorkspaceEditClientCapabilities? WorkspaceEdit { get; set; }
+}
+
+/// <summary>The client's workspace edit support; versioned <c>documentChanges</c> are required for code actions (SPEC 23.4.8).</summary>
+public sealed class WorkspaceEditClientCapabilities
+{
+    public bool? DocumentChanges { get; set; }
 }
 
 public sealed class DynamicRegistrationCapability
@@ -59,6 +75,14 @@ public sealed class ServerCapabilities
     public string PositionEncoding { get; set; } = "utf-16";
 
     public TextDocumentSyncOptions TextDocumentSync { get; set; } = new();
+
+    /// <summary>Gets or sets the code action provider, advertised only when the client supports literals and versioned document changes (SPEC 23.4.8).</summary>
+    public CodeActionOptions? CodeActionProvider { get; set; }
+}
+
+public sealed class CodeActionOptions
+{
+    public string[] CodeActionKinds { get; set; } = [];
 }
 
 public sealed class TextDocumentSyncOptions
@@ -160,6 +184,65 @@ public sealed class FileSystemWatcher
     public string GlobPattern { get; set; } = string.Empty;
 }
 
+/// <summary>The parameters of <c>textDocument/codeAction</c> (SPEC 23.4.8); <c>context.diagnostics</c> is accepted and not read.</summary>
+public sealed class CodeActionParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+
+    public SourceRange Range { get; set; }
+
+    public CodeActionContext Context { get; set; } = new();
+}
+
+public sealed class CodeActionContext
+{
+    public JsonElement? Diagnostics { get; set; }
+
+    public string[]? Only { get; set; }
+}
+
+/// <summary>One quick fix: a repair candidate's title, the sent diagnostic it belongs to and its edits as one versioned document change.</summary>
+public sealed class CodeAction
+{
+    public string Title { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = "quickfix";
+
+    public LspDiagnostic[] Diagnostics { get; set; } = [];
+
+    public WorkspaceEdit Edit { get; set; } = new();
+}
+
+public sealed class WorkspaceEdit
+{
+    public TextDocumentEdit[] DocumentChanges { get; set; } = [];
+}
+
+public sealed class TextDocumentEdit
+{
+    public VersionedTextDocumentIdentifier TextDocument { get; set; } = new();
+
+    public LspTextEdit[] Edits { get; set; } = [];
+}
+
+/// <summary>One text edit of a document.</summary>
+/// <param name="Range">The replaced range; an empty range is an insertion point.</param>
+/// <param name="NewText">The replacement text.</param>
+public sealed record LspTextEdit(SourceRange Range, string NewText);
+
+/// <summary>A repair candidate placed in a report URI (SPEC 23.4.8): the diagnostic it belongs to, its title with any required phrases, and its edits in that document.</summary>
+/// <param name="Diagnostic">The sent diagnostic.</param>
+/// <param name="Title">The code action title.</param>
+/// <param name="Edits">The edits, all in the report's document.</param>
+internal sealed record LspRepair(LspDiagnostic Diagnostic, string Title, LspTextEdit[] Edits)
+{
+    public bool Equals(LspRepair? other)
+        => other is not null && this.Diagnostic.Equals(other.Diagnostic) && this.Title == other.Title && this.Edits.AsSpan().SequenceEqual(other.Edits);
+
+    public override int GetHashCode()
+        => HashCode.Combine(this.Diagnostic, this.Title, this.Edits.Length);
+}
+
 public sealed class PublishDiagnosticsParams
 {
     public string Uri { get; set; } = string.Empty;
@@ -216,6 +299,7 @@ internal static class LspMethods
     public const string DidChange = "textDocument/didChange";
     public const string DidClose = "textDocument/didClose";
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
+    public const string CodeAction = "textDocument/codeAction";
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";
     public const string RegisterCapability = "client/registerCapability";
