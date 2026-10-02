@@ -432,8 +432,14 @@ public sealed partial class Binding
                 return Complete(conversion, stored);
             }
 
-            var shared = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]);
-            if (!BorrowsWrittenSlot(stored) || !this.AdaptInput(conversion.Left, shared, stored, scope, null, null, out var borrowed, out _, out _, explicitBorrow: true))
+            BoundType borrowed;
+            if (ElementAccess.IsRawPlace(conversion.Left))
+            {
+                // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
+                borrowed = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
+            }
+            else if (!BorrowsWrittenSlot(stored) ||
+                !this.AdaptInput(conversion.Left, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
             {
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
