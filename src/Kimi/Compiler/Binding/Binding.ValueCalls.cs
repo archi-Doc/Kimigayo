@@ -150,6 +150,13 @@ public sealed partial class Binding
 
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
     {
+        // A function value has no Type parameters of its own, so explicit Type arguments select nothing (SPEC 7.6, 12.4.2);
+        // the receiver checks below read the bound callee, which a generic application never is.
+        if (call.Method is GenericsKoto)
+        {
+            return this.Fail(call, BindingFailure.NoApplicableCandidate);
+        }
+
         var receiverType = call.Method.BoundType!;
         if (receiver == SemanticsKind.Uniq)
         {
@@ -183,7 +190,7 @@ public sealed partial class Binding
 
         var parameters = signature.Components[0];
         var count = ReferenceEquals(parameters, BoundType.Unit) ? 0 : parameters.Components.Count;
-        if (call.Method is GenericsKoto || count != call.ArgumentNodes.Count)
+        if (count != call.ArgumentNodes.Count)
         {
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }

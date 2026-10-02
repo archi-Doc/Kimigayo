@@ -488,10 +488,18 @@ public sealed partial class Binding
         {
             case ExpressionKoto recovered when recovered is not ErrorKoto && recovered.CodeContext.RecoveryCause(recovered) is not null:
                 // The parser's guess of a rejected form, or a form it reported as misplaced: its operands are checked on their
-                // own, its combination is not, and every check of it rests on the syntax Error (DIAGNOSTICS.md §4.3).
-                foreach (var part in recovered.ChildNodes)
+                // own, its combination is not, and every check of it rests on the syntax Error (DIAGNOSTICS.md §4.3). Arm
+                // Patterns have no meaning apart from their match, so a recovered match with arms is checked by its own binder.
+                if (recovered is MatchKoto { Arms.Count: > 0 } recoveredMatch)
                 {
-                    this.BindNode(part, scope);
+                    this.BindMatch(recoveredMatch, scope, null);
+                }
+                else
+                {
+                    foreach (var part in recovered.ChildNodes)
+                    {
+                        this.BindNode(part, scope);
+                    }
                 }
 
                 return Complete(node, null);

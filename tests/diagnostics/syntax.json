@@ -114,6 +114,12 @@
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "BaseKeyword", "At": "foo", "Found": "foo" } ] },
   { "Name": "positional-after-named", "Source": "func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(a: 1, 2)\n", "Intended": "a positional argument after a named one; the call rests on it",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "PositionalAfterNamed", "At": ", 2)", "Skip": 2, "Length": 1 } ] },
+  { "Name": "positional-match-after-named", "Source": "func f(a: i32, b: i32) -> i32 => a + b\npublic func main()\n    let c = true\n    let n = f(a: 1, match c\n        true => 1\n        false => 2\n    )\n", "Intended": "a misplaced positional match argument is checked by its own binder; the call rests on the syntax Error",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "PositionalAfterNamed", "At": "match c", "Length": 5 } ] },
+  { "Name": "positional-match-arm-error", "Source": "func f(a: i32, b: i32) -> i32 => a + b\npublic func main()\n    let o: Option<i32> = .Some(1)\n    let n = f(a: 1, match o\n        .Some(let v) => v\n        .None => missingValue\n    )\n", "Intended": "the arms of a misplaced match keep their Pattern bindings and their own independent problems",
+    "Records": [
+      { "Code": "MisplacedSyntax_Kd", "Form": "PositionalAfterNamed", "At": "match o", "Length": 5 },
+      { "Code": "UnresolvedBinding_Kd", "At": "missingValue" } ] },
   { "Name": "verification-arguments", "Source": "#Test\nfunc t()\n    $require(1 == 1, 2)\npublic func main() => ()\n", "Intended": "a $require with an unnamed second argument; the message stands as a recovery",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "TestVerificationArguments", "At": "$", "Length": 1 } ] },
   { "Name": "for-without-in", "Source": "public func main()\n    for x [1, 2]\n        ()\n", "Intended": "a for header without in",
