@@ -1,6 +1,12 @@
 # Change Log
 
-## Unreleased
+## 0.0.11
+
+- Color Kimi sources with a TextMate grammar: keywords, contextual keywords in their positions, comments and `///` documentation, escaped and raw strings with interpolation, numbers, Attributes, directives, Semantics, explicit operations, enum Case references, and UpperCamelCase names as Types. Mark the unavailable `;`, `&&` and `||`.
+- Color ```` ```kimi ```` fenced code blocks in the Markdown editor.
+- Indent Kimi files with four spaces, indent after block headers, continue `///` documentation on Enter, and fold indented blocks.
+
+## 0.0.10
 
 - Default to saving inputs and invoking `run` once for Run, Build and Run, and Ctrl+F5, avoiding a duplicate build with current Kimi. Explicit `kimi.runBuilds: false` retains support for older run-only executables.
 - Wait 1000 ms after the last edit, instead of 250 ms, before the language server checks the workspace.

@@ -67,6 +67,26 @@ suite('Kimi extension integration', () => {
     const ids = await vscode.languages.getLanguages();
     assert.ok(ids.includes('kimi') && ids.includes('kimiproj'));
   });
+  test('colors Kimi sources and Kimi blocks in Markdown with the contributed grammars', async () => {
+    const source = path.join(root, 'Colors.kimi');
+    await writeFile(source, 'func main()\n    let text = "Hello, \\(name)"\n');
+    const sourceTokens = await captureSyntaxTokens(vscode.Uri.file(source));
+    assert.ok(sourceTokens.some(token => token.c === 'func' && token.t.includes('storage.type.function.kimi')), JSON.stringify(sourceTokens));
+    assert.ok(sourceTokens.some(token => token.c === 'name' && token.t.includes('meta.embedded.line.kimi')), JSON.stringify(sourceTokens));
+    const markdown = path.join(root, 'Colors.md');
+    await writeFile(markdown, '# Title\n\n```kimi\nlet total = 1\n```\n\nlet\n');
+    const markdownTokens = await captureSyntaxTokens(vscode.Uri.file(markdown));
+    const lets = markdownTokens.filter(token => token.c.trim() === 'let');
+    assert.equal(lets.length, 2, JSON.stringify(markdownTokens));
+    assert.ok(lets[0].t.includes('meta.embedded.block.kimi') && lets[0].t.includes('storage.type.binding.kimi'), JSON.stringify(lets));
+    assert.ok(!lets[1].t.includes('storage.type.binding.kimi'), JSON.stringify(lets));
+  });
+  test('indents Kimi sources with four spaces', () => {
+    const editor = vscode.workspace.getConfiguration('editor', { languageId: 'kimi' });
+    assert.equal(editor.get('insertSpaces'), true);
+    assert.equal(editor.get('tabSize'), 4);
+    assert.equal(editor.get('detectIndentation'), false);
+  });
   test('explains the task workspace requirement before launching a command', async () => {
     errors.length = 0;
     assert.equal(vscode.workspace.workspaceFolders?.length ?? 0, 0);
@@ -133,6 +153,11 @@ suite('Kimi extension integration', () => {
     assert.deepEqual(errors, []);
   });
 });
+
+/** The tokens VS Code's TextMate tokenizer produces for a file; the command is the one VS Code's colorization tests use. */
+async function captureSyntaxTokens(uri: vscode.Uri): Promise<{ c: string; t: string }[]> {
+  return await vscode.commands.executeCommand('_workbench.captureSyntaxTokens', uri);
+}
 
 async function waitFor(predicate: () => boolean, description: string): Promise<void> {
   const expires = Date.now() + 15000;
