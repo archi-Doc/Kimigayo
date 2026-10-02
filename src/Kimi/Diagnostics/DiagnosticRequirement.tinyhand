@@ -43,22 +43,22 @@
   + Name="Syntax.CloseParenthesis"
     Description="the grouping is closed"
     Phrase="')'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="A grouping cannot continue past the end of its line."
 
   + Name="Syntax.CloseBracket"
     Description="the grouping is closed"
     Phrase="']'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="A grouping cannot continue past the end of its line."
 
   + Name="Syntax.CloseBrace"
     Description="the grouping is closed"
     Phrase="'}'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="A grouping cannot continue past the end of its line."
 
   + Name="Syntax.CloseAngleBracket"
     Description="the Type argument list is closed"
     Phrase="'>'"
-    Advice="Close the Type argument list that is still open."
+    Advice="A Type argument list cannot continue past the end of its line."
 
   + Name="Syntax.UnmatchedCloser"
     Description="every closing delimiter closes an open grouping"
@@ -396,12 +396,12 @@
   + Name="Syntax.AmpersandAmpersand"
     Description="logical conjunction is written 'and', not '&&'"
     Phrase="'&&'"
-    Advice="If '&&' is meant as logical conjunction, write 'and'; Kimigayo defines no '&&' operator (SPEC 13.8)."
+    Advice="Kimigayo defines no '&&' operator (SPEC 13.8)."
 
   + Name="Syntax.BarBar"
     Description="logical disjunction is written 'or', not '||'"
     Phrase="'||'"
-    Advice="If '||' is meant as logical disjunction, write 'or'; Kimigayo defines no '||' operator (SPEC 13.8)."
+    Advice="Kimigayo defines no '||' operator (SPEC 13.8)."
 
   + Name="Syntax.MatchArms"
     Description="the match arm list follows its header"

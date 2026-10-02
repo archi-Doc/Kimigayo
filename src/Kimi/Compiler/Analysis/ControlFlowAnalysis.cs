@@ -29,6 +29,9 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     /// <summary>Gets a Note formed from the facts.</summary>
     public string? Note { get; init; }
 
+    /// <summary>Gets the repair candidates the warning offers (SPEC 23.3.6.9).</summary>
+    internal DiagnosticRepairFact[]? Repairs { get; init; }
+
     internal int Priority { get; init; } = 4;
 
     /// <summary>Gets the syntax whose normal completion, down to the node, decided a check of a discarded tail.</summary>
@@ -191,7 +194,7 @@ public sealed class ControlFlowAnalysis
             if ((!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null) &&
                 this.GuessedBy(warning) is null)
             {
-                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span);
+                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span, repairs: warning.Repairs);
             }
         }
     }
@@ -204,6 +207,68 @@ public sealed class ControlFlowAnalysis
 
     // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
     internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
+
+    // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
+    // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
+    // holds other text, a Body line lacks a full level of space indentation, or a string literal spans lines (its content would change).
+    private static DiagnosticEditFact[]? RemoveUnsafeEdits(UnsafeBlockKoto block)
+    {
+        if (block.CodeContext.SourceDocument is not { } document)
+        {
+            return null;
+        }
+
+        var text = document.SourceText.AsSpan();
+        var body = block.Body;
+        var keywordEnd = block.Span.Start + Constants.UnsafeKeyword.Length;
+        var line = document.GetPosition(block.Span.Start).Line;
+        var lineStart = document.LineStarts[line];
+        if (!text[lineStart..block.Span.Start].IsWhiteSpace())
+        {
+            return null;
+        }
+
+        if (body.IsExpressionBody)
+        {
+            var bodyStart = body.Span.Start;
+            return document.GetPosition(bodyStart).Line == line && text[keywordEnd..bodyStart].Trim().SequenceEqual("=>")
+                ? [block.Edit(SourceSpan.FromBounds(block.Span.Start, bodyStart), string.Empty)] : null;
+        }
+
+        var lineEnd = lineStart + document.GetLineSpan(line).Length;
+        var lastLine = document.GetPosition(Math.Max(body.Span.Start, body.Span.End - 1)).Line;
+        if (!text[keywordEnd..lineEnd].IsWhiteSpace() || lastLine <= line || line + 1 >= document.LineCount || SpansLines(body, document))
+        {
+            return null;
+        }
+
+        var edits = new List<DiagnosticEditFact>(lastLine - line + 1) { block.Edit(SourceSpan.FromBounds(lineStart, document.LineStarts[line + 1]), string.Empty) };
+        for (var current = line + 1; current <= lastLine; current++)
+        {
+            var content = document.GetLineSpan(current);
+            if (content.IsWhiteSpace())
+            {
+                continue;
+            }
+
+            if (content.Length < Constants.IndentationSpaces || content[..Constants.IndentationSpaces].ContainsAnyExcept(' '))
+            {
+                return null;
+            }
+
+            edits.Add(block.Edit(new(document.LineStarts[current], Constants.IndentationSpaces), string.Empty));
+        }
+
+        return edits.ToArray();
+    }
+
+    // Whether a string literal inside the node spans lines; dedenting its continuation lines would change its content.
+    private static bool SpansLines(Koto node, SourceDocument document)
+    {
+        var finder = new MultiLineLiteralFinder(document);
+        finder.Visit(node);
+        return finder.Found;
+    }
 
     // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
     private static DiagnosticKey[]? Causes(ControlFlowIssue issue)
@@ -988,10 +1053,16 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    // SPEC 14.3.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body, an
-    // independent scope (SPEC 14.3.1), declares no Name and registers no defer; otherwise the Advice says what would change.
+    // SPEC 14.3.3, 23.3.6.9: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body,
+    // an independent scope (SPEC 14.3.1), declares no Name and registers no defer (Structure); a statement of an indented body whose
+    // lines allow the edit then offers Repair.RemoveUnsafe, and otherwise the Advice says what would change or what is left to the author.
     private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
     {
+        if (!this.warningNodes.Add(block))
+        {
+            return;
+        }
+
         var scoped = false;
         if (block.Body is CodeBlockKoto { IsExpressionBody: false } body)
         {
@@ -1001,13 +1072,26 @@ public sealed class ControlFlowAnalysis
             }
         }
 
-        var advice = scoped
-            ? "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately"
-            : "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
-        if (this.warningNodes.Add(block))
+        string? advice = null;
+        DiagnosticRepairFact[]? repairs = null;
+        if (scoped)
         {
-            this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice });
+            advice = "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately";
         }
+        else if (block.Parent is not CodeBlockKoto { IsExpressionBody: false })
+        {
+            advice = "The Body declares no Name and registers no defer, but the block is not a statement of an indented body, so removing 'unsafe' may change what the enclosing expression evaluates to; keep the block or rewrite the enclosing expression";
+        }
+        else if (RemoveUnsafeEdits(block) is { } edits)
+        {
+            repairs = [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)];
+        }
+        else
+        {
+            advice = "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
+        }
+
+        this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice, Repairs = repairs });
     }
 
     private void VisitDeclarations(Koto container)
@@ -1827,6 +1911,27 @@ public sealed class ControlFlowAnalysis
     private sealed class ChildCollector(List<Koto> children) : KotoVisitor
     {
         public override void Visit(Koto node) => children.Add(node);
+    }
+
+    private sealed class MultiLineLiteralFinder(SourceDocument document) : KotoVisitor
+    {
+        public bool Found { get; private set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Found)
+            {
+                return;
+            }
+
+            if (node is StringLiteralKoto or InterpolatedStringKoto && document.SourceText.AsSpan(node.Span.Start, node.Span.Length).Contains('\n'))
+            {
+                this.Found = true;
+                return;
+            }
+
+            base.Visit(node);
+        }
     }
 
     private readonly record struct DefaultCompletion(bool Normal, bool Pending);

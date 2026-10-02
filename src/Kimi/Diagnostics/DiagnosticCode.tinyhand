@@ -12,7 +12,6 @@
     Category="Language"
     Message="Borrow Origin annotations start with 'during'"
     Label="expected 'during' here"
-    Advice="If this is a borrow Origin annotation, replace 'from' with 'during'."
 
   + Name="BorrowOriginSemantics_Kd"
     Category="Language"

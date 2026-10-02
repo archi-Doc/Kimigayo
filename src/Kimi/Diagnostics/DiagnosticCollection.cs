@@ -133,8 +133,9 @@ public sealed class DiagnosticCollection
     /// <param name="note">A Note formed from the facts.</param>
     /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Locations obtained through <see cref="Relate"/>.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
     /// <returns>Whether the report is an Error.</returns>
-    internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null, DiagnosticRelatedFact[]? related = null)
+    internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
         sourceDocument ??= this.Document;
         var source = this.SourceOf(sourceDocument);
@@ -143,7 +144,7 @@ public sealed class DiagnosticCollection
         // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
         var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
         var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
-        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, related: related);
+        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, related: related, repairs: repairs);
         if (isError)
         {
             this.LastError = key;
@@ -161,13 +162,14 @@ public sealed class DiagnosticCollection
     /// <param name="found">The text of the token found where the form was expected; <see langword="null"/> for the other codes.</param>
     /// <param name="document">The source; the target's document by default.</param>
     /// <param name="related">Locations obtained through <see cref="Relate"/>, such as the opening delimiter of a missing closer.</param>
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), such as the missing closer at its insertion point.</param>
     /// <returns>The key of the check.</returns>
-    internal DiagnosticKey ReportSyntax(SourceSpan range, DiagnosticCode code, SyntaxForm form, string? found, SourceDocument? document = null, DiagnosticRelatedFact[]? related = null)
+    internal DiagnosticKey ReportSyntax(SourceSpan range, DiagnosticCode code, SyntaxForm form, string? found, SourceDocument? document = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
         document ??= this.Document;
         var requirement = DiagnosticRequirement.SyntaxOf(form);
         var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
-        this.Report(DiagnosticPartition.Syntax, key, range, code, requirement, found, null, DiagnosticRequirements.AdviceOf(requirement), null, document, related: related);
+        this.Report(DiagnosticPartition.Syntax, key, range, code, requirement, found, null, DiagnosticRequirements.AdviceOf(requirement), null, document, related: related, repairs: repairs);
         this.LastError = key;
         return key;
     }

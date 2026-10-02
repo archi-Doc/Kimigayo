@@ -1576,9 +1576,12 @@ EndOfFile:
         }
         else
         {
-            // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2).
+            // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
+            // inserted there is the repair candidate (SPEC 23.3.6.9).
             var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
-            this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened]);
+            var closer = closingKind.ToText();
+            var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };
+            this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened], repairs);
         }
     }
 

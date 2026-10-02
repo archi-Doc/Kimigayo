@@ -39,6 +39,23 @@ internal sealed record SyntaxRelated(string Role, string At, int Skip = 0, int? 
     public SyntaxLocation Location => new(this.At, null, this.Skip, this.Length);
 }
 
+/// <summary>One edit of an expected repair candidate: its replacement text at a location of the case's source.</summary>
+/// <param name="Text">The replacement text.</param>
+/// <param name="At">The substring the replaced span starts at.</param>
+/// <param name="After">The substring the insertion point follows.</param>
+/// <param name="Skip">Characters skipped from the start of <paramref name="At"/>.</param>
+/// <param name="Length">The replaced length; the rest of <paramref name="At"/> by default.</param>
+internal sealed record SyntaxEdit(string Text, string? At = null, string? After = null, int Skip = 0, int? Length = null)
+{
+    /// <summary>Gets the location.</summary>
+    public SyntaxLocation Location => new(this.At, this.After, this.Skip, this.Length);
+}
+
+/// <summary>One repair candidate a syntax record must offer (SPEC 23.3.6.9), as its kind and located edits.</summary>
+/// <param name="Kind">The stable kind name, such as <c>Repair.ReplaceToken</c>.</param>
+/// <param name="Edits">The edits in position order.</param>
+internal sealed record SyntaxRepair(string Kind, SyntaxEdit[] Edits);
+
 /// <summary>One record a syntax case publishes, written independently of the parser (docs/dev/DIAGNOSTICS.md §9.2).</summary>
 /// <param name="Code">The code name.</param>
 /// <param name="Form">The syntax form, as named in <c>SyntaxForm</c>; <see langword="null"/> for a record of another kind.</param>
@@ -48,7 +65,8 @@ internal sealed record SyntaxRelated(string Role, string At, int Skip = 0, int? 
 /// <param name="Length">The primary span length.</param>
 /// <param name="Found">The token text an <c>ExpectedSyntax_Kd</c> record names.</param>
 /// <param name="Related">The related locations the record must carry, in order.</param>
-internal sealed record SyntaxRecord(string Code, string? Form = null, string? At = null, string? After = null, int Skip = 0, int? Length = null, string? Found = null, SyntaxRelated[]? Related = null)
+/// <param name="Repairs">The repair candidates the record must offer, in order; none when omitted.</param>
+internal sealed record SyntaxRecord(string Code, string? Form = null, string? At = null, string? After = null, int Skip = 0, int? Length = null, string? Found = null, SyntaxRelated[]? Related = null, SyntaxRepair[]? Repairs = null)
 {
     /// <summary>Gets the primary location.</summary>
     public SyntaxLocation Location => new(this.At, this.After, this.Skip, this.Length);

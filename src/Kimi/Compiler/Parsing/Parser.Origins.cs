@@ -122,7 +122,8 @@ public static partial class Parser
         var keyword = reader.Read();
         if (reader.GetSpan(keyword) is "from")
         {
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd);
+            // SPEC 3.3.6, 23.3.6.9: the annotation keyword is during; the repair candidate replaces the former spelling.
+            reader.Diagnostic.AddSyntax(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd, repairs: reader.ReplaceToken(keyword.Span, "during"));
         }
 
         var expression = ParseOriginAtom(ref reader);
