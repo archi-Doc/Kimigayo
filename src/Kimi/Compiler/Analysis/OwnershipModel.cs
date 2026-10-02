@@ -342,11 +342,13 @@ public sealed partial class OwnershipBody
     // A declared Type as this body's plan sees it; an instance plan sees its closed substitution.
     internal BoundType? Concrete(BoundType? type) => type is null || this.Instance is null ? type : this.InstanceBinding!.InstantiateStorageType(type, this.Instance);
 
-    internal void Reset(FunctionKoto function)
+    // An instance plan carries its substitution from the start, so every phase that reads a declared Type through Concrete,
+    // from building and solving to lowering, sees the closed Type.
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding)
     {
         this.Function = function;
-        this.Instance = null;
-        this.InstanceBinding = null;
+        this.Instance = instance;
+        this.InstanceBinding = instance is null ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();

@@ -34,6 +34,8 @@ public class ElementParameterMoveEmissionTest
         { "Covered", "func f(a: (string, string))\n    match true\n        _ => ()\n        true => (label work: do\n            let moved = a.0@move\n        )\nf((\"first\", \"last\"))", string.Empty, "first=1;last=1", [1, 0] },
         { "Transfer", "func inspect(a: string, b: bool) => ()\nfunc f(a: (string, string)) -> string\n    inspect(a.0@move, (return \"out\"))\n    return \"bad\"\nConsole.writeLine(f((\"first\", \"last\")))", "out\n", "first=1;last=1;out=1;bad=0", [0, 1, 2] },
         { "ZeroSize", "func f(a: ([0 of string], string)) -> [0 of string] => a.0@move\nlet a: ([0 of string], string) = ([], \"last\")\nlet moved = f(a@move)", string.Empty, "last=1", [0] },
+        { "GenericNested", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nConsole.writeLine(f<string>(((\"first\", \"last\"), \"outer\")))", "first\n", "first=1;last=1;outer=1", [2, 1, 0] },
+        { "GenericAggregate", "func f<T>(a: ((T, string), string)) -> T => a.0.0@move\nlet moved = f<(string, string)>((((\"first\", \"second\"), \"last\"), \"outer\"))", string.Empty, "first=1;second=1;last=1;outer=1", [3, 2, 1, 0] },
         { "ConditionalNested", "func f(a: ((string, string), string), take: bool)\n    if take\n        let moved = a.0.0@move\n    else\n        let moved = a.0@move\nf(((\"first\", \"last\"), \"outer\"), true)\nf(((\"first\", \"last\"), \"outer\"), false)", string.Empty, "first=2;last=2;outer=2", [0, 2, 1, 1, 0, 2] },
     };
 
