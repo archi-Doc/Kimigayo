@@ -99,7 +99,8 @@ across fragments for style: logical order controls initializer effects and rever
 specifications they rely on ([SPEC §8.4.10](spec/08-generics-constraints-and-contracts.md#8410-requirement-effect-bounds)).
 
 `[Kimi]` Declare an effect bound only where callers need it. Adding a bound obliges every implementer; removing one
-breaks callers that rely on it, so treat both as API changes.
+breaks callers that rely on it, so treat both as API changes. Do not restate a bound that an ancestor already
+declares; the restatement is valid but adds nothing.
 
 - `[Kimi]` Separate declaration groups with one blank line. Use one blank line between constructors,
   `drop`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
