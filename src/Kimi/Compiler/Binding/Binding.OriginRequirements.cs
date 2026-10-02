@@ -41,6 +41,12 @@ public sealed partial class Binding
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
+            // SPEC 15.3.5: a Loan<T> Field is analyzed as storing its borrow Type T.
+            if (node.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Loan && schema.GenericSlots.Count == 1)
+            {
+                schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
+            }
+
             if (node.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer && schema.Origins.Count == 1)
             {
                 schema.Origins[0].Variance = OriginVariance.Covariant;

@@ -64,6 +64,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
+                        KimiDeclarationId.Loan => this.ValidLoan(symbol),
                         KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
                         KimiDeclarationId.StorageAddressOfI64 => this.ValidAddressOfI64(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
@@ -717,6 +718,14 @@ public sealed partial class KimiLibrary
             ? BareType(parameter.Type) is GenericsKoto { TypeArguments.Count: 1 } owned && BareName(owned.Identifier, argument)
             : BareType(parameter.Type) is TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } borrowed } reference && reference.SemanticsKind == semantics && BareName(borrowed.Identifier, argument);
     }
+
+    // SPEC 15.3.5: public struct Loan<T> stores nothing, is Copy exactly when T is Copy, and has the one safe init(value: T).
+    private bool ValidLoan(BindingSymbol symbol)
+        => symbol.Intrinsic == IntrinsicKind.None && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is StructKoto { Name: "Loan", HasIncompatibleBindingHeader: false, OriginNames.Count: 0, Bases.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) &&
+        declaration.GenericParameterNodes is [GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null }] &&
+        StorageField(declaration, 0) is null;
 
     // SPEC 4.6.2: public struct FromEnd<T> under T is PrimitiveInteger with its T offset; prefix ^ constructs it through
     // PositionSyntax.fromEnd, and a directly applied `^x` key reads only the operand.

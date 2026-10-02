@@ -352,10 +352,13 @@ public sealed partial class Binding
     }
 
     // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
-    // upper bound and is fitted to the expected Type, result or storage destination; static fits each of them.
+    // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
+    // Origin, and any other one is static, which fits every destination.
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
-        var borrowed = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: BoundOrigin.Static);
+        var origin = ResultFunction(conversion)?.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components: [var declared], Origin: { } result } declaredResult &&
+            declaredResult.Semantics == semantics && ReferenceEquals(declared, referent) ? result : BoundOrigin.Static;
+        var borrowed = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);

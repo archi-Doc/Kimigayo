@@ -50,6 +50,15 @@ The floating-point Equatable mapping treats all NaNs as equal and signed zeros a
 
 `try` propagates `None` or `Err` from a compatible enclosing function; Result propagation keeps the same error Type. Payload Origins and Loans follow ordinary enum rules.
 
+### 1.3.1. Loan<T>
+
+[Specification: Kimi.Loan<T>](spec/15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins).
+
+| Declaration | Guarantee |
+| --- | --- |
+| `struct Loan<T>` | Zero-sized; formed only over a complete `ref`, `uniq`, `objref` or `objuniq` borrow Type `T`. A `Loan<T>` Field is analyzed as storing a `T`: the slots it uses take their Loan requirements and variance from it and are not Phantom Origins. It has no address, reads nothing, grants no access, and is Copy exactly when `T` is Copy. |
+| `Loan<T>.init(value: T)` | Safe. Keeps the dependency of `value` (a `ref` is Copied, a `uniq` transferred) and creates no authority. |
+
 ### 1.4. Wrapping integers
 
 [Specification: wrapping integer Types](spec/03-types-and-values.md#3111-wrapping-integer-types), [integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals).

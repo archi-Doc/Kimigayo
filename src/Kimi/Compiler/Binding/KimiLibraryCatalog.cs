@@ -155,6 +155,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.RawRelease, "release", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawRelease),
         new(KimiDeclarationId.RawInitialize, "initialize", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawInitialize),
         new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice),
+        // SPEC 15.3.5: the zero-sized dependency Field Core.
+        new(KimiDeclarationId.Loan, "Loan"),
     ];
 
     private static readonly int[] Indices = CreateIndices();

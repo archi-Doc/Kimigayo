@@ -347,6 +347,15 @@ public sealed partial class Binding
                 var (code, evidence, note) = this.TryFailure(issue.Node);
                 issue.Node.Report(requirement, code, note: note, evidence: evidence);
             }
+            else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
+            {
+                // SPEC 15.3.5: the formation condition of Loan<T>.
+                issue.Node.Report(
+                    requirement,
+                    issue.Code,
+                    note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
+                    advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
+            }
             else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
             {
                 // FailObjectPayload records the declaring Type before it fails the use.
