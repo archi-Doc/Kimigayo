@@ -499,12 +499,10 @@ public sealed partial class OwnershipAnalysis
             acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
         }
 
-        this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition)
+        this.AddPlace(new(id, source, type, kind, mutable, acquisition)
         {
             DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
         });
-        this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
         this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication);
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
@@ -512,6 +510,15 @@ public sealed partial class OwnershipAnalysis
         }
 
         return id;
+    }
+
+    // Every Place, including a region or an anchor that holds no value, has a row in the builder's per-Place tables.
+    private int AddPlace(OwnershipPlace place)
+    {
+        this.body.PlaceStorage.Add(place);
+        this.placeValues.Add(-1);
+        this.resultDeclarations.Add(-1);
+        return place.Id;
     }
 
     private int Temporary(Koto source, bool produce = true, int projection = -1)
@@ -1553,10 +1560,7 @@ public sealed partial class OwnershipAnalysis
         if (!this.effectRegions.TryGetValue(region, out var place))
         {
             // A region holds no value: it needs no Copy proof, storage or cleanup, and no operation initializes it.
-            place = this.body.PlaceStorage.Count;
-            this.body.PlaceStorage.Add(new(place, call, region, OwnershipPlaceKind.EffectRegion, false, AcquisitionKind.None));
-            this.placeValues.Add(-1);
-            this.resultDeclarations.Add(-1);
+            place = this.AddPlace(new(this.body.PlaceStorage.Count, call, region, OwnershipPlaceKind.EffectRegion, false, AcquisitionKind.None));
             this.effectRegions.Add(region, place);
         }
 
@@ -1903,39 +1907,18 @@ public sealed partial class OwnershipAnalysis
         // The seed includes operand acquisition, but never this transfer's cleanup.
         // Consecutive bare transfers can reuse an as-yet unused seed: no source
         // operation changed its state. Other missing origins remain unsupported.
-        var seed = this.current;
-        if (seed < 0 && this.checkingRegion > 0 && this.body.CheckingRegions[this.checkingRegion].Entry < 0)
-        {
-            seed = this.body.CheckingRegions[this.checkingRegion].Seed;
-        }
-
+        var seed = this.CheckingSeed();
         var target = this.flow!.Targets.GetValueOrDefault(jump);
         if (target is not null && ReferenceEquals(target, this.body.Function.Accessor?.Declaration))
         {
             target = this.body.Function;
         }
 
-        var loanDepth = this.comparisonDepth;
-        if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
-        {
-            loanDepth = 0;
-        }
-        else if (this.TryGetSelection(target, out var loanSelection))
-        {
-            loanDepth = loanSelection.Comparisons;
-        }
-        else
-        {
-            for (var i = this.loops.Count - 1; i >= this.deferredLoopBase; i--)
-            {
-                if (ReferenceEquals(this.loops[i].Source, target))
-                {
-                    loanDepth = this.loops[i].Comparisons;
-                    break;
-                }
-            }
-        }
-
+        // The construct the transfer leaves to: the function, an enclosing selection or an enclosing loop of this execution.
+        var returns = jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function);
+        var selected = this.TryGetSelection(target, out var selection) && !returns;
+        var loop = returns || selected ? -1 : this.EnclosingLoop(target);
+        var loanDepth = returns ? 0 : selected ? selection.Comparisons : loop >= 0 ? this.loops[loop].Comparisons : this.comparisonDepth;
         var beforeEnd = this.current;
         this.EndComparisonLoans(loanDepth, jump);
         if (this.current != beforeEnd)
@@ -1945,7 +1928,7 @@ public sealed partial class OwnershipAnalysis
 
         var continuationRegion = this.body.CheckingRegions[this.checkingRegion];
         Koto? caughtTarget = null;
-        if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
+        if (returns)
         {
             var secured = this.WriteResult(jump, this.resultPlace, value);
             this.CheckConstruction(jump);
@@ -1953,7 +1936,7 @@ public sealed partial class OwnershipAnalysis
             this.Deliver(jump, secured);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
-        else if (jump is YieldKoto or ExitKoto && this.TryGetSelection(target, out var selection))
+        else if (selected && jump is YieldKoto or ExitKoto)
         {
             var result = selection.Result >= 0 ? this.WriteResult(jump, selection.Result, value) : -1;
 
@@ -1966,45 +1949,48 @@ public sealed partial class OwnershipAnalysis
 
             this.ConnectResult(selection.Join, result);
         }
+        else if (loop >= 0 && jump is ExitKoto or ContinueKoto)
+        {
+            var frame = this.loops[loop];
+            var result = jump is ExitKoto && frame.Result >= 0 ? this.WriteResult(jump, frame.Result, value) : -1;
+
+            this.Cleanup(frame.Temporaries, frame.Locals, jump, CleanupReason.LoopTransfer);
+            if (jump is ContinueKoto)
+            {
+                this.Connect(this.current, frame.Head, OwnershipEdgeKind.Back);
+            }
+            else
+            {
+                if (frame.Checking && this.flow.ReachesTarget(jump))
+                {
+                    this.RecordCaughtChecking(frame.Source);
+                    caughtTarget = frame.Source;
+                }
+
+                this.ConnectResult(frame.Exit, result);
+            }
+        }
         else
         {
-            var found = false;
-            for (var i = this.loops.Count - 1; i >= this.deferredLoopBase; i--)
-            {
-                var loop = this.loops[i];
-                if (ReferenceEquals(loop.Source, target) && jump is ExitKoto or ContinueKoto)
-                {
-                    var result = jump is ExitKoto && loop.Result >= 0 ? this.WriteResult(jump, loop.Result, value) : -1;
-
-                    this.Cleanup(loop.Temporaries, loop.Locals, jump, CleanupReason.LoopTransfer);
-                    if (jump is ContinueKoto)
-                    {
-                        this.Connect(this.current, loop.Head, OwnershipEdgeKind.Back);
-                    }
-                    else
-                    {
-                        if (loop.Checking && this.flow.ReachesTarget(jump))
-                        {
-                            this.RecordCaughtChecking(loop.Source);
-                            caughtTarget = loop.Source;
-                        }
-
-                        this.ConnectResult(loop.Exit, result);
-                    }
-
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                this.Unsupported(jump);
-            }
+            this.Unsupported(jump);
         }
 
         this.current = -1;
         this.BeginChecking(seed, ReferenceEquals(target, this.body.Function) ? null : target, continuationRegion, caughtTarget);
+        return -1;
+    }
+
+    // The innermost loop of this execution that the target names, or -1; a deferred body does not see the loops around it.
+    private int EnclosingLoop(Koto? target)
+    {
+        for (var i = this.loops.Count - 1; i >= this.deferredLoopBase; i--)
+        {
+            if (ReferenceEquals(this.loops[i].Source, target))
+            {
+                return i;
+            }
+        }
+
         return -1;
     }
 

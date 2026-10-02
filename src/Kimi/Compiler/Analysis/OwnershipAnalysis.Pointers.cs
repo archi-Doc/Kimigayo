@@ -247,11 +247,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var place = this.body.PlaceStorage.Count;
-        this.body.PlaceStorage.Add(new(place, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None));
-        this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
-        anchors.Add(place);
+        anchors.Add(this.AddPlace(new(this.body.PlaceStorage.Count, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None)));
     }
 
     private int LoadPointer(Koto source, int pointer)
