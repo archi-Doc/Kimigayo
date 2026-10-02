@@ -77,14 +77,6 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id == KimiDeclarationId.StorageAddressOfI64)
-        {
-            return symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var result] } &&
-                ReferenceEquals(result, BoundType.Primitives["i64"]) && symbol.Declaration is FunctionKoto function &&
-                function.Parameters[0].Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var input] } &&
-                ReferenceEquals(input, result);
-        }
-
         if (id == KimiDeclarationId.StorageMissingDictionaryKey)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);

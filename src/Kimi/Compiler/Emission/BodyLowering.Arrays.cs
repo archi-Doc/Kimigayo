@@ -320,11 +320,6 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var kind = plan.Target.CompilerFunction;
         var owning = kind == CompilerFunctionKind.StorageOwn;
-        if (kind == CompilerFunctionKind.StorageAddressOfI64)
-        {
-            return this.LowerAddressOfI64(body, function, id, call, plan, out failure);
-        }
-
         if (kind == CompilerFunctionKind.StorageOwnFixed)
         {
             return this.LowerFixedStorageOwn(body, function, id, call, plan, out failure);

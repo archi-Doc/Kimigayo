@@ -473,12 +473,12 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 [Specification: Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time).
 
-`Windows` groups Windows x64 native APIs. Both unsafe functions take a valid, exclusively writable, eight-byte-aligned i64 pointer and retain no pointer; they return the native i32 success flag (nonzero on success).
+`Windows` groups Windows x64 native APIs. Both functions are safe imports: they write the counter value through the exclusive borrow, retain no borrow, and return the native i32 success flag (nonzero on success).
 
 | Function | Guarantee |
 | --- | --- |
-| `Windows.queryPerformanceCounter(value: raw/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
-| `Windows.queryPerformanceFrequency(value: raw/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
+| `Windows.queryPerformanceCounter(value: uniq/i64) -> i32` | Calls QueryPerformanceCounter through the kernel32 supply. |
+| `Windows.queryPerformanceFrequency(value: uniq/i64) -> i32` | Calls QueryPerformanceFrequency through the kernel32 supply. |
 
 `Time` groups elapsed-time facilities. `Time.Duration` is Copy and stores whole microseconds; `Time.Stopwatch` is Non-Copy and measures a monotonic clock without heap allocation. Getters use shared receivers.
 

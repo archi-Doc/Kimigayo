@@ -128,7 +128,6 @@ public enum KimiDeclarationId : byte
     StoragePlaceDictionaryEntry,
     StorageReserveDictionary,
     StorageShrinkDictionary,
-    StorageAddressOfI64,
     RawAllocate,
     RawRelease,
     RawInitialize,

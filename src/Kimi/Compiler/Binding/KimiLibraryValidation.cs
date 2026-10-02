@@ -66,7 +66,6 @@ public sealed partial class KimiLibrary
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.Loan => this.ValidLoan(symbol),
                         KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
-                        KimiDeclarationId.StorageAddressOfI64 => this.ValidAddressOfI64(symbol),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });

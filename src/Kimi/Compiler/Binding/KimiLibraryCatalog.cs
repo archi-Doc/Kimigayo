@@ -149,7 +149,6 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.StoragePlaceDictionaryEntry, "placeEntry", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StoragePlaceDictionaryEntry),
         new(KimiDeclarationId.StorageReserveDictionary, "reserveEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageReserveDictionary),
         new(KimiDeclarationId.StorageShrinkDictionary, "shrinkEntries", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageShrinkDictionary),
-        new(KimiDeclarationId.StorageAddressOfI64, "addressOfI64", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageAddressOfI64),
         // SPEC 5.6: the public raw storage operations.
         new(KimiDeclarationId.RawAllocate, "allocate", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawAllocate),
         new(KimiDeclarationId.RawRelease, "release", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawRelease),
@@ -165,7 +164,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageAddressOfI64;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageShrinkDictionary;
 
     internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
 

@@ -81,7 +81,6 @@ public enum CompilerFunctionKind : byte
     StoragePlaceDictionaryEntry,
     StorageReserveDictionary,
     StorageShrinkDictionary,
-    StorageAddressOfI64,
     RawAllocate,
     RawRelease,
     RawInitialize,
