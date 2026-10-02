@@ -262,34 +262,22 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Adopt(effect);
     }
 
-    internal bool IsGenericParameter(string name)
-    {
-        if (this.genericArguments is not null)
-        {
-            foreach (var parameter in this.genericArguments)
-            {
-                if (parameter.Identifier == name || parameter.SemanticsParameter == name)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+    /// <summary>Gets whether a spelling names one of this function's Type parameters or their Semantics parameters; the parser asks with the token's text, before any interning.</summary>
+    /// <param name="name">The spelling.</param>
+    /// <returns><see langword="true"/> when the function declares the parameter.</returns>
+    internal bool IsGenericParameter(ReadOnlySpan<char> name)
+        => this.genericArguments is not null && NamesParameter(this.genericArguments, name);
 
     // SPEC 7.4: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
     // is parsed before the member is attached, so the container is recorded for the parse.
-    internal bool IsDeclaringTypeParameter(string name)
-    {
-        if (this.DeclaringContainer is not (StructKoto or EnumKoto) || this.DeclaringContainer is not { GenericParameterNodes: { Count: > 0 } parameters })
-        {
-            return false;
-        }
+    internal bool IsDeclaringTypeParameter(ReadOnlySpan<char> name)
+        => this.DeclaringContainer is StructKoto or EnumKoto && NamesParameter(this.DeclaringContainer.GenericParameterNodes, name);
 
+    private static bool NamesParameter(IReadOnlyList<TypeKoto> parameters, ReadOnlySpan<char> name)
+    {
         for (var i = 0; i < parameters.Count; i++)
         {
-            if (parameters[i].Identifier == name || parameters[i].SemanticsParameter == name)
+            if (name.SequenceEqual(parameters[i].Identifier) || (parameters[i].SemanticsParameter is { } semantics && name.SequenceEqual(semantics)))
             {
                 return true;
             }

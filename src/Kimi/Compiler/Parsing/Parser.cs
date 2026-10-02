@@ -2287,7 +2287,8 @@ CloseParameters:
             return false;
         }
 
-        var name = reader.GetIdentifier(reader.CurrentToken);
+        // The token's text is compared without interning it: the statement that follows reads and validates the identifier itself.
+        var name = reader.GetSpan(reader.CurrentToken);
         return (function.IsGenericParameter(name) || function.IsDeclaringTypeParameter(name)) && IsTypeConstraintStart(ref reader, declarationContext: true);
     }
 
@@ -2473,8 +2474,8 @@ CloseParameters:
             // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
             // accessor is never a conditional member, so no subject is permitted in its body.
             var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
-            var subject = rootQualified ? null : reader.GetIdentifier(reader.CurrentToken);
-            var isGenericParameter = subject is not null && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
+            var subject = rootQualified ? default : reader.GetSpan(reader.CurrentToken);
+            var isGenericParameter = !rootQualified && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
             if (!state.SeenExecutableItem || isGenericParameter)
             {
                 var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
