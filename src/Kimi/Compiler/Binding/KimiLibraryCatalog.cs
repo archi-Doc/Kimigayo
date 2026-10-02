@@ -138,7 +138,6 @@ internal static class KimiLibraryCatalog
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage, "InlineStorage", KimiLibraryContainer.Storage),
         new(KimiDeclarationId.StorageOwnFixed, "ownStorage", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageOwnFixed, Overload: 2),
-        new(KimiDeclarationId.StorageInlineBase, "inlineBase", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageInlineBase),
         new(KimiDeclarationId.Position, "Position"),
         new(KimiDeclarationId.PositionRange, "PositionRange"),
         new(KimiDeclarationId.Start, "Start"),

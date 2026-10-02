@@ -60,36 +60,4 @@ internal sealed partial class BodyLowering
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
         return true;
     }
-
-    // The runtime value of inlineBase is the exclusively borrowed storage's address; the Kimigayo caller keeps the untaken
-    // range and every raw-pointer obligation.
-    private bool LowerStorageInlineBase(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Symbol.LibraryDeclaration: KimiDeclarationId.InlineStorage }] } storage ||
-            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } result || !ReferenceEquals(SignatureType(this, call.BoundType), result))
-        {
-            return Fail("Inline storage base does not match its storage and pointer Types.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        if (!this.ScalarArrayArgument(body, id, 0, storage, out var address))
-        {
-            return Fail("Inline storage borrow is unavailable at the call.", out failure);
-        }
-
-        function.AddScalar(EmissionOpcode.BorrowAddress, id, [address]);
-        return true;
-    }
 }

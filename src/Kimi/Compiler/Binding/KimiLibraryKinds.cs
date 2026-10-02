@@ -77,7 +77,6 @@ public enum CompilerFunctionKind : byte
     StorageBorrowFixedShared,
     StorageBorrowFixedExclusive,
     StorageOwnFixed,
-    StorageInlineBase,
     StorageDictionaryLayout,
     StorageMissingDictionaryKey,
     StoragePlaceDictionaryEntry,

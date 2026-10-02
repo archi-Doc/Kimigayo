@@ -135,7 +135,7 @@ internal group Storage
             state.link = (slot@raw/isize)[1]
             return .Some(((*keyAt<K, V>(slot))@move, (*valueAt<K, V>(slot))@move))
 
-    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, whose contents the compiler never destroys
+    /// Inline storage for one complete Type `A`, here a fixed array `[N of E]`, placed at offset 0 and never destroyed by the compiler
     /// (PLAN G33): its owner destroys what remains of `value` through unsafe element addressing. It takes the stored Type,
     /// not `<E, length N>`, because only functions have length slots (SPEC 4.4).
     internal struct InlineStorage<A>
@@ -150,8 +150,7 @@ internal group Storage
 
         // Unreturned elements are destroyed in reverse index order (SPEC 4.7.6); the storage itself is never destroyed.
         drop
-            var elements: raw/E = null
-            unsafe => elements = inlineBase<E, A>(self.storage@uniq)
+            let elements = self.storage@raw@raw/E
             while self.count > 0
                 self.count -= 1
                 unsafe => _ = elements[self.position + self.count]@move
@@ -162,7 +161,7 @@ internal group Storage
         let position = state.position
         state.position += 1
         state.count -= 1
-        unsafe => return .Some(inlineBase<E, A>(state.storage@uniq)[position]@move)
+        unsafe => return .Some((state.storage@raw@raw/E)[position]@move)
 
     /// Consumes a contiguous exclusive remainder and splits two distinct positions, preserving argument order.
     internal func tryGetPairUniq<E, P, Q>(

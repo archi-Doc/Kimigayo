@@ -59,7 +59,7 @@ public sealed partial class KimiLibrary
                             >= KimiDeclarationId.StorageOwnDictionary and <= KimiDeclarationId.StorageValueAt => this.ValidDictionaryStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.StorageBorrowFixedShared or KimiDeclarationId.StorageBorrowFixedExclusive => this.ValidFixedStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
-                        KimiDeclarationId.StorageOwnFixed or KimiDeclarationId.StorageInlineBase => this.ValidFixedOwningOperation(symbol, entry.Id),
+                        KimiDeclarationId.StorageOwnFixed => this.ValidFixedOwningOperation(symbol),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
                         KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
                         KimiDeclarationId.StoragePlaceDictionaryEntry or KimiDeclarationId.StoragePlaceDictionaryValue => this.ValidDictionaryPlacement(symbol, entry.Id),
@@ -672,32 +672,22 @@ public sealed partial class KimiLibrary
             BareName(result.Identifier, exclusive ? "UniqRemainder" : "RefRemainder") && BareName(element, "E");
     }
 
-    // PLAN G33: ownStorage over a consumed [N of E] returns FixedOwnedRemainder<E, [N of E]>, and the unsafe inlineBase
-    // publishes the element address of an exclusively borrowed InlineStorage<A> as raw/E; the compiler implements both.
-    private bool ValidFixedOwningOperation(BindingSymbol symbol, KimiDeclarationId id)
+    // PLAN G33: ownStorage over a consumed [N of E] returns FixedOwnedRemainder<E, [N of E]>; the compiler implements it.
+    private bool ValidFixedOwningOperation(BindingSymbol symbol)
     {
-        if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function ||
+        if (symbol.CompilerFunction != KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(KimiDeclarationId.StorageOwnFixed)].Function ||
             symbol.Declaration is not FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0 } function ||
             !ReferenceEquals(function.Parent, this.StorageScope.Owner))
         {
             return false;
         }
 
-        if (id == KimiDeclarationId.StorageOwnFixed)
-        {
-            return function is { Name: "ownStorage", Modifier: ModifierKind.Internal } &&
-                function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
-                function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } parameter] &&
-                BareType(parameter.Type) is FixedArrayTypeKoto input && BareName(input.ElementType, "E") && BareName(input.Length, "N") &&
-                BareType(function.ReturnType) is GenericsKoto { TypeArguments: [var element, var storedType] } result && BareType(storedType) is FixedArrayTypeKoto owned && BareName(result.Identifier, "FixedOwnedRemainder") &&
-                BareName(element, "E") && BareName(owned.ElementType, "E") && BareName(owned.Length, "N");
-        }
-
-        return function is { Name: "inlineBase", Modifier: ModifierKind.Internal | ModifierKind.Unsafe } &&
-            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "A", SemanticsParameter: null, AttributeChain: null }] &&
-            function.Parameters is [{ InternalName: "storage", ExternalName: "storage", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, OriginName: null, OriginExpression: null, Type: GenericsKoto { TypeArguments: [var stored] } storage } }] &&
-            BareName(storage.Identifier, "InlineStorage") && BareName(stored, "A") &&
-            function.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, OriginName: null, OriginExpression: null } pointer && BareName(pointer.Type, "E");
+        return function is { Name: "ownStorage", Modifier: ModifierKind.Internal } &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
+            function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } parameter] &&
+            BareType(parameter.Type) is FixedArrayTypeKoto input && BareName(input.ElementType, "E") && BareName(input.Length, "N") &&
+            BareType(function.ReturnType) is GenericsKoto { TypeArguments: [var element, var storedType] } result && BareType(storedType) is FixedArrayTypeKoto owned && BareName(result.Identifier, "FixedOwnedRemainder") &&
+            BareName(element, "E") && BareName(owned.ElementType, "E") && BareName(owned.Length, "N");
     }
 
     // SPEC 22.1.2.5: a bodiless internal generic operation over Array<E>; the compiler implements it. The borrowing

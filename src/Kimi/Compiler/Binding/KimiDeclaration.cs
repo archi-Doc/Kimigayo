@@ -121,7 +121,6 @@ public enum KimiDeclarationId : byte
     StorageBorrowFixedExclusive,
     InlineStorage,
     StorageOwnFixed,
-    StorageInlineBase,
     Position,
     PositionRange,
     Start,

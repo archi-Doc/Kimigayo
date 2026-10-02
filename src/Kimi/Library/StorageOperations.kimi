@@ -16,7 +16,6 @@ internal unsafe func release<E>(storage: raw/E)
 internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
 internal func borrowStorage<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
 internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
-internal unsafe func inlineBase<E, A>(storage: uniq/InlineStorage<A>) -> raw/E
 // Private physical projection: mutable handle address and entry stride. No entry is acquired.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
     K is Equatable
