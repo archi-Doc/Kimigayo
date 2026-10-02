@@ -57,7 +57,7 @@ public class OwnedStoredReferenceTest
 
     [Theory]
     [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", true)]
-    [InlineData("both(item.0, item.0)", null)] // Rejected at preparation or activation; see PLAN G43.
+    [InlineData("both(item.0, item.0)", true)]
     [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", false)]
     public void StoredReferenceArgumentsRespectLiveChildren(string body, bool? activation)
     {
@@ -65,6 +65,33 @@ public class OwnedStoredReferenceTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && (activation is null || x.Activation == activation));
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 15.6.7: the slot borrow and the loaded reference of a reserved stored-reference argument are reserved with it, so
+    // a later argument may still inspect the stored reference, as for a local reference, until the call activates them.
+    private const string Reserved = "func change3(target: uniq/i32, amount: i32) => target@follow = amount + 1\nfunc inspect(target: ref/i32) -> i32 => target@follow\n";
+
+    [Theory]
+    [InlineData("Let", "var value = 42\nlet item = (value@uniq, 7)\nchange3(item.0, inspect(item.0))\nrequire value == 43 else => $abort(\"changed\")")]
+    [InlineData("Var", "var value = 42\nvar item = (value@uniq, 7)\nchange3(item.0, inspect(item.0))\nrequire value == 43 else => $abort(\"changed\")")]
+    [InlineData("Sibling", "var value = 42\nlet item = (value@uniq, 7)\nchange3(item.0, item.1)\nrequire value == 8 else => $abort(\"changed\")")]
+    [InlineData("Iteration", "func run(value: uniq/i32 during a)\n    var items = [(value@move, 7)]\n    for item in items@move\n        change3(item.0, inspect(item.0))\nvar value = 42\nrun(value@uniq)\nrequire value == 43 else => $abort(\"changed\")")]
+    public void AReservedStoredReferenceStaysInspectableUntilActivation(string name, string source)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceReserved" + name, Reserved + source, string.Empty);
+
+    [Theory]
+    [InlineData("twice(item.0, item.0)", true)]
+    [InlineData("change3(item.0, poke(item.0))", true)]
+    [InlineData("change3(item.0, take(item@move))", false)]
+    [InlineData("let child = item.0@follow@ref\nchange3(item.0, inspect(item.0))\nrequire child == 1 else => $abort(\"child\")", true)]
+    public void AReservedStoredReferenceActivatesExclusively(string body, bool activation)
+    {
+        const string helpers = "func twice(target: uniq/i32, other: uniq/i32) => target@follow = 1\nfunc take(t: (uniq/i32 during a, i32)) -> i32 => 1\nfunc poke(t: uniq/i32) -> i32\n    t@follow = 3\n    return 1\n";
+        var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
         Assert.False(c.Emission.Validate(out _));
     }
 

@@ -63,6 +63,12 @@ public sealed partial class OwnershipBody
             {
                 this.reservationPlaces[this.CallReservations[i].Place] = i;
             }
+
+            if (this.CallReservations[i].Loaded >= 0)
+            {
+                // The stored reference loaded for the reserved Reborrow is held in the reservation's mode.
+                this.reservationPlaces[this.CallReservations[i].Loaded] = i;
+            }
         }
     }
 
@@ -280,9 +286,11 @@ public sealed partial class OwnershipBody
             }
         }
 
+        // The slot borrow and the loaded reference of a reserved stored-reference argument reserve every Loan they hold.
         var reservation = this.reservationPlaces[place];
         return mode == LoanRequirement.Uniq && reservation >= 0 && this.ReservationMode(reservation, point) == LoanRequirement.Ref &&
-            this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root) ? LoanRequirement.Ref : mode;
+            (this.CallReservations[reservation].Argument >= 0 || place == this.CallReservations[reservation].Loaded ||
+                (this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root))) ? LoanRequirement.Ref : mode;
     }
 
     private bool OriginNamesRoot(BoundOrigin origin, int root)

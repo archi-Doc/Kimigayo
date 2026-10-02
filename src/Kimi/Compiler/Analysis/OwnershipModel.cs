@@ -553,7 +553,7 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 // and final ProjectElement for an exclusive write.
 internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
 
-internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1);
+internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

@@ -216,7 +216,7 @@ public sealed partial class OwnershipBody
                 for (var slot = 0; slot < liveWidth; slot++)
                 {
                     var p = this.liveBorrowPlaces[slot];
-                    if (!this.borrowLive.IsSet((op * liveWidth) + slot) || (activating && p == this.CallReservations[r].Place))
+                    if (!this.borrowLive.IsSet((op * liveWidth) + slot) || (activating && this.SameReservedArgument(r, p)))
                     {
                         continue;
                     }
@@ -253,7 +253,7 @@ public sealed partial class OwnershipBody
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
                             this.ElementAccessConflicts(operation, root, authority);
                         if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
-                            this.IsDisjointProjection(accessId, p))
+                            this.IsDisjointProjection(accessId, p, root))
                         {
                             accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
                         }
@@ -1410,6 +1410,16 @@ public sealed partial class OwnershipBody
     // Recorded once per preparation; the Origin mapping queries it for every root of every Place.
     private bool IsBorrowedPlace(int place) => this.borrowedPlaces[place];
 
+    // SPEC 15.6.7: the Places that one reserved argument prepares (its Reborrow, and the slot borrow and loaded reference of
+    // a stored reference it Reborrows through) activate together and never conflict with one another.
+    private bool SameReservedArgument(int reservation, int place)
+    {
+        var other = this.reservationPlaces[place];
+        return other >= 0 && Group(other) == Group(reservation);
+
+        int Group(int id) => this.CallReservations[id].Argument >= 0 ? this.CallReservations[id].Argument : id;
+    }
+
     private bool IsBorrowAncestor(int value, int place)
     {
         var original = place;
@@ -1590,7 +1600,9 @@ public sealed partial class OwnershipBody
     // SPEC 15.6.2: distinct inline field/Tuple selectors under the same root
     // designate disjoint places. Unknown steps, nonliteral subscripts and different
     // roots conservatively overlap.
-    private bool IsDisjointProjection(int access, int place)
+    // With a Loan root, a holder's or access's reference loaded from a slot of that root is placed at the slot's path:
+    // it reaches the root only through that slot. Its referent belongs to other roots, where the path proves nothing.
+    private bool IsDisjointProjection(int access, int place, int loanRoot = -1)
     {
         if (!this.HasSingleBorrowDefinition(place))
         {
@@ -1605,6 +1617,7 @@ public sealed partial class OwnershipBody
         var node = this.Values[access];
         var projection = this.Operations[access].Projection;
         var leftRoot = -1;
+        var loaded = false;
         if (projection >= 0 && this.Operations[access].Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce)
         {
             // Only the static prefix of an element path is a precise footprint.
@@ -1662,12 +1675,12 @@ public sealed partial class OwnershipBody
 
         if (leftRoot < 0)
         {
-            leftRoot = this.ProjectionPath(value, left, ref leftDepth);
+            leftRoot = this.ProjectionPath(value, left, ref leftDepth, loanRoot >= 0, ref loaded);
         }
 
         var rightDepth = 0;
-        var rightRoot = this.ProjectionPath(this.borrowDefinitions[place], right, ref rightDepth);
-        if (leftRoot < 0 || leftRoot != rightRoot)
+        var rightRoot = this.ProjectionPath(this.borrowDefinitions[place], right, ref rightDepth, loanRoot >= 0, ref loaded);
+        if (leftRoot < 0 || leftRoot != rightRoot || (loaded && leftRoot != loanRoot))
         {
             return false;
         }
@@ -1686,6 +1699,12 @@ public sealed partial class OwnershipBody
 
     private int ProjectionPath(int value, Span<int> selectors, ref int depth)
     {
+        var loaded = false;
+        return this.ProjectionPath(value, selectors, ref depth, false, ref loaded);
+    }
+
+    private int ProjectionPath(int value, Span<int> selectors, ref int depth, bool throughLoads, ref bool loaded)
+    {
         for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
         {
             var operation = this.Operations[value];
@@ -1702,6 +1721,13 @@ public sealed partial class OwnershipBody
                 if (node.Count != 1)
                 {
                     return -1;
+                }
+
+                if (throughLoads && this.Values[this.ValueOperands[node.Start]].Kind == OwnershipValueKind.PointerLoad)
+                {
+                    // A Reborrow through a reference loaded from a slot reaches the slot's root only through that slot.
+                    value = this.ValueOperands[node.Start];
+                    continue;
                 }
 
                 if (KotoHelper.UnwrapParentheses(operation.Source) is MemberAccessKoto field)
@@ -1722,6 +1748,12 @@ public sealed partial class OwnershipBody
                     return -1;
                 }
 
+                value = this.ValueOperands[node.Start];
+            }
+            else if (throughLoads && operation.Kind == OwnershipOperationKind.Produce && node.Kind == OwnershipValueKind.PointerLoad && node.Count == 1)
+            {
+                // SPEC 15.6.2: a reference loaded from an inline slot depends on the slot's root only through that slot.
+                loaded = true;
                 value = this.ValueOperands[node.Start];
             }
             else if (operation.Kind == OwnershipOperationKind.Call && node.Kind == OwnershipValueKind.Call)

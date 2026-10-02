@@ -133,10 +133,10 @@ public sealed partial class OwnershipAnalysis
         return this.Argument(source, argument.Kind);
     }
 
-    private int NewCallReservation(InvocationKoto call)
+    private int NewCallReservation(InvocationKoto call, int argument = -1)
     {
         var id = this.body.CallReservations.Count;
-        this.body.CallReservations.Add(new(call));
+        this.body.CallReservations.Add(new(call, Argument: argument));
         return id;
     }
 

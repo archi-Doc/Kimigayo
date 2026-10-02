@@ -148,7 +148,7 @@ public sealed partial class OwnershipAnalysis
 
     private int StoredReference(ConversionKoto pair) => this.StoredReference(KotoHelper.UnwrapParentheses(pair.Left), SemanticsKind.Ref);
 
-    private int StoredReference(Koto left, SemanticsKind mode)
+    private int StoredReference(Koto left, SemanticsKind mode, int reservation = -1)
     {
         // SPEC 13.5.5.1, 15.6.2: a reference stored in an inline Field, Tuple element or static element of an owned root is
         // reached by borrowing that slot in place; let restricts replacing the slot, not the stored reference's capability.
@@ -156,12 +156,21 @@ public sealed partial class OwnershipAnalysis
         if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
         {
             var stored = this.Concrete(left.BoundType)!;
+            // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
+            // so a later argument may still inspect the same stored reference until the call activates all three.
+            var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
+            var slotReservation = reserved ? this.NewCallReservation(this.body.CallReservations[reservation].Call, reservation) : -1;
             var slotType = ownedSlot ? this.compilation.Binding.Reference(mode, left.BoundType!)
                 : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
-            var slot = this.BorrowStruct(left, slotType);
+            var slot = this.BorrowStruct(left, slotType, slotReservation);
             if (slot < 0)
             {
                 return -1;
+            }
+
+            if (slotReservation >= 0)
+            {
+                this.CompleteCallReservation(slotReservation, this.Value(slot), slot);
             }
 
             // The slot is inspected only for its address value. A shared path yields the stored reference's shared
@@ -171,6 +180,11 @@ public sealed partial class OwnershipAnalysis
             var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, left, pointer);
             this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
+            if (reserved)
+            {
+                this.body.CallReservations[reservation] = this.body.CallReservations[reservation] with { Loaded = pointer };
+            }
+
             return this.RegisterTemporary(pointer);
         }
 
@@ -198,7 +212,7 @@ public sealed partial class OwnershipAnalysis
 
     private int BorrowStoredReference(Koto source, Koto left, BoundType type, int reservation)
     {
-        var reference = this.StoredReference(left, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Ref);
+        var reference = this.StoredReference(left, type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Ref, reservation);
         return reference < 0 ? -1 : this.BorrowThrough(source, reference, type, reservation);
     }
 
