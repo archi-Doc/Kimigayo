@@ -196,7 +196,6 @@ Language Error `AccessorReceiverShape_Kd` を新設する（要件 `Binding.Acce
 - **位置：** 主範囲は書かれた受け手の型。関連位置は Property の見出し。
 - **Reason：** accessor の種類（`get`/`set`）、書かれた Semantics、要求される形（`ref/Self` または `uniq/Self`）。
 - **Advice：** 書かれた受け手・Origin・本体を保ったまま関数へ移す（`func name(self: R) -> T`、setter なら `func name(self: R, value: U) -> ()`）。名前は本書 3.6 に従う。受け手の型を置き換える助言はしない。object 形式や所有形式の本体は値形式では成立しないことがあり、共有受け手で有効な本体（`self@copy` など）が排他受け手で有効とも限らないからである。
-- **構造化修復候補（SPEC §23.3.6）：** 「関数へ移す」一つを提示する。対象は `set` を持たず Contract 要件でない computed Property で、`computed name: T` と `get(self: R) -> T` の見出しを `func name(self: R) -> T` に置き換え、本体・Origin 節・Attribute・アクセス修飾子を保つ。受け手を保つので本体の意味は変わらず、関係する条件はない。使用側の `x.name` は既存の診断（関数には呼び出しが必要）で別に報告する。それ以外の対象は Advice にとどめる。
 - **SPEC §7.3 の診断表：** 「Only shared permission」行の提案「enclosing method に `self: uniq/Self`」は、enclosing の宣言が getter のときは提示せず、操作を関数へ移す Advice にする。
 
 ### 4.2. 回復と相互作用
@@ -228,7 +227,7 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 | Kimi ライブラリ、`docs/LIBRARY.md`、`docs/examples` | なし（computed はすべて `get()` 省略形、custom setter なし） | — |
 | SPEC の例 | §7.3 の `Meter.reading`／`Registry.meter.reading`、§11.2.2 の `Meter.reading`／`Holder.result`、§11.2.3 の `holder.view@follow@uniq`／`holder.view.update()` | 本書 8 のとおり関数へ書き換えるか削除する |
 | マイルストーン | `tests/milestones/Milestone24.kimi` の `Parcel.result`（`get(self: Self)`）と `parcel@move.result` | `func intoResult(self: Self) -> Resource` と `parcel@move.intoResult()` に再綴りする。`tests/milestones/README.md` の行 24 と関連記述、`DiagnosticSnapshotTest` の milestone/Milestone24 基準を更新する |
-| テスト | `AccessorReceiverBindingTest`（受け手形式一覧、要件 `get(self: Self)`、`set(self: Self, ...)` を使う 2 件）、`PropertyBindingTest.ComputedWitnessRetainsTheExplicitReceiver`、`ReceiverShorthandTest.ComputedAccessorsBindSelfAndPreserveExplicitReceiverOverrides`、`CopyPropertyEmissionTest.ComputedExclusiveGetterBorrowsWritableReceiver`（native fixture `CopyPropertyExclusiveGet`） | 拒否側へ移すか `ref/Self`／`uniq/Self` に書き換える。fixture は `nextReading()` 形に置き換えて実行の網羅を保つ。`PropertyRevisionParseTest` は構文解析のみで変更しない |
+| テスト | computed accessor と Contract 明示要件で、所有・排他・object 形式の受け手を使うテストと native fixture。実装時の検査で特定する | 拒否側へ移すか `ref/Self`／`uniq/Self` に書き換える。排他 getter を実行する fixture は `nextReading()` 形に置き換えて実行の網羅を保つ |
 | 診断コーパス | `tests/diagnostics/syntax.json` | 本書 4 の拒否例と正当な対を追加する |
 | STATUS | 「computed getters can borrow exclusively」（P23 の項）、「ownership-bearing accessor generation」の残課題 | 前者を削除し、後者を Non-Copy の結果・入力に限定して記述する |
 
@@ -241,8 +240,8 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 | 単位 | 作業 | 完了条件 |
 | --- | --- | --- |
 | U1：仕様・文書の取り込み | 本書 8 の更新、`docs/SETTLED.md` の項目追加、`draft/INTEGRATED.md` の記録、Milestone24 の再綴りと README・PLAN の更新 | 仕様が本書 3 と一致し、draft への依存がない |
-| U2：形状検査と診断 | `Binding.Properties.cs` の accessor 検証に形状検査を加え、`BindingModel.cs` と `Binding.cs` のコード対応、`DiagnosticCode.cs`・`DiagnosticCode.tinyhand`・`DiagnosticRequirement.tinyhand` の項目、修復候補、SPEC §7.3 診断表の条件を実装する。受け手取得処理（`Binding.Expressions.cs` の受信者式の適応）は変更しない | 本書 2 の拒否例と正当な対が通り、CLI と language server の代表出力を確認し、DIAGNOSTICS §10 の手順を満たす |
-| U3：テストと検証 | 本書 6 のテスト更新、fixture の置き換え、スナップショットの再基準化、STATUS の更新 | `verify.ps1 -Class AccessorReceiverBindingTest,PropertyBindingTest,ReceiverShorthandTest,CopyPropertyEmissionTest,DiagnosticSnapshotTest -Fixtures 'CopyProperty*.ll' -Milestone 24` が通り、最後に `-Mode Session` が通る |
+| U2：形状検査と診断 | `Binding.Properties.cs` の accessor 検証に形状検査を加え、`BindingModel.cs` と `Binding.cs` のコード対応、`DiagnosticCode.cs`・`DiagnosticCode.tinyhand`・`DiagnosticRequirement.tinyhand` の項目、SPEC §7.3 診断表の条件を実装する。受け手取得処理（`Binding.Expressions.cs` の受信者式の適応）は変更しない | 本書 2 の拒否例と正当な対が通り、CLI と language server の代表出力を確認し、DIAGNOSTICS §10 の手順を満たす |
+| U3：テストと検証 | 本書 6 のテスト更新、fixture の置き換え、スナップショットの再基準化、STATUS の更新 | 関連テスト・native fixture・Milestone 24 の Unit 検証が通り、最後に `-Mode Session` が通る |
 
 性能：検査は accessor 宣言ごとに Semantics の一比較で、使用ごとの費用はない。`WarmAccessorReceiverChecksAllocateNothing` の割当て回帰を維持する。
 
@@ -285,8 +284,8 @@ STYLE §3.3 の `[Advice]`「共有 getter を優先する。排他アクセス�
 - **原則 1：** 読み取りは Property、更新と消費は関数という一つの形に揃え、accessor の受け手形式を操作ごとに一つにする。
 - **原則 2：** `x.p` と `x.p = v` が `x` に何をするかを、宣言を読まずに字面から決められる。
 - **原則 3：** 排他借用は `()` と名前、消費は `@move` と名前に必ず現れる。
-- **原則 4：** 問題を宣言で一度だけ報告し、条件を明示した修復候補を提示する。
+- **原則 4：** 問題を宣言で一度だけ報告し、関数へ移す修正を Advice で示す。
 
 ### 9.3. 残る確認
 
-本書は仕様・ソース・既存テストとの静的な照合による。新しい検査の実装・実行試験は未実施である。残る確認は、テスト全体での該当宣言の数、Milestone24 のスナップショット差分、修復候補の適用範囲である。
+本書は仕様・ソース・既存テストとの静的な照合による。新しい検査の実装・実行試験は未実施である。残る確認は、テスト全体での該当宣言の数と、Milestone24 のスナップショット差分である。
