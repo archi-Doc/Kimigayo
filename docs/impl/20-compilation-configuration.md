@@ -439,7 +439,7 @@ Successful explicit verification records `toolchainVerification: "passed"`, `rep
 | Command | Required behavior |
 | --- | --- |
 | `kimi restore <project>` | Resolves the current product/test partitions and atomically updates their lock (§18.5.1); no source execution, Mods or network access. |
-| `kimi check <project>` | Validates the required lock and the current source and semantic inputs, without native generation or execution. |
+| `kimi check <project> [--Format text\|json]` | Validates the required lock and the current source and semantic inputs, without native generation or execution. `--Format json` checks one unit through the shared check entry and writes the document of [SPEC §23.3.6.8](../spec/23-compiler-services.md#23368-rendering) to standard output; `text`, the default, renders the records as before. |
 | `kimi emit <input>` | Resolves the input (§20.8.6.1), performs the required source, ownership and generation checks, and publishes the matched pre-optimization `.ll`/`.link.json` pair (§20.8.3). Never executes LLVM, validates an installed LLVM version, links or runs. |
 | `kimi build <input>` | Resolves the input, generates fresh LLVM inputs, validates native build inputs, runs `opt` verification (and `default<O2>` only at O2), `llc` and `lld-link`, and publishes the executable and a successful build record. Never executes the Application. |
 | `kimi toolchain verify` | Verifies the selected installation without compiling or running project code (§20.8.5). |

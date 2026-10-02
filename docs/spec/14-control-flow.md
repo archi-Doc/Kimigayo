@@ -208,7 +208,7 @@ unsafe
     updateState()
 ```
 
-An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the Advice suggests removing `unsafe` and keeping the statements only when the Body declares no Name and registers no `defer`; otherwise it states that removal would change the scope of a Name or the time of a destruction or `defer` and does not recommend it. A structured repair (§23.5.3) is offered only when it is proven to preserve scopes, destruction order and control transfers.
+An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the Advice suggests removing `unsafe` and keeping the statements only when the Body declares no Name and registers no `defer`; otherwise it states that removal would change the scope of a Name or the time of a destruction or `defer` and does not recommend it. The repair candidate `Repair.RemoveUnsafe` (§23.3.6.9) is offered with `Structure` verified exactly in that case, when the statement is a direct item of an indented body, its `unsafe` line holds no other token or comment and its Body has no multi-line literal; otherwise the Advice alone remains.
 
 ```kimi
 unsafe
@@ -261,7 +261,7 @@ For `return`, `exit` and `yield`, the operand is omitted only when no token foll
 
 A named target and its operand's first token must be separated by whitespace or a same-line block comment (§2.3). `exit to work(x)`, `exit to work.value`, `exit to work[0]` and `exit to work..end` are invalid; `exit to work (x)` and `exit to work/* result */(x)` are valid syntax. Formatting uses one space without removing comments. The separated forms `-1`, `(value)`, `()`, `[1, 2]`, `.Some(1)` and `..end` are operands, never calls, members or indices of the label.
 
-A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. A repair for a colon at the operand start may remove it and insert any required space to supply the following expression, or insert `()` to express a Unit key. It must state that intent and cannot claim unconditional semantic preservation. Postfix `value to Label` and `value{Label}` are not transfer syntax.
+A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. Advice for a colon at the operand start may describe removing it, with any space the following expression needs, or inserting `()` for a Unit key; the choice is the author's, so neither is a repair candidate (§23.3.6.9), and the Advice cannot claim semantic preservation. Postfix `value to Label` and `value{Label}` are not transfer syntax.
 
 ```kimi
 exit to search score(item)

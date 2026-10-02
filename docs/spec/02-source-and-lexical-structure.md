@@ -216,6 +216,8 @@ A token's spelling is contiguous. Adjacent spellings must be separated when thei
 | Optional Type suffix | `?` |
 | Recognized but unavailable | `;` `&&` `\|\|` |
 
+`&&` and `\|\|` are recognized so that their use is reported as misplaced syntax whose repair candidates are `and` and `or` (§23.3.6.9).
+
 Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
 
 `>>` may split into two `>` tokens, and `>>=` into `>`, `>`, `=` (or `>`, `>=` when only one level closes), only when closing syntactically recognized generic Type arguments or parameters. Expression shifts are unaffected. Tuple indices use the exception in §2.6.

@@ -68,7 +68,7 @@ One check entry serves `kimi check`, test preparation and the server. For each u
 2. **Dependency content.** The *same-input comparison* of dependency nodes reached by several paths (§18.4.1), then lock validation (§18.5), both in command order.
 3. **Front end.** Parsing, Binding and its diagnostics, startup checks, ownership analysis with control-flow diagnostics, and acceptance across all source modules.
 
-Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. Machine-applicable edits are never inferred from `Advice` or `Note` prose.
+Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. Machine-applicable edits are never inferred from `Advice` or `Note` prose: a record offers them only as repair candidates (§23.3.6.9).
 
 ### 23.3.3. Outcomes and acceptance
 
@@ -137,7 +137,7 @@ Each diagnostic code has one severity and one **category**:
 
 - A code accepts no free text. Its message, label and Reason come from its typed facts. A difference within one requirement is a Reason value; a different requirement or category is a different code, and wording alone never adds a code.
 - A form this specification permits but the implementation does not support is reported with an `Unsupported` code, never with a `Language` code.
-- Established facts are stated in the Reason; suggested intent is Advice, which states its conditions. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from Note or Advice prose.
+- Established facts are stated in the Reason; suggested intent is a repair candidate with its conditions (§23.3.6.9), or Advice, which states its conditions in prose. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from Note or Advice prose.
 
 #### 23.3.6.2. Records
 
@@ -151,6 +151,7 @@ A **diagnostic record** holds only the fields that have a basis:
 | Reason | The code's small typed facts. Numbers, enumeration values and Booleans are exact; Types, Constraints and long names are bounded display values with an elision mark. |
 | Related | Locations with roles, such as a declaration, an earlier Move or an opening delimiter, each optionally labeled. |
 | Note, Advice | Further explanation; conditional repair advice. |
+| Repairs | Repair candidates (§23.3.6.9): alternative structured edits that resolve the problem, each with its verified and required conditions. |
 | Omissions | The parts that limits summarized or omitted, with counts when known. |
 | Display data | Lines and columns, a bounded source excerpt and the alternative text of related locations. Never used for semantic decisions. |
 
@@ -188,24 +189,83 @@ Explanations are formed once, when the result is finalized, and only for publish
 - Related locations and evidence are ordered by role, then location, then value; the first entries up to the limit are kept, with an omission count.
 - An excerpt is bounded in lines, characters and display width around the primary location.
 - The text of an input failure or exception comes from its code and failure kind; environment-dependent text is a bounded Note.
+- A record carries at most a fixed number of repair candidates, each with a fixed number of edits and a bounded total size of edit text. A candidate that exceeds a limit is omitted whole and counted in Omissions as `repair candidates`; no edit is ever truncated.
 
 Limits never change a problem's identity, category, survival, location or the acceptance of its result. Outputs arrange the finalized explanation in a fixed form; they neither add explanation nor truncate it again.
 
 #### 23.3.6.6. Order and equality
 
-The records of a result are ordered by source table order, then primary span, then an order defined by the problem's identity: its subject, code, requirement, condition and context, each compared by source position or by a fixed order. Within one source, a record without a span comes first; records without a source come last. Order never depends on arrival, threads, memory addresses, message text or Type display names. The same facts, definitions and limits give the same records in the same order, and record equality compares every field, including display data.
+The records of a result are ordered by source table order, then primary span, then an order defined by the problem's identity: its subject, code, requirement, condition and context, each compared by source position or by a fixed order. Within one source, a record without a span comes first; records without a source come last. Order never depends on arrival, threads, memory addresses, message text or Type display names. The same facts, definitions and limits give the same records in the same order, and record equality compares every field, including display data and repair candidates.
 
 #### 23.3.6.7. Diagnostic contract
 
-The following violate the diagnostic contract and make the result Faulted (§23.3.3): a catalog anomaly or an unknown code; an invalid location or argument; two reports of one problem with different primary locations or facts; a rejection without a published Error; two distinct problems without a defined order; and a failure of collection or finalization.
+The following violate the diagnostic contract and make the result Faulted (§23.3.3): a catalog anomaly or an unknown code; an invalid location or argument; two reports of one problem with different primary locations or facts; a rejection without a published Error; two distinct problems without a defined order; a repair candidate without edits, with overlapping edits, with an edit outside its source or in a source that is not a recorded input, a candidate on a derived record, a kind or condition outside the catalog of §23.3.6.9, or a relevant condition that appears in neither or both of verified and required; and a failure of collection or finalization.
 
 #### 23.3.6.8. Rendering
 
 Every output converts finalized records; none decides meaning again or binds again.
 
-- **Commands** render a result once it is finalized, in its order: the message and code, the primary location as `path:line:column`, the bounded excerpt with the primary span underlined and labeled, related locations, omissions, Note and Advice. A later phase, such as emission, renders its own result. The order in which inputs are consumed and later work starts is unchanged. `kimi test` writes diagnostics to standard error, so its standard output stays machine-readable.
-- **JSON.** Records and their source table serialize to JSON with every field and a self-contained message, prepared for the CSP. No command emits this form, and it carries no public schema (§23.5).
-- **Language server:** §23.4.7. The server renders nothing, and its standard output carries only protocol frames.
+- **Commands** render a result once it is finalized, in its order: the message and code, the primary location as `path:line:column`, the bounded excerpt with the primary span underlined and labeled, related locations, omissions, Note and Advice, then each repair candidate (§23.3.6.9) as `Repair: <title>`, one line ` = path:line:column: insert '<text>'` (or `replace '<old>' with '<text>'`, or `delete '<old>'`) per edit, and ` = verified: <conditions>; requires: <phrases>`. A later phase, such as emission, renders its own result. The order in which inputs are consumed and later work starts is unchanged. `kimi test` writes diagnostics to standard error, so its standard output stays machine-readable.
+- **JSON.** `kimi check <project> --Format json` checks one check unit through the shared check entry (§23.3.2) and writes its output to standard output as one JSON document; everything else goes to standard error, and the exit code is unchanged. `--Format text`, the default, is the rendering above. The document is:
+
+```text
+CheckOutput := {
+  schema:       "kimi.check/1"
+  compiler:     the compiler build identity
+  unit:         { project, target, mode: "Product" | "Test", debug }
+  outcome:      "Completed" | "Blocked" | "Faulted"
+  accepted:     bool
+  testPresence: "Yes" | "No" | "Unknown"
+  sources:      [ { path, isInput, sha256? } ]   // sha256: the recorded input's bytes, computed when they are read for this output
+  diagnostics:  [ every field of §23.3.6.2, including repairs ]
+}
+```
+
+  Field names are camelCase, enumerations are strings, spans are `{ start, length }` in UTF-16 code units, and ranges are zero-based lines and characters. The schema of version 1 is [`docs/spec/schemas/check-output.schema.json`](schemas/check-output.schema.json); a change of the document's shape is a new version. The entry is shared, so the document holds the records the language server publishes for the same inputs.
+- **Language server:** §23.4.7 and §23.4.8. The server renders nothing, and its standard output carries only protocol frames.
+
+#### 23.3.6.9. Repair candidates
+
+A **repair candidate** is a structured edit of a recorded input that resolves a record's problem, together with the conditions its acceptance rests on. A record carries zero or more candidates. They are alternatives, ordered by kind in catalog order and then by the position of their first edit; the order is for display and states no preference. A tool never applies a candidate without a request, and the result of applying one is a new input whose validity only a new check establishes; nothing is inferred from the candidate about that input.
+
+| Element | Content |
+| --- | --- |
+| kind | A stable name from the closed catalog below. It fixes the title template and the names and kinds of the candidate's facts |
+| title | One sentence formed from the kind's template and the facts |
+| facts | Typed facts, as in a Reason |
+| edits | One or more edits, each naming a source table entry that is a recorded input, a span of its immutable text in UTF-16 code units (an empty span is an insertion point) and the replacement text; lines and characters are display data |
+| verified | The relevant conditions the check established from its own facts |
+| required | The relevant conditions the check could not decide, each with a phrase formed from the condition's template and the facts |
+
+**Conditions.** The vocabulary is closed; adding a condition is a specification change.
+
+| Condition | Meaning |
+| --- | --- |
+| `Take` | The Place offers Take and is a Movable Place (§15.1.5) |
+| `ExclusiveAccess` | The lending point is exclusively writable (§15.1.5) |
+| `UsageLegality` | The selected operation and every later use of the affected Place satisfy the usage conditions of §10.6: initialization and Move state, Loans and lifetimes |
+| `Structure` | The visibility of existing Names, the order of destruction and `defer`, the evaluation Context and result supply of each expression and the targets of existing control transfers are unchanged |
+
+The conditions relevant to a candidate are fixed by its diagnostic and kind (the catalog below). The check judges each relevant condition from its own facts as **verified**, **required** (undecidable without analyzing the edited input) or **refuted**, and a candidate with a refuted condition is not offered. No check analyzes the edited input, so `UsageLegality` is always required in this revision.
+
+**Edits.** An edit replaces or inserts syntax and supplies the separators its boundary needs: inserted or replaced text is a complete token or item and never merges with an adjacent identifier (`a&&b` becomes `a and b`). A deletion at a line start removes only indentation that exists, and no edit touches an empty line, a line break or the inside of a multi-line literal. The edits of one candidate do not overlap, are ordered by position, and two insertions at one point are one edit; they are applied together, and their text is never shortened or elided. Edits reach recorded inputs only, never `compiler://` or generated sources.
+
+**Offering.** A candidate is offered only when its effect follows from the check's facts; a repair that needs a choice the facts do not settle is Advice. A derived record (`PrerequisiteUnavailable_Kd`) carries no candidates. A record with candidates does not repeat their edits in its Advice: the Advice states the conditions a candidate cannot express and the alternatives, including a repair that was not offered because a condition was refuted. Every output shows the same candidates.
+
+**Catalog.** The kinds, the diagnostics that offer them and the relevant conditions:
+
+| Diagnostic | Kind and edits | Judgment | Offered when |
+| --- | --- | --- | --- |
+| `TransferRequired_Kd` (§3.5) | `Repair.Transfer`: `@move` after the Place | `Take`: verified or required from the acquisition plan, refuted for a Place without Take (a borrowed, published, static or dynamically indexed Place); `UsageLegality`: required | `Take` is not refuted |
+| The same, at a capture entry (§7.6.2) | `Repair.Transfer`: `x@move`; `Repair.Borrow`: `x@ref` | Transfer as above; the borrow has `UsageLegality` required | Transfer as above; the borrow always |
+| `ExclusiveBorrowRequired_Kd` (§7.3, §15.1.5) | `Repair.BorrowExclusively`: `@uniq`, or `@objuniq` for an object handle | `ExclusiveAccess`: verified or required from the acquisition plan, refuted for a `let` root, an owned-Type parameter or a getter result; `UsageLegality`: required | `ExclusiveAccess` is not refuted |
+| `UnnecessaryUnsafeBlock_Kd` (§14.3.3) | `Repair.RemoveUnsafe`: delete `unsafe => `, or delete the `unsafe` line and one indentation level of each line of its Body | `Structure`: verified when the Body declares no Name and registers no `defer`, refuted otherwise | The statement is a direct item of an indented body, its `unsafe` line holds no other token or comment, and its Body contains no multi-line literal |
+| `MisplacedSyntax_Kd` for `&&` and `\|\|` (§2.4) | `Repair.ReplaceToken`: `and`, `or` | None | Always |
+| `BorrowOriginKeyword_Kd` (§3.3.6) | `Repair.ReplaceToken`: `during` | None | Always |
+| `MissingSyntax_Kd` for a closing delimiter | `Repair.InsertToken`: the closer at the insertion point | None | Always |
+| `DiscardedResult_Kd`, the try-success warning (§17.4.3) | `Repair.PropagateFailure`: `_ = try ` before a discarded Result; `Repair.ExplicitDiscard`: `_ = ` before either expression | None: `_ =` makes the right side a Value Context (§14.2.4), so `Structure` is not relevant | The expression is a direct item of an indented body; propagation only when the enclosing function's failure return target fits (§17.2.4); propagation precedes explicit discard |
+
+A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin repairs of §15.3.2 and §15.4.3 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification, so they carry no candidates; their Advice describes the repair.
 
 ## 23.4. Language Server Protocol
 
@@ -213,7 +273,7 @@ Every output converts finalized records; none decides meaning again or binds aga
 
 - **Framing:** `Content-Length` headers and UTF-8 JSON bodies, with bounded headers and payloads.
 - **JSON-RPC:** requests keep their IDs and are distinguished from notifications. A success response carries `result`, including `null`; an error response carries `error` and no `result`. An unknown request receives `-32601`; an unknown notification is ignored. A request before `initialize` receives `-32002`, a request after `shutdown` receives `-32600`, and a body that is not JSON receives `-32700` with a `null` ID; a malformed header ends the input.
-- **Capabilities:** only implemented capabilities are advertised: incremental `textDocumentSync` with open and close notifications, and the UTF-16 position encoding.
+- **Capabilities:** only implemented capabilities are advertised: incremental `textDocumentSync` with open and close notifications, the UTF-16 position encoding and, when the client declares `textDocument.codeAction.codeActionLiteralSupport` and `workspace.workspaceEdit.documentChanges`, a `codeActionProvider` for the kind `quickfix` (§23.4.8).
 - **Lifecycle:** `shutdown` stops publication, answers and retires the pending check; `exit` ends the process with code 0 after `shutdown` and 1 otherwise, without waiting for a running check. The command host owns the exit.
 
 ### 23.4.2. Documents and synchronization
@@ -284,7 +344,15 @@ Example: with the default quiet period, edits at 0, 90 and 180 ms start one work
 - **Suppression.** A URI never sent counts as sent empty. A non-empty payload equal to the last send, with the same version, is not sent again, and an empty payload is sent only after a non-empty one.
 - Changes of an outcome are logged with `window/logMessage`, never shown with `window/showMessage`.
 
-### 23.4.8. Watching and session settings
+### 23.4.8. Code actions
+
+- **Capability.** `codeActionProvider: { "codeActionKinds": ["quickfix"] }` is advertised only when the client declared both `textDocument.codeAction.codeActionLiteralSupport` and `workspace.workspaceEdit.documentChanges`; `codeAction/resolve` and commands are not used.
+- **Matching.** `textDocument/codeAction` is answered from the diagnostics last sent for the URI, without running a check and without reading `context.diagnostics`. A sent diagnostic matches the request when both ranges are non-empty and the half-open ranges intersect, when one range is empty and its point lies within the other with the end included, or when both are empty and equal.
+- **Validity.** Candidates are returned only while the result that sent them is valid (§23.4.5). A document change marks its input, so after an edit, a change with the same version, a close and reopen, a desynchronization or a change of a dependency alone, the request returns no candidate until the next adoption restores them.
+- **Response.** For each matched diagnostic and each of its repair candidates (§23.3.6.9) whose edits all lie in the requested document, one `CodeAction`: `kind` is `quickfix`, `title` is the candidate's title followed by `; requires <phrases>` when it has required conditions, `diagnostics` holds the matched sent diagnostic, and `edit.documentChanges` holds one `TextDocumentEdit` with the document's current version. When `context.only` is given and does not include `quickfix`, the result is empty. A candidate whose edits reach another document is not returned in this revision.
+- **Contributors.** When several units report one URI (§23.4.7), a candidate is returned only when every contributor sends it with equal values, with its source mapped to the URI. The candidates of a URI are updated whenever a result is adopted, also when the payload is unchanged and not resent.
+
+### 23.4.9. Watching and session settings
 
 - **Watching.** At `initialized`, when the client supports dynamic registration, the server registers `workspace/didChangeWatchedFiles` once for `**/*.kimi`, `**/*.kimiproj` and `**/*.kimi.lock.json`. Without watching, and for inputs outside watched folders, disk changes are found by re-validation at the next check that a document event starts; a change that keeps both timestamp and length is then found only when the file is opened or the session restarts.
 - **Read-only.** A check never restores packages, rewrites locks or edits project files.
@@ -298,7 +366,7 @@ Example: with the default quiet period, edits at 0, 90 and 180 ms start one work
 | `allTargets` | `false` | Checks every configured target. |
 | `debug` | `false` | The `Debug` setting of every unit. |
 
-### 23.4.9. Example session
+### 23.4.10. Example session
 
 ```text
 → {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"initializationOptions":{"checkQuietPeriodMs":200}}}
@@ -326,7 +394,7 @@ The CSP will give programs, including AI agents, a structured interface to the c
 
 ### 23.5.2. Provided foundation
 
-The check foundation (§23.3) is the CSP's base: the check entry, check units with their effective configuration, outcomes, diagnostic records with their source tables and recorded inputs. The CSP adapter uses them exactly as the language server does. They are session-local and carry no public schema.
+The check foundation (§23.3) is the CSP's base: the check entry, check units with their effective configuration, outcomes, diagnostic records with their source tables and recorded inputs, their repair candidates (§23.3.6.9) and the JSON document of `kimi check --Format json` (§23.3.6.8). The CSP adapter uses them exactly as the language server does. Revisions and comparisons are session-local.
 
 ### 23.5.3. Requirements
 
@@ -334,8 +402,8 @@ When the CSP is introduced, it must:
 
 - identify every source snapshot by durable content identity, so that edits, results and evidence name exactly the inputs they rest on;
 - apply edits only against an identified snapshot and return them as reviewable source changes, never as silent file writes;
-- offer repair candidates only as structured edits with stated preconditions and guarantees, never inferred from `Advice` or `Note` prose;
-- report the diagnostic records of §23.3.6 unchanged, with a public schema for their JSON form;
+- apply a repair candidate (§23.3.6.9) only against the snapshot that identified it, and bind the check of the edited input to it as a verifiable change, establishing there the conditions that need analysis of the edited input, such as `UsageLegality`;
+- report the diagnostic records of §23.3.6 unchanged, in the JSON form of §23.3.6.8;
 - give stable handles to syntax and semantic nodes within a snapshot; syntax handles include excluded syntax (§19.5) and state that the node is excluded and which innermost directive excludes it, while semantic handles cover selected syntax only;
 - bind every check, test and measurement to its exact source and configuration, and report its outcome and any remaining uncertainty;
 - list the places where unsafe promises are made, each with the obligations to satisfy (the conditions of §5 and the `- safety:` item): every Unsafe Block with the operations that use its permission, every call of an unsafe function, and every `#LibraryImport` declaration;
