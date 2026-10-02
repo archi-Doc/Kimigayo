@@ -238,6 +238,18 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 - `[Advice]` Use `@copy` to make an expensive aggregate copy, a generic Copy operation or an acquisition
   mode clear. Prefer bare acquisition for routine scalar reads.
 
+### 4.5. Raw pointers and unsafe code
+
+- `[Kimi]` Spell an address whose referent the code does not access as `raw/()`, and compute byte offsets
+  on `raw/u8`; convert to the element pointer with `@raw/T` only where elements are accessed
+  ([SPEC §5](spec/05-raw-pointers-and-unsafe-memory.md)).
+- `[Kimi]` Declare a function `unsafe`, including a `#LibraryImport`, only when its callers carry obligations
+  that its signature cannot express, and state each one under `- safety:`. A foreign function whose access
+  the signature states, such as a borrow of a C-exchangeable referent, is a safe declaration
+  ([SPEC §22.3.1](spec/22-core-execution-and-foreign-functions.md#2231-declaration-and-call-contract)).
+- `[Kimi]` Enclose only the operations that need an unsafe context in an `unsafe` block, and lend the result
+  of a raw Place access to safe code as a borrow with a declared Origin.
+
 ## 5. Failure and construction
 
 ### 5.1. Outcomes
