@@ -54,8 +54,7 @@ public class OriginFragmentBindingTest
     [InlineData("struct S {a, b}", "struct S {a, c}")]
     [InlineData("struct S {a, b}", "struct S {a}")]
     [InlineData("struct S {}", "struct S {a}")]
-    [InlineData("struct S", "struct S {}")]
-    [InlineData("struct S", "struct S")]
+    [InlineData("struct S", "struct S {a}")]
     public void IncompatibleOrOpenFragmentsAreRejectedInEitherOrder(string first, string second)
     {
         foreach (var reverse in new[] { false, true })
@@ -65,6 +64,21 @@ public class OriginFragmentBindingTest
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingFailure.Duplicate, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BindingFailure);
             Assert.False(Reload(c).Bind().IsComplete);
+        }
+    }
+
+    // SPEC 6.1.2, 15.3.2: fragments that all omit the header declare no own slots and agree.
+    [Theory]
+    [InlineData("struct S", "struct S")]
+    [InlineData("struct S", "struct S {}")]
+    public void HeaderlessFragmentsDeclareNoSlots(string first, string second)
+    {
+        foreach (var reverse in new[] { false, true })
+        {
+            var c = Create();
+            AddFragments(c, first, second, reverse);
+            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
+            Assert.Empty(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BoundSymbol!.Schema!.Origins);
         }
     }
 

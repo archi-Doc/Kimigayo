@@ -130,15 +130,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets declared Origin names without allocating empty storage.</summary>
     public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
 
-    internal void SetImplicitOrigins(List<string> names)
-    {
-        if (!this.HasOriginHeader)
-        {
-            this.OriginList = names;
-        }
-    }
-
-    /// <summary>Gets a value indicating whether this Type explicitly closes its own Origin schema, including with an empty header.</summary>
+    /// <summary>Gets a value indicating whether this Type writes an Origin header, which alone declares its own slots (SPEC 15.3.2).</summary>
     public bool HasOriginHeader { get; private set; }
 
     internal bool HasIncompatibleBindingHeader { get; private set; }
@@ -236,12 +228,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.HasIncompatibleBindingHeader |= this.TokenKind != kind;
         if (this.hasBindingHeader)
         {
-            this.HasIncompatibleBindingHeader |= this is StructKoto && (!this.HasOriginHeader || origins is null);
             // Enums and contracts are closed declarations, even when repeated headers agree.
             this.HasIncompatibleBindingHeader |= this is EnumKoto or ContractKoto;
             var previous = this.Modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? this.Modifier | ModifierKind.Private : this.Modifier;
             var current = modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? modifier | ModifierKind.Private : modifier;
             this.HasIncompatibleBindingHeader |= previous != current;
+            // SPEC 6.1.2, 15.3.2: fragments agree on their own slots; an omitted header declares none.
             var count = genericArguments?.Count ?? 0;
             var same = count == this.GenericParameterNodes.Count &&
                 OriginNameList.SameParameters((IReadOnlyList<string>?)origins ?? [], this.OriginNames);
