@@ -23,6 +23,10 @@ public enum OriginKind : byte
     Intersection,
     Projection,
     Unbound,
+
+    // SPEC 5.2.2: the fresh anchor of a raw Place borrow; Binder is the borrow. It has no upper bound, so it fits every
+    // destination like static, while ownership analysis checks the borrow's Loan and those derived from it under the anchor.
+    Anchor,
 }
 
 public enum OriginVariance : byte

@@ -61,6 +61,17 @@ public class EffectBoundImplementationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 8.4.10.2, 5.2.2: an access through a raw Place borrow is compared with held Loans under its anchor, which no earlier
+    // result can keep, so preserves results admits it even when the item is abstract.
+    [Fact]
+    public void PreservesResultsComparesRawAccessesUnderTheAnchor()
+    {
+        const string Declarations = "struct Counted<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var counter: raw/isize\n" +
+            "    public func take(self: uniq/Self) -> Option<J.Item>\n        unsafe\n            let count = (*self.counter)@uniq\n            count@follow += 1\n        return self.inner.next()\n";
+        var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
     // SPEC 8.4.10.5: a call of d on a value reached through a Field path of self is compared with no Loan of an earlier result
     // when every result Loan comes from d on that value and no value on the path is replaced; other sources are compared.
     [Theory]

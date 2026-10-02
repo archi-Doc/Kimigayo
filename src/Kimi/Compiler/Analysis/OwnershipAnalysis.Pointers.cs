@@ -226,7 +226,32 @@ public sealed partial class OwnershipAnalysis
         var reference = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         this.Emit(OwnershipOperationKind.Produce, source, reference);
         this.SetValue(this.Value(reference), OwnershipValueKind.Convert, [pointer], constant: OwnershipValue.RawPlaceBorrow);
+        if (type.Origin is { Kind: OriginKind.Anchor, Binder: { } borrow })
+        {
+            this.Anchor(borrow, this.body.Places[reference].Type);
+        }
+
         return this.RegisterTemporary(reference);
+    }
+
+    // The anchor Place that the borrow's Anchor Origin names. It has the borrow's Type, so it is represented like the borrow and
+    // depends on the referent's own Origins; it holds no value, needs no storage or cleanup, and no operation uses it.
+    private void Anchor(Koto borrow, BoundType reference)
+    {
+        var anchors = this.body.Anchors ??= new();
+        for (var i = 0; i < anchors.Count; i++)
+        {
+            if (ReferenceEquals(this.body.Places[anchors[i]].Source, borrow))
+            {
+                return;
+            }
+        }
+
+        var place = this.body.PlaceStorage.Count;
+        this.body.PlaceStorage.Add(new(place, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None));
+        this.placeValues.Add(-1);
+        this.resultDeclarations.Add(-1);
+        anchors.Add(place);
     }
 
     private int LoadPointer(Koto source, int pointer)

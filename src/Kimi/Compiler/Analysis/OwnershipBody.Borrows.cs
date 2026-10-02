@@ -248,7 +248,7 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root));
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root)));
                         var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
                             this.ElementAccessConflicts(operation, root, authority);
@@ -402,8 +402,19 @@ public sealed partial class OwnershipBody
                     AddOrigin(place, origin.Operands[i], mode, referent);
                 }
             }
-            else if (origin.Kind == OriginKind.Projection || (origin.Kind == OriginKind.Input && (ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration))))
+            else if (origin.Kind is OriginKind.Projection or OriginKind.Anchor || (origin.Kind == OriginKind.Input && (ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration))))
             {
+                if (origin.Kind == OriginKind.Anchor)
+                {
+                    // SPEC 5.2.2: the raw Place borrow's own anchor, an external root like a borrowed parameter's referent.
+                    if (this.AnchorPlace(origin) is >= 0 and var anchor)
+                    {
+                        Record(anchor);
+                    }
+
+                    return;
+                }
+
                 if (origin.Kind == OriginKind.Projection)
                 {
                     var guardCandidate = false;
@@ -591,7 +602,7 @@ public sealed partial class OwnershipBody
             }
 
             bool Carries(int place)
-                => this.Places[place].Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.EffectRegion) && AbstractTypes.HasAbstractPart(this.Places[place].Type);
+                => this.Places[place].Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.EffectRegion or OwnershipPlaceKind.Anchor) && AbstractTypes.HasAbstractPart(this.Places[place].Type);
 
             bool Inherit(int destination, int source)
             {
@@ -847,7 +858,7 @@ public sealed partial class OwnershipBody
 
     private static bool ContainsProjection(BoundOrigin? origin)
     {
-        if (origin?.Kind is OriginKind.Projection or OriginKind.Input)
+        if (origin?.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Anchor)
         {
             return true;
         }
@@ -1081,6 +1092,21 @@ public sealed partial class OwnershipBody
         }
 
         return false;
+    }
+
+    // SPEC 5.2.2: the anchor Place that an Anchor Origin names, or -1.
+    private int AnchorPlace(BoundOrigin origin)
+    {
+        var anchors = this.Anchors;
+        for (var i = 0; anchors is not null && i < anchors.Count; i++)
+        {
+            if (ReferenceEquals(this.Places[anchors[i]].Source, origin.Binder))
+            {
+                return anchors[i];
+            }
+        }
+
+        return -1;
     }
 
     // SPEC 8.9: a pair parameter whose Reborrow case a definition's conditional plan checks; its referent is external.

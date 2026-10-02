@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -11,6 +13,7 @@ namespace XunitTest;
 public class RawPlaceAccessTest
 {
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
+    private const string View = "struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\n";
 
     [Theory]
     [InlineData("let taken = *pointer")]
@@ -91,4 +94,39 @@ public class RawPlaceAccessTest
         var source = Resource + "func run(pointer: raw/Resource)\n    unsafe\n        let first = (*pointer)@uniq\n        let second = pointer[1]@uniq\n        first.value = 1\n        second.value = 2\npublic func main() => ()\n";
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
+
+    // A borrow that is not returned carries its own anchor Origin, which fits every destination like static; a returned one takes
+    // the declared result's Origin.
+    [Fact]
+    public void AnUnreturnedRawPlaceBorrowCarriesItsAnchor()
+    {
+        var c = MinimalEmissionTest.Analyze(Resource + "func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        return item.value\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(static x => x.ConversionBinding == ConversionBinding.Borrow);
+        Assert.Equal(OriginKind.Anchor, borrow.BoundType!.Origin!.Kind);
+        Assert.Same(borrow, borrow.BoundType.Origin.Binder);
+    }
+
+    // SPEC 5.2.2: accesses through the result, Reborrows from it and their children are checked under the anchor, like those of
+    // a borrowed parameter's referent (PLAN G45).
+    [Theory]
+    [InlineData("let shared = item@follow@ref\n        item.value = 3\n        return shared.value\n", "let shared")]
+    [InlineData("let inner = item@follow@uniq\n        let seen = item.value\n        inner.value = 4\n        return seen\n", "let inner")]
+    [InlineData("let view = View.init(item@follow@ref)\n        item.value = 5\n        return view.item.value\n", "let view")]
+    public void TheAnchorChecksLoansDerivedFromTheBorrow(string body, string holder)
+    {
+        var source = Resource + View + "func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        " + body + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+        Assert.Equal(source.IndexOf("item.value", StringComparison.Ordinal), error.Span!.Value.Start);
+        var retained = Assert.Single(error.Related!);
+        Assert.Equal(source.IndexOf(holder, StringComparison.Ordinal), retained.Span!.Value.Start);
+    }
+
+    [Theory]
+    [InlineData("func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        item.value = 3\n        let shared = item@follow@ref\n        return shared.value\n")]
+    [InlineData("func run(pointer: raw/Resource) -> i32\n    unsafe\n        let item = (*pointer)@uniq\n        item.value = 2\n        let view = View.init(item@follow@ref)\n        return view.item.value\n")]
+    [InlineData("func run(pointer: raw/Resource, count: isize) -> i32\n    var total: i32 = 0\n    var i: isize = 0\n    while i < count\n        unsafe\n            let item = pointer[i]@uniq\n            item.value += 1\n            total += item.value\n        i += 1\n    return total\n")]
+    public void AccessesAfterTheDerivedLoansEndAreValid(string function)
+        => Assert.Empty(DiagnosticCorpus.Check(Resource + View + function + "public func main() => ()\n").Diagnostics);
 }

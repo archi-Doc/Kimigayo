@@ -32,6 +32,10 @@ public enum OwnershipPlaceKind : byte
     // SPEC 8.4.10.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
     // generic requirement calls access; no operation initializes or uses it.
     EffectRegion,
+
+    // SPEC 5.2.2: the fresh anchor of a raw Place borrow, named by its Anchor Origin. Like the referent of a borrowed parameter it
+    // is external: it holds no value, and its Loans are checked only against Places derived from it. No operation uses it.
+    Anchor,
 }
 
 public enum PlaceUseKind : byte
@@ -325,6 +329,9 @@ public sealed partial class OwnershipBody
     /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.4.10.4).</summary>
     internal List<OwnershipRequirementResult>? RequirementResults { get; set; }
 
+    /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
+    internal List<int>? Anchors { get; set; }
+
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
     internal BoundCall? Instance { get; set; }
 
@@ -354,6 +361,7 @@ public sealed partial class OwnershipBody
         this.ConditionalReborrows?.Clear();
         this.RequirementEffects?.Clear();
         this.RequirementResults?.Clear();
+        this.Anchors?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
         this.SlotResults.Clear();

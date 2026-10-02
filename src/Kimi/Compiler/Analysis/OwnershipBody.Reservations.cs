@@ -301,6 +301,11 @@ public sealed partial class OwnershipBody
             return false;
         }
 
+        if (origin.Kind == OriginKind.Anchor)
+        {
+            return this.Places[root].Kind == OwnershipPlaceKind.Anchor && ReferenceEquals(this.Places[root].Source, origin.Binder);
+        }
+
         if (origin.Kind is OriginKind.Projection or OriginKind.Input)
         {
             foreach (var pair in this.SymbolPlaces)
