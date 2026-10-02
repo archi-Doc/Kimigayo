@@ -21,8 +21,11 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PropertyAccessor;
 
-    /// <summary>Gets the accessor's per-call Origin parameters.</summary>
-    public IReadOnlyList<string> Origins { get; internal set; }
+    /// <summary>
+    /// Gets the Origin parameters the accessor's signature introduces (SPEC 15.3.4). The parser never writes them, since an
+    /// accessor declares no Origin header of its own (SPEC 15.3.2); Binding supplies the names it discovers in the signature.
+    /// </summary>
+    public IReadOnlyList<string> Origins { get; internal set; } = [];
 
     /// <summary>Gets the accessor access restriction.</summary>
     public ModifierKind Modifier { get; private set; }
@@ -61,7 +64,6 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
     /// <param name="hasExplicitSignature">Whether a parameter list was written.</param>
     /// <param name="receiverType">The explicit self Type, if present.</param>
     /// <param name="valueType">The setter input Type, if present.</param>
-    /// <param name="origins">The per-call Origin declaration list.</param>
     public PropertyAccessorKoto(
         ref TokenReader reader,
         SourceSpan range,
@@ -71,11 +73,9 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
         Koto? returnType = null,
         bool hasExplicitSignature = false,
         Koto? receiverType = null,
-        Koto? valueType = null,
-        List<string>? origins = null)
+        Koto? valueType = null)
         : base(ref reader, range)
     {
-        this.Origins = (IReadOnlyList<string>?)origins ?? [];
         this.Modifier = modifier;
         this.AccessorKind = accessorKind;
         this.Body = body;

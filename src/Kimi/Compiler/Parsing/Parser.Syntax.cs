@@ -96,7 +96,7 @@ public static partial class Parser
         {
             // SPEC 8.4.3: a Contract-qualified projection such as I.(LendingIterator).LentItem(step) names its Contract in parentheses.
             var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                ? ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false)
+                ? ParseBareParenthesizedType(ref reader)
                 : ParseName(ref reader);
             subject = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, member.Span.End), subject, member);
         }

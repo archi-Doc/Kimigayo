@@ -242,7 +242,10 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Adopt(initializer);
     }
 
-    /// <summary>Gets the abstract Origin parameters.</summary>
+    /// <summary>
+    /// Gets the Origin parameters the signature introduces (SPEC 15.3.4). The parser never writes them, since a callable
+    /// declares no Origin header of its own (SPEC 15.3.2); Binding supplies the names it discovers in the signature.
+    /// </summary>
     public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
 
     internal void SetOrigins(List<string>? origins) => this.origins = origins;

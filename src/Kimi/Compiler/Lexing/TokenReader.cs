@@ -17,6 +17,15 @@ namespace Kimi.Compiler.Lexing;
 public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
 /// <summary>
+/// The restrictions of the region the parser is in: a grouping lifts them, a body or header adds one, and each enter
+/// method of <see cref="TokenReader"/> returns the region to restore afterwards.
+/// </summary>
+/// <param name="SingleBody">Whether the position lies in an expression body after <c>=&gt;</c>.</param>
+/// <param name="IfBody">Whether the position lies in the body of an if.</param>
+/// <param name="Header">Whether the position lies in a statement header.</param>
+internal readonly record struct ParseRegion(bool SingleBody, bool IfBody, bool Header);
+
+/// <summary>
 /// Provides sequential access to tokens produced by a <see cref="Tokenizer"/>.
 /// </summary>
 /// <remarks>
@@ -107,13 +116,60 @@ public ref partial struct TokenReader
     public readonly int CurrentTokenLength => this.currentToken.Length;
 
     // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
-    internal bool SingleBodyRegion { get; set; }
+    private ParseRegion region;
 
-    internal bool IfBodyRegion { get; set; }
+    /// <summary>Gets a value indicating whether the position lies in an expression body after <c>=&gt;</c>, where a nested arrow body is misplaced.</summary>
+    internal readonly bool SingleBodyRegion => this.region.SingleBody;
 
-    internal bool HeaderRegion { get; set; }
+    /// <summary>Gets a value indicating whether the position lies in the body of an if, where a nested if expression is misplaced.</summary>
+    internal readonly bool IfBodyRegion => this.region.IfBody;
+
+    /// <summary>Gets a value indicating whether the position lies in a statement header, where a body-bearing expression is misplaced.</summary>
+    internal readonly bool HeaderRegion => this.region.Header;
 
     internal bool ConstraintRequirement { get; set; }
+
+    /// <summary>Enters a grouping (an argument list, a parenthesized expression, an index or a collection literal), which lifts every region restriction.</summary>
+    /// <returns>The region to restore after the grouping.</returns>
+    internal ParseRegion EnterGrouping()
+    {
+        var previous = this.region;
+        this.region = default;
+        return previous;
+    }
+
+    /// <summary>Enters a match arm, whose body is neither an expression body nor an if body of the enclosing region.</summary>
+    /// <returns>The region to restore after the arm.</returns>
+    internal ParseRegion EnterMatchArm()
+    {
+        var previous = this.region;
+        this.region = new(false, false, previous.Header);
+        return previous;
+    }
+
+    /// <summary>Enters the expression body after <c>=&gt;</c>.</summary>
+    /// <param name="ifBody">Whether the body belongs to an if.</param>
+    /// <returns>The region to restore after the body.</returns>
+    internal ParseRegion EnterSingleBody(bool ifBody)
+    {
+        var previous = this.region;
+        this.region = new(true, previous.IfBody || ifBody, previous.Header);
+        return previous;
+    }
+
+    /// <summary>Enters a statement header.</summary>
+    /// <returns>The region to restore after the header.</returns>
+    internal ParseRegion EnterHeader()
+    {
+        var previous = this.region;
+        this.region = new(previous.SingleBody, previous.IfBody, true);
+        return previous;
+    }
+
+    /// <summary>Restores the region that an enter method returned.</summary>
+    /// <param name="region">The region to restore.</param>
+    internal void RestoreRegion(ParseRegion region)
+        => this.region = region;
 
     internal readonly bool SameLine(int end, int start)
         => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');

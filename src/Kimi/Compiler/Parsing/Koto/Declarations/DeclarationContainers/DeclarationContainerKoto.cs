@@ -694,15 +694,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         reader.Advance();
-        // SPEC 8.4: a Contract declares Type parameters but no Origin parameters.
-        var supportsGenericHeader = tokenKind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
-        var supportsOriginHeader = tokenKind is TokenKind.Struct or TokenKind.Enum;
         var state = reader.TakeContext();
-        var declaration = Parser.ParseDeclarationContainerHeader(
-            ref reader,
-            supportsGenericHeader,
-            supportsOriginHeader,
-            tokenKind);
+        var declaration = Parser.ParseDeclarationContainerHeader(ref reader, tokenKind);
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
@@ -1145,36 +1138,25 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
-            var start = reader.CurrentTokenRange.Start;
-            var selection = Parser.ScanCompileTimeSwitch(ref reader);
-            Parser.RejectDirectiveBlockAttributes(ref reader);
-            if (Parser.BeginCompileTimeSwitchArms(ref reader))
+            var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
+            while (arms.TryNextBody(ref reader, out var selected, out var header))
             {
-                for (var arm = 0; Parser.TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                if (selected)
                 {
-                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                    {
-                        reader.Expect(SyntaxForm.Body);
-                        continue;
-                    }
-
-                    if (arm == selection.Selected)
-                    {
-                        reader.Advance();
-                        this.ParseMemberItems(ref reader, ref state);
-                    }
-                    else
-                    {
-                        var owner = this.ExcludedOwner(ref reader, ref state);
-                        var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
-                        reader.Advance();
-                        owner.ParseMemberItems(ref reader, ref state);
-                        Parser.EndExcludedRegion(ref reader, region);
-                    }
+                    reader.Advance();
+                    this.ParseMemberItems(ref reader, ref state);
+                }
+                else
+                {
+                    var owner = this.ExcludedOwner(ref reader, ref state);
+                    var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
+                    reader.Advance();
+                    owner.ParseMemberItems(ref reader, ref state);
+                    Parser.EndExcludedRegion(ref reader, region);
                 }
             }
 
-            if (Parser.UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            if (arms.Unselected(ref reader) is { } unselected)
             {
                 this.AddLast(unselected);
             }

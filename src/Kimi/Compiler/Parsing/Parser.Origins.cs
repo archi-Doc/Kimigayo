@@ -174,14 +174,14 @@ public static partial class Parser
         }
     }
 
-    private static List<string>? RejectCallableOriginList(ref TokenReader reader)
+    /// <summary>Reports and consumes an Origin header written after a function or accessor Name; callables declare no Origin slots (SPEC 15.3.2).</summary>
+    /// <param name="reader">The token reader.</param>
+    private static void RejectCallableOriginList(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind == TokenKind.OpenBrace)
         {
             reader.AddDiagnostic(DiagnosticCode.CallableOriginList_Kd);
             _ = ParseOriginParameters(ref reader);
         }
-
-        return null;
     }
 }

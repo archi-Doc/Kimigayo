@@ -114,36 +114,25 @@ public sealed class GroupKoto : DeclarationContainerKoto
     {
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
-            var start = reader.CurrentTokenRange.Start;
-            var selection = Parser.ScanCompileTimeSwitch(ref reader);
-            Parser.RejectDirectiveBlockAttributes(ref reader);
-            if (Parser.BeginCompileTimeSwitchArms(ref reader))
+            var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
+            while (arms.TryNextBody(ref reader, out var selected, out var header))
             {
-                for (var arm = 0; Parser.TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                if (selected)
                 {
-                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                    {
-                        reader.Expect(SyntaxForm.Body);
-                        continue;
-                    }
-
-                    if (arm == selection.Selected)
-                    {
-                        reader.Advance();
-                        this.ParseRootItems(ref reader, ref state);
-                    }
-                    else
-                    {
-                        var owner = this.ExcludedRootOwner(ref reader, ref state);
-                        var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
-                        reader.Advance();
-                        owner.ParseRootItems(ref reader, ref state);
-                        Parser.EndExcludedRegion(ref reader, region);
-                    }
+                    reader.Advance();
+                    this.ParseRootItems(ref reader, ref state);
+                }
+                else
+                {
+                    var owner = this.ExcludedRootOwner(ref reader, ref state);
+                    var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
+                    reader.Advance();
+                    owner.ParseRootItems(ref reader, ref state);
+                    Parser.EndExcludedRegion(ref reader, region);
                 }
             }
 
-            if (Parser.UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            if (arms.Unselected(ref reader) is { } unselected)
             {
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
             }

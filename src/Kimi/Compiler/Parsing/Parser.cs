@@ -176,85 +176,189 @@ public static partial class Parser
         }
     }
 
-    /// <summary>Parses a function declaration after its keyword.</summary>
+    /// <summary>Parses a function header after its keyword: the Name, Type parameters, parameters and result (SPEC 7.1, Appendix F FunctionHeader).</summary>
     /// <param name="reader">The token reader.</param>
-    /// <param name="anonymous">Whether an omitted Name is allowed in expression position.</param>
-    /// <param name="constructor">Whether this is an init declaration.</param>
+    /// <param name="anonymous">Whether this is a function expression, whose Name is omitted and whose parameters may omit their Types.</param>
+    /// <param name="constructor">Whether this is an init declaration; the reader stands at <c>init</c>.</param>
     /// <param name="specialization">Whether the generic list contains specialization arguments.</param>
-    /// <returns>The parsed function, or <see langword="null"/> after an error.</returns>
+    /// <returns>The parsed function without its body, or <see langword="null"/> after an error that leaves no header to keep.</returns>
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader, bool anonymous = false, bool constructor = false, bool specialization = false)
     {
         var context = reader.TakeContext();
-
         var captures = anonymous && reader.CurrentTokenKind == TokenKind.OpenBracket ? ParseCaptures(ref reader) : null;
         var methodToken = reader.CurrentToken;
-        string? methodName;
-        if (anonymous && methodToken.Kind == TokenKind.OpenParenthesis)
+        if (!TryParseFunctionName(ref reader, anonymous, constructor, out var methodName))
         {
-            methodName = string.Empty;
+            return null;
         }
-        else if (anonymous && !(methodToken.Kind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.OpenParenthesis))
+
+        var genericArguments = reader.CurrentTokenKind == TokenKind.LessThan
+            ? ParseGenericArguments(ref reader, allowLength: true, specialization: specialization)
+            : null;
+        RejectCallableOriginList(ref reader);
+        if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) ||
+            !TryParseParameterList(ref reader, anonymous, constructor, specialization, out var parameters, out var nameBoundary, out var closeParenthesisRange))
         {
-            // A function expression continues with its parameter list; only a Name before one is parsed further, to be reported as misplaced.
-            reader.Expect(SyntaxForm.OpenParenthesis);
-            return default;
+            return null;
+        }
+
+        Koto? returnType = null;
+        var end = closeParenthesisRange.End;
+        if (reader.TryConsume(TokenKind.MinusGreaterThan, out var returnArrowRange, false))
+        {
+            returnType = ParseFunctionReturnType(ref reader, returnArrowRange);
+            end = returnType.Span.End;
+        }
+
+        var functionKoto = new FunctionKoto(
+            ref reader,
+            context,
+            SourceSpan.FromBounds(methodToken.Span.Start, end),
+            methodName,
+            genericArguments,
+            parameters,
+            returnType);
+        functionKoto.NameBoundaryIndex = nameBoundary;
+        functionKoto.IsAnonymous = anonymous;
+        functionKoto.IsConstructor = constructor;
+        functionKoto.IsSpecialization = specialization;
+        functionKoto.SetCaptures(captures);
+        if (anonymous)
+        {
+            if (methodName.Length != 0)
+            {
+                reader.Unexpected(SyntaxForm.FunctionExpressionName, methodToken.Span);
+            }
         }
         else
         {
-            if (!reader.TryRead(out methodToken))
+            reader.Document(functionKoto, functionKoto.Span, context.AttributeKoto);
+        }
+
+        if (constructor)
+        {
+            if (reader.TryConsume(TokenKind.Colon))
             {
-                reader.Expect(anonymous ? SyntaxForm.OpenParenthesis : SyntaxForm.Name);
-                return default;
+                ParseConstructorInitializer(ref reader, functionKoto);
             }
 
-            if (!methodToken.Kind.IsIdentifierOrContextualKeyword() && !(constructor && methodToken.Kind == TokenKind.Init))
+            // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
+            if (genericArguments is not null || returnType is not null ||
+                context.AttributeKoto is not null || context.ModifierKind != context.ModifierKind.ExtractAccessibilityModifiers())
             {
-                reader.Expect(SyntaxForm.Name, methodToken);
-                goto SkipAndExit;
+                functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
             }
+        }
 
-            if (constructor)
+        if (specialization && (genericArguments is null || context.AttributeKoto is not null || context.ModifierKind != 0))
+        {
+            // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
+            var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
+            if (genericArguments is null && key is { } cause)
             {
-                methodName = "init";
+                reader.CodeContext.RecordRecovery(functionKoto, cause);
             }
-            else if (!reader.TryGetIdentifier(methodToken, out methodName))
-            {
-                goto SkipAndExit;
-            }
+        }
+
+        if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
+        {
+            reader.ExpectLineEnd(bodyMayFollow: true);
+        }
+
+        return functionKoto;
+    }
+
+    /// <summary>
+    /// Reads the Name of a function declaration, <c>init</c> of a constructor, or the omitted Name of a function expression; a
+    /// qualified Name is read in full and reported. After an invalid Name the rest of the header's line is skipped.
+    /// </summary>
+    private static bool TryParseFunctionName(ref TokenReader reader, bool anonymous, bool constructor, [NotNullWhen(true)] out string? name)
+    {
+        var token = reader.CurrentToken;
+        if (anonymous && token.Kind == TokenKind.OpenParenthesis)
+        {
+            name = string.Empty;
+            return true;
+        }
+
+        if (anonymous && !(token.Kind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.OpenParenthesis))
+        {
+            // A function expression continues with its parameter list; only a Name before one is parsed further, to be reported as misplaced.
+            reader.Expect(SyntaxForm.OpenParenthesis);
+            name = null;
+            return false;
+        }
+
+        if (!reader.TryRead(out token))
+        {
+            reader.Expect(anonymous ? SyntaxForm.OpenParenthesis : SyntaxForm.Name);
+            name = null;
+            return false;
+        }
+
+        if (!token.Kind.IsIdentifierOrContextualKeyword() && !(constructor && token.Kind == TokenKind.Init))
+        {
+            reader.Expect(SyntaxForm.Name, token);
+            goto SkipLine;
+        }
+
+        if (constructor)
+        {
+            name = "init";
+        }
+        else if (!reader.TryGetIdentifier(token, out name))
+        {
+            goto SkipLine; // The invalid identifier is reported.
         }
 
         while (reader.TryConsume(TokenKind.Dot))
         {
-            reader.Unexpected(SyntaxForm.QualifiedFunctionName, methodToken.Span);
+            reader.Unexpected(SyntaxForm.QualifiedFunctionName, token.Span);
             if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
                 reader.Expect(SyntaxForm.Name);
-                goto SkipAndExit;
+                goto SkipLine;
             }
 
             if (!reader.TryGetIdentifier(reader.Read(), out var memberName))
             {
-                goto SkipAndExit; // The invalid identifier is reported.
+                goto SkipLine;
             }
 
-            methodName += "." + memberName;
+            name += "." + memberName;
         }
 
-        List<TypeKoto>? genericArguments = default;
-        if (reader.CurrentTokenKind == TokenKind.LessThan)
-        {
-            genericArguments = ParseGenericArguments(ref reader, allowLength: true, specialization: specialization);
-        }
+        return true;
 
-        var origins = RejectCallableOriginList(ref reader);
+SkipLine:
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, TokenKind.EndBlock);
+        name = null;
+        return false;
+    }
 
-        if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true))
-        {
-            goto Exit;
-        }
-
-        List<FunctionParameterKoto>? parameters = default;
-        var nameBoundary = -1;
+    /// <summary>
+    /// Parses the parameters after the opening parenthesis through the closing one (Appendix F ParameterList): attributes before each
+    /// parameter, the one <c>!</c> boundary before the named section, and the separating commas.
+    /// </summary>
+    /// <param name="reader">The token reader positioned after <c>(</c>.</param>
+    /// <param name="anonymous">Whether the list belongs to a function expression.</param>
+    /// <param name="constructor">Whether the list belongs to a constructor.</param>
+    /// <param name="specialization">Whether the list belongs to a specialization.</param>
+    /// <param name="parameters">The parameters, or <see langword="null"/> when none was kept.</param>
+    /// <param name="nameBoundary">The index of the first named parameter, or -1 without a boundary.</param>
+    /// <param name="close">The closing parenthesis.</param>
+    /// <returns><see langword="false"/> when the list is not closed; the header is then dropped.</returns>
+    private static bool TryParseParameterList(
+        ref TokenReader reader,
+        bool anonymous,
+        bool constructor,
+        bool specialization,
+        out List<FunctionParameterKoto>? parameters,
+        out int nameBoundary,
+        out SourceSpan close)
+    {
+        parameters = null;
+        nameBoundary = -1;
         var afterComma = false;
         var precedingComma = default(SourceSpan);
         while (reader.CanRead)
@@ -300,88 +404,17 @@ public static partial class Parser
                 break;
             }
 
-            var parameterAttribute = reader.PopAttribute();
-
-            if (!reader.TryRead(out var externalNameToken))
+            var attribute = reader.PopAttribute();
+            if (!reader.CanRead)
             {
-                goto Exit;
+                break;
             }
 
-            if (!reader.TryGetIdentifier(externalNameToken, out var externalName))
+            if (TryParseParameter(ref reader, anonymous, constructor, parameters, attribute, out var parameter))
             {
-                SkipParameter(ref reader);
-                goto NextParameter;
+                (parameters ??= new(4)).Add(parameter);
             }
 
-            if (reader.TryConsume(TokenKind.Question, out var markerSpan, false))
-            {
-                reader.Diagnostic.Add(markerSpan, DiagnosticCode.ParameterNameMarker_Kd);
-            }
-
-            if (!anonymous && parameters is not null)
-            {
-                foreach (var previous in parameters)
-                {
-                    if (previous.ExternalName == externalName)
-                    {
-                        reader.Diagnostic.AddSyntax(
-                            externalNameToken.Span,
-                            DiagnosticCode.DuplicateExternalParameterName_Kd,
-                            externalName,
-                            related: [reader.Diagnostic.Relate("declaration", previous.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name")]);
-                        break;
-                    }
-                }
-            }
-
-            var internalName = externalName;
-            if (reader.TryConsume(TokenKind.EqualsGreaterThan))
-            {
-                if (!reader.TryRead(out var internalNameToken) ||
-                    !reader.TryGetIdentifier(internalNameToken, out internalName))
-                {
-                    SkipParameter(ref reader);
-                    goto NextParameter;
-                }
-            }
-
-            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
-            Koto parameterType;
-            if (reader.TryConsume(TokenKind.Colon))
-            {
-                parameterType = ParseDeclarationType(ref reader);
-            }
-            else if (anonymous || allowsReceiverShorthand)
-            {
-                parameterType = new SyntaxFormKoto(ref reader, externalNameToken.Span, KotoKind.InferredType, "_", []);
-            }
-            else
-            {
-                // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.3.6.4).
-                parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
-                SkipParameter(ref reader);
-            }
-
-            Koto? defaultValue = default;
-            if (reader.TryConsume(TokenKind.Equals))
-            {
-                defaultValue = ParseRequiredExpression(ref reader);
-            }
-
-            // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them.
-            if (anonymous && (internalName != externalName || defaultValue is not null || parameterAttribute is not null))
-            {
-                reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameToken.Span);
-            }
-
-            (parameters ??= new(4)).Add(new(
-                externalName,
-                internalName,
-                parameterType,
-                defaultValue,
-                parameterAttribute) { ExternalNameSpan = externalNameToken.Span });
-
-NextParameter:
             reader.SkipSeparators();
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
@@ -400,138 +433,150 @@ NextParameter:
             }
         }
 
-        if (!reader.TryConsume(TokenKind.CloseParenthesis, out var closeParenthesisRange, true))
+        if (!reader.TryConsume(TokenKind.CloseParenthesis, out close, true))
         {
-            goto Exit;
+            return false;
         }
 
         if (nameBoundary >= 0 && nameBoundary == (parameters?.Count ?? 0))
         {
-            reader.Diagnostic.Add(closeParenthesisRange, DiagnosticCode.EmptyNamedParameterSection_Kd);
+            reader.Diagnostic.Add(close, DiagnosticCode.EmptyNamedParameterSection_Kd);
         }
 
-        Koto? returnType = default;
-        var end = closeParenthesisRange.End;
-        if (reader.TryConsume(TokenKind.MinusGreaterThan, out var returnArrowRange, false))
-        {
-            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
-            {
-                reader.Diagnostic.Add(returnArrowRange, DiagnosticCode.MissingReturnType_Kd);
-                returnType = new ErrorKoto(ref reader, returnArrowRange) { Cause = reader.Diagnostic.LastError };
-            }
-            else
-            {
-                returnType = ParseFunctionResult(ref reader);
-            }
-
-            end = returnType.Span.End;
-        }
-
-        var functionKoto = new FunctionKoto(
-            ref reader,
-            context,
-            SourceSpan.FromBounds(methodToken.Span.Start, end),
-            methodName,
-            genericArguments,
-            parameters,
-            returnType);
-        functionKoto.NameBoundaryIndex = nameBoundary;
-        functionKoto.SetOrigins(origins);
-        if (anonymous && methodName.Length != 0)
-        {
-            reader.Unexpected(SyntaxForm.FunctionExpressionName, methodToken.Span);
-        }
-
-        functionKoto.IsAnonymous = anonymous;
-        functionKoto.IsConstructor = constructor;
-        functionKoto.IsSpecialization = specialization;
-        functionKoto.SetCaptures(captures);
-        if (!anonymous)
-        {
-            reader.Document(functionKoto, functionKoto.Span, context.AttributeKoto);
-        }
-
-        if (constructor && reader.TryConsume(TokenKind.Colon))
-        {
-            var baseSpan = reader.CurrentTokenRange;
-            if (reader.Expect(TokenKind.Base) && reader.Expect(TokenKind.OpenParenthesis))
-            {
-                var arguments = ParseArgumentList(ref reader, out var labels);
-                if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
-                {
-                    reader.Expect(SyntaxForm.CloseParenthesis);
-                    reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
-                    reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
-                }
-
-                var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
-                functionKoto.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
-            }
-            else
-            {
-                // The initializer is skipped up to the body; the constructor is a recovery, so its own checks rest on the one
-                // Error and its body is bound but not analyzed for ownership.
-                reader.CodeContext.RecordRecovery(functionKoto, reader.Diagnostic.LastError!.Value);
-                reader.SkipUntil(TokenKind.EqualsGreaterThan, TokenKind.Separator, TokenKind.EndBlock);
-            }
-        }
-
-        // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
-        if (constructor && (genericArguments is not null || returnType is not null ||
-            context.AttributeKoto is not null || context.ModifierKind != context.ModifierKind.ExtractAccessibilityModifiers()))
-        {
-            functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
-        }
-
-        if (specialization && (genericArguments is null || origins is not null || context.AttributeKoto is not null || context.ModifierKind != 0))
-        {
-            // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
-            var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
-            if (genericArguments is null && key is { } cause)
-            {
-                reader.CodeContext.RecordRecovery(functionKoto, cause);
-            }
-        }
-
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
-        {
-            return functionKoto;
-        }
-
-        reader.ExpectLineEnd(bodyMayFollow: true);
-        return functionKoto;
-
-SkipAndExit:
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, TokenKind.EndBlock);
-
-Exit:
-        return default;
-
-        static void SkipParameter(ref TokenReader reader)
-            => reader.SkipUntil(TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis);
+        return true;
     }
 
-    /// <summary>Parses a Declaration Container header.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <returns>The name, generic parameters, and origin names.</returns>
-    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseDeclarationContainerHeader(ref TokenReader reader)
-    {
-        var header = ParseDeclarationContainerHeader(ref reader, true, true);
-        return (header.Name, header.GenericArguments, header.Origins);
-    }
-
-    /// <summary>Parses a Declaration Container header according to the capabilities of its kind.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="supportsGenerics">Whether generic parameters are accepted.</param>
-    /// <param name="supportsOrigins">Whether an Origin list is accepted.</param>
-    /// <param name="declarationKind">The enclosing declaration kind.</param>
-    /// <returns>The name, generic parameters, and origin names.</returns>
-    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins, Koto[]? Bases) ParseDeclarationContainerHeader(
+    /// <summary>Parses one parameter: its external Name, optional internal Name, Type and default (Appendix F ParameterCore).</summary>
+    /// <returns><see langword="false"/> after an error, with the rest of the parameter skipped.</returns>
+    private static bool TryParseParameter(
         ref TokenReader reader,
-        bool supportsGenerics,
-        bool supportsOrigins,
-        TokenKind declarationKind = TokenKind.Struct)
+        bool anonymous,
+        bool constructor,
+        List<FunctionParameterKoto>? previous,
+        AttributeKoto? attribute,
+        [NotNullWhen(true)] out FunctionParameterKoto? parameter)
     {
+        parameter = null;
+        var externalNameToken = reader.Read();
+        if (!reader.TryGetIdentifier(externalNameToken, out var externalName))
+        {
+            SkipParameter(ref reader);
+            return false;
+        }
+
+        if (reader.TryConsume(TokenKind.Question, out var markerSpan, false))
+        {
+            reader.Diagnostic.Add(markerSpan, DiagnosticCode.ParameterNameMarker_Kd);
+        }
+
+        if (!anonymous && previous is not null)
+        {
+            foreach (var earlier in previous)
+            {
+                if (earlier.ExternalName == externalName)
+                {
+                    reader.Diagnostic.AddSyntax(
+                        externalNameToken.Span,
+                        DiagnosticCode.DuplicateExternalParameterName_Kd,
+                        externalName,
+                        related: [reader.Diagnostic.Relate("declaration", earlier.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name")]);
+                    break;
+                }
+            }
+        }
+
+        var internalName = externalName;
+        if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+        {
+            if (!reader.TryRead(out var internalNameToken) ||
+                !reader.TryGetIdentifier(internalNameToken, out internalName))
+            {
+                SkipParameter(ref reader);
+                return false;
+            }
+        }
+
+        var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
+        Koto parameterType;
+        if (reader.TryConsume(TokenKind.Colon))
+        {
+            parameterType = ParseDeclarationType(ref reader);
+        }
+        else if (anonymous || allowsReceiverShorthand)
+        {
+            parameterType = new SyntaxFormKoto(ref reader, externalNameToken.Span, KotoKind.InferredType, "_", []);
+        }
+        else
+        {
+            // The recovery Type stands for the missing annotation; the rest of the parameter is skipped (SPEC 23.3.6.4).
+            parameterType = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.ParameterType) };
+            SkipParameter(ref reader);
+        }
+
+        Koto? defaultValue = null;
+        if (reader.TryConsume(TokenKind.Equals))
+        {
+            defaultValue = ParseRequiredExpression(ref reader);
+        }
+
+        // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them.
+        if (anonymous && (internalName != externalName || defaultValue is not null || attribute is not null))
+        {
+            reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameToken.Span);
+        }
+
+        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameToken.Span };
+        return true;
+    }
+
+    private static void SkipParameter(ref TokenReader reader)
+        => reader.SkipUntil(TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis);
+
+    /// <summary>Parses the result Type after a function header's arrow; a line that ends at the arrow leaves a recovery Type.</summary>
+    private static Koto ParseFunctionReturnType(ref TokenReader reader, SourceSpan arrow)
+    {
+        if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
+        {
+            reader.Diagnostic.Add(arrow, DiagnosticCode.MissingReturnType_Kd);
+            return new ErrorKoto(ref reader, arrow) { Cause = reader.Diagnostic.LastError };
+        }
+
+        return ParseFunctionResult(ref reader);
+    }
+
+    /// <summary>Parses <c>base(arguments)</c> after the colon of a constructor header (SPEC 6.2.3.1).</summary>
+    private static void ParseConstructorInitializer(ref TokenReader reader, FunctionKoto constructor)
+    {
+        var baseSpan = reader.CurrentTokenRange;
+        if (!reader.Expect(TokenKind.Base) || !reader.Expect(TokenKind.OpenParenthesis))
+        {
+            // The initializer is skipped up to the body; the constructor is a recovery, so its own checks rest on the one
+            // Error and its body is bound but not analyzed for ownership.
+            reader.CodeContext.RecordRecovery(constructor, reader.Diagnostic.LastError!.Value);
+            reader.SkipUntil(TokenKind.EqualsGreaterThan, TokenKind.Separator, TokenKind.EndBlock);
+            return;
+        }
+
+        var arguments = ParseArgumentList(ref reader, out var labels);
+        if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
+        {
+            reader.Expect(SyntaxForm.CloseParenthesis);
+            reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
+            reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
+        }
+
+        var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
+        constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
+    }
+
+    /// <summary>Parses a Declaration Container header after its keyword, according to the capabilities of its kind (SPEC 6.1, 8.4).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="declarationKind">The declaration keyword kind; a struct, enum or Contract takes Type parameters, a struct or enum an Origin header, a struct or Contract a base list.</param>
+    /// <returns>The name, generic parameters, origin names and bases; the reader stands at the body's <see cref="TokenKind.StartBlock"/> when one follows.</returns>
+    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins, Koto[]? Bases) ParseDeclarationContainerHeader(ref TokenReader reader, TokenKind declarationKind)
+    {
+        var supportsGenerics = declarationKind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
+        var supportsOrigins = declarationKind is TokenKind.Struct or TokenKind.Enum;
         string name = string.Empty;
         List<TypeKoto>? genericArguments = default;
         List<string>? origins = default;
@@ -647,14 +692,11 @@ Exit:
         return list.Count == 0 ? null : list;
     }
 
-    /// <summary>Parses a local binding declaration.</summary>
+    /// <summary>Parses a local binding declaration after its keyword (SPEC 6.4).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
-    public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
-        => ParseField(ref reader, token, false);
-
-    private static FieldKoto? ParseField(ref TokenReader reader, Token token, bool allowParenthesizedTerminator)
+    private static FieldKoto? ParseField(ref TokenReader reader, Token token)
     {
         var variableContext = reader.TakeContext();
 
@@ -719,13 +761,7 @@ Exit:
         reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameToken.Span.End), variableContext.AttributeKoto);
 
         ParseAttachedOriginBlock(ref reader, fieldKoto);
-
-        if (!allowParenthesizedTerminator ||
-            reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
-        {
-            reader.ExpectLineEnd();
-        }
-
+        reader.ExpectLineEnd();
         return fieldKoto;
     }
 
@@ -851,35 +887,25 @@ Exit:
                 break;
             }
 
-            var start = reader.CurrentTokenRange.Start;
-            var modifier = ParseAccessorAccessibility(ref reader);
-            var modifierEnd = reader.PreviousEnd;
-            var accessorToken = reader.CurrentToken;
             parsedAny = true;
-            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            if (!TryParseAccessorHeader(ref reader, property, out var header))
             {
-                // The Property's accessor set is unknown after this; its accessor checks rest on the Error.
-                reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Accessor));
                 reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
 
-            reader.Advance();
             var accessor = new PropertyAccessorKoto(
                 ref reader,
-                SourceSpan.FromBounds(start, accessorToken.Span.End),
-                modifier,
-                accessorKind,
+                SourceSpan.FromBounds(header.Start, header.Keyword.Span.End),
+                header.Modifier,
+                header.Kind,
                 default);
-            if (modifier != ModifierKind.NoModifier)
+            if (header.Modifier != ModifierKind.NoModifier)
             {
-                // The accessor and its Property are checked as recoveries: the modifier is the one Error.
-                var decorated = reader.Unexpected(SyntaxForm.AccessorAccessibility, SourceSpan.FromBounds(start, modifierEnd));
-                reader.CodeContext.RecordRecovery(accessor, decorated);
-                reader.CodeContext.RecordRecovery(property, decorated);
+                RejectAccessorModifier(ref reader, property, accessor, header);
             }
 
-            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+            AddPropertyAccessor(ref reader, property, accessor, header.Keyword);
 
             if (!reader.TryConsume(TokenKind.Comma))
             {
@@ -943,19 +969,14 @@ Exit:
                 continue;
             }
 
-            var start = reader.CurrentTokenRange.Start;
-            var modifier = ParseAccessorAccessibility(ref reader);
-            var modifierEnd = reader.PreviousEnd;
-            var accessorToken = reader.CurrentToken;
-            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            if (!TryParseAccessorHeader(ref reader, property, out var header))
             {
-                // The Property's accessor set is unknown after this; its accessor checks rest on the Error.
-                reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Accessor));
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 continue;
             }
 
-            reader.Advance();
+            var accessorToken = header.Keyword;
+            var accessorKind = header.Kind;
             RejectCallableOriginList(ref reader);
             var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
 
@@ -983,8 +1004,8 @@ Exit:
 
             var accessor = new PropertyAccessorKoto(
                 ref reader,
-                SourceSpan.FromBounds(start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
-                modifier,
+                SourceSpan.FromBounds(header.Start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
+                header.Modifier,
                 accessorKind,
                 null,
                 returnType,
@@ -1010,13 +1031,10 @@ Exit:
 
             if (property.IsContractRequirement)
             {
-                // A requirement accessor is a bare signature: no access modifier and no body. A decorated accessor and its
-                // Property are checked as recoveries, so the modifier is the one Error.
-                if (modifier != ModifierKind.NoModifier)
+                // A requirement accessor is a bare signature: no access modifier and no body.
+                if (header.Modifier != ModifierKind.NoModifier)
                 {
-                    var decorated = reader.Unexpected(SyntaxForm.AccessorAccessibility, SourceSpan.FromBounds(start, modifierEnd));
-                    reader.CodeContext.RecordRecovery(accessor, decorated);
-                    reader.CodeContext.RecordRecovery(property, decorated);
+                    RejectAccessorModifier(ref reader, property, accessor, header);
                 }
 
                 if (body is not null)
@@ -1115,6 +1133,47 @@ CloseParameters:
         }
 
         return ParseDeclarationType(ref reader);
+    }
+
+    /// <summary>The header of one accessor: an optional access modifier and the get or set keyword.</summary>
+    /// <param name="Start">The start of the header.</param>
+    /// <param name="Modifier">The access modifier, or none.</param>
+    /// <param name="ModifierEnd">The end of the modifier.</param>
+    /// <param name="Keyword">The get or set keyword.</param>
+    /// <param name="Kind">The accessor kind.</param>
+    private readonly record struct AccessorHeader(int Start, ModifierKind Modifier, int ModifierEnd, Token Keyword, PropertyAccessorKind Kind);
+
+    /// <summary>
+    /// Reads an accessor's optional access modifier and its get or set keyword. Without the keyword the Property's accessor set is
+    /// unknown after this, so its accessor checks rest on the Error; the caller skips the rest of the item.
+    /// </summary>
+    private static bool TryParseAccessorHeader(ref TokenReader reader, PropertyKoto property, out AccessorHeader header)
+    {
+        var start = reader.CurrentTokenRange.Start;
+        var modifier = ParseAccessorAccessibility(ref reader);
+        var modifierEnd = reader.PreviousEnd;
+        var keyword = reader.CurrentToken;
+        if (!TryGetPropertyAccessorKind(keyword.Kind, out var kind))
+        {
+            reader.CodeContext.RecordRecovery(property, reader.Expect(SyntaxForm.Accessor));
+            header = default;
+            return false;
+        }
+
+        reader.Advance();
+        header = new(start, modifier, modifierEnd, keyword, kind);
+        return true;
+    }
+
+    /// <summary>
+    /// Reports an access modifier on an accessor that takes none (an inline accessor, or a requirement accessor). The accessor and
+    /// its Property are checked as recoveries: the modifier is the one Error.
+    /// </summary>
+    private static void RejectAccessorModifier(ref TokenReader reader, PropertyKoto property, PropertyAccessorKoto accessor, in AccessorHeader header)
+    {
+        var decorated = reader.Unexpected(SyntaxForm.AccessorAccessibility, SourceSpan.FromBounds(header.Start, header.ModifierEnd));
+        reader.CodeContext.RecordRecovery(accessor, decorated);
+        reader.CodeContext.RecordRecovery(property, decorated);
     }
 
     private static ModifierKind ParseAccessorAccessibility(ref TokenReader reader)
@@ -1554,7 +1613,7 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                return ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false);
+                return ParseBareParenthesizedType(ref reader);
             }
 
             var token = reader.CurrentToken;
@@ -2052,7 +2111,7 @@ CloseParameters:
                 {
                     // SPEC 8.4.3: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
                     var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                        ? ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false)
+                        ? ParseBareParenthesizedType(ref reader)
                         : ParseName(ref reader);
                     name = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, member.Span.End), name, member);
                 }
@@ -2321,33 +2380,22 @@ CloseParameters:
     {
         if (IsCompileTimeSwitchStart(ref reader))
         {
-            var start = reader.CurrentTokenRange.Start;
-            var selection = ScanCompileTimeSwitch(ref reader);
-            RejectDirectiveBlockAttributes(ref reader);
-            if (BeginCompileTimeSwitchArms(ref reader))
+            var arms = CompileTimeSwitchArms.Begin(ref reader);
+            while (arms.TryNextBody(ref reader, out var selected, out var header))
             {
-                for (var arm = 0; TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                if (selected)
                 {
-                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                    {
-                        reader.Expect(SyntaxForm.Body);
-                        continue;
-                    }
-
-                    if (arm == selection.Selected)
-                    {
-                        ParseExecutableBlockItems(ref reader, ref items, ref state);
-                    }
-                    else
-                    {
-                        var region = BeginExcludedRegion(ref reader, header, header.Start);
-                        ParseExecutableBlockItems(ref reader, ref items, ref state);
-                        EndExcludedRegion(ref reader, region);
-                    }
+                    ParseExecutableBlockItems(ref reader, ref items, ref state);
+                }
+                else
+                {
+                    var region = BeginExcludedRegion(ref reader, header, header.Start);
+                    ParseExecutableBlockItems(ref reader, ref items, ref state);
+                    EndExcludedRegion(ref reader, region);
                 }
             }
 
-            if (UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            if (arms.Unselected(ref reader) is { } unselected)
             {
                 items.Add(unselected);
             }
@@ -2561,7 +2609,7 @@ CloseParameters:
             case TokenKind.Let:
             case TokenKind.Var:
                 reader.Advance();
-                return ParseField(ref reader, token, false);
+                return ParseField(ref reader, token);
 
             case TokenKind.Func:
                 if (reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket)
@@ -2585,20 +2633,13 @@ CloseParameters:
             case TokenKind.Extension:
             case TokenKind.Contract:
                 reader.Advance();
-                // SPEC 8.4: a Contract declares Type parameters but no Origin parameters.
-                var supportsGenericHeader = token.Kind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
-                var supportsOriginHeader = token.Kind is TokenKind.Struct or TokenKind.Enum;
                 if (token.Kind == TokenKind.Extension)
                 {
                     reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
                 }
 
                 var state = reader.TakeContext();
-                var declaration = ParseDeclarationContainerHeader(
-                    ref reader,
-                    supportsGenericHeader,
-                    supportsOriginHeader,
-                    token.Kind);
+                var declaration = ParseDeclarationContainerHeader(ref reader, token.Kind);
                 var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
@@ -2949,14 +2990,13 @@ CloseParameters:
 
             var oldPosition = reader.Position;
             var pattern = ParsePattern(ref reader);
-            var region = (reader.SingleBodyRegion, reader.IfBodyRegion);
-            reader.SingleBodyRegion = reader.IfBodyRegion = false;
+            var region = reader.EnterMatchArm();
             var guard = reader.TryConsume(TokenKind.If) ? ParseHeaderExpression(ref reader) : null;
             var parsedBody = ParseRequiredBody(ref reader);
             Koto body = parsedBody.IsExpressionBody ? parsedBody.Items[0] : parsedBody;
             arms.Add(new MatchArmKoto(pattern, body) { Guard = guard });
             end = body.Span.End;
-            (reader.SingleBodyRegion, reader.IfBodyRegion) = region;
+            reader.RestoreRegion(region);
 
             if (reader.Position == oldPosition)
             {
@@ -3131,9 +3171,7 @@ CloseParameters:
             return supplied;
         }
 
-        var region = (reader.SingleBodyRegion, reader.IfBodyRegion);
-        reader.SingleBodyRegion = true;
-        reader.IfBodyRegion |= ifBody;
+        var region = reader.EnterSingleBody(ifBody);
         try
         {
             if (reader.CurrentTokenKind == TokenKind.Dollar ||
@@ -3151,21 +3189,20 @@ CloseParameters:
         }
         finally
         {
-            (reader.SingleBodyRegion, reader.IfBodyRegion) = region;
+            reader.RestoreRegion(region);
         }
     }
 
     private static Koto ParseHeaderExpression(ref TokenReader reader)
     {
-        var previous = reader.HeaderRegion;
-        reader.HeaderRegion = true;
+        var region = reader.EnterHeader();
         try
         {
             return ParseRequiredExpression(ref reader);
         }
         finally
         {
-            reader.HeaderRegion = previous;
+            reader.RestoreRegion(region);
         }
     }
 
@@ -3602,16 +3639,9 @@ ProcessPrefix:
                     }
                     else
                     {
-                        var region = (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion);
-                        reader.SingleBodyRegion = reader.IfBodyRegion = reader.HeaderRegion = false;
-                        try
-                        {
-                            index = ParseExpression(ref reader);
-                        }
-                        finally
-                        {
-                            (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion) = region;
-                        }
+                        var region = reader.EnterGrouping();
+                        index = ParseExpression(ref reader);
+                        reader.RestoreRegion(region);
                     }
 
                     reader.TrySkipSeparatorsTo(TokenKind.CloseBracket);
@@ -3694,16 +3724,10 @@ ProcessPrefix:
 
     private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {
-        var region = (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion);
-        reader.SingleBodyRegion = reader.IfBodyRegion = reader.HeaderRegion = false;
-        try
-        {
-            return ParseArgumentListCore(ref reader, out argumentLabels);
-        }
-        finally
-        {
-            (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion) = region;
-        }
+        var region = reader.EnterGrouping();
+        var arguments = ParseArgumentListCore(ref reader, out argumentLabels);
+        reader.RestoreRegion(region);
+        return arguments;
     }
 
     private static Koto[] ParseArgumentListCore(ref TokenReader reader, out string?[]? argumentLabels)
@@ -4020,16 +4044,10 @@ Loop:
 
     private static Koto ParseParenthesizedExpression(ref TokenReader reader)
     {
-        var region = (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion);
-        reader.SingleBodyRegion = reader.IfBodyRegion = reader.HeaderRegion = false;
-        try
-        {
-            return ParseGroupedExpression(ref reader);
-        }
-        finally
-        {
-            (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion) = region;
-        }
+        var region = reader.EnterGrouping();
+        var grouped = ParseGroupedExpression(ref reader);
+        reader.RestoreRegion(region);
+        return grouped;
     }
 
     private static Koto ParseGroupedExpression(ref TokenReader reader)
@@ -4084,16 +4102,10 @@ Loop:
 
     private static Koto ParseCollectionLiteral(ref TokenReader reader)
     {
-        var region = (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion);
-        reader.SingleBodyRegion = reader.IfBodyRegion = reader.HeaderRegion = false;
-        try
-        {
-            return ParseCollectionLiteralCore(ref reader);
-        }
-        finally
-        {
-            (reader.SingleBodyRegion, reader.IfBodyRegion, reader.HeaderRegion) = region;
-        }
+        var region = reader.EnterGrouping();
+        var literal = ParseCollectionLiteralCore(ref reader);
+        reader.RestoreRegion(region);
+        return literal;
     }
 
     private static Koto ParseCollectionLiteralCore(ref TokenReader reader)
@@ -4428,6 +4440,14 @@ Loop:
             type,
             returnType);
     }
+
+    /// <summary>
+    /// Parses a parenthesized Type or Tuple Type by itself: no Origin annotation, Function Type arrow, Container suffix or
+    /// optional suffix follows it here, because the caller continues the enclosing form (a Semantics prefix, or a
+    /// Contract-qualified projection such as <c>I.(LendingIterator).LentItem</c>, SPEC 8.4.3).
+    /// </summary>
+    private static Koto ParseBareParenthesizedType(ref TokenReader reader)
+        => ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, parseContainerSuffix: false, parseSuffix: false);
 
     /// <summary>
     /// Parses a function result: an ordinary Type, or a Place result when an unqualified <c>place</c> is followed by
