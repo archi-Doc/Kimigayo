@@ -270,6 +270,31 @@ public sealed class ControlFlowAnalysis
         return finder.Found;
     }
 
+    // SPEC 17.2.4: `try` propagates a Result's error only to a function whose result is a Result of the same error Type.
+    private static bool FailureTargetFits(Koto node)
+    {
+        if (node.BoundType is not { Kind: BoundTypeKind.Constructed, Components.Count: 2 } result || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Result)
+        {
+            return false;
+        }
+
+        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+        {
+            if (parent is FunctionKoto function)
+            {
+                return function.BoundSymbol?.Type is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } target && target.Symbol?.LibraryDeclaration == KimiDeclarationId.Result &&
+                    (ReferenceEquals(target.Components[1], result.Components[1]) || Equals(target.Components[1], result.Components[1]));
+            }
+
+            if (parent is PropertyAccessorKoto or DeferredBlockKoto)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     // A result is checked against its consumer, the one node that reads it, which Binding checks for the same requirement.
     private static DiagnosticKey[]? Causes(ControlFlowIssue issue)
     {
@@ -378,6 +403,33 @@ public sealed class ControlFlowAnalysis
         }
 
         return false;
+    }
+
+    // SPEC 17.4.3, 23.3.6.9: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
+    // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.2.4), `_ = try ` as well;
+    // `_ =` puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant. The Advice then
+    // states the alternatives the candidates cannot express; elsewhere the catalog's Advice describes every repair.
+    private void WarnDiscard(Koto node, DiagnosticCode code, int priority)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        if (!this.warningNodes.Add(node))
+        {
+            return;
+        }
+
+        DiagnosticRepairFact[]? repairs = null;
+        string? advice = null;
+        if (node.Parent is CodeBlockKoto { IsExpressionBody: false })
+        {
+            var start = new SourceSpan(node.Span.Start, 0);
+            var discard = new DiagnosticRepairFact(RepairKind.ExplicitDiscard, null, [node.Edit(start, "_ = ")], RepairConditionSet.None);
+            repairs = code == DiagnosticCode.DiscardedResult_Kd && FailureTargetFits(node)
+                ? [new(RepairKind.PropagateFailure, null, [node.Edit(start, "_ = try ")], RepairConditionSet.None), discard]
+                : [discard];
+            advice = code == DiagnosticCode.DiscardedResult_Kd ? "Handle the Result with match, or use its success value" : "Use the extracted value";
+        }
+
+        this.warnings.Add(new(node, code) { Priority = priority, Advice = advice, Repairs = repairs });
     }
 
     private void Warn(Koto node, DiagnosticCode code, int priority = 4, Koto? completionRoot = null)
@@ -581,11 +633,11 @@ public sealed class ControlFlowAnalysis
             var type = this.types.GetExpressionType(value);
             if (this.types.IsKimiResult(value))
             {
-                this.Warn(node, DiagnosticCode.DiscardedResult_Kd, 2);
+                this.WarnDiscard(node, DiagnosticCode.DiscardedResult_Kd, 2);
             }
             else if (value is TryKoto && type is not null && type != ControlFlowType.Unit && type != ControlFlowType.Never)
             {
-                this.Warn(node, DiagnosticCode.UnusedTrySuccess_Kd, 3);
+                this.WarnDiscard(node, DiagnosticCode.UnusedTrySuccess_Kd, 3);
             }
             else if (this.IsEffectFree(node))
             {
