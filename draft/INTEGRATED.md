@@ -12,6 +12,20 @@ The `draft` folder holds proposals, designs and implementation records. Integrat
 
 Existing historical entries and their evidence are retained. This policy change does not reopen frozen files or reclassify existing records. The exceptional historical status 原案取り込み済み・改訂未反映 records an explicitly requested revision after the original intake; it is not the workflow for new revisions.
 
+## Folders
+
+Folders separate working documents from frozen ones; the document type is recorded in this register and in each document's heading.
+
+| Folder | Contents | New files |
+| --- | --- | --- |
+| `Proposals` | Proposals that are not yet closed, whether changes or designs, including 一部取り込み. The only working folder. | Every new proposal |
+| `Changes` | Closed proposals with integrated content (取り込み済み), and legacy implementation records. Frozen. | Moved from `Proposals` when closed as 取り込み済み |
+| `Obsolete` | Closed documents that were not integrated (完了, 保留, withdrawn or superseded). Frozen. | Moved from `Proposals` when closed as 完了 |
+| `Design`, `Decisions` | Archives of earlier design documents and decision records. Frozen. | None; record decided non-changes in `docs/SETTLED.md` |
+| `Sketches` | Prototype `.kimi` sources and other non-document files. Not proposals and not frozen. | As needed |
+
+All folders are direct children of `draft`, so moving a document between them keeps its relative links valid. Existing frozen files stay where they are; links between them are not rewritten.
+
 ## Changes
 
 | 文書 | 状態 | 取り込み先・証跡 |
@@ -22,7 +36,7 @@ Existing historical entries and their evidence are retained. This policy change 
 | `2026-09-11 Enum Ownership.md` | 実装記録 | 列挙構築の所有権検証（実装増分） |
 | `2026-09-11 Match Binding.md` | 実装記録 | パターン束縛と網羅性（実装増分） |
 | `2026-09-11 Match Ownership.md` | 実装記録 | match の所有権検証（実装増分） |
-| `2026-09-12 Automatic Dereference.md` | 保留 | 安全な `*` は追加しない（§13.3 は `*` を生ポインター専用とする） |
+| `2026-09-12 Automatic Dereference.md` | 保留 | 安全な `*` は追加しない（§13.3 は `*` を生ポインター専用とする）。2026-10-02 に `Obsolete/` へ移動（本文は変更なし） |
 | `2026-09-12 Result Copy and Static Inheritance.md` | 取り込み済み | 文書自体が「SPEC.md 反映済み」と記録 |
 | `2026-09-12 Runtime Type Tests.md` | 実装記録 | 実行時 `is` の Binding（実装増分） |
 | `2026-09-12 Unreachable Ownership.md` | 実装記録 | 到達不能コードの検査継続（実装増分） |
@@ -78,7 +92,7 @@ Existing historical entries and their evidence are retained. This policy change 
 
 ## Decisions と Obsolete
 
-`Decisions` は判断の記録、`Obsolete` は廃止済みの文書であり、いずれも固定。仕様への取り込み対象ではない。
+`Decisions` は判断の記録、`Obsolete` は取り込まれずに閉じた文書であり、いずれも固定。仕様への取り込み対象ではない。`Decisions` には新しい文書を加えず、「行わない」と決めた判断は `docs/SETTLED.md` に記録する。`Obsolete` にあった試作ファイル（`.kimi`、`.token`）は、2026-10-02 に `Sketches/` へ移した。
 
 ## Review note: Redesign Ranges B (2026-09-30)
 
@@ -92,8 +106,8 @@ Diagnostics review clarification (2026-09-30): the frozen `Design/2026-09-29 Dia
 
 ## Proposal lifecycle
 
-1. Create dated proposals in `draft/Changes` or `draft/Design` when explicitly instructed. Unfrozen draft content also requires explicit instructions to edit.
+1. Create every dated proposal, whether a change or a design, in `draft/Proposals` when explicitly instructed. Unfrozen draft content also requires explicit instructions to edit.
 2. Incorporate finalized content into `docs/SPEC.md` and its referenced chapters. Update this register in the same commit, identifying the integrated proposal sections and target specification sections or commit. Do not wait for implementation or test completion.
 3. If proposal items remain unresolved, use 一部取り込み and list both the integrated scope and the open items. Freeze the integrated scope immediately; explicit instructions may authorize edits to the remaining content only.
-4. Close the whole file when every proposal item is recorded as incorporated, rejected with a reason, or transferred to an identified separate proposal. Record closure in the same commit as the final disposition and any final specification changes; the whole file is frozen at that point. Use 取り込み済み if any item was incorporated, otherwise 完了. Transferred items are tracked in the destination proposal and no longer prevent closure of the source file.
+4. Close the whole file when every proposal item is recorded as incorporated, rejected with a reason, or transferred to an identified separate proposal. Record closure in the same commit as the final disposition and any final specification changes; the whole file is frozen at that point. Use 取り込み済み if any item was incorporated, otherwise 完了. In the same commit, move the file from `draft/Proposals` to `draft/Changes` (取り込み済み) or `draft/Obsolete` (完了); the folders are at the same depth, so its relative links stay valid. Transferred items are tracked in the destination proposal and no longer prevent closure of the source file.
 5. Preserve frozen text, including typos. Append corrections and explanatory notes here, identifying the affected file and scope. Make later specification changes in the formal specification and create separate draft files for new proposals. This register remains editable for status updates and appended notes; it is not frozen with the proposal files.
