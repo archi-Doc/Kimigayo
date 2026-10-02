@@ -109,7 +109,7 @@ public class EnumBindingTest
     [InlineData("enum E\n    A\n    A(i32)")]
     [InlineData("enum E\n    A\n    func A() => ()")]
     [InlineData("enum E\n    func A() => ()\n    A")]
-    [InlineData("struct Hidden {}\npublic enum E\n    A(Hidden)")]
+    [InlineData("struct Hidden\npublic enum E\n    A(Hidden)")]
     [InlineData("enum E\n    A\nenum E\n    B")]
     [InlineData("enum E<T>\n    A(T)\nenum E<T>\n    B")]
     [InlineData("enum E<T>\n    T is Copy\n    A(T)\nlet x = E.A(\"text\")")]
@@ -217,7 +217,7 @@ public class EnumBindingTest
     [InlineData("    property value: i32 { get }")]
     [InlineData("    init() => ()")]
     [InlineData("    drop() => ()")]
-    [InlineData("    struct Nested {}")]
+    [InlineData("    struct Nested")]
     public void ForbiddenEnumMembersCannotPassParsingAndBinding(string member)
     {
         var c = Compilation.CreateForTest();

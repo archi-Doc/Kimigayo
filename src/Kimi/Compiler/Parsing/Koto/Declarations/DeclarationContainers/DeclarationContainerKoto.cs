@@ -131,7 +131,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
 
     /// <summary>Gets a value indicating whether this Type writes an Origin header, which alone declares its own slots (SPEC 15.3.2).</summary>
-    public bool HasOriginHeader { get; private set; }
+    public bool HasOriginHeader => this.OriginList is { Count: > 0 };
 
     internal bool HasIncompatibleBindingHeader { get; private set; }
 
@@ -247,7 +247,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.hasBindingHeader = true;
-        this.HasOriginHeader = origins is not null;
         // Synthesized path groups have no header and acquire their first explicit modifiers.
         this.Modifier = modifier;
         if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
@@ -364,7 +363,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public void Clear()
     {
         this.hasBindingHeader = false;
-        this.HasOriginHeader = false;
         ((IOriginClauseOwner)this).OriginClauses?.Clear();
         this.fragmentOrdinal = 0;
         this.AttributeChain = null;

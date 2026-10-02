@@ -599,15 +599,19 @@ Exit:
             return null;
         }
 
+        // SPEC 15.3.2: a header names one or more slots; a Type without own slots omits it, so empty braces are an error and
+        // recover as an omitted header.
         var list = new OriginNameList();
+        var reported = false;
         reader.SkipSeparators();
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
             var token = reader.Read();
             if (!token.Kind.IsIdentifierOrContextualKeyword() || reader.GetSpan(token) is "static" or "_")
             {
-                reader.Expect(SyntaxForm.Name, token);
+                reader.Expect(SyntaxForm.OriginSlotName, token);
                 reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
+                reported = true;
                 break;
             }
 
@@ -627,13 +631,18 @@ Exit:
             reader.SkipSeparators();
         }
 
+        if (list.Count == 0 && !reported && reader.CurrentTokenKind == TokenKind.CloseBrace)
+        {
+            reader.Expect(SyntaxForm.OriginSlotName);
+        }
+
         if (!reader.TryConsume(TokenKind.CloseBrace, out _, true))
         {
             reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
             reader.TryConsume(TokenKind.CloseBrace);
         }
 
-        return list;
+        return list.Count == 0 ? null : list;
     }
 
     /// <summary>Parses a local binding declaration.</summary>

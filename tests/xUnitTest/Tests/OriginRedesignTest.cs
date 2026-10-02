@@ -51,7 +51,7 @@ public class OriginRedesignTest
 
     [Theory]
     [InlineData("struct Wrong\n    let a: ref/i32 during source\n    let b: ref/i32 during souce")]
-    [InlineData("struct Wrong {}\n    let a: ref/i32 during source")]
+    [InlineData("struct Wrong\n    let a: ref/i32 during source")]
     [InlineData("struct Wrong {source}\n    let a: ref/i32 during souce")]
     [InlineData("func f(x: V<i32>{v}, y: V<i32>{v}) => ()")]
     [InlineData("func f(x: V<i32>{x}) => ()")]
@@ -77,7 +77,7 @@ public class OriginRedesignTest
     }
 
     [Theory]
-    [InlineData("struct Marker {}")]
+    [InlineData("struct Marker")]
     [InlineData("struct V<T> {source}\n    let item: ref/T during source")]
     [InlineData("func f<T>(x: ref/T during s) -> ref/T during s\n    origin s outlives s\n    return x")]
     [InlineData("func f<T>(x: View<T>) -> View<T>{r}\n    origin r.source == x.source\n    return x")]

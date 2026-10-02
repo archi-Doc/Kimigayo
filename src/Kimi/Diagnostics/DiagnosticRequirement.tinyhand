@@ -388,6 +388,11 @@
     Phrase="'confined' or 'preserves results'"
     Advice="An effect item is 'effect confined' or 'effect preserves results' in a requirement's Constraint region, or 'effect Contract.name' followed by a bound in a Contract (SPEC 8.4.10.1)."
 
+  + Name="Syntax.OriginSlotName"
+    Description="an Origin header names each own slot"
+    Phrase="Origin slot Name"
+    Advice="A header names the Type's own Origin slots, as {source}; a Type without own slots omits the header, so remove empty braces (SPEC 15.3.2)."
+
   + Name="Binding"
     Description="the declarations and expressions are valid"
 

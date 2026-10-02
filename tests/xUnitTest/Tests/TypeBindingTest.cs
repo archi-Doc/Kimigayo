@@ -32,7 +32,6 @@ public class TypeBindingTest
     [InlineData("func f<s/s>(x: s/s)", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T)\nfunc f<s/U>(x: s/U)", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f(x: ref/i32 during a)\nfunc f(x: ref/i32 during b)", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct S {}\n    let x: ref/i32 during absent", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("struct S\n    let x: ref/i32 during absent", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func f(x: i32, y: ref/i32 during x)", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("func f(x: obj/(ref/i32 during static))", DiagnosticCode.InvalidTypeFormation_Kd)]
