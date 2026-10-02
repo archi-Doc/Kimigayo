@@ -157,15 +157,16 @@ public class NestedTypeParseTest
     }
 
     [Theory]
-    [InlineData("raw/ref/T", true)]
-    [InlineData("(raw/ref/T)", true)]
-    [InlineData("owner/(raw/ref/T)", true)]
-    [InlineData("ref/raw/T", false)]
-    public void GroupingCannotHideKnownUnsafeTargetSemantics(string type, bool requiresUnsafe)
+    [InlineData("raw/ref/T")]
+    [InlineData("(raw/ref/T)")]
+    [InlineData("owner/(raw/ref/T)")]
+    [InlineData("ref/raw/T")]
+    public void ConversionsNeverRequireAnUnsafeContext(string type)
     {
+        // SPEC 5: only an operation whose violation may be undefined behavior needs one; a conversion is not such an operation.
         var tree = ParseSuccess($"let result = value@{type}");
         var conversion = Assert.IsType<ConversionKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
-        Assert.Equal(requiresUnsafe, new SyntaxControlFlowTypes().RequiresUnsafeContext(conversion) == true);
+        Assert.NotEqual(true, new SyntaxControlFlowTypes().RequiresUnsafeContext(conversion));
     }
 
     private static Koto ParseParameterType(string type)

@@ -14,6 +14,12 @@ namespace Kimi.Compiler;
 /// <param name="Argument2">The second message argument.</param>
 public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Argument = null, object? Argument2 = null)
 {
+    /// <summary>Gets the part of the node that is the primary location, when it is not the whole node.</summary>
+    public SourceSpan? Span { get; init; }
+
+    /// <summary>Gets Advice formed from the facts.</summary>
+    public string? Advice { get; init; }
+
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, this.Argument2) : this.Code.ToString();
 
@@ -90,6 +96,11 @@ public sealed class ControlFlowAnalysis
     private int transferCursor;
     private int registrationCursor;
 
+    // SPEC 14.3.3: whether an operation in the innermost Unsafe Block being visited used its permission, and whether one whose
+    // need is unknown, such as an unresolved operation, may have.
+    private bool unsafeUsed;
+    private bool unsafeUncertain;
+
     private ControlFlowAnalysis(ControlFlowTypeSystem types)
     {
         this.types = types;
@@ -143,6 +154,7 @@ public sealed class ControlFlowAnalysis
         this.arrivedTransfers.Clear();
         this.normalTransferArrivals.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
+        this.unsafeUsed = this.unsafeUncertain = false;
         this.Visit(root, true);
     }
 
@@ -174,7 +186,7 @@ public sealed class ControlFlowAnalysis
         {
             if (!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null)
             {
-                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2);
+                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span);
             }
         }
     }
@@ -452,9 +464,15 @@ public sealed class ControlFlowAnalysis
             }
         }
 
-        if (this.types.RequiresUnsafeContext(node) == true)
+        var requiresUnsafe = this.types.RequiresUnsafeContext(node);
+        if (requiresUnsafe == true)
         {
             this.CheckUnsafePermission(node);
+        }
+        else if (requiresUnsafe is null && node is ExpressionKoto)
+        {
+            // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
+            this.unsafeUncertain = true;
         }
 
         Flow flow;
@@ -610,7 +628,16 @@ public sealed class ControlFlowAnalysis
                 // Registration never evaluates its body. Its completion matters at scope exit only.
                 return new(true, ControlFlowType.Unit);
             case UnsafeBlockKoto unsafeBlock:
+                // SPEC 14.3.3: an operation uses the permission of the innermost enclosing Unsafe Block.
+                var (outerUsed, outerUncertain) = (this.unsafeUsed, this.unsafeUncertain);
+                (this.unsafeUsed, this.unsafeUncertain) = (false, false);
                 flow = this.Visit(unsafeBlock.Body, reachable);
+                if (!this.unsafeUsed && !this.unsafeUncertain)
+                {
+                    this.WarnUnnecessaryUnsafe(unsafeBlock);
+                }
+
+                (this.unsafeUsed, this.unsafeUncertain) = (outerUsed, outerUncertain || this.unsafeUncertain);
                 var unsafeInfo = this.RentInfo();
                 unsafeInfo.CanCompleteNormally = flow.Normal;
                 unsafeInfo.IsCompletionPending = flow.Pending;
@@ -769,10 +796,9 @@ public sealed class ControlFlowAnalysis
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
                 var sourcePointer = IsPointer(sourceType);
                 var destinationPointer = IsPointer(destinationType);
-                // SPEC 5.4: same-Type acquisition needs no unsafe context.
+                // SPEC 5: a conversion cannot cause undefined behavior, so it needs no unsafe context.
                 if ((sourcePointer || destinationPointer) && !(sourceType is BoundType && ReferenceEquals(sourceType, destinationType)))
                 {
-                    this.CheckUnsafePermission(conversion);
                     if ((sourcePointer && destinationType is not null && !destinationPointer && destinationType.Name != "usize") ||
                         (destinationPointer && sourceType is not null && !sourcePointer && sourceType.Name is not ("usize" or "Never" or "integer literal")))
                     {
@@ -871,6 +897,32 @@ public sealed class ControlFlowAnalysis
         if (!KotoHelper.IsUnsafeContext(node))
         {
             this.Error(node, DiagnosticCode.UnsafeBlockRequired_Kd);
+        }
+        else
+        {
+            this.unsafeUsed = true;
+        }
+    }
+
+    // SPEC 14.3.3: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body, an
+    // independent scope (SPEC 14.3.1), declares no Name and registers no defer; otherwise the Advice says what would change.
+    private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
+    {
+        var scoped = false;
+        if (block.Body is CodeBlockKoto { IsExpressionBody: false } body)
+        {
+            foreach (var item in body.Items)
+            {
+                scoped |= item is FieldKoto or FunctionKoto or DeferredBlockKoto or DeclarationContainerKoto;
+            }
+        }
+
+        var advice = scoped
+            ? "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately"
+            : "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
+        if (this.warningNodes.Add(block))
+        {
+            this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice });
         }
     }
 

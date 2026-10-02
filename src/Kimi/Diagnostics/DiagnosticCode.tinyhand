@@ -853,6 +853,12 @@
     Message="This operation requires an Unsafe Block"
     Advice="Write the operation inside an Unsafe Block; unsafe func does not grant permission to its body"
 
+  + Name="UnnecessaryUnsafeBlock_Kd"
+    Severity="Warning"
+    Category="Language"
+    Message="No operation in this Unsafe Block uses its permission"
+    Label="no operation in this block requires an unsafe context"
+
   + Name="StaticWhileTrue_Kd"
     Severity="Warning"
     Category="Language"

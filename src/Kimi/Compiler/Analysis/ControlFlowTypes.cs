@@ -159,7 +159,6 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override bool? RequiresUnsafeContext(Koto expression) => expression switch
     {
         DereferenceKoto => true,
-        ConversionKoto conversion when GetOuterSemantics(conversion.Right) == SemanticsKind.Raw => true,
         _ => null,
     };
 

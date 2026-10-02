@@ -572,8 +572,10 @@ public sealed partial class Binding
         {
             this.floatingIntegerLiteral = fit && literal && target is { IsFloatingPoint: true }
                 ? operand as NumberLiteralKoto ?? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null;
-            // SPEC 5.4: an integer literal pointer-cast input is first fitted to usize.
-            source = this.BindNode(conversion.Left, scope, fit ? target : literal && ReferenceTypes.IsPointer(target) ? BoundType.USize : null);
+            // SPEC 5.4: an integer literal pointer-cast input is first fitted to usize; null@raw/U is Typed Null Formation, a null
+            // of the target Type (SPEC 5.1).
+            var pointerInput = !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
+            source = this.BindNode(conversion.Left, scope, fit ? target : pointerInput);
         }
         finally
         {

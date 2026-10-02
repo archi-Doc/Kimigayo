@@ -220,7 +220,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("let pointer: raw/i32 = null\nunsafe => pointer@i32", false)]
     [InlineData("let pointer: raw/i32 = null\nunsafe => pointer - pointer", false)]
     [InlineData("let pointer: raw/i32 = null\nunsafe => 1 + pointer", false)]
-    [InlineData("let pointer: raw/i32 = null\nlet address = pointer@usize", false)]
+    [InlineData("let pointer: raw/i32 = null\nlet address = pointer@usize", true)]
     [InlineData("let pointer: raw/i32 = null\nunsafe\n    let address = pointer@usize", true)]
     [InlineData("let a: raw/i32 = null\nlet b: raw/u8 = null\na == b", false)]
     [InlineData("let a: raw/i32 = null\na < a", false)]

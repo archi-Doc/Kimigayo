@@ -223,17 +223,19 @@ public class ForeignEmissionTest
     [InlineData("let n: i32 = 1\nlet p = unsafe => n@raw/u8", true)]
     [InlineData("let p: raw/i32 = null\nvar q: raw/u8 = null\nq = p@raw/u8", false)]
     [InlineData("let p: raw/i32 = null\nvar a: usize = 0\na = p@usize", false)]
-    public void PointerConversionsRequireTheirTypesAndUnsafeContext(string body, bool mismatch)
+    [InlineData("var a: usize = 4096\nvar p: raw/u8 = null\np = a@raw/u8", false)]
+    [InlineData("let p = null@raw/i32\nvar q: raw/i32 = null\nq = p", false)]
+    public void PointerConversionsRequireTheirTypesButNoUnsafeContext(string body, bool mismatch)
     {
+        // SPEC 5, 5.4: conversions between raw pointer Types and usize, and Typed Null Formation, need no unsafe context.
         var c = MinimalEmissionTest.Analyze(body);
         Assert.Equal(mismatch, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.TypeMismatch_Kd));
+        using var writer = new StringWriter();
+        Assert.Equal(!mismatch, c.Emission.WriteIr(writer, out var error));
         if (!mismatch)
         {
-            Assert.Contains(c.Ownership.ControlFlow!.Issues, x => x.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
+            Assert.Empty(c.Ownership.ControlFlow!.Issues);
         }
-
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
     }
 
     [Fact]
