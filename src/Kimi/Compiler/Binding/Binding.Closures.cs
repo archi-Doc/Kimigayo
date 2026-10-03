@@ -336,7 +336,7 @@ public sealed partial class Binding
 
                         // SPEC 7.6.2, 7.6.3: moving an outer environment value is Consuming; Reborrowing it or borrowing its slot
                         // exclusively needs exclusive access to the outer environment.
-                        if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move && binding.ProveCopy(capture.Source.Type!, this.function) == ConstraintProof.Refuted)
+                        if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move)
                         {
                             this.plan.Receiver = SemanticsKind.Owner;
                         }

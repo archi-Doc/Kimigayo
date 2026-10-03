@@ -9,6 +9,20 @@ namespace XunitTest;
 public class ConcreteClosureTest
 {
     [Theory]
+    [InlineData("ScalarMove", "let n = 7", "n", "@move", SemanticsKind.Owner)]
+    [InlineData("TupleMove", "let n = (3, 4)", "n.0 + n.1", "@move", SemanticsKind.Owner)]
+    [InlineData("ScalarCopy", "let n = 7", "n", "", SemanticsKind.Ref)]
+    [InlineData("TupleCopy", "let n = (3, 4)", "n.0 + n.1", "", SemanticsKind.Ref)]
+    public void NestedAcquisitionKeepsTheWrittenMoveRequirement(string name, string declaration, string result, string acquisition, SemanticsKind receiver)
+    {
+        var c = MinimalEmissionTest.Analyze(declaration + "\nlet outer = func [n] () => func [n" + acquisition + "] () => " + result + "\nlet first = outer()\nlet second = outer()\nrequire first() == 7 and second() == 7 else => $abort(\"nested\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var outer = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous && x.Function.BoundClosure!.Captures[0].Source.Kind == BindingSymbolKind.Local);
+        Assert.Equal(receiver, outer.Function.BoundClosure!.Receiver);
+        ScalarEmissionTest.WriteFixture("ConcreteClosureNested" + name, CompilationTestHelper.WriteIr(c), string.Empty);
+    }
+
+    [Theory]
     [InlineData("let x: i32 = 4\nlet f = func [x] (y: i32) => x + y\nf(2)", SemanticsKind.Ref)]
     [InlineData("let x: i32 = 4\nvar f = func [var x] () -> i32\n    x += 1\n    return x\nf@uniq()", SemanticsKind.Uniq)]
     [InlineData("func take(text: string) => Console.writeLine(text)\nlet text = \"owned\"\nlet f = func [text@move] () => take(text@move)\nf@move()", SemanticsKind.Owner)]

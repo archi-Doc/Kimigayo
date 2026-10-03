@@ -37,6 +37,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
     [InlineData("let n = 7\nlet f: () -> i32 = func [n@ref] () => n + 1", "Owned environment")]
     [InlineData("let n = 7\nlet f: () -> i32 = func [var n] () => ++n", "Exclusive call")]
     [InlineData("let text = \"owned\"\nlet f: () -> string = func [text@move] () => text@move", "Consuming call")]
+    [InlineData("let n = 7\nlet outer: () -> (() -> i32) = func [n] () => func [n@move] () => n", "Consuming call")]
     public void ErasureFailuresExplainTheFailedContract(string source, string cause)
     {
         var path = Path.GetFullPath("contextual-closure.kimi");
