@@ -926,10 +926,10 @@ public sealed partial class Binding
 
         var inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
         symbol.Resolving = false;
-        if (declared is null && inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
+        if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
             initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
         {
-            // SPEC 15.4.4: Origins omitted in the initializer's own Type expressions are resolved into the local's Type.
+            // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
             inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
         }
 

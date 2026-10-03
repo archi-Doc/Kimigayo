@@ -36,12 +36,14 @@ public sealed partial class Binding
         return false;
     }
 
-    // The still-open Origin declaration of the local whose initializer contains an inference atom's Type expression.
-    private OriginDeclaration? OpenInitializerInference(BoundOrigin atom)
+    // A local's omitted Origins remain open while its initializer acquires values, whether written in its annotation or
+    // in a construction qualifier. Published contracts and subsequent uses of the local never open inference again.
+    private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
     {
         for (var node = atom.Binder; node is not null; node = node.Parent)
         {
-            if (node is VariableKoto { TypeKoto: null, InitializerKoto: { } initializer } variable && IsWithin(atom.Binder!, initializer))
+            if (node is VariableKoto { InitializerKoto: { } initializer } variable && IsWithin(use, initializer) &&
+                (IsWithin(atom.Binder!, initializer) || (variable.TypeKoto is { } annotation && IsWithin(atom.Binder!, annotation))))
             {
                 if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
                 {
@@ -83,9 +85,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (shorter.Kind == OriginKind.Inference && this.OpenInitializerInference(shorter) is { } pending)
+        if (shorter.Kind == OriginKind.Inference && this.OpenInitializerInference(shorter, use) is { } pending)
         {
-            // SPEC 15.4.4: an Origin omitted in a local's initializer Type expression, such as a construction qualifier, is
+            // SPEC 15.4.4: an Origin omitted in a local annotation or initializer Type expression is
             // inferred from the values fitted to it: each one bounds it, and the relation is proven again once the local's
             // initializer has been bound and the Origin resolved.
             pending.Replacements[shorter] = pending.Replacements.TryGetValue(shorter, out var previous) ? this.Meet(previous, longer) : longer;
