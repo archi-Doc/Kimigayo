@@ -569,6 +569,13 @@ public sealed partial class Binding
 
         // A pair layer's Origin is the dependency of the reference it may hold; the Place itself is its own dependency.
         source = PlaceOriginSource(source);
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } reached)
+        {
+            // SPEC 13.5.5: a part of a selected referent (`p@follow.x`) keeps the dependencies of the reference, as the
+            // referent itself does.
+            return reached.Left.BoundType?.Origin ?? this.PlaceOrigin(reached.Left);
+        }
+
         return source.BoundType is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }

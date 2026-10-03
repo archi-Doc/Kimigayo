@@ -218,6 +218,21 @@ internal static class ElementAccess
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the
     // reference-typed base, or null for other forms.
+    // The reference whose struct or Tuple referent `reference@follow` selects, or null.
+    internal static Koto? FollowedReference(Koto receiver)
+        => KotoHelper.UnwrapParentheses(receiver) is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed &&
+            AccessType(followed.Left) is var type && (ReferenceTypes.IsStruct(type) || ReferenceTypes.IsTuple(type)) ? followed.Left : null;
+
+    // Whether a borrowed path root is the reference operand of `root@follow`.
+    internal static bool IsFollowedRoot(Koto root) => root.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed && ReferenceEquals(followed.Left, root);
+
+    // Whether a receiver reference lends a borrowed path root: the root's access Type, or for a followed root a reborrow of
+    // its referent that is shared or matches the root's exclusive capability.
+    internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
+        => ReferenceEquals(receiver, access) ||
+            (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
+                ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
+
     internal static Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
         for (var depth = 0; depth < 64; depth++)
@@ -231,6 +246,12 @@ internal static class ElementAccess
             if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver))
             {
                 return field.Left;
+            }
+
+            // SPEC 13.5.5.1: an explicitly selected referent (`p@follow.x`) is reached through its reference, as `p.x` is.
+            if (FollowedReference(field.Left) is { } reference)
+            {
+                return reference;
             }
 
             if (field.Left is not MemberAccessKoto parent || !TryType(field, out _, out _))

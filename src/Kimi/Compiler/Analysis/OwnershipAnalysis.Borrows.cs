@@ -251,8 +251,21 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
     private int Receiver(Koto root, bool exclusive = false)
-        => this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow
-            ? this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!) : this.Expression(root, PlaceUseKind.Read);
+    {
+        if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
+        {
+            return this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!);
+        }
+
+        // SPEC 13.5.5.1, 15.6.2: the reference of an explicitly selected referent (`p@follow.x`) lends its referent as the
+        // adapted receiver of `p.x` does, shared for a read and exclusive for a write, so the access holds a Loan.
+        if (ElementAccess.IsFollowedRoot(root) && this.Concrete(root.BoundType) is { Components.Count: 1 } reference)
+        {
+            return this.BorrowStruct(root, this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
+        }
+
+        return this.Expression(root, PlaceUseKind.Read);
+    }
 
     private int ReadBorrowedField(MemberAccessKoto field)
     {

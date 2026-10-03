@@ -1736,9 +1736,9 @@ public sealed partial class OwnershipBody
                 }
 
                 left[leftDepth++] = selector;
-                if (ReferenceEquals(level.Left, root))
+                if (ReferenceEquals(level.Left, root) || ReferenceEquals(ElementAccess.FollowedReference(level.Left), root))
                 {
-                    break;
+                    break; // The base is the borrowed root, or its referent selected with @follow.
                 }
             }
 
