@@ -9,6 +9,9 @@ internal static class VerificationWorkloads
 {
     internal const string ObjectItem = "struct Item\n    public let id: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.id\n    drop => Console.writeLine(\"drop\")\n";
 
+    internal const string RcClone = "struct Item\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n" +
+        "let first = Kimi.Intrinsics.makeRc(Item.init(7))\nlet second = Kimi.Intrinsics.clone(first@ref)\nrequire second.value == 7 else => $abort(\"clone\")";
+
     internal static string ObjectView(bool stored)
         => ObjectItem + "let owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
             (stored ? "let stored = (owner@move, 1)\nrequire stored.0.id == 7" : "require owner.id == 7") + " else => $abort(\"read\")";

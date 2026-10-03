@@ -8,6 +8,7 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --object-plans > artifact
 
 Use a fresh evidence filename per run. `StoredObjectViewTest` shares the exact direct/stored-handle inputs through
 `tests/Workloads/VerificationWorkloads.cs`; its zero-allocation assertions keep 32 warm-up and 64 measured iterations.
+`SharedObjectRuntimeTest` shares the rc factory/clone input with the same fixed counts. Reports name all three workloads.
 The opt-in runner measures ownership analysis and IR emission separately, with 32 warm-up iterations and seven samples
 of 64 iterations. Each sample follows a full collection outside the measured interval. It reports every timing and
 thread allocation count, source hashes and runtime/platform identity, and fails if an input stops verifying or emitting.

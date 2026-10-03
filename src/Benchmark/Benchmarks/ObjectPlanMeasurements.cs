@@ -11,7 +11,7 @@ using Verification;
 
 namespace Benchmark;
 
-// Fixed workloads are shared with StoredObjectViewTest; timing is opt-in and never used as a regression assertion.
+// Fixed workloads are shared with object regression tests; timing is opt-in, never a regression assertion.
 internal static class ObjectPlanMeasurements
 {
     private const int Warmup = 32;
@@ -21,9 +21,10 @@ internal static class ObjectPlanMeasurements
     internal static void Run()
     {
         var results = new List<object>();
-        foreach (var stored in new[] { false, true })
+        foreach (var name in new[] { "direct", "stored", "rc-clone" })
         {
-            var source = VerificationWorkloads.ObjectView(stored);
+            var stored = name == "stored";
+            var source = name == "rc-clone" ? VerificationWorkloads.RcClone : VerificationWorkloads.ObjectView(stored);
             var c = Compilation.CreateForTest();
             if (!c.Prepare("x86_64-pc-windows-msvc"))
             {
@@ -63,7 +64,7 @@ internal static class ObjectPlanMeasurements
                     milliseconds[sample] = elapsed.TotalMilliseconds / Iterations;
                 }
 
-                results.Add(new { stored, phase = emit ? "emission" : "ownership", sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
+                results.Add(new { name, stored, phase = emit ? "emission" : "ownership", sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
                 {

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -57,7 +58,7 @@ public class SharedObjectRuntimeTest
     [Fact]
     public void WarmRcAnalysisAndEmissionAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Item + "let first = Kimi.Intrinsics.makeRc(Item.init(7))\nlet second = Kimi.Intrinsics.clone(first@ref)\nrequire second.value == 7 else => $abort(\"clone\")");
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.RcClone);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
