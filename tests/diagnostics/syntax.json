@@ -603,5 +603,9 @@
   { "Name": "modifier-line-before-body", "Source": "public\n    func f() => ()\nConsole.writeLine(\"hi\")\n", "Intended": "an indented body after modifiers that end their line would be the missing declaration's, so it is skipped with them, as after a failed header",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Declaration", "After": "public" } ] },
   { "Name": "open-own-line", "Source": "open\nstruct B\n    let b: i32\nConsole.writeLine(\"hi\")\n", "Intended": "an open that ends its line is a modifier without its declaration; the struct on the next line is declared without it",
-    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Declaration", "After": "open" } ] }
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Declaration", "After": "open" } ] },
+  { "Name": "duplicate-self-constraint-location", "Source": "contract Marker\nstruct S\n    Self is Marker\n    let x: i32\nstruct S\n    Self is Marker\n    let y: i32\nConsole.writeLine(\"hi\")\n", "Intended": "a second fragment's Constraint region is reported at its subject, not at the next line",
+    "Records": [ { "Code": "DuplicateTypeConstraintDefinition_Kd", "At": "Self is Marker\n    let y", "Length": 4 } ] },
+  { "Name": "origin-relation-operator-missing", "Source": "func f(a: ref/i32) -> i32\n    origin a\n    return 1\nConsole.writeLine(\"hi\")\n", "Intended": "a relation whose line ends after its left operand misses its operator at the insertion point; the right operand, missing there too, rests on it",
+    "Records": [ { "Code": "OriginRelationOperator_Kd", "After": "origin a" } ] }
 ]

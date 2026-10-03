@@ -57,6 +57,17 @@ public static partial class Parser
             {
                 reader.Advance();
             }
+            else if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || !reader.CanRead)
+            {
+                // The line ends after the left operand: the operator is missing at its insertion point, and the right operand,
+                // missing at the same point, rests on it (DIAGNOSTICS.md §4.4).
+                var at = new SourceSpan(reader.PreviousSyntaxEnd, 0);
+                reader.Diagnostic.Add(at, DiagnosticCode.OriginRelationOperator_Kd);
+                var missing = new ErrorKoto(ref reader, at) { Cause = reader.Diagnostic.LastError };
+                var incomplete = new OriginRelationKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left, missing, false);
+                reader.ExpectLineEnd();
+                return incomplete;
+            }
             else
             {
                 reader.AddDiagnostic(DiagnosticCode.OriginRelationOperator_Kd);

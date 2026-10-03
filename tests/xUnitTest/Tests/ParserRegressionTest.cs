@@ -580,6 +580,11 @@ public class ParserRegressionTest
         Assert.Equal(2, warnings.Length);
         Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Severity));
 
+        // Each warning is at the first token of the member out of order, not at the line after it.
+        Assert.Equal(
+            [new SourceSpan(source.IndexOf("var field", StringComparison.Ordinal), 3), new SourceSpan(source.IndexOf("Self is", StringComparison.Ordinal), 4)],
+            warnings.Select(x => x.Span));
+
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
         Assert.Collection(

@@ -799,7 +799,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         {
             if (this is not ContractKoto)
             {
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property);
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property, reader.CurrentTokenRange);
             }
 
             reader.Advance();
@@ -858,7 +858,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return false;
         }
 
-        CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function);
+        CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function, reader.CurrentTokenRange);
         reader.Advance();
         var functionKoto = Parser.ParseFuncDeclaration(ref reader);
         if (functionKoto is null)
@@ -1034,12 +1034,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         return false;
     }
 
+    /// <summary>Warns when a member comes after a later kind of member, at the member's first token.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="current">The latest member kind so far.</param>
+    /// <param name="next">The kind of this member.</param>
+    /// <param name="at">The member's first token, read before the member is parsed.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next)
+    protected static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next, SourceSpan at)
     {
         if (next < current)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DeclarationOrderWarning_Kd);
+            reader.Diagnostic.Add(at, DiagnosticCode.DeclarationOrderWarning_Kd);
         }
 
         current = next;
@@ -1166,13 +1171,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (Parser.IsOriginRelationStart(ref reader))
         {
             Parser.ReportPendingAttributes(ref reader);
+            var keyword = reader.CurrentTokenRange;
             var relation = Parser.ParseOriginRelation(ref reader);
             if (!acceptsTypeConstraints)
             {
                 relation.AddDiagnostic(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
             }
 
-            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint);
+            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint, keyword);
             OriginClauses.Add(this, relation);
             return;
         }
@@ -1180,6 +1186,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
         {
             Parser.ReportPendingAttributes(ref reader);
+
+            // The checks of the Constraint item are located at its subject, read before the Constraint is parsed.
+            var subject = reader.CurrentTokenRange;
             if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
             {
                 reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
@@ -1219,12 +1228,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             if (!acceptsTypeConstraints)
             {
-                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+                reader.Diagnostic.Add(subject, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 return;
             }
 
-            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint);
+            CheckDeclarationOrder(ref reader, ref state.DeclarationOrder, DeclarationOrder.TypeConstraint, subject);
             reader.ExpectLineEnd();
             if (constraint is not null)
             {
