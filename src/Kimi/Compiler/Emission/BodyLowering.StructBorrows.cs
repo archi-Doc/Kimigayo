@@ -120,8 +120,10 @@ internal sealed partial class BodyLowering
 
             if ((ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) && !ReferenceTypes.StorageMatches(type, output.Components[0]))
             {
-                var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow, Parent: ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion } selected &&
-                    ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
+                var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } selected &&
+                    ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(SignatureType(this, selected.BoundType), output.Components[0]) &&
+                    (output.Semantics == SemanticsKind.Ref ||
+                        (selected.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output)));
                 var memberProjection = operation.Source.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } call } } &&
                     ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
                     call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);

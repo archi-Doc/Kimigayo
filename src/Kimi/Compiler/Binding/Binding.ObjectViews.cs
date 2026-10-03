@@ -6,6 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
+        => this.SharedReference(payload, this.PlaceOrigin(source));
+
     // SPEC 3.4.1: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));

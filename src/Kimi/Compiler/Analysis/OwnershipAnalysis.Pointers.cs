@@ -132,7 +132,7 @@ public sealed partial class OwnershipAnalysis
 
     // Loads the referent through an already evaluated reference, so that an update reads and writes the one Place
     // its target expression designates (SPEC 13.7.2).
-    private int LoadThrough(Koto source, int reference, int layers)
+    private int LoadThrough(Koto source, int reference, int layers, BoundType? referenceType = null)
     {
         if (layers <= 0)
         {
@@ -141,7 +141,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var loaded = -1;
-        for (var type = this.Concrete(source.BoundType); layers > 0; layers--)
+        for (var type = referenceType ?? this.Concrete(source.BoundType); layers > 0; layers--)
         {
             // An inner layer is read only for its address; the terminal referent is a Copy snapshot.
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||

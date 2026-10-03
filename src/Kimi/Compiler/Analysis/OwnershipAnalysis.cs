@@ -967,8 +967,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (conversion.ConversionBinding == ConversionBinding.PayloadFollow)
                 {
-                    this.Unsupported(conversion); // A bare Copy of a payload through its handle remains a boundary.
-                    return -1;
+                    return this.ReadObjectPayload(conversion);
                 }
 
                 return this.ConversionValue(conversion);
