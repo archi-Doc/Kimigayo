@@ -287,16 +287,9 @@ internal sealed partial class BodyLowering
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
-        if (abi.ResultSlot)
-        {
-            if (!this.ValidateSlotCallResult(body, id, out failure))
-            {
-                return false;
-            }
 
-            function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
-        }
-
+        // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
+        // receives the environment from the value itself.
         if (concreteEntry is not null)
         {
             var environment = this.aggregateLayouts.Get(receiverType)!;
@@ -322,6 +315,16 @@ internal sealed partial class BodyLowering
             {
                 function.Operands.Add(environment.Value.Layout.Size == 0 ? new(EmissionOperandKind.NullAddress, 0) : new(EmissionOperandKind.SlotAddress, operation.Input));
             }
+        }
+
+        if (abi.ResultSlot)
+        {
+            if (!this.ValidateSlotCallResult(body, id, out failure))
+            {
+                return false;
+            }
+
+            function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         }
 
         foreach (var physical in abi.Parameters)

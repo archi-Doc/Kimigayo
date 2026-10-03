@@ -103,14 +103,17 @@ internal sealed class FunctionAbiPool
 
         var parameters = new AbiParameter[count];
         var physical = 0;
-        if (resultSlot)
-        {
-            parameters[physical++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
-        }
 
+        // A closure body is the entry of a common Function value: the environment word comes first and the result slot
+        // second, as every common call and erasure adapter passes them (LlvmModuleWriter.WriteValueCall).
         if (function.IsAnonymous)
         {
             parameters[physical++] = new(function.BoundClosure?.EnvironmentType is null ? "i64" : "ptr", "environment", AbiParameterKind.Environment);
+        }
+
+        if (resultSlot)
+        {
+            parameters[physical++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
         }
 
         for (var i = 0; i < logical.Length; i++)

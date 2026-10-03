@@ -33,6 +33,14 @@ public class CallbackEmissionTest
     [InlineData("OmittedArgument", "func apply(f: (i32) -> bool) -> bool => f(1)\nlet k: i32 = 1\nrequire apply(func [k] (v) => v == k) else => $abort(\"argument\")")]
     [InlineData("OmittedGeneric", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nlet two: i32 = 2\nrequire apply(func [] (value) => value + 1, two) == 3 else => $abort(\"generic\")")]
     [InlineData("OmittedArity", "func apply(f: (i32) -> i32) -> i32 => f(1)\nfunc apply(f: (i32, i32) -> i32) -> i32 => f(1, 2)\nrequire apply(func [] (a) => a + 1) == 2 and apply(func [] (a, b) => a + b) == 3 else => $abort(\"arity\")")]
+    // A closure body that returns through a result slot took (ret, environment, ...) while every common call and erasure
+    // adapter passes (environment, ret, ...): calling such a common value wrote the result through the environment word
+    // and crashed (exit 139) or returned garbage.
+    [InlineData("FunctionResult", "func outer(n: i32) -> () -> () -> i32\n    return func [n] () -> () -> i32 => func [n] () -> i32 => n\nlet f = outer(4)\nlet g = f()\nrequire g() == 4 else => $abort(\"nested\")")]
+    [InlineData("StringResult", "let f: () -> string = func [] () -> string => \"abc\"\nrequire f() == \"abc\" else => $abort(\"string\")")]
+    [InlineData("ArrayResult", "let n: i32 = 7\nlet f: () -> Array<i32> = func [n] () -> Array<i32> => [n, n, n]\nlet a = f()\nrequire a.length == 3 and a[2] == 7 else => $abort(\"array\")")]
+    [InlineData("TupleResult", "let f: (i32) -> (i32, i64, i32) = func [] (v) => (v, 2@i64, 3)\nlet t = f(1)\nrequire t.0 == 1 and t.1 == 2 and t.2 == 3 else => $abort(\"tuple\")")]
+    [InlineData("DirectStringResult", "let n: i32 = 7\nlet f = func [n] () -> Array<i32> => [n, n]\nlet a = f()\nrequire a.length == 2 and a[1] == 7 else => $abort(\"direct\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
