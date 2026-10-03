@@ -334,7 +334,7 @@ internal sealed partial class BodyLowering
     {
         if (body.Values[id].Kind == OwnershipValueKind.ClosureErasure)
         {
-            return this.LowerClosureErasure(body, function, id, out failure);
+            return this.LowerClosureErasure(body, function, constants, directory, id, out failure);
         }
 
         failure = null;

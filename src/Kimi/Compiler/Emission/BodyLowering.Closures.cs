@@ -62,7 +62,7 @@ internal sealed partial class BodyLowering
         return abi;
     }
 
-    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -86,16 +86,22 @@ internal sealed partial class BodyLowering
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
             !Binding.CallableSignatureFits(closure.Signature, body.Places[operation.Place].Type) ||
-            this.aggregateLayouts.Get(source) is not { NeedsDestruction: false } layout || layout.Value.Layout.Size > 8 ||
+            this.aggregateLayouts.Get(source) is not { } layout ||
             this.functions?.GetValueOrDefault(definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
         {
-            return Fail("Erasure requires an acquired, Owned, Shared inline concrete environment and supported signature.", out failure);
+            return Fail("Erasure requires an acquired, Owned, Shared concrete environment and supported signature.", out failure);
+        }
+
+        var location = -1;
+        if ((layout.NeedsDestruction || layout.Value.Layout.Size > 8) && !this.TryGetLocation(operation.Source, directory, constants, out location))
+        {
+            return Fail("Heap closure erasure requires its source location.", out failure);
         }
 
         var start = function.Operands.Count;
         function.Operands.Add(new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[input])));
-        function.Instructions.Add(new(EmissionOpcode.EraseClosure, id, operation.Place, Callee: entry, OperandStart: start, OperandCount: 1, Aggregate: layout));
+        function.Instructions.Add(new(EmissionOpcode.EraseClosure, id, operation.Place, Constant: location, Callee: entry, OperandStart: start, OperandCount: 1, Aggregate: layout));
         this.AddStringFlags(function, operation, id);
         return true;
     }

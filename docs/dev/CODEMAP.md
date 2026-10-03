@@ -83,6 +83,7 @@ Strong object creation and clone declarations enter through `Library/Intrinsics.
 and pair signature validation), `KimiLibraryPrimitives` and catalog Function kinds. `SharedObjectBindingTest`,
 `CoreCatalogTest` and `CatalogSignatureValidationTest` cover source recognition, inference and contract tampering.
 `Binding.ArgumentOperations.ExpectedAdaptation` shares object authority with argument adaptation; `SharedObjectAdaptationTest` covers fixed expectations, result dependencies and native object views.
+Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLowering.Closures` and `LlvmModuleWriter.Closures`; `HeapClosureErasureTest` covers inline/heap selection, environment adapters and final destruction. `ClosureEffects` recognizes captured-object Copy Field inspection.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.
 
 ## Use and maintenance

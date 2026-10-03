@@ -428,6 +428,10 @@ public sealed partial class Binding
                 var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
                     ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected : null;
                 var memberBorrow = memberCall?.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
+                // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
+                var fieldRead = ObjectTypes.HandleMode(symbol.Type) is not null && use.Parent is MemberAccessKoto field &&
+                    ReferenceEquals(field.Left, use) && field.BoundSymbol?.Property?.IsStored == true &&
+                    field.BoundType is { } fieldType && binding.ProveCopy(fieldType, this.function) == ConstraintProof.Proven && !this.UsesReferentExclusively(field);
                 var exclusiveReference = symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
@@ -441,7 +445,7 @@ public sealed partial class Binding
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
                     (!exclusiveReference && binding.ProveCopy(symbol.Type!, this.function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
-                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use)))
+                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !fieldRead && !InspectedString(use)))
                 {
                     // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
                     this.plan.Receiver = SemanticsKind.Owner;

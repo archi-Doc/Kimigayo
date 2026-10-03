@@ -504,7 +504,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.EraseClosure:
-                    WriteErasure(output, function, instruction);
+                    WriteErasure(output, constants, function, instruction);
                     break;
 
                 case EmissionOpcode.CallValue:
