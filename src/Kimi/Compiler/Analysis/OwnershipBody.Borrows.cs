@@ -1784,6 +1784,12 @@ public sealed partial class OwnershipBody
         {
             var operation = this.Operations[value];
             var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.Call)
+            {
+                value = this.ResultArgument(value); // Only a published result contract naming one input preserves ancestry.
+                continue;
+            }
+
             if (operation.Kind == OwnershipOperationKind.AcquirePattern && node.Kind == OwnershipValueKind.None && operation.Place >= 0 &&
                 this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Payload, Type.Semantics: SemanticsKind.Uniq })
             {
@@ -1809,16 +1815,23 @@ public sealed partial class OwnershipBody
 
             var source = operation.Kind switch
             {
-                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry => operation.Place,
+                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Produce => operation.Place,
                 OwnershipOperationKind.Write => operation.Input,
                 _ => -1,
             };
-            if (source < 0 || !this.HasSingleBorrowDefinition(source) || this.borrowDefinitions[source] >= value)
+            if (source < 0)
             {
                 return -1;
             }
 
-            value = this.borrowDefinitions[source];
+            var definition = this.HasSingleBorrowDefinition(source) ? this.borrowDefinitions[source]
+                : this.Places[source].Kind == OwnershipPlaceKind.Temporary ? this.ProducingValue(source, value) : -1;
+            if (definition < 0 || definition >= value)
+            {
+                return -1;
+            }
+
+            value = definition;
         }
 
         return -1;

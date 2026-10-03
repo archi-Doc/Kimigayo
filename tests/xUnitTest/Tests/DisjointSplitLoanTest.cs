@@ -51,6 +51,65 @@ public class DisjointSplitLoanTest(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData("ref", "Shared")]
+    [InlineData("uniq", "Exclusive")]
+    public void ReturnedChildrenKeepTheirSplitIdentity(string mode, string name)
+    {
+        var source = $$"""
+            struct Item
+                public var value: i32 = 1
+            func child(value: {{mode}}/Item) -> {{mode}}/Item during value => value
+            var values: Array<Item> = [Item.init(), Item.init()]
+            match values.tryGetPairUniq(first: 0, second: 1)
+                .Some((let a, let b))
+                    let first = child(a)
+                    b.value += first.value
+                    let second = child(b)
+                    require first.value == 1 and second.value == 2 else => $abort("children")
+                .None => $abort("pair")
+            """;
+        ScalarEmissionTest.EmitFixture("DisjointSplitReturned" + name, source, string.Empty);
+    }
+
+    [Fact]
+    public void ReturnedChildrenStillSuspendTheirOwnParent()
+    {
+        const string Source = "struct Item\n    public var value: i32 = 1\nfunc child(value: ref/Item) -> ref/Item during value => value\nvar values: Array<Item> = [Item.init(), Item.init()]\nmatch values.tryGetPairUniq(first: 0, second: 1)\n    .Some((let a, let b))\n        let first = child(a)\n        a.value = 3\n        b.value = 4\n        require first.value == 1 else => $abort(\"child\")\n    .None => ()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Ownership.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+        Assert.Equal("a.value", error.Text);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData("a")]
+    [InlineData("b")]
+    public void ResultsNamingBothInputsKeepBothLoans(string target)
+    {
+        var c = MinimalEmissionTest.Analyze($$"""
+            struct Item
+                public var value: i32 = 1
+            func choose(left: ref/Item, right: ref/Item) -> ref/Item during (left and right) => left
+            var values: Array<Item> = [Item.init(), Item.init()]
+            match values.tryGetPairUniq(first: 0, second: 1)
+                .Some((let a, let b))
+                    let both = choose(a, b)
+                    {{target}}.value = 3
+                    require both.value == 1 else => $abort("child")
+                .None => ()
+            """);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Ownership.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+        Assert.Equal(target + ".value", error.Text);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
     [InlineData("Array<Item>", "Array")]
     [InlineData("[2 of Item]", "Fixed")]
     public void SiblingFieldsAndCallArgumentsRemainIndependent(string type, string name)
