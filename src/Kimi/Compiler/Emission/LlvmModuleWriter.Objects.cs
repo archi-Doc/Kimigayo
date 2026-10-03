@@ -94,11 +94,37 @@ internal static partial class LlvmModuleWriter
         {
             var id = item.Id;
             var layout = item.Payload.Layout;
-            var destroy = item.Destroy is null ? "null" : "@__kimi_object_destroy_values" + id;
             var key = module.Constants[item.TypeKey];
-            output.Write($"@__kimi_object_type_key{id} = private constant {{ i64, ptr, i64 }} {{ i64 {item.TypeToken}, ptr @{key.Name}, i64 {key.ByteLength} }}, align 8\n");
-            output.Write($"@__kimi_object_metadata{id} = private constant {{ i64, i64, i64, i64, ptr, ptr }} {{ i64 {item.TypeToken}, i64 {layout.Size}, i64 {layout.Alignment}, i64 {(item.Copy ? 1 : 0)}, ptr {destroy}, ptr null }}, align 8\n");
-            output.Write($"@__kimi_object_descriptor{id} = private constant {{ ptr, ptr, ptr }} {{ ptr @__kimi_object_metadata{id}, ptr @__kimi_object_free, ptr ");
+            Name(output, "@__kimi_object_type_key", id);
+            output.Write(" = private constant { i64, ptr, i64 } { i64 ");
+            WriteNumber(output, item.TypeToken);
+            output.Write(", ptr @");
+            output.Write(key.Name);
+            output.Write(", i64 ");
+            WriteNumber(output, key.ByteLength);
+            output.Write(" }, align 8\n");
+            Name(output, "@__kimi_object_metadata", id);
+            output.Write(" = private constant { i64, i64, i64, i64, ptr, ptr } { i64 ");
+            WriteNumber(output, item.TypeToken);
+            output.Write(", i64 ");
+            WriteNumber(output, layout.Size);
+            output.Write(", i64 ");
+            WriteNumber(output, layout.Alignment);
+            output.Write(item.Copy ? ", i64 1, ptr " : ", i64 0, ptr ");
+            if (item.Destroy is null)
+            {
+                output.Write("null");
+            }
+            else
+            {
+                Name(output, "@__kimi_object_destroy_values", id);
+            }
+
+            output.Write(", ptr null }, align 8\n");
+            Name(output, "@__kimi_object_descriptor", id);
+            output.Write(" = private constant { ptr, ptr, ptr } { ptr ");
+            Name(output, "@__kimi_object_metadata", id);
+            output.Write(", ptr @__kimi_object_free, ptr ");
             if (item.BaseTokens.Length == 0)
             {
                 output.Write("null }, align 8\n");
@@ -124,19 +150,34 @@ internal static partial class LlvmModuleWriter
 
             if (item.Destroy is not null)
             {
-                output.Write($"define internal void @__kimi_object_destroy_values{id}(ptr %first, i64 %count, ptr %metadata, ptr %site) #0 {{\nentry:\n");
+                Name(output, "define internal void @__kimi_object_destroy_values", id);
+                output.Write("(ptr %first, i64 %count, ptr %metadata, ptr %site) #0 {\nentry:\n");
                 output.Write("  %location = load ptr, ptr %site, align 8\n  %lengthSlot = getelementptr i8, ptr %site, i64 8\n  %length = load i64, ptr %lengthSlot, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %count, %entry ], [ %index, %destroy ]\n  %empty = icmp eq i64 %remaining, 0\n  br i1 %empty, label %done, label %destroy\ndestroy:\n  %index = sub i64 %remaining, 1\n");
-                output.Write($"  %offset = mul i64 %index, {layout.Stride}\n  %value = getelementptr i8, ptr %first, i64 %offset\n  call void @{item.Destroy}(ptr %value, ptr %location, i64 %length)\n  br label %test\ndone:\n  ret void\n}}\n");
+                output.Write("  %offset = mul i64 %index, ");
+                WriteNumber(output, layout.Stride);
+                output.Write("\n  %value = getelementptr i8, ptr %first, i64 %offset\n  call void @");
+                output.Write(item.Destroy);
+                output.Write("(ptr %value, ptr %location, i64 %length)\n  br label %test\ndone:\n  ret void\n}\n");
             }
 
             output.Write(item.Abi.GetDefinition(false));
-            output.Write($"entry:\n  %header = call ptr @__kimi_alloc(i64 {(long)layout.Size + 16}, ptr %location, i64 %length)\n  store ptr @__kimi_object_descriptor{id}, ptr %header, align 8\n  %control = getelementptr i8, ptr %header, i64 8\n  store i64 0, ptr %control, align 8\n");
+            output.Write("entry:\n  %header = call ptr @__kimi_alloc(i64 ");
+            WriteNumber(output, (long)layout.Size + 16);
+            output.Write(", ptr %location, i64 %length)\n  store ptr ");
+            Name(output, "@__kimi_object_descriptor", id);
+            output.Write(", ptr %header, align 8\n  %control = getelementptr i8, ptr %header, i64 8\n  store i64 0, ptr %control, align 8\n");
             if (layout.Size != 0)
             {
                 output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n");
                 if (item.Payload.ArgumentType == "ptr" && item.Payload.ComputationType != "ptr")
                 {
-                    output.Write($"  call void @llvm.memcpy.p0.p0.i64(ptr align {layout.Alignment} %payload, ptr align {layout.Alignment} %a0, i64 {layout.Size}, i1 false)\n");
+                    output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
+                    WriteNumber(output, layout.Alignment);
+                    output.Write(" %payload, ptr align ");
+                    WriteNumber(output, layout.Alignment);
+                    output.Write(" %a0, i64 ");
+                    WriteNumber(output, layout.Size);
+                    output.Write(", i1 false)\n");
                 }
                 else if (item.Payload.ComputationType == "i1")
                 {
@@ -144,7 +185,11 @@ internal static partial class LlvmModuleWriter
                 }
                 else
                 {
-                    output.Write($"  store {layout.StorageType} %a0, ptr %payload, align {layout.Alignment}\n");
+                    output.Write("  store ");
+                    output.Write(layout.StorageType);
+                    output.Write(" %a0, ptr %payload, align ");
+                    WriteNumber(output, layout.Alignment);
+                    output.Write('\n');
                 }
             }
 

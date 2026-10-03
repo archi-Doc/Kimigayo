@@ -97,6 +97,14 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStruct(selected.Left, type, reservation);
         }
 
+        if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
+            ObjectTypes.HandleMode(this.Concrete(objectPart.BoundType)) is not null && ReferenceEquals(objectPart.BoundType!.Components[0], type.Components[0]) &&
+            (ElementAccess.OwnedPathRoot(objectPart) is not null || (objectPart is MemberAccessKoto objectField && ElementAccess.BorrowedPathRoot(objectField) is not null) ||
+                (objectPart is IndexKoto objectIndex && (objectIndex.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(objectIndex.Left.BoundType)))))
+        {
+            return this.BorrowStoredObject(objectPart, type, reservation);
+        }
+
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&
             (element.Left.BoundType?.Kind == BoundTypeKind.Array || ElementAccess.IsExclusiveArrayElement(element)))
         {
@@ -131,7 +139,8 @@ public sealed partial class OwnershipAnalysis
             return borrowedElement;
         }
 
-        if (unwrapped is IndexKoto index && ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array) &&
+        if (unwrapped is IndexKoto index && ((index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && ElementAccess.StaticSelector(index) < 0) ||
+            (ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array))) &&
             type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
         {
             // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver. A stored
@@ -159,7 +168,9 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var receiver = this.Receiver(index.Left);
+            var receiver = index.Left.BoundType?.Kind == BoundTypeKind.FixedArray
+                ? this.BorrowStruct(index.Left, this.compilation.Binding.Reference(SemanticsKind.Ref, index.Left.BoundType, type.Origin))
+                : this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.SelectionKey(index, receiver);
             if (receiver < 0 || subscript < 0)
@@ -214,7 +225,7 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
-        if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) && ObjectTypes.HandleMode(path.BoundType) is null &&
+        if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) &&
             ElementAccess.OwnedPathRoot(path) is { } owner)
         {
             // Borrow the inline part in place; its Loan footprint is the static path (SPEC 15.6.2).

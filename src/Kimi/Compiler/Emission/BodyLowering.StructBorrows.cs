@@ -61,7 +61,9 @@ internal sealed partial class BodyLowering
             if (ObjectTypes.IsBorrow(output))
             {
                 if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (ObjectTypes.HandleMode(storedHandle) is not null || ObjectTypes.IsBorrow(storedHandle)) &&
-                    output.Semantics == SemanticsKind.ObjRef && value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
+                    (output.Semantics == SemanticsKind.ObjRef || (type.Semantics == SemanticsKind.Uniq &&
+                        (storedHandle.Semantics == SemanticsKind.ObjUniq || ObjectTypes.HandleMode(storedHandle) is { PayloadAuthority: LoanRequirement.Uniq }))) &&
+                    value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
                     ReferenceEquals(ValueType(body, Input(body, id, 0)), type) && (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
                     // SPEC 13.5.5.2: @objref of an object handle selected through a reference reads the handle at that address.
@@ -154,10 +156,12 @@ internal sealed partial class BodyLowering
                 var element = type.Components[0].Components[0];
                 var array = value.Count == 2 ? Input(body, id, 0) : -1;
                 var subscript = value.Count == 2 ? Input(body, id, 1) : -1;
+                var borrowedReceiver = array >= 0 && body.Operations[array].Kind == OwnershipOperationKind.Borrow;
                 if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics != SemanticsKind.Ref || operation.LoanMode != LoanRequirement.Ref ||
                     !(ReferenceTypes.IsStorage(output) || ReferenceTypes.IsString(output)) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
-                    !ReferenceEquals(SignatureType(this, ElementAccess.AccessType(indexed.Left)), type) || !ReferenceEquals(SignatureType(this, indexed.BoundType), element) ||
-                    body.Operations[array].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Produce) || body.Operations[array].Place != operation.Place ||
+                    !ReferenceEquals(SignatureType(this, ElementAccess.AccessType(indexed.Left)), borrowedReceiver ? type.Components[0] : type) || !ReferenceEquals(SignatureType(this, indexed.BoundType), element) ||
+                    (!borrowedReceiver && body.Operations[array].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Produce)) ||
+                    (borrowedReceiver ? body.Operations[array].Input : body.Operations[array].Place) != operation.Place ||
                     !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[array].Source), KotoHelper.UnwrapParentheses(indexed.Left)) ||
                     !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !ReferenceEquals(body.Operations[subscript].Source, ElementAccess.ValueSource(indexed.Right)) ||
                     (body.IsReachable(id) && (!this.Dominates(array, id) || !this.Dominates(subscript, id))) ||

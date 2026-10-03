@@ -6,6 +6,23 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // A stored handle is inspected through a protected slot, never acquired as another owner. The ordinary object view
+    // and payload borrow keep that slot's Loan, so every containing storage shape has the same lifetime contract.
+    private int BorrowStoredObject(Koto source, BoundType type, int reservation)
+    {
+        var exclusive = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+        var slotType = this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, source.BoundType!, type.Origin);
+        var slot = this.BorrowStruct(source, slotType, reservation);
+        if (slot < 0)
+        {
+            return -1;
+        }
+
+        var viewType = ObjectTypes.IsBorrow(type) ? type : this.compilation.Binding.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
+        var view = this.BorrowThrough(source, slot, viewType, reservation);
+        return ReferenceEquals(viewType, type) ? view : this.BorrowThrough(source, view, type, reservation);
+    }
+
     private int RuntimeTypeTest(IsKoto source)
     {
         if (source.BoundRuntimeTest is not { SharedType: { } shared } plan)

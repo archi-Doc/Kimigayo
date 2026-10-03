@@ -129,7 +129,7 @@ internal sealed partial class BodyLowering
         }
 
         var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
-        var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
+        ObjectCall? creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } && this.ObjectCalls is { } objects && objects.TryGetValue(objectCall, out var objectCreation) ? objectCreation : null;
         var original = (operation.Source as InvocationKoto)?.BoundCall;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;

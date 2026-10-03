@@ -88,15 +88,14 @@ public class TupleCaptureTest
         Assert.True(valid);
     }
 
-    // PLAN G64: the payload view of a handle stored in a Tuple is a separate existing object-access boundary.
     [Theory]
     [InlineData("let value = pair.0.id")]
     [InlineData("let f = func [pair@move] () => pair.0.id\nf()")]
-    public void StoredObjectPayloadViewsRemainExplicitlyUnsupported(string use)
+    public void StoredObjectPayloadViewsUseTheOrdinaryBorrowPlan(string use)
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet pair = (owner@move, 1)\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported && x.Source.ToString() == "pair.0");
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 }
