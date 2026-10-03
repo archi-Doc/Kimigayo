@@ -358,7 +358,7 @@ public sealed partial class Binding
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
         if (actual is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 })
         {
             return null;
         }
@@ -369,6 +369,14 @@ public sealed partial class Binding
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
             terminal = terminal.Components[0];
+        }
+
+        // A stored shared object view is Copy: reading it preserves its own external Origin and header identity,
+        // without borrowing its payload from the outer reference slot or granting exclusive authority.
+        if (terminal.Semantics == SemanticsKind.ObjRef)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, terminal);
+            return terminal;
         }
 
         if ((terminal is not { Kind: BoundTypeKind.Tuple } && !StructStorage.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, out _) is not { } shared)
@@ -584,7 +592,7 @@ public sealed partial class Binding
             return reached.Left.BoundType?.Origin ?? this.PlaceOrigin(reached.Left);
         }
 
-        return source.BoundType is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
+        return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
@@ -734,6 +742,11 @@ public sealed partial class Binding
     /// </summary>
     private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false)
     {
+        if (receiver && this.adaptations.TryGetValue(source, out var preparedReceiver) && preparedReceiver.Kind == ExpectedAdaptationKind.ReferenceRead)
+        {
+            actual = preparedReceiver.Type; // Member selection already prepared the reference reached through the stored layers.
+        }
+
         actual = this.ContractType(actual, scope);
         adapted = actual;
         quality = ArgumentAdaptation.Exact;

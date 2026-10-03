@@ -56,12 +56,15 @@ public class ObjectExclusiveFieldBorrowTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PublicOutputsDistinguishLegalBorrowsFromOwnerConflicts(bool conflict)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void PublicOutputsDistinguishLegalBorrowsFromOwnerConflicts(bool conflict, bool layers)
     {
         var path = Path.GetFullPath("exclusive-object-field.kimi");
-        var text = Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\nlet field = owner.id@uniq\n" +
+        var text = Item + "var owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
+            (layers ? "let view = owner@objref\nlet slot = view@ref\nlet field = slot.id@ref\n" : "let field = owner.id@uniq\n") +
             (conflict ? "let moved = owner@move\n" : string.Empty) + "require field == 7 else => $abort(\"live\")";
         var c = MinimalEmissionTest.Analyze(text, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

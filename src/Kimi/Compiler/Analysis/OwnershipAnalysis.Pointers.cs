@@ -189,7 +189,7 @@ public sealed partial class OwnershipAnalysis
         for (var type = this.Concrete(source.BoundType); ; type = this.Concrete(type.Components[0]))
         {
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } stored)
+                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 } stored)
             {
                 this.Unsupported(source);
                 return -1;

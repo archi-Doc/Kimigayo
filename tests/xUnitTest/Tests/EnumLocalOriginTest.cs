@@ -65,11 +65,11 @@ public class EnumLocalOriginTest
     }
 
     [Fact]
-    public void BorrowedObjectViewReceiverRemainsExplicitlyUnsupported()
+    public void BorrowedObjectViewReceiverUsesItsStoredReference()
     {
         var c = MinimalEmissionTest.Analyze("struct Item\n    public let id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\nlet value = Option.Some(owner@objref)\nmatch value\n    .Some(let view)\n        require view.id == 7 else => $abort(\"view\")\n    .None => $abort(\"missing\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported && x.Source.ToString() == "id");
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.WriteIr(new StringWriter(), out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 }

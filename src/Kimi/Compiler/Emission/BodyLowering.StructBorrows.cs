@@ -118,7 +118,7 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type))
+            if ((ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) && !ReferenceTypes.StorageMatches(type, output.Components[0]))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow, Parent: ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion } selected &&
                     ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
