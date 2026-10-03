@@ -220,6 +220,8 @@ The common expected-Type adaptation binds shared object borrows from obj/rc/arc 
 
 Factories inside generic function or container bodies report located UnsupportedOwnership rather than a generation failure; concrete call contexts and recursively discovered destructor factories remain U6. Generic rc clone preserves external payload Origins and executes without allocation.
 
+Rc base upcasts preserve dynamic Type identity and complete payload destruction. Array clear and early owning-iteration exit, and argument evaluation abandoned by return, release acquired handles correctly; raw storage transfers complete obj/rc handles only with explicit Move.
+
 An rc/arc exclusive object borrow explains its shared-only payload authority, an inapplicable exclusive receiver retains the actual and required Types, and an obj clone attempt explains that strong clone accepts rc/arc only. CLI/LSP, long names, rebinding and independent errors are verified.
 
 Ownership and native lowering support whole-value updates on complete mutable owner locals (scalars, strings and supported aggregates) and concrete scalar/struct/fixed-array uniq targets whose contents are proven Owned. Target reservations begin before later arguments and activate after preparation; replace retains original-location destruction, exchange/swap transfer old-value responsibility without user destruction. Aggregate exchange results no longer use the function result slot as an input-Origin anchor. Borrowed lowering's Owned condition is an **implementation limit**, not an added API constraint.

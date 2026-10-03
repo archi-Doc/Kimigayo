@@ -27,3 +27,7 @@ allocation audits require one allocation per factory, none per clone, and exactl
 source handle slot, including scope exit and replacement. Payload destructor observations retain those Loans through
 release. Complete handles move through Tuple/Case decomposition without decomposing their pointees; inactive Cases
 release nothing. Borrowed object views still prevent their protecting handle from being moved (CLI/LSP checked).
+
+`SharedObjectCleanupTest` exercises rc upcast/clone with dynamic Type tests and complete payload destruction, Array
+clear and early owning-iteration exit, and acquired clones abandoned by a later returning argument. Raw storage Moves
+transfer the complete obj/rc handle through the ordinary storage plan; bare acquisition still requires explicit Move.

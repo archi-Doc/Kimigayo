@@ -88,6 +88,8 @@ cleanup by handle mode. `SharedObjectRuntimeTest` covers counts, lifetime, gener
 [SHARED_OBJECT_RUNTIME.md](SHARED_OBJECT_RUNTIME.md) records the transition proof.
 `MatchTypes.SupportsOwnedPatternValue` treats whole object handles as opaque values with mode-specific cleanup;
 `SharedObjectOwnershipTest` covers Tuple/Case transfer, clone result Origins, destruction observations and CLI/LSP Loans.
+`OwnershipAnalysis.Pointers.SupportsPointerValue` shares executable handle storage with raw Move acquisition;
+`SharedObjectCleanupTest` covers owning Array iteration, clear, abandoned arguments and rc dynamic base identity.
 `FunctionKoto.RequiresInstantiation` supplies the shared generic-context predicate; `OwnershipAnalysis.Call` records
 the generic factory boundary before generation (`GenericObjectFactoryTest`, including CLI/LSP and generic clone).
 `Binding.ArgumentOperations.ExpectedAdaptation` shares object authority with argument adaptation; `SharedObjectAdaptationTest` covers fixed expectations, result dependencies and native object views.

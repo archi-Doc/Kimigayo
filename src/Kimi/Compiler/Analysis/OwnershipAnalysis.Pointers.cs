@@ -19,6 +19,7 @@ public sealed partial class OwnershipAnalysis
         // Acquisition preserves the complete pointee Type, including its internal Origins. Raw access supplies no
         // new Loan or lifetime; initialized storage and valid Copy/Move permission remain the unsafe caller's obligations.
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceTypes.IsBorrow(type) ||
+            (type is not null && ObjectTypes.HandleMode(type) is not null && this.SupportsType(type)) ||
             ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
             (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
     }
