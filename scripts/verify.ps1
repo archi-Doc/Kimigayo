@@ -29,7 +29,7 @@
 # Milestone harnesses run -Parallel at a time (default up to 8), each in its own process, work
 # directory and log; the steps are still recorded in the requested order.
 #
-# Never edit sources while this script runs; it records the commit and dirty state it verified.
+# Never edit sources while this script runs; manifests detect changes and identify the actual inputs.
 [CmdletBinding()]
 param(
     [ValidateSet('Unit', 'Session')] [string] $Mode = 'Unit',
@@ -53,6 +53,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Session' -and $TestPurpose -ne 'All') { throw 'Session verification must include functional and allocation regressions (-TestPurpose All).' }
 . (Join-Path $PSScriptRoot 'verification-selection.ps1')
+. (Join-Path $PSScriptRoot 'verification-inputs.ps1')
 $Class = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
 $Method = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
 $repo = Split-Path -Parent $PSScriptRoot
@@ -160,8 +161,25 @@ function Test-Selection([string] $configuration, [string[]] $filters) {
     catch { Add-Step 'test selection' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
 }
 
-$head = (& git -C $repo rev-parse --short HEAD).Trim()
-$dirty = [bool](& git -C $repo status --porcelain --untracked-files=no)
+$head = (& git -C $repo rev-parse HEAD).Trim()
+$dirty = [bool](& git -C $repo status --porcelain --untracked-files=all)
+$inputStability = 'not-performed'
+$beforeInputs = $null
+$timer = Start-Step 'input manifest'
+try {
+    $beforeInputs = Get-KimiVerificationInputs $repo
+    $beforeInputs | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'inputs-before.json')
+    Add-Step 'input manifest' $true "$($beforeInputs.files.Count) source/configuration files, $($beforeInputs.dependencies.Count) NuGet inputs" $timer.Elapsed.TotalSeconds
+}
+catch { Add-Step 'input manifest' $false $_.Exception.Message $timer.Elapsed.TotalSeconds }
+if (-not $failed) {
+    foreach ($scriptTest in @('VerificationSelectionTest', 'VerificationInputsTest')) {
+        $timer = Start-Step $scriptTest
+        $log = Join-Path $evidence "$scriptTest.log"
+        $ok = Invoke-Script { & (Join-Path $repo "tests/scripts/$scriptTest.ps1") } $log
+        Add-Step $scriptTest $ok $log $timer.Elapsed.TotalSeconds
+    }
+}
 $filters = @()
 foreach ($c in $Class) {
     foreach ($pattern in (Get-KimiTestAlternatives $c)) { $filters += @('-class', $pattern) }
@@ -274,7 +292,21 @@ if (-not $failed -and $Milestone.Count -gt 0) {
     }
 }
 
-[ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
+if ($null -ne $beforeInputs) {
+    $timer = Start-Step 'input stability'
+    try {
+        $afterInputs = Get-KimiVerificationInputs $repo
+        $afterInputs | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'inputs-after.json')
+        Assert-KimiVerificationInputsStable $beforeInputs $afterInputs
+        $inputStability = 'passed'
+        Add-Step 'input stability' $true 'Source/configuration and NuGet inputs unchanged' $timer.Elapsed.TotalSeconds
+    }
+    catch {
+        $inputStability = 'failed'
+        Add-Step 'input stability' $false $_.Exception.Message $timer.Elapsed.TotalSeconds
+    }
+}
+[ordered]@{ mode = $Mode; configuration = $Configuration; buildTarget = $buildTarget; testPurpose = $TestPurpose; head = $head; dirty = $dirty; inputStability = $inputStability; started = $stamp; workDirectory = $work; toolchainVerification = $toolchainVerification; testParallel = $TestParallel; nativeParallel = $NativeParallel; milestoneParallel = $Parallel; seconds = [Math]::Round($totalTimer.Elapsed.TotalSeconds, 3); steps = $steps } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $evidence 'summary.json')
 Write-Host "Evidence: $evidence (HEAD $head$(if ($dirty) { ', uncommitted changes' }))"
 if ($failed) { exit 1 }

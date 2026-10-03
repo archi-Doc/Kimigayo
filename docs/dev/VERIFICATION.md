@@ -25,6 +25,18 @@ After the build, Unit verification discovers methods from that exact assembly, c
 
 `-TestPurpose All` is the default; `Functional` and `Allocation` restrict deliberate Unit checks. Session rejects either restriction. Select relevant native fixtures and milestones explicitly as before. Selector rules and optional allocation companions are regression-checked by `./tests/scripts/VerificationSelectionTest.ps1`.
 
+## Source identity and commit association
+
+Verify writes `inputs-before.json` and `inputs-after.json`. The manifest covers tracked and nonignored untracked files, including new source files, configuration, scripts and specification documents. It excludes `draft/` (not authoritative compiler input), `docs/dev/PLAN.md` and `PLAN_HISTORY.md` (post-verification bookkeeping); ignored build outputs are excluded. Restored `obj/project.assets.json` and NuGet-generated project props/targets are hashed separately. Changed, added or deleted inputs between the two observations fail the run, even if its tests passed. Keep the no-source-edits rule: endpoint comparison does not detect a transient edit that is reverted between observations.
+
+Each source entry records SHA-256 of the actual bytes and the Git-normalized blob identity. After committing a verified unit, associate its evidence with the commit before pushing:
+
+```powershell
+./scripts/verify-commit.ps1 -Evidence artifacts/verify/<run> [-Commit HEAD]
+```
+
+The association requires a successful Verify summary and exact path/blob equality with the committed tree under the same manifest policy; missing untracked inputs and additional committed sources fail. `commit-match.json` records the full commit and manifest hash. Git line-ending/filter normalization is explicit: it is not a claim that a checkout's raw bytes equal a commit's bytes. Later PLAN/history bookkeeping can share the same verified source manifest. The manifests are evidence, not an isolated or hermetic build: SDK/runtime, external package contents and tools outside the repository remain external; use `-VerifyToolchain` for the separately recorded native-toolchain identity check. Manifest and commit-matching regressions run with `./tests/scripts/VerificationInputsTest.ps1`.
+
 ## Specification acceptance and support boundaries
 
 Derive expected acceptance and rejection from the owning SPEC rules before selecting an implementation path. A specification-valid form that currently reports Unsupported is an implementation boundary, not a language rejection. Name and record that boundary with its PLAN owner. When implementing it, replace the temporary rejection with native acceptance and retain the independently invalid counterpart; a passing Milestone Program alone does not close neighboring implementation work.
