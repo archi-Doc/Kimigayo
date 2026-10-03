@@ -67,6 +67,23 @@ public sealed partial class Binding
 
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false);
 
+    private static string? ClosureConversionNote(object actual, object expected)
+    {
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } } || expected is not BoundType { Kind: BoundTypeKind.Function } signature)
+        {
+            return null;
+        }
+
+        return closure.Receiver switch
+        {
+            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
+            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
+            _ => !CallableSignatureFits(closure.Signature, signature)
+                ? "The closure's parameter or result contract does not match the expected common Function signature"
+                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
+        };
+    }
+
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
         => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
             expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&

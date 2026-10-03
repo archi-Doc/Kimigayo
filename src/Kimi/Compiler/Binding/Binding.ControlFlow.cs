@@ -379,7 +379,7 @@ public sealed partial class Binding
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
-            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.BoundType);
+            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
         }
         else if (structural.CanComplete(body))
         {

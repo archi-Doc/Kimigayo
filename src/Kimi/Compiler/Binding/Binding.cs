@@ -674,7 +674,7 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : ClosureConversionNote(mismatch.Actual, mismatch.Expected) ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {

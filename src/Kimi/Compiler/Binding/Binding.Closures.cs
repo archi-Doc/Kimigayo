@@ -93,79 +93,14 @@ public sealed partial class Binding
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected)
     {
-        if (expected is null)
+        if (expected is not null && !this.ClosureSignatureFits(function, expected))
         {
-            return this.BindConcreteClosure(function, scope);
+            return this.Fail(function, BindingFailure.TypeMismatch);
         }
 
-        if (!this.ClosureSignatureFits(function, expected))
-        {
-            return this.Fail(function, expected is null ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);
-        }
-
-        var plan = function.ClosureStorage ??= new();
-        plan.Storage.Clear();
-        plan.EnvironmentType = null;
-        plan.Receiver = SemanticsKind.Ref;
-        plan.Signature = expected;
-        var symbol = this.symbols[function];
-        symbol.Type = expected.Components[1];
-        symbol.HeaderBound = true;
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            this.symbols[function.Parameters[i]].Type = expected.Components[0].Components[i];
-            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
-            {
-                Complete(inferred, expected.Components[0].Components[i]);
-            }
-        }
-
-        if (function.Captures is { } captures)
-        {
-            for (var i = 0; i < captures.Length; i++)
-            {
-                var capture = captures[i];
-                var transfer = capture.Operation == Constants.MoveOperation;
-                if (capture.IsMutable || (capture.Operation is not null && !transfer))
-                {
-                    return this.Fail(function, BindingFailure.Unsupported);
-                }
-
-                if (scope.Values.ContainsKey(capture.Name))
-                {
-                    return this.Fail(function, BindingFailure.Duplicate);
-                }
-
-                var source = this.Lookup(capture.Name, scope.Parent!, function, false);
-                if (source?.Type is { } captureType && !(ScalarTypes.Supports(captureType) || ReferenceEquals(captureType, BoundType.Unit)))
-                {
-                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (capture, captureType));
-                }
-
-                if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
-                {
-                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
-                }
-
-                // SPEC 7.6.2: a bare capture Copies; a Non-Copy binding is transferred only by x@move.
-                environment.CaptureAcquisition = transfer ? CaptureAcquisition.Move : CaptureAcquisition.Copy;
-                if (!transfer && this.ProveCopy(source.Type!, function) != ConstraintProof.Proven)
-                {
-                    return this.Fail(function, BindingFailure.TransferRequired);
-                }
-            }
-        }
-
-        if (function.Body is { } block)
-        {
-            this.BindNode(block, scope);
-        }
-        else if (function.ExpressionBody is { } expression)
-        {
-            this.RequireType(expression, scope, symbol.Type);
-        }
-
-        return Complete(function, expected);
+        // A fixed signature supplies header inference, never a different capture or ownership model. The ordinary
+        // expected-Type adaptation erases the resulting concrete value only after its body and receiver are known.
+        return this.BindConcreteClosure(function, scope, expected);
     }
 
     // An unsupported captured Type is reported at the written capture entry when there is one.
@@ -275,7 +210,7 @@ public sealed partial class Binding
         return null;
     }
 
-    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope)
+    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected)
     {
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
@@ -283,11 +218,12 @@ public sealed partial class Binding
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : null;
+        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : expected?.Components[1];
         symbol.HeaderBound = true;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = this.BindType(function.Parameters[i].Type, scope);
+            this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
+                ? Complete(inferred, expected.Components[0].Components[i]) : this.BindType(function.Parameters[i].Type, scope);
         }
 
         if (function.Captures is { } captures)

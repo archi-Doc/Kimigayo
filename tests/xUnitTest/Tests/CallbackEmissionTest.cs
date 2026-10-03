@@ -85,17 +85,10 @@ public class CallbackEmissionTest
             "created\n");
 
     [Theory]
-    [InlineData("let a: u128 = 1\nlet f: () -> u128 = func [a] () => a")]
-    [InlineData("let a: i64 = 1\nlet b: i64 = 2\nlet f: () -> i64 = func [a, b] () => a")]
-    public void LargerEnvironmentsRemainExplicitlyUnsupported(string source)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var failure));
-        Assert.Contains("inline", failure!, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(output.ToString());
-    }
+    [InlineData("Wide", "let a: u128 = 1\nlet f: () -> u128 = func [a] () => a\nrequire f() == 1 else => $abort(\"wide\")")]
+    [InlineData("Two", "let a: i64 = 1\nlet b: i64 = 2\nlet f: () -> i64 = func [a, b] () => a\nrequire f() == 1 else => $abort(\"two\")")]
+    public void LargerEnvironmentsUseHeapErasure(string name, string source)
+        => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, 1, 1, 16, string.Empty);
 
     // An unsupported captured Type is reported at its capture entry rather than across the whole closure.
     [Theory]
