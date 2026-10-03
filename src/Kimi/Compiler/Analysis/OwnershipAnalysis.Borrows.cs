@@ -190,7 +190,10 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStoredReference(storedPart, storedPart, type, reservation);
         }
 
-        if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) && !ReferenceTypes.IsStorage(field.BoundType) &&
+        // A field holding a reference is borrowed here only as its slot (`p.0@ref` of `p: ref/(ref/i32, i32)`), never through
+        // a copy of the stored reference, whose temporary would not outlive the call (SPEC 3.3.6, 15.6.2).
+        if (unwrapped is MemberAccessKoto field && !Binding.IsGetterResult(field) && !this.SpecialField(field) &&
+            (!ReferenceTypes.IsStorage(field.BoundType) || ReferenceEquals(type.Components[0], field.BoundType)) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
             var receiver = this.Receiver(root, type.Semantics == SemanticsKind.Uniq);

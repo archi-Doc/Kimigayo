@@ -149,7 +149,10 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) && !ReferenceTypes.IsStorage(SignatureType(this, projected.BoundType)) &&
+            // A field holding a reference is projected only as its slot; a Reborrow of its referent loads it below.
+            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) &&
+                SignatureType(this, projected.BoundType) is var projectedType &&
+                (!ReferenceTypes.IsStorage(projectedType) || ReferenceEquals(projectedType, output.Components[0])) &&
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
