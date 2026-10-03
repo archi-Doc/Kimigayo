@@ -25,6 +25,12 @@ public class GenericCallbackEmissionTest
     [InlineData("Isize", "func invoke<T>(x: T, f: (T) -> isize) -> isize => f(x@move)\nrequire invoke<i32>(7, func (x: i32) => 42) == 42 else => $abort(\"result\")", "")]
     [InlineData("Unit", "func invoke<T>(x: T, f: (T) -> ()) => f(x@move)\ninvoke<i32>(7, func (x: i32) => Console.writeLine(\"called\"))", "called\n")]
     [InlineData("NoArguments", "func invoke<T>(x: T, f: () -> bool) -> bool => f()\nrequire invoke<i32>(7, func () => true) else => $abort(\"result\")", "")]
+    // An instance's `(T) -> T` value call returns the substituted T: its scalar result was left without a value, so building
+    // any instance failed with GenerationFailed_Kd ("Missing scalar computation") after the check passed.
+    [InlineData("GenericResult", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (value: i32) -> i32 => value + 1\nrequire apply(g, 2) == 3 else => $abort(\"result\")", "")]
+    [InlineData("GenericResultNested", "func twice<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(f(v))\nlet g = func [] (value: i64) -> i64 => value * 3\nrequire twice(g, 2@i64) == 18 else => $abort(\"nested\")", "")]
+    [InlineData("GenericResultTuple", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (p: (i32, i32)) -> (i32, i32) => (p.1, p.0)\nlet r = apply(g, (1, 2))\nrequire r.0 == 2 and r.1 == 1 else => $abort(\"tuple\")", "")]
+    [InlineData("GenericResultString", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (s: string) -> string => s@move\nrequire apply(g, \"abc\") == \"abc\" else => $abort(\"string\")", "")]
     public void SharedCallsPreserveBehavior(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
 

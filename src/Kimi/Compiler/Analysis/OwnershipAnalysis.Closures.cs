@@ -150,7 +150,8 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Temporary(call);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
-        if (ScalarResult(plan.ReturnType))
+        // An instance's `(T) -> T` returns its substituted T.
+        if (this.Concrete(plan.ReturnType) is { } returned && ScalarResult(returned))
         {
             this.SetValue(invoke, OwnershipValueKind.Call, []);
             this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);
