@@ -67,6 +67,11 @@ internal static partial class LlvmModuleWriter
               %lengthSlot = getelementptr i8, ptr %site, i64 8
               store i64 %length, ptr %lengthSlot, align 8
               %header = load ptr, ptr %slot, align 8
+              call void @__kimi_object_finalize(ptr %header, ptr %site)
+              ret void
+            }
+            define internal void @__kimi_object_finalize(ptr %header, ptr %site) #0 {
+            entry:
               %descriptor = load ptr, ptr %header, align 8
               %metadata = load ptr, ptr %descriptor, align 8
               %freeSlot = getelementptr i8, ptr %descriptor, i64 8

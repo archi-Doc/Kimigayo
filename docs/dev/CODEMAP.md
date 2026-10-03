@@ -75,6 +75,8 @@ Dictionary optional lookup and removal enter through `Dictionary.kimi` (`tryGet`
 
 For cross-cutting changes: project/dependency input starts with `DependencyResolutionTest` and `DependencyLockTest`; check/diagnostic publication with `CheckServiceTest`, `DiagnosticOwnerTest`, `DiagnosticContractTest` and `DiagnosticRelationTest`; LSP with `LspProtocolTest` and `LspProjectDiagnosticTest`; edit invalidation with `SyntaxEditInvalidationTest`.
 
+Object payload destruction and allocation release share `__kimi_object_finalize` in `LlvmModuleWriter.Objects`; `ObjectRuntimeTest` and `PipelineObjectTest` cover dynamic destruction, complete-header identity and allocation counts.
+
 Ownership table dimensions enter through `OwnershipStorage`; `PackedAnalysisTable` stores Loan modes and liveness for `OwnershipBody.Borrows`. `BorrowDependencyStorageTest`, `OwnershipStorageLimitTest` and `Benchmark --borrow-storage` cover reuse, retained space, Resource diagnostics and fixed-workload measurements.
 
 ## Use and maintenance
