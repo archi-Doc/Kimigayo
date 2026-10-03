@@ -64,7 +64,7 @@ internal sealed partial class BodyLowering
         }
 
         if (!IsScalar(type) || (uint)delivery.Value >= (uint)body.Values.Count || (uint)delivery.Write >= (uint)body.Operations.Count ||
-            !ReferenceEquals(ValueType(body, delivery.Value), type) ||
+            !ReferenceTypes.StorageMatches(type, ValueType(body, delivery.Value)) || // An Origin shortened by variance keeps the storage (SPEC 15.3.5).
             body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
             write.Place != operation.Place || body.Values[delivery.Write].Kind != OwnershipValueKind.Alias ||
             Input(body, delivery.Write, 0) != delivery.Value || !this.Dominates(delivery.Value, delivery.Write) || !this.Dominates(delivery.Write, id))

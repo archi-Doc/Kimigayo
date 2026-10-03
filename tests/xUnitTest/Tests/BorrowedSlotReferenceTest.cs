@@ -18,6 +18,10 @@ public class BorrowedSlotReferenceTest
     [InlineData("Exclusive", "func slot(p: uniq/(uniq/i32 during a, i32)) -> uniq/(uniq/i32 during a) during p => p.0@uniq\nvar value = 1\nvar t = (value@uniq, 2)\nlet s = slot(t@uniq)\nlet z = clobber(1234567, 7654321)\ns@follow@follow = 5\nrequire z > 0 and value == 5 else => $abort(\"slot\")")]
     [InlineData("GenericShared", "func pick<A, B>(p: ref/(A, B)) -> ref/A during p => p.0@ref\nvar value = 1\nlet t = (value@ref, 2)\nlet r = pick(t@ref)\nlet z = clobber(1234567, 7654321)\nrequire z > 0 and r == 1 else => $abort(\"slot\")")]
     [InlineData("GenericExclusive", "func pick<A, B>(p: ref/(A, B)) -> ref/A during p => p.0@ref\nvar value = 1\nlet t = (value@uniq, 2)\nlet r = pick(t@ref)\nlet z = clobber(1234567, 7654321)\nrequire z > 0 and r@follow@follow == 1 else => $abort(\"slot\")")]
+    // SPEC 15.3.5: the result's omitted inner Origin is `p`; the stored `a` outlives `p`, so the slot fits by covariance. Control
+    // flow judged the result without the scope's premises (IncompatibleResult_Kd) and lowering required the exact Type.
+    [InlineData("StructShortened", "struct H {a}\n    public let item: ref/i32 during a\n    public let extra: i32\n    public init(item: ref/i32 during a, extra: i32)\n        self.item = item\n        self.extra = extra\nfunc pick(p: ref/H) -> ref/(ref/i32) during p => p.item@ref\nvar value = 1\nlet h = H.init(value@ref, 2)\nlet r = pick(h@ref)\nlet z = clobber(1234567, 7654321)\nrequire z > 0 and r == 1 else => $abort(\"slot\")")]
+    [InlineData("TupleShortened", "func pick(p: ref/(ref/i32 during a, i32)) -> ref/(ref/i32) during p => p.0@ref\nvar value = 1\nlet t = (value@ref, 2)\nlet r = pick(t@ref)\nlet z = clobber(1234567, 7654321)\nrequire z > 0 and r == 1 else => $abort(\"slot\")")]
     [InlineData("GenericValue", "func pick<A, B>(p: ref/(A, B)) -> ref/A during p => p.0@ref\nlet t = ((1, 3), 2)\nlet r = pick(t@ref)\nrequire r.0 == 1 and r.1 == 3 else => $abort(\"slot\")")]
     public void AReferenceElementIsBorrowedInItsSlot(string name, string source)
         => ScalarEmissionTest.EmitFixture("BorrowedSlotReference" + name, Clobber + source, string.Empty);
@@ -31,6 +35,16 @@ public class BorrowedSlotReferenceTest
         Assert.Contains(pick.Operations, static operation => operation.Kind == OwnershipOperationKind.Borrow && operation.Source.ToString() == "p.0");
         // No temporary holds a copy of the stored `ref/i32` for the borrow.
         Assert.DoesNotContain(pick.Places, static place => place.Kind == OwnershipPlaceKind.Temporary && place.Type is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Primitive }] });
+    }
+
+    // A stored Origin that is not known to outlive the result's stays a mismatch at the result.
+    [Fact]
+    public void AnUnrelatedInnerOriginIsNotShortened()
+    {
+        var source = "struct H {a}\n    public let item: ref/i32 during a\n    public init(item: ref/i32 during a) => self.item = item\nfunc pick(p: ref/H, q: ref/i32) -> ref/(ref/i32 during q) during p => p.item@ref\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal("p.item@ref", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
     }
 
     [Theory]

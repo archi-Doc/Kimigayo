@@ -76,7 +76,8 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             return null;
         }
 
-        return Binding.FitsType(actual, expected) || binding.FitsUnderIdentity(actual, expected, source.Node);
+        // The fit Binding judged at the result: Origin relations use the premises in scope there (SPEC 15.3.5).
+        return binding.FitsTypeAt(actual, expected, source.Node) || binding.FitsUnderIdentity(actual, expected, source.Node);
     }
 
     public override ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
