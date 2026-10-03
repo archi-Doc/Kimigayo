@@ -43,22 +43,22 @@
   + Name="Syntax.CloseParenthesis"
     Description="the grouping is closed"
     Phrase="')'"
-    Advice="A grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseBracket"
     Description="the grouping is closed"
     Phrase="']'"
-    Advice="A grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseBrace"
     Description="the grouping is closed"
     Phrase="'}'"
-    Advice="A grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseAngleBracket"
     Description="the Type argument list is closed"
     Phrase="'>'"
-    Advice="A Type argument list cannot continue past the end of its line."
+    Advice="Close the Type argument list where its arguments end; arguments that continue on the next line are indented one more level for each open delimiter."
 
   + Name="Syntax.UnmatchedCloser"
     Description="every closing delimiter closes an open grouping"
