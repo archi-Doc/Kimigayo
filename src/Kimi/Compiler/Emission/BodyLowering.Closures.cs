@@ -61,6 +61,20 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
+        if (body.Values[id].Count == 0)
+        {
+            // SPEC 7.6.4: a Function Item has no environment; the erasure adapter takes the common (environment, ret, inputs,
+            // context) call and calls the function with its own ABI.
+            if (operation.Kind != OwnershipOperationKind.Produce || operation.Source.BoundSymbol is not { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsAnonymous: false } target } ||
+                body.Places[operation.Place].Type.Kind != BoundTypeKind.Function || this.functions?.GetValueOrDefault(target) is not { CallerLocation: false } item)
+            {
+                return Fail("Function item erasure requires a resolved function entry without caller location.", out failure);
+            }
+
+            function.Instructions.Add(new(EmissionOpcode.EraseClosure, id, operation.Place, Callee: item, OperandStart: function.Operands.Count));
+            return true;
+        }
+
         var input = Input(body, id, 0);
         var source = ValueType(body, input);
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||

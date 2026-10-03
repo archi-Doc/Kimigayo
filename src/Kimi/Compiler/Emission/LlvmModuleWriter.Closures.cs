@@ -71,7 +71,7 @@ internal static partial class LlvmModuleWriter
         output.Write("  store i64 0, ptr ");
         WriteSlot(output, function, instruction.Place);
         output.Write(", align 8\n");
-        if (instruction.Aggregate!.Value.Layout.Size > 0)
+        if (instruction.Aggregate is { } environment && environment.Value.Layout.Size > 0)
         {
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr ");
             WriteSlot(output, function, instruction.Place);

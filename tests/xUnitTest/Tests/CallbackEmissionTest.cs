@@ -41,6 +41,12 @@ public class CallbackEmissionTest
     [InlineData("ArrayResult", "let n: i32 = 7\nlet f: () -> Array<i32> = func [n] () -> Array<i32> => [n, n, n]\nlet a = f()\nrequire a.length == 3 and a[2] == 7 else => $abort(\"array\")")]
     [InlineData("TupleResult", "let f: (i32) -> (i32, i64, i32) = func [] (v) => (v, 2@i64, 3)\nlet t = f(1)\nrequire t.0 == 1 and t.1 == 2 and t.2 == 3 else => $abort(\"tuple\")")]
     [InlineData("DirectStringResult", "let n: i32 = 7\nlet f = func [n] () -> Array<i32> => [n, n]\nlet a = f()\nrequire a.length == 2 and a[1] == 7 else => $abort(\"direct\")")]
+    // SPEC 7.6.4: a Function Item converts to a fixed common Function Type without an environment; the erasure adapter calls
+    // the function with its own ABI. Ownership analysis read the item as a missing local, and an argument was unsupported.
+    [InlineData("FunctionItemInitializer", "func inc(value: i32) -> i32 => value + 1\nlet f: (i32) -> i32 = inc\nrequire f(2) == 3 else => $abort(\"initializer\")")]
+    [InlineData("FunctionItemArgument", "func inc(value: i32) -> i32 => value + 1\nfunc apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nrequire apply(inc, 2) == 3 else => $abort(\"argument\")")]
+    [InlineData("FunctionItemOverload", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc inc(v: i32) -> i32 => v + 1\nfunc inc(v: i64) -> i64 => v + 2\nrequire apply(inc, 2) == 3 else => $abort(\"overload\")")]
+    [InlineData("FunctionItemReturn", "func make() -> (i32) -> string\n    return describe\nfunc describe(v: i32) -> string => if v > 0 => \"pos\" else => \"neg\"\nlet f = make()\nrequire f(3) == \"pos\" and f(-1) == \"neg\" else => $abort(\"return\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -85,6 +91,9 @@ public class CallbackEmissionTest
     [InlineData("let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    func nested() -> i32 => n\n    return nested()")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet h = func [] (value: i64) -> i64 => value\nlet x = apply(h, 3)")]
     [InlineData("let f = func [] (value) => value + 1")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc wide(v: i64) -> i64 => v\nlet r = apply(wide, 2)")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc id<T>(x: T) -> T => x@move\nlet r = apply(id, 2)")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nunsafe func raw(v: i32) -> i32 => v\nlet r = apply(raw, 2)")]
     [InlineData("func apply(f: (string) -> i32) -> i32 => f(\"ab\")\nlet n = apply(func [] (s) => s + 1)")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
     public void RejectsInvalidClosures(string source)

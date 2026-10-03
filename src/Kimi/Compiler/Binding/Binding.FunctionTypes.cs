@@ -74,6 +74,28 @@ public sealed partial class Binding
         return Complete(use, required);
     }
 
+    // Whether one function of a group converts to a common Function Type. A form BindFunctionReference rejects with its own
+    // diagnostic (a generic, receiver or unsafe function) counts as fitting, so that diagnostic is published after selection.
+    private bool FunctionGroupFits(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)
+    {
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+        {
+            this.BindHeader(candidate);
+            if (candidate.Declaration is not FunctionKoto function || function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 ||
+                candidate.ReceiverIndex >= 0 || candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+            {
+                return true;
+            }
+
+            if (this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required)
     {
         var parameters = required.Components[0];

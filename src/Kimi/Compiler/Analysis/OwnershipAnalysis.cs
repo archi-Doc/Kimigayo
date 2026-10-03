@@ -878,6 +878,15 @@ public sealed partial class OwnershipAnalysis
                     return this.ReadCandidate(node, use);
                 }
 
+                if (node.BoundSymbol?.Kind == BindingSymbolKind.Function && this.Concrete(node.BoundType)?.Kind == BoundTypeKind.Function)
+                {
+                    // SPEC 7.6.4: a Function Item converted to its fixed common Function Type is a new owned value without an
+                    // environment; the item itself is not a Place.
+                    var item = this.Temporary(node);
+                    this.SetValue(this.Value(item), OwnershipValueKind.ClosureErasure, []);
+                    return item;
+                }
+
                 return this.Use(node, this.Local(node), use, acquisition);
             case StringLiteralKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or UnitLiteralKoto or NullLiteralKoto:
                 return this.Temporary(node);

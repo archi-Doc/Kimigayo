@@ -144,6 +144,27 @@ public sealed partial class Binding
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
     // Gets the first written Type of a bound header that did not resolve.
+    // Whether some function of a callee group has a common Function Type parameter, the only position a function group
+    // argument converts to.
+    private static bool TakesCommonFunction(BindingSymbol? group)
+    {
+        for (var candidate = group; candidate is not null; candidate = candidate.Next)
+        {
+            if (candidate.Declaration is FunctionKoto function)
+            {
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    if (function.Parameters[i].Type.BoundType?.Kind == BoundTypeKind.Function)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static Koto? IncompleteSignature(FunctionKoto function)
     {
         if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
@@ -443,7 +464,12 @@ public sealed partial class Binding
             {
                 if (argument is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
                 {
-                    // A function group resolves for call selection only; passing it as a value is not yet implemented (P26).
+                    if (TakesCommonFunction(group))
+                    {
+                        continue; // SPEC 7.6.4: a function group is converted at the selected parameter's common Function Type.
+                    }
+
+                    // As a value of its own Function Item Type (a generic or Callable parameter) it is not yet implemented (P26).
                     this.Fail(argument, BindingFailure.Unsupported, true);
                 }
 
@@ -1203,6 +1229,19 @@ public sealed partial class Binding
                 if (argument is FunctionKoto { IsAnonymous: true } closure)
                 {
                     if (!this.ClosureSignatureFits(closure, type))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    continue;
+                }
+
+                if (argument is { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } group })
+                {
+                    // SPEC 7.6.4: a function group argument fits when one of its functions converts to the parameter's common
+                    // Function Type; the reference is bound to that function after selection.
+                    if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(argument, group, type, scope))
                     {
                         return CandidateApplicability.Inapplicable;
                     }
