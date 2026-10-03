@@ -8,6 +8,11 @@ internal sealed partial class BodyLowering
 {
     private readonly List<FunctionAbi> valueCallAbis = new();
 
+    // A common Function value in a field or element is called through a temporary shared borrow of that part.
+    private static bool IsPartReceiver(OwnershipPlace place, BoundType receiver)
+        => receiver.Kind == BoundTypeKind.Function && place.Kind == OwnershipPlaceKind.Temporary &&
+            place.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(place.Type.Components[0], receiver);
+
     private static int CaptureOffset(BoundClosure closure, int index)
     {
         var offset = 0;
@@ -197,7 +202,7 @@ internal sealed partial class BodyLowering
         var signature = SignatureType(this, plan.Signature);
         var returnType = SignatureType(this, plan.ReturnType);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
-            !ReferenceEquals(body.Places[operation.Input].Type, receiver) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
+            !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || IsPartReceiver(body.Places[operation.Input], receiver)) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count ||
             !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
@@ -304,7 +309,7 @@ internal sealed partial class BodyLowering
 
         // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
         // receives the environment from the value itself, whose address leads the operands when a reference holds it.
-        var borrowed = plan.ReceiverType.Kind == BoundTypeKind.Semantics;
+        var borrowed = body.Places[operation.Input].Type.Kind == BoundTypeKind.Semantics;
         if (concreteEntry is not null || borrowed)
         {
             if (borrowed)

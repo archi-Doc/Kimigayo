@@ -80,8 +80,15 @@ public sealed partial class OwnershipAnalysis
         var depth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
         var explicitReceiver = plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.Receiver);
+
+        // A common Function value stored in a field or element is called through a shared borrow of that part, as `@ref`
+        // would take it, since reading the Non-Copy value out would transfer it.
+        var direct = KotoHelper.UnwrapParentheses(plan.Receiver);
+        var part = plan.ReceiverKind == SemanticsKind.Ref && plan.ReceiverType.Kind == BoundTypeKind.Function &&
+            (direct is MemberAccessKoto || (direct is BinaryKoto element && ElementAccess.IsSyntax(element)));
         var receiver = explicitReceiver
             ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, plan.ReceiverType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
+            : part ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.ReceiverType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
             : this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {
@@ -93,7 +100,7 @@ public sealed partial class OwnershipAnalysis
         var reservation = plan.ReceiverKind == SemanticsKind.Uniq && !explicitReceiver ? this.NewCallReservation(call) : -1;
         var receiverValue = this.Value(receiver);
         var read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver, reservation: reservation);
-        if (ReferenceTypes.IsBorrow(plan.ReceiverType) && this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+        if (ReferenceTypes.IsBorrow(this.body.Places[receiver].Type) && this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
         {
             this.SetValue(read, OwnershipValueKind.Alias, [receiverValue]);
         }
@@ -101,7 +108,7 @@ public sealed partial class OwnershipAnalysis
         if (plan.ReceiverKind != SemanticsKind.Owner)
         {
             var loan = this.BeginSharedLoan(receiver);
-            if (plan.ReceiverType.Kind != BoundTypeKind.Function)
+            if (this.body.Places[receiver].Type.Kind != BoundTypeKind.Function)
             {
                 this.body.ComparisonLoans[loan] = this.body.ComparisonLoans[loan] with { Callable = call, Mode = plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref };
             }
@@ -123,6 +130,17 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.ActivateCallReservations(call, reservationMark);
+        if (!explicitReceiver && reservation < 0 && ReferenceTypes.IsBorrow(this.body.Places[receiver].Type))
+        {
+            // A reference receiver is used again at the call, so the Place it borrows stays lent while the arguments run; an
+            // exclusive receiver is instead held by its call reservation.
+            var use = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
+            if (this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
+            {
+                this.SetValue(use, OwnershipValueKind.Alias, [receiverValue]);
+            }
+        }
+
         var acquired = true;
         for (var i = mark; i < this.arguments.Count; i++)
         {

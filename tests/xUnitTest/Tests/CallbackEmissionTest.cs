@@ -59,6 +59,9 @@ public class CallbackEmissionTest
     [InlineData("FunctionReferenceLocal", "let k = 5\nlet g: (i32) -> i32 = func [k] (v) => v + k\nlet r = g@ref\nrequire r(3) == 8 and r(4) == 9 else => $abort(\"local\")")]
     [InlineData("FunctionUniqueReference", "func apply(f: uniq/((i32) -> i32), v: i32) -> i32 => f(v)\nvar g: (i32) -> i32 = func [] (v) => v * 2\nlet r = g@uniq\nrequire r(3) == 6 else => $abort(\"local\")\nrequire apply(g@uniq, 4) == 8 else => $abort(\"argument\")")]
     [InlineData("FunctionPartReference", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nlet h = H.init(func [] (v) => v * 3)\nlet r = h.f@ref\nlet fs: Array<(i32) -> i32> = [func [] (v) => v + 1, func [] (v) => v + 2]\nlet e = fs[1]@ref\nrequire r(2) == 6 and e(1) == 3 else => $abort(\"part\")")]
+    [InlineData("FunctionFieldCall", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nstruct G\n    public var h: H\n    public init(h: H) => self.h = h@move\nfunc call(h: ref/H, v: i32) -> i32 => (h.f)(v)\nlet k = 7\nlet h = H.init(func [k] (v) => v + k)\nlet g = G.init(H.init(func [] (v) => v * 5))\nrequire (h.f)(2) == 9 and call(h@ref, 1) == 8 and (g.h.f)(2) == 10 else => $abort(\"field\")")]
+    [InlineData("FunctionElementCall", "let a = 10\nlet b = 20\nlet fs: Array<(i32) -> i32> = [func [a] (v) => v + a, func [b] (v) => v + b]\nvar total = 0\nvar i = 0\nwhile i < 2\n    total += fs[i](1)\n    i += 1\nrequire total == 32 else => $abort(\"element\")")]
+    [InlineData("FunctionReceiverSharedArgument", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc peek(g: ref/((i32) -> i32)) -> i32 => g(1)\nfunc peekh(h: ref/H) -> i32 => (h.f)(1)\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nvar h = H.init(func [] (v) => v + 4)\nrequire r(peek(g@ref)) == 9 and (h.f)(peekh(h@ref)) == 9 else => $abort(\"shared\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -116,6 +119,30 @@ public class CallbackEmissionTest
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
+    }
+
+    // A reference receiver of a value call is used again at the call, so the Place it borrows stays lent while the arguments
+    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element.
+    [Theory]
+    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "let r = g@ref")]
+    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "h.f")]
+    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]")]
+    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string retained)
+    {
+        var path = Path.GetFullPath("value-receiver-conflict.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.False(c.Ownership.Result.IsVerified);
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
+        Assert.Equal("CallActivationConflict_Kd", error.Code);
+        Assert.Equal(reserved, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        var loan = Assert.Single(error.Related!);
+        Assert.Equal("loan", loan.Role);
+        Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
     }
 
     [Trait("Purpose", "Allocation")]
