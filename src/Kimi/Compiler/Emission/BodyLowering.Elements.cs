@@ -24,6 +24,11 @@ internal sealed partial class BodyLowering
             body.IncomingEdges[to] == edge && body.IncomingCounts[to] == 1;
     }
 
+    private static bool MatchesSelectionKeySource(OwnershipBody body, int value, IndexKoto source)
+        => ReferenceEquals(body.Operations[value].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(source))) ||
+            (body.Values[value].Kind == OwnershipValueKind.Convert && body.Values[value].Constant == OwnershipValue.PositionConversion &&
+                ReferenceEquals(body.Operations[value].Source, source.Right));
+
     private bool IsElementReceiverRead(OwnershipBody body, int id)
     {
         if ((uint)id >= (uint)body.LoanStates.Count || body.LoanStates[id] is not (>= 0 and var loanId) ||
@@ -238,8 +243,7 @@ internal sealed partial class BodyLowering
             if (source is IndexKoto)
             {
                 if ((uint)plan.Index >= (uint)body.Values.Count || !ReferenceEquals(ValueType(body, plan.Index), BoundType.ISize) ||
-                    !(ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax((IndexKoto)source))) ||
-                        (body.Values[plan.Index].Kind == OwnershipValueKind.Convert && body.Values[plan.Index].Constant == OwnershipValue.PositionConversion && ReferenceEquals(body.Operations[plan.Index].Source, ((IndexKoto)source).Right))) ||
+                    !MatchesSelectionKeySource(body, plan.Index, (IndexKoto)source) ||
                     body.Operations[plan.Index].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Branch))
                 {
                     return Fail("Element selection requires its evaluated isize index.", out failure);

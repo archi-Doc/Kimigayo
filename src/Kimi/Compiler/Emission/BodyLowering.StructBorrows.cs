@@ -163,7 +163,7 @@ internal sealed partial class BodyLowering
                     (!borrowedReceiver && body.Operations[array].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Produce)) ||
                     (borrowedReceiver ? body.Operations[array].Input : body.Operations[array].Place) != operation.Place ||
                     !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[array].Source), KotoHelper.UnwrapParentheses(indexed.Left)) ||
-                    !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !ReferenceEquals(body.Operations[subscript].Source, ElementAccess.ValueSource(indexed.Right)) ||
+                    !ReferenceEquals(ValueType(body, subscript), BoundType.ISize) || !MatchesSelectionKeySource(body, subscript, indexed) ||
                     (body.IsReachable(id) && (!this.Dominates(array, id) || !this.Dominates(subscript, id))) ||
                     FunctionAbi.GetValue(element, this.aggregateLayouts) is not { } stride ||
                     !this.TryGetLocation(indexed, directory, constants, out var location))
