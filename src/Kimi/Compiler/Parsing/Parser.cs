@@ -2176,9 +2176,10 @@ CloseParameters:
         var condition = ParseCondition(ref reader);
         reader.ConstraintRequirement = previousRequirement;
         var constraint = new IsKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, Math.Max(isRange.End, condition.Span.End)), subject, condition);
-        if (reader.Diagnostic.LastError is { } cause && !cause.Equals(lastError))
+        if (reader.Diagnostic.LastError is { } cause && (lastError is not { } previous || !cause.Equals(previous)))
         {
             // A part of the Constraint failed: the Constraint is a recovery, so Binding judges none of its parts (DIAGNOSTICS.md §4.3).
+            // The keys are compared as values; comparing with the nullable key would box it for every Constraint after an Error.
             reader.CodeContext.RecordRecovery(constraint, cause);
         }
 
