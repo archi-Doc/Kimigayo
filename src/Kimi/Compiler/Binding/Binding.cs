@@ -596,6 +596,7 @@ public sealed partial class Binding
         {
             var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
             string? shapeNote = null;
+            string? advice = null;
             for (var c = 0; c < rejected.Length; c++)
             {
                 var candidate = rejected[c];
@@ -603,18 +604,25 @@ public sealed partial class Binding
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
                 {
                     var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                    label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
+                    label = candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
+                        : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
                     // Keep the compared Types even when the related-location limit omits this candidate.
-                    shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                    shapeNote ??= candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
+                        : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                    if (!candidate.SharedReceiver)
+                    {
+                        advice ??= RangeShapeAdvice;
+                    }
                 }
 
+                advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
                 candidates[c] = ("candidate", candidate.Function, label);
             }
 
             // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
             // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
+            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: advice, at: at);
         }
         else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
         {

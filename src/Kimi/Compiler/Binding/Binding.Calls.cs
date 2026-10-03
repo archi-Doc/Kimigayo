@@ -691,6 +691,18 @@ public sealed partial class Binding
                     for (var i = 0; i < count; i++)
                     {
                         rejected[i] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                        var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
+                        if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
+                        {
+                            rejected[i] = rejected[i] with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
+                        }
+
+                        if (evaluated[i].Symbol.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
+                            cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
+                        {
+                            rejected[i] = rejected[i] with { ObjectClone = true };
+                        }
+
                         for (var a = 0; a < argumentCount; a++)
                         {
                             var operation = operations[(i * operationStride) + a];
@@ -1040,6 +1052,11 @@ public sealed partial class Binding
 
             if (!InferInput(parameterType, receiverType, receiver, receiverPath, true))
             {
+                if (this.MemberType(parameterType, declaringType) is { } memberType && this.ContractType(memberType, scope, self) is { } required && SharedObjectAuthorityMismatch(receiverType, required))
+                {
+                    operations[^1] = new(receiver, receiverType, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, receiverPath, receiverSlot);
+                }
+
                 return CandidateApplicability.Inapplicable;
             }
 
@@ -1164,6 +1181,11 @@ public sealed partial class Binding
 
             if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true) || !this.FitsTypeAt(adaptedReceiver, requiredReceiver, call))
             {
+                if (SharedObjectAuthorityMismatch(receiver.BoundType!, requiredReceiver))
+                {
+                    operations[^1] = new(receiver, receiver.BoundType, requiredReceiver, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, receiverPath, receiverSlot);
+                }
+
                 return CandidateApplicability.Inapplicable;
             }
 

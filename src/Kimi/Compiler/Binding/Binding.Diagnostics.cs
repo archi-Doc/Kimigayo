@@ -13,6 +13,9 @@ public sealed partial class Binding
     private const string AccessorGetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R) -> T, named by SPEC 4.7.1: into + noun when it consumes the receiver, verb + noun when it advances state";
     private const string AccessorSetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R, value: U) -> (), named by SPEC 4.7.1";
 
+    private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
+    private const string StrongCloneAdvice = "Strong clone accepts only rc or arc handles; obj ownership cannot be duplicated";
+
     // SPEC 12.3.3, 13.3: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.3.3, 13.3)";
     private const string StringBuildingAdvice = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
@@ -62,7 +65,12 @@ public sealed partial class Binding
     // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
     private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
 
-    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected);
+    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false);
+
+    private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
+        => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
+            expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
+            ReferenceEquals(actual.Components[0], expected.Components[0]);
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
@@ -350,6 +358,9 @@ public sealed partial class Binding
     private BoundType? FailWrite(Koto node, Koto target)
         => this.FailExplained(ref this.writeTargets, node, AccessFailure(target), target);
 
+    private BoundType? FailObjectAuthority(Koto node, Koto target)
+        => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
+
     // SPEC 3.5, 15.1.5, 23.3.6.9: the Advice of a bare Place that needs @move states what the Transfer candidate cannot: the borrow
     // alternative where a reference may be meant, or, for a Place without Take, the alternatives that remain.
     internal const string NoTakeAdvice = "This Place offers no Take and cannot be transferred; borrow it with @ref or @uniq instead";
@@ -456,7 +467,8 @@ public sealed partial class Binding
     {
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
-            node.Report(requirement, code, note: code == DiagnosticCode.SharedPathAccess_Kd ? this.SharedIndexNote(target) : null, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : ObjectTypes.HandleMode(target.BoundType) is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : this.SharedIndexNote(target);
+            node.Report(requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;
         }
 

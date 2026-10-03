@@ -463,6 +463,11 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
+            if (pattern.Semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref })
+            {
+                return this.FailObjectAuthority(conversion, conversion.Left);
+            }
+
             if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.HandleMode(actual) is not null || ObjectTypes.IsBorrow(actual)) &&
                 !ReferenceEquals(actual.Components[0], pattern.Components[0]))
             {
@@ -558,6 +563,11 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics))
             {
+                if (semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(operandType) is { PayloadAuthority: LoanRequirement.Ref })
+                {
+                    return this.FailObjectAuthority(conversion, conversion.Left);
+                }
+
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {

@@ -214,6 +214,8 @@ Binding distinguishes explicit Sealed payload projection, complete payload recei
 
 The common expected-Type adaptation binds shared object borrows from obj/rc/arc at arguments, annotated initializers, assignment sources and Tuple elements, and object Reborrows at results. Obj execution retains the owner's Loan with no extra allocation. Enum payloads with omitted local borrow Origins still fail before Origin inference (PLAN G63); counted execution remains gated.
 
+An rc/arc exclusive object borrow explains its shared-only payload authority, an inapplicable exclusive receiver retains the actual and required Types, and an obj clone attempt explains that strong clone accepts rc/arc only. CLI/LSP, long names, rebinding and independent errors are verified.
+
 Ownership and native lowering support whole-value updates on complete mutable owner locals (scalars, strings and supported aggregates) and concrete scalar/struct/fixed-array uniq targets whose contents are proven Owned. Target reservations begin before later arguments and activate after preparation; replace retains original-location destruction, exchange/swap transfer old-value responsibility without user destruction. Aggregate exchange results no longer use the function result slot as an input-Origin anchor. Borrowed lowering's Owned condition is an **implementation limit**, not an added API constraint.
 
 Storage-polymorphic updates, general field/index targets, nested handle/reference storage updates and borrowed updates without an Owned-content proof remain unfinished. [WholeValueReplacement](examples/WholeValueReplacement/README.md) covers ordinary/borrowed struct updates; the object tour retains its documented subset, while Program 14 has verified native harness coverage.
