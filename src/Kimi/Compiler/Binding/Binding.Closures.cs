@@ -26,6 +26,8 @@ public sealed class BoundClosure
 
 public sealed partial class Binding
 {
+    private ClosureEffects? closureEffects;
+
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
         if (expected.Kind != BoundTypeKind.Function || expected.CarriesOrigin)
@@ -310,40 +312,52 @@ public sealed partial class Binding
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
-        var effects = new ClosureEffects(this, function, plan);
-        (function.Body as Koto ?? function.ExpressionBody)?.VisitChildren(effects);
-        if (function.ExpressionBody is { } bodyExpression)
-        {
-            effects.Visit(bodyExpression);
-        }
-
+        (this.closureEffects ??= new(this)).Classify(function, plan);
         return Complete(function, plan.EnvironmentType);
     }
 
-    private sealed class ClosureEffects(Binding binding, FunctionKoto function, BoundClosure plan) : KotoVisitor
+    // One reusable visitor classifies each closure's receiver from the uses of its captures (SPEC 7.6.3); it never visits a
+    // nested function's body, so one closure is classified at a time.
+    private sealed class ClosureEffects(Binding binding) : KotoVisitor
     {
+        private FunctionKoto function = null!;
+        private BoundClosure plan = null!;
+
+        public void Classify(FunctionKoto function, BoundClosure plan)
+        {
+            this.function = function;
+            this.plan = plan;
+            (function.Body as Koto ?? function.ExpressionBody)?.VisitChildren(this);
+            if (function.ExpressionBody is { } bodyExpression)
+            {
+                this.Visit(bodyExpression);
+            }
+        }
+
         public override void Visit(Koto node)
         {
             if (node is FunctionKoto nested)
             {
                 if (nested.BoundClosure is { } child)
                 {
-                    foreach (var capture in child.Captures)
+                    // Indexed over the storage list: enumerating the read-only interface boxes its enumerator on every pass.
+                    for (var i = 0; i < child.Storage.Count; i++)
                     {
-                        if (!ReferenceEquals(capture.Source.Declaration, function))
+                        var capture = child.Storage[i];
+                        if (!ReferenceEquals(capture.Source.Declaration, this.function))
                         {
                             continue;
                         }
 
                         // SPEC 7.6.2, 7.6.3: moving an outer environment value is Consuming; Reborrowing it or borrowing its slot
                         // exclusively needs exclusive access to the outer environment.
-                        if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move && binding.ProveCopy(capture.Source.Type!, function) == ConstraintProof.Refuted)
+                        if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move && binding.ProveCopy(capture.Source.Type!, this.function) == ConstraintProof.Refuted)
                         {
-                            plan.Receiver = SemanticsKind.Owner;
+                            this.plan.Receiver = SemanticsKind.Owner;
                         }
-                        else if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow && plan.Receiver != SemanticsKind.Owner)
+                        else if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow && this.plan.Receiver != SemanticsKind.Owner)
                         {
-                            plan.Receiver = SemanticsKind.Uniq;
+                            this.plan.Receiver = SemanticsKind.Uniq;
                         }
                     }
                 }
@@ -351,7 +365,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node.BoundSymbol is { Kind: BindingSymbolKind.Capture } symbol && ReferenceEquals(symbol.Declaration, function))
+            if (node.BoundSymbol is { Kind: BindingSymbolKind.Capture } symbol && ReferenceEquals(symbol.Declaration, this.function))
             {
                 var use = node;
                 while (use.Parent is ParenthesizedKoto parentheses)
@@ -371,17 +385,17 @@ public sealed partial class Binding
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
                     (exclusiveReference && this.UsesReferentExclusively(use)))
                 {
-                    if (plan.Receiver != SemanticsKind.Owner)
+                    if (this.plan.Receiver != SemanticsKind.Owner)
                     {
-                        plan.Receiver = SemanticsKind.Uniq;
+                        this.plan.Receiver = SemanticsKind.Uniq;
                     }
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
-                    (!exclusiveReference && binding.ProveCopy(symbol.Type!, function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
+                    (!exclusiveReference && binding.ProveCopy(symbol.Type!, this.function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
                     !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !InspectedString(use)))
                 {
                     // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
-                    plan.Receiver = SemanticsKind.Owner;
+                    this.plan.Receiver = SemanticsKind.Owner;
                 }
             }
 

@@ -257,6 +257,27 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
+    // Closure receiver classification (12, 14, 37: a reusable visitor, the capture list without a boxed enumerator) and
+    // specialization Origin inheritance (21: scratch binders) once allocated on every warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(12)]
+    [InlineData(14)]
+    [InlineData(21)]
+    [InlineData(37)]
+    public void RebindingAMilestoneProgramDoesNotAllocate(int number)
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.Kotonoha.AddSource(new SourceDocument($"Milestone{number}.kimi", DiagnosticCorpus.Milestone(number)));
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final), iterations: 8));
+    }
+
     [Fact]
     public void ParenthesizedArrayLengthsBindEverySyntaxNode()
     {
