@@ -87,7 +87,8 @@ public static class StringLiteralHelper
     /// The decoded string value.
     /// </returns>
     /// <remarks>
-    /// Invalid escape sequences are replaced with fallback characters.
+    /// Invalid escape sequences are replaced with fallback characters. Each physical CRLF or CR in the text contributes one LF, as
+    /// an LF does; escape results are not normalized (SPEC 2.9).
     /// </remarks>
     public static string GetStringLiteralValue(string rawLiteral, Koto? koto = default, SourceSpan content = default)
     {
@@ -101,21 +102,21 @@ public static class StringLiteralHelper
         // The delimiters of an escaped string literal have already been removed.
         if (span[0] != '"')
         {
-            var firstBackslash = span.IndexOf('\\');
+            var first = span.IndexOfAny('\\', '\r');
 
-            if (firstBackslash < 0)
+            if (first < 0)
             {
                 return rawLiteral;
             }
 
-            var decodedLength = firstBackslash + GetDecodedLength(span.Slice(firstBackslash), koto, content);
+            var decodedLength = first + GetDecodedLength(span.Slice(first), koto, content);
 
             return string.Create(
                 decodedLength,
-                new DecodeState(rawLiteral, firstBackslash),
+                new DecodeState(rawLiteral, first),
                 static (destination, state) =>
                 {
-                    Decode(state.Source, state.FirstBackslash, destination);
+                    Decode(state.Source, state.First, destination);
                 });
         }
 
@@ -138,7 +139,22 @@ public static class StringLiteralHelper
             return string.Empty;
         }
 
-        return rawLiteral.Substring(delimiterLength, contentLength);
+        var raw = span.Slice(delimiterLength, contentLength);
+        var firstCr = raw.IndexOf('\r');
+        if (firstCr < 0)
+        {
+            return rawLiteral.Substring(delimiterLength, contentLength);
+        }
+
+        // A raw string has no escapes; only its physical line breaks are normalized.
+        var normalizedLength = firstCr + GetNormalizedLength(raw.Slice(firstCr));
+        return string.Create(
+            normalizedLength,
+            raw,
+            static (destination, raw) =>
+            {
+                Normalize(raw, destination);
+            });
     }
 
     // The input starts with the interpolation's opening parenthesis. Quotes and comments
@@ -254,45 +270,59 @@ public static class StringLiteralHelper
         return true;
     }
 
+    // The length of escaped text decoded: an escape gives its scalar, and a CRLF or CR gives one LF (SPEC 2.9).
     private static int GetDecodedLength(ReadOnlySpan<char> span, Koto? koto, SourceSpan at)
     {
         var length = 0;
         while (!span.IsEmpty)
         {
-            var backslashIndex = span.IndexOf('\\');
-            if (backslashIndex < 0)
+            var index = span.IndexOfAny('\\', '\r');
+            if (index < 0)
             {
                 return length + span.Length;
             }
 
-            length += backslashIndex;
-            span = span[(backslashIndex + 1)..];
+            length += index + 1;
+            if (span[index] == '\r')
+            {
+                span = span[(index + LineBreakLength(span, index))..];
+                continue;
+            }
+
+            span = span[(index + 1)..];
             var succeeded = TryReadCharacterEscape(ref span, koto, at, out var scalar);
-            length += succeeded && scalar > 0xFFFF ? 2 : 1;
+            length += succeeded && scalar > 0xFFFF ? 1 : 0;
         }
 
         return length;
     }
 
-    private static void Decode(string source, int firstBackslash, Span<char> destination)
+    private static void Decode(string source, int first, Span<char> destination)
     {
         var span = source.AsSpan();
-        var destinationIndex = firstBackslash;
-        span[..firstBackslash].CopyTo(destination);
-        span = span[firstBackslash..];
+        var destinationIndex = first;
+        span[..first].CopyTo(destination);
+        span = span[first..];
         while (!span.IsEmpty)
         {
-            var backslashIndex = span.IndexOf('\\');
-            if (backslashIndex < 0)
+            var index = span.IndexOfAny('\\', '\r');
+            if (index < 0)
             {
                 span.CopyTo(destination[destinationIndex..]);
                 destinationIndex += span.Length;
                 break;
             }
 
-            span[..backslashIndex].CopyTo(destination[destinationIndex..]);
-            destinationIndex += backslashIndex;
-            span = span[(backslashIndex + 1)..];
+            span[..index].CopyTo(destination[destinationIndex..]);
+            destinationIndex += index;
+            if (span[index] == '\r')
+            {
+                destination[destinationIndex++] = '\n';
+                span = span[(index + LineBreakLength(span, index))..];
+                continue;
+            }
+
+            span = span[(index + 1)..];
             if (!TryReadCharacterEscape(ref span, default, default, out var scalar))
             {
                 destination[destinationIndex++] = InvalidEscapeFallbackChar;
@@ -311,6 +341,51 @@ public static class StringLiteralHelper
 
         Debug.Assert(destinationIndex == destination.Length);
     }
+
+    // The length of text whose CRLF and CR each give one LF.
+    private static int GetNormalizedLength(ReadOnlySpan<char> span)
+    {
+        var length = 0;
+        while (!span.IsEmpty)
+        {
+            var index = span.IndexOf('\r');
+            if (index < 0)
+            {
+                return length + span.Length;
+            }
+
+            length += index + 1;
+            span = span[(index + LineBreakLength(span, index))..];
+        }
+
+        return length;
+    }
+
+    private static void Normalize(ReadOnlySpan<char> span, Span<char> destination)
+    {
+        var destinationIndex = 0;
+        while (!span.IsEmpty)
+        {
+            var index = span.IndexOf('\r');
+            if (index < 0)
+            {
+                span.CopyTo(destination[destinationIndex..]);
+                destinationIndex += span.Length;
+                break;
+            }
+
+            span[..index].CopyTo(destination[destinationIndex..]);
+            destinationIndex += index;
+            destination[destinationIndex++] = '\n';
+            span = span[(index + LineBreakLength(span, index))..];
+        }
+
+        Debug.Assert(destinationIndex == destination.Length);
+    }
+
+    // The length of the line break at a CR: two for CRLF, one for a lone CR.
+    private static int LineBreakLength(ReadOnlySpan<char> span, int index)
+        => index + 1 < span.Length && span[index + 1] == '\n' ? 2 : 1;
 
     private static bool TryReadUnicodeEscape(ref ReadOnlySpan<char> span, Koto? koto, SourceSpan at, out uint scalar)
     {
@@ -531,12 +606,12 @@ public static class StringLiteralHelper
     private readonly struct DecodeState
     {
         public readonly string Source;
-        public readonly int FirstBackslash;
+        public readonly int First;
 
-        public DecodeState(string source, int firstBackslash)
+        public DecodeState(string source, int first)
         {
             this.Source = source;
-            this.FirstBackslash = firstBackslash;
+            this.First = first;
         }
     }
 }

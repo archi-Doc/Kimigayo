@@ -152,13 +152,29 @@ public class KotoHelperStringLiteralTest
     }
 
     [Fact]
-    public void GetStringLiteralValue_PhysicalLineBreaks_ArePreserved()
+    public void GetStringLiteralValue_LfOnlyLineBreaks_ReturnOriginalInstance()
     {
-        const string Source = "Line1\r\nLine2\nLine3\rLine4";
+        var source = new string("Line1\nLine2\n".ToCharArray());
 
-        var result = StringLiteralHelper.GetStringLiteralValue(Source);
+        var result = StringLiteralHelper.GetStringLiteralValue(source);
 
-        Assert.Same(Source, result);
+        Assert.Same(source, result);
+    }
+
+    // Each physical LF, CRLF or CR contributes one LF; escape results are not normalized (SPEC 2.9).
+    [Theory]
+    [InlineData("Line1\r\nLine2\nLine3\rLine4", "Line1\nLine2\nLine3\nLine4")]
+    [InlineData("\r", "\n")]
+    [InlineData("\r\n", "\n")]
+    [InlineData("\r\r\n\n", "\n\n\n")]
+    [InlineData("A\r\n\\r\\n", "A\n\r\n")]
+    [InlineData("\\r\r\n", "\r\n")]
+    [InlineData("\\u(1F600)\r\n\\q", "\U0001F600\nk")]
+    public void GetStringLiteralValue_PhysicalLineBreaks_AreNormalized(string source, string expected)
+    {
+        var result = StringLiteralHelper.GetStringLiteralValue(source);
+
+        Assert.Equal(expected, result);
     }
 
     [Theory]
@@ -249,15 +265,15 @@ public class KotoHelperStringLiteralTest
         Assert.Equal(Expected, result);
     }
 
-    [Fact]
-    public void GetStringLiteralValue_MultilineRawString_PreservesLineBreaks()
+    [Theory]
+    [InlineData("\"\"\"\r\nLine1\nLine2\r\"\"\"", "\nLine1\nLine2\n")]
+    [InlineData("\"\"\"\nLine1\nLine2\n\"\"\"", "\nLine1\nLine2\n")]
+    [InlineData("\"\"\"\\r\r\n\"\"\"", "\\r\n")]
+    public void GetStringLiteralValue_MultilineRawString_NormalizesLineBreaks(string source, string expected)
     {
-        const string Source = "\"\"\"\r\nLine1\nLine2\r\"\"\"";
-        const string Expected = "\r\nLine1\nLine2\r";
+        var result = StringLiteralHelper.GetStringLiteralValue(source);
 
-        var result = StringLiteralHelper.GetStringLiteralValue(Source);
-
-        Assert.Equal(Expected, result);
+        Assert.Equal(expected, result);
     }
 }
 
@@ -285,5 +301,16 @@ public class StringLiteralIntegrationTest
         var value = StringLiteralHelper.GetStringLiteralValue(valueSource);
 
         Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void InterpolationSegments_NormalizePhysicalLineBreaks()
+    {
+        // Segments of an interpolated string are text; the interpolated value is not (SPEC 2.9).
+        var parsed = ParseTestHelper.Parse("let value = 1\nlet text = \"a\r\n\\(value)\rb\\r\"\n");
+        Assert.Empty(TestDiagnostics.Of(parsed));
+        var field = Assert.IsType<Kimi.Compiler.Parsing.FieldKoto>(parsed.GeneratedFunction!.Body!.Items[^1]);
+        var interpolation = Assert.IsType<Kimi.Compiler.Parsing.InterpolatedStringKoto>(field.InitializerKoto);
+        Assert.Equal(["a\n", "\nb\r"], interpolation.Segments.Select(x => x.Literal));
     }
 }
