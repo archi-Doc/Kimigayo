@@ -511,7 +511,7 @@ public sealed partial class Binding
         this.ValidateConstraintUses(mode);
         // Late witness failures can invalidate declarations that normalized their projections.
         // Revisit dependent certificates only while declaration states change monotonically.
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
         {
             this.ClearCapabilityResults();
             this.ValidateBaseDeclarations(mode);

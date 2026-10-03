@@ -361,12 +361,14 @@ public sealed partial class Binding
     private bool ContainsProjection(Koto node, BindingScope scope)
         => node is MemberAccessKoto ? this.TypeName(node, scope, false) is null : (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
 
-    private bool ValidateConstraintEnvironments()
+    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
+    // already judged them.
+    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
         {
-            if (scope.Constraints is not { } environment)
+            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
             {
                 continue;
             }
