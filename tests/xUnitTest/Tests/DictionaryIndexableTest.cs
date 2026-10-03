@@ -51,6 +51,22 @@ public class DictionaryIndexableTest
     }
 
     [Fact]
+    public void AReplacedKeyRebuildsTheSynthesizedIndexCall()
+    {
+        // The synthesized index call is cached per index expression; after an edit replaces the key it must name the new key,
+        // which is bound once, instead of the detached old one.
+        const string Prefix = "var values = [1: 42, 2: 43]\nlet k: i32 = 1\nlet j: i32 = 2\n";
+        var c = MinimalEmissionTest.Analyze(Prefix + "let r = values[k]");
+        var index = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single();
+        Assert.NotNull(c.Binding.IndexerCall(index, false));
+        var replacement = KotoTree.Walk(MinimalEmissionTest.Analyze(Prefix + "let r = values[j]").Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single().Right;
+        Assert.True(KotoHelper.Replace(index, index.Right, replacement));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Same(replacement, c.Binding.IndexerCall(index, false)!.ArgumentNodes[0]);
+        Assert.Equal(BindingState.Resolved, replacement.BindingState);
+    }
+
+    [Fact]
     public void DirectEntriesPreserveStoredKeysAndSourceLoans()
     {
         const string Source = """

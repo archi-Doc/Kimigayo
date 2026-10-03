@@ -211,7 +211,9 @@ public sealed partial class Binding
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)
     {
-        if (!this.indexerCalls.TryGetValue((source, exclusive), out var call))
+        // A cached call is reused only while it names the current receiver and key; an edit may replace either.
+        if (!this.indexerCalls.TryGetValue((source, exclusive), out var call) || !ReferenceEquals(call.ArgumentNodes[0], source.Right) ||
+            !ReferenceEquals(((MemberAccessKoto)call.Method).Left, source.Left))
         {
             var callee = new MemberAccessKoto(source, source.Left, new IdentifierNameKoto(source, exclusive ? "indexUniq" : "index"));
             call = new InvocationKoto(source, callee, [source.Right]);

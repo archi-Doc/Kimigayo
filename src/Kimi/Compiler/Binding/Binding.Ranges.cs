@@ -252,7 +252,9 @@ public sealed partial class Binding
 
     private InvocationKoto? ResolveKeyCall(IndexKoto source, BindingScope scope, BoundType key, bool range)
     {
-        if (!this.resolvedKeys.TryGetValue(source, out var call) || !ReferenceEquals(call.ArgumentNodes[0], source.Right))
+        // A cached call is reused only while it names the current key and receiver; an edit may replace either.
+        if (!this.resolvedKeys.TryGetValue(source, out var call) || !ReferenceEquals(call.ArgumentNodes[0], source.Right) ||
+            !ReferenceEquals(((EvaluatedKoto)((MemberAccessKoto)call.ArgumentNodes[1]).Left).Source, source.Left))
         {
             // The length is read from the receiver the selection evaluates, never from a second evaluation of its syntax.
             var receiver = new EvaluatedKoto(source.Left);
