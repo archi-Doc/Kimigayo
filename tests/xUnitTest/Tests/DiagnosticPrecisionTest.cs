@@ -201,6 +201,17 @@ public class DiagnosticPrecisionTest
         Assert.Equal(new Kimi.Diagnostics.SourceSpan(source.IndexOf("a, a)", StringComparison.Ordinal) + 3, 1), error.Span);
     }
 
+    // SPEC 23.3.6.4: a fill literal whose element or length failed rests on that part instead of adding a formation error.
+    [Theory]
+    [InlineData("let a = [3 of missingValue]", "missingValue")]
+    [InlineData("let a = [missingLength of 0]", "missingLength")]
+    public void AFillLiteralRestsOnItsFailedPart(string source, string text)
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.UnresolvedBinding_Kd), error.Code);
+        Assert.Equal(text, error.Text);
+    }
+
     // Publishes every front-end phase as a check does and returns its Errors.
     private static TestDiagnostic[] PublishedErrors(Compilation c)
     {
