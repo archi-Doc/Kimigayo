@@ -1,7 +1,7 @@
 # Language milestones
 
 Forty-two independent programs are planned from the current [SPEC](../../docs/SPEC.md).
-Programs 1–33, 41 and 42 have source files; programs 34–40 have design and verification scopes.
+Every program has a source file; programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
 not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
@@ -65,7 +65,7 @@ Milestone harnesses preserve the original source bytes and filename and use sepa
 
 ## Program status
 
-As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks. Since 2026-09-30, each harness builds the original source once per O0/O2 and directly executes each binary once; feature and rejection checks live in dedicated tests. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -137,7 +137,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
-| 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
+| 40 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-10-03 per SPEC §4.6.10 (the approved `tryGetPairUniq` design). Binding passes; ownership analysis first reports `ComparisonLoanConflict_Kd` at `source.balance`: field access and calls through two sibling pair references conflict ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
 
@@ -172,8 +172,8 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
-The current plan has **41 programs**, including **27 programs numbered 15–41**.
-Programs 15–33 are concrete; 34–40 are future source targets. Programs 39 and 40
+The current plan has **42 programs**, including **28 programs numbered 15–42**.
+All have sources; 34–39 were authored on 2026-09-27 and 40 on 2026-10-03. Programs 39 and 40
 were added on 2026-09-26 for the two collection designs that the Place foundation
 leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../../docs/dev/PLAN.md#4-milestones-execution-order).
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
@@ -1991,6 +1991,52 @@ Focus: [reference-path selection](../../docs/spec/03-types-and-values.md#341-ref
 [generic access effects](../../docs/spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
 [follow](../../docs/spec/13-operators-and-assignment.md#13551-follow) and the proposal
 `draft/Design/2026-09-26 Semantics-Generic Follow.md`, which owns the pending decision.
+
+## Milestone 40: Disjoint exclusive element access
+
+`tryGetPairUniq` splits the exclusive capability of one collection into two exclusive references to distinct elements.
+`transfer` selects two accounts of an `Array<Account>` by positions of any `Position` Type (`0`, `^1`, `1@u8`) and
+updates both balances through the pair; the same account (`1` and `^2` of three), a missing one and an overdraft are
+refused, and both references end before the caller uses the collection again. Both Non-Copy elements are then
+replaced through one pair, destroying each old value once, and the Array grows again after the pair's last use.
+`settle` holds two neighbors of a fixed array exclusively at once to exchange them, `^1` and `3` name one element and
+give `None`, and a pair over an `Array<uniq/i32>` reaches both referents, which are free again after its last use.
+
+Expected stdout (derived from SPEC §4.6.10; native execution is blocked):
+
+```text
+Balances 20, 25, 25.
+Closed Chi.
+Closed Aki.
+Eve holds 20.
+Ben holds 25.
+Dan holds 25.
+Fay holds 5.
+Settled 10 30 20 40 after 3 exchanges.
+Positions ^1 and 3 name one element.
+Limits 0 and 19.
+Disjoint element access finished.
+Closed Fay.
+Closed Dan.
+Closed Ben.
+Closed Eve.
+```
+
+Current boundary (2026-10-03): Binding passes; ownership analysis first reports `ComparisonLoanConflict_Kd` at
+`source.balance`. A field read or update through one pair reference (also inside that reference's replacement), a
+follow through both stored-reference elements and a call that takes both references each conflict with the sibling
+reference's Loan, although SPEC §4.6.10 lets the references be used independently. Whole-referent `@follow` reads
+and writes already pass; a probe of this source without the conflicting accesses runs identically at O0 and O2.
+
+Separate checks (planned for `test-milestone40.ps1`): an empty Array and zero-sized elements give `None` or distinct
+logical positions; rejections of a whole-collection read, write, `append` or Move while a pair reference is live, of
+`tryGetPairUniq` on a shared receiver, of two ordinary `receiver[i]@uniq` borrows with runtime indices (no inference
+from runtime inequality) and of a pair reference used after the collection's borrow ends.
+
+Focus: [disjoint exclusive element pairs](../../docs/spec/04-arrays-indexing-and-slices.md#4610-disjoint-exclusive-element-pairs),
+[region splitting](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
+[Place overlap](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts) and the
+[standard storage boundary](../../docs/spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary).
 
 ## Milestone 41: Positions and ranges
 
