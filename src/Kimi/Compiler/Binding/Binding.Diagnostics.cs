@@ -587,10 +587,13 @@ public sealed partial class Binding
     // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
     // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
     // a failure explained by the Origin rule, or any other definite failure, is direct.
+    // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
+    // declaration context of a Property (AddPrerequisite), is a consequence of that part.
     private bool IsDerived(Koto node)
         => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null);
+            this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null) ||
+            (node.BindingFailure == BindingFailure.InvalidConstraint && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid);
 
     // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
     private bool RestsOnRecovery(Koto node)

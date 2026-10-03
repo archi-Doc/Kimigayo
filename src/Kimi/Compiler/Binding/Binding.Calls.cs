@@ -550,6 +550,7 @@ public sealed partial class Binding
             var pending = false;
             var error = false;
             Koto? incompleteSignature = null;
+            Koto? invalidDeclaration = null;
             this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
             {
@@ -580,6 +581,7 @@ public sealed partial class Binding
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
                 pending |= state == CandidateApplicability.Pending;
                 error |= state == CandidateApplicability.Error;
+                invalidDeclaration ??= state == CandidateApplicability.Error ? InvalidDeclarationContextCause(function) : null;
                 if (state != CandidateApplicability.Applicable)
                 {
                     incompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;
@@ -600,7 +602,8 @@ public sealed partial class Binding
 
             if (error)
             {
-                return this.Fail(call, BindingFailure.InvalidConstraint);
+                // A candidate in a failed declaration cannot be judged, so the selection rests on that failure (SPEC 23.3.6.4).
+                return invalidDeclaration is not null ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (pending)
