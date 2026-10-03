@@ -118,34 +118,29 @@ public func upgrade<s/T>(value: ref/Weak<s/T>) -> Option<s/T>
   - 種別の分岐は網羅的に書き、既定の分岐を持たない。obj の扱いに暗黙に流れ込む経路をなくす。
 - **種別は変換で保存する。**
   - 所有ハンドルの変換が変えるのは View Target だけで、種別は変えない（§13.5.7）。
-  - 現在の `BindObjectUpcast`（`Binding/Binding.ObjectViews.cs:43`）は、両側が `IsOwner` であることしか確かめていない。種別の一致を加える。
+  - 現在の `BindObjectUpcast`（`Binding/Binding.ObjectViews.cs`）は、両側が `IsOwner` であることしか確かめていない。種別の一致を加える。
   - これがないと、たとえば rc を obj として片付け、別の強参照が残っているのに返却してしまう。
 - **配置の同一性も種別ごとに分ける。**
   - ハンドルのバイト配置は三種別で同じ（8 バイト）である。
-  - しかし `AggregateLayout` の `objectHandle`（`Emission/AggregateLayout.cs:121`）は一つの配置を共有している。これを種別ごとに分け、集成体の破棄関数と生成キャッシュが種別を取り違えないようにする。
+  - しかし `AggregateLayout` の `objectHandle`（`Emission/AggregateLayout.cs`）は一つの配置を共有している。これを種別ごとに分け、集成体の破棄関数と生成キャッシュが種別を取り違えないようにする。
 - **共通の後半。**
   - 破棄と返却は、一つの補助関数（例 `__kimi_object_finalize`）にまとめる。
   - obj の片付けはこれを直接呼ぶ。rc/arc は、数える段で 0 にしたときだけ呼ぶ。
 - **共有の適応は種別によらない。**
   - payload の権限が「共有」で足りる操作は、三種別に同じ規則で許す。対象は、明示と暗黙の `objref` 適応、共有受信者、`@follow@ref`、Field の読取りである。
-  - 現在の `AdaptObjectBorrow`（`Binding/Binding.ArgumentOperations.cs:936`）は、暗黙の適応を obj に限っている。これを、権限で判定するように改める。
+  - 現在の `AdaptObjectBorrow`（`Binding/Binding.ArgumentOperations.cs`）は、暗黙の適応を obj に限っている。これを、権限で判定するように改める。
 - **種別を開く条件。**
-  - `SupportsType`（`Analysis/OwnershipAnalysis.Enums.cs:94`）が種別を受け入れるのは、次がすべて揃ったときだけである。
-    - その種別について Binding と `SupportsType` が受理するすべての操作と置き場所を、所有権解析と生成が扱える。
-    - 置き場所は、集成体、Array、Dictionary、Option、Closure の capture、総称インスタンスである。
-    - 操作には upcast と `is` を含む。
-  - `SupportsType` は集成体の要素を再帰的に判定するので、トップレベルだけを開くことはできない。
-  - 開く前の種別は、使用位置で `UnsupportedOwnership_Kd` になる。
-  - rc は U4、arc は U5 で開く。この順序なら、途中のコミットでも誤ったコードは出ない。
+  - 種別は、所有権解析の `SupportsType`（`Analysis/OwnershipAnalysis.Enums.cs`）で開く。開く前の種別は、使用位置で `UnsupportedOwnership_Kd` になる。
+  - 開いた時点で、その種別について受理される操作と置き場所は、正しく動くか、診断で止まる。誤ったコードにはならない。
+  - `SupportsType` は集成体の要素も再帰的に判定するので、開くと集成体の中のハンドルも受理される。
+  - rc は U4、arc は U5 で開く。
 
 ### 4.3. 表現と工場
 
 - ハンドルは、三種別ともヘッダーを指す 8 バイトのポインターである。
 - ObjectDescriptor は、同じ Dynamic Type の三種別で共有する（IMPL §21.2.2）。
 - 数え方を選ぶのは、記述子ではなくハンドルの静的な Semantics である（IMPL §21.2.3.1）。
-- 工場を作る処理は一つにし、制御語の初期値を定数の引数で渡す。payload の初期化の後、公開前の通常の store で書く。
-  - O0 ではインライン展開されないので、費用が変わらないとは言えない。
-  - 変更前の obj と O0/O2 で比べ、費用が問題なら、同じ生成処理から種別ごとに定数化した入口を作る。
+- 工場の生成処理は三種別で共通とし、違いは制御語の初期値だけとする。初期値は、payload の初期化の後、公開前の通常の store で書く。
 
 ### 4.4. 数える手順
 
@@ -174,22 +169,8 @@ arc の手放し c = load monotonic [h+8]
              成功した c が 2 なら、fence acquire の後で finalize
 ```
 
-- **ヘッダーの制御語は CAS で更新する。**
-  - P35 で、制御語は整数からサイドテーブルのポインターへ変わりうるので、表現を確かめてから更新する（IMPL §21.2.3.2）。
-  - P35 の表内の strong/weak は整数のままなので、減算に `atomicrmw sub release` を使える（IMPL §21.2.3.3 が許す `fetch_sub`）。旧値が 1 なら fence acquire を置く。
-  - 増分は、更新の前に上限を確かめるため、表内でも CAS とする。
-- **表現の判定（P35）。**
-  - サイドテーブルを入れたら、制御語を更新するすべての経路で、算術の前と CAS が失敗した後に表現を判定する。偶数は inline の数、奇数は表である。
-  - 判定は速い経路の入口に置き、処理本体だけを補助関数に分ける。
-  - CAS の失敗で表を見つけたときは、表を読む前に acquire を満たす。
-  - P34 には表がないので、この判定は P35 で `downgrade` を受け入れるコミットで、すべての更新経路に同時に入れる。
-- **展開と配置。**
-  - 速い経路（読み、検査、1 回の store か CAS）は、呼出し位置に展開する。
-  - 処理本体（再試行、最後の手放し、P35 の表の経路）は、種別ごとの補助関数に分ける。
-  - 補助関数に分けることと `cold` を付けることは、別の判断とする。
-    - `cold` は、上限超過の Abort にだけ付ける。
-    - 最後の手放しは、生成と破棄が中心の処理では毎回通る。`downgrade` した後のオブジェクトは、常に表の経路を通る。
-  - 配置は、生成と破棄が中心の処理と、複製が中心の処理の両方を `src/Benchmark` で測って決める。
+- **ヘッダーの制御語は CAS で更新する。** P35 で、制御語はサイドテーブルのポインターに変わりうる。そのため、`atomicrmw` で算術を直接当てることはしない（IMPL §21.2.3.2）。P35 での表現の判定は、本書 8 による。
+- **展開と配置。** 速い経路の展開、補助関数への分け方、`cold` の付け方は、測って決める。測るのは、生成と破棄が中心の処理と、複製が中心の処理の両方で、`src/Benchmark` を使う。
 
 ### 4.5. 上限超過の Abort コード
 
@@ -219,12 +200,12 @@ arc の手放し c = load monotonic [h+8]
 
 - **手放しは、保守的に破棄の観測とする。**
   - どの手放しも、最後の手放しになりうる。
-  - そのため手放しは、obj の片付けと同じく、破棄時の寿命検査（`Analysis/OwnershipBody.Borrows.cs:783`）と破棄 effect（`Binding/Binding.EffectBounds.cs:1490`）に含める。
+  - そのため手放しは、obj の片付けと同じく、破棄時の寿命検査（`Analysis/OwnershipBody.Borrows.cs`）と破棄 effect（`Binding/Binding.EffectBounds.cs`）に含める。
 
 ### 4.7. ハンドルからの直接の Field 読取り
 
 - **§3.4.1 の明確化（U0）。** §3.4.1 は、選択を続ける層として、安全な値参照と pair 層しか挙げていない。オブジェクトハンドルと object 借用では View Target のメンバーを選ぶことを、一文で明示する。payload の権限は、§13.5.5.1 の表による。
-- **実装。** 既存のオブジェクト view の Field 経路を、所有ハンドルにも適用する。対象は `ReadBorrowedField` と、payload への +16 の加算（`Emission/BodyLowering.StructBorrows.cs:335`）である。
+- **実装。** 既存のオブジェクト view の Field 経路を、所有ハンドルにも適用する。対象は `ReadBorrowedField` と、payload への +16 の加算（`Emission/BodyLowering.StructBorrows.cs`）である。
 - **書込み。** 書込みは P33 に残す。rc/arc を通した書込みは、Binding がすでに拒否している。
 
 ## 5. 作業単位
@@ -296,7 +277,7 @@ arc の手放し c = load monotonic [h+8]
 - 確認：`SharedObjectOwnershipTest`（新設）
   - 肯定
     - 複製の後に元のハンドルを Move・片付けしても、複製を使えること（Origin を持つ payload を含む）
-    - 結果の依存：内側の借用だけ、外側の借用だけ、両方。同じ Origin を持つ別の Loan。排他の親 Loan を保つ結果
+    - 結果の依存が、結果契約に従うこと（本書 4.6）
   - 否定
     - payload の借用中の Move
     - `var` のハンドルで、`h@uniq` が生きている間の `clone(h@ref)`
@@ -328,18 +309,22 @@ arc の手放し c = load monotonic [h+8]
 
 ### 5.7. U6 残りの隣接する形
 
-- ハンドルスロットの `swap` と `replace`：全値更新の既存の制限（Owned の証明）との関係を整理し、対応するか、診断で止める。
-- 総称インスタンスの本体での工場の呼出し
+U4・U5 の時点で、次の形は、動くか診断で止まる（本書 4.2）。この単位では、診断で止まっているものを動かす。
+
+- ハンドルスロットの `swap` と `replace`。全値更新の既存の制限（Owned の証明）による。
+- 総称インスタンスの本体での工場の呼出し。
+  - 現在は `Emission/ObjectGenerationPlan.cs` が拒否している。
   - P22 の単相化に従い、三種別まとめて、インスタンスごとに工場を計画する。
-  - 現在は `Emission/ObjectGenerationPlan.cs:71` が拒否している。
-- 確認：対応する形には肯定の native テストを置く。未対応の形は、診断で止まることを確かめる（完了条件 5）。
+- 確認
+  - 動かした形に、肯定の native テストを置く。
+  - 残る形は、診断で止まることを確かめる（完了条件 5）。
 
 ### 5.8. U7 P34 の完成
 
 - `test-milestone34.ps1` を加える。
 - `tests/milestones/README.md` の行と、`stage-baselines.json` の P34 項目を更新する。
 - STATUS、PLAN（G4 を P35 の Weak 側に縮める）、LIBRARY.md、CODEMAP を更新する。
-- `src/Benchmark/SharedObjects.md` に測定を置く（本書 4.3、4.4）。
+- `src/Benchmark/SharedObjects.md` に測定を置く（本書 4.4）。
 - 確認：`-Milestone 34` と Session 検証
 
 ### 5.9. U8 nonnull Option 表現（P35 の前提）
@@ -444,7 +429,11 @@ STATUS には、弱いメモリーについて確かめた範囲は「証明と 
 - **Weak の内部。** 次のどちらにするかは、P35 の着手時に決める。
   - コンパイラー管理
   - 非公開の `Storage` 原始操作の上に Kimigayo ソースで書いた struct（ライブラリー方針に沿う）
-- **サイドテーブル。** `ensureSideTable`、`tryRetainStrong`、`retainWeak`/`releaseWeak` を加える。表現の判定と表内の減算（本書 4.4）、weak guard は、`downgrade` を受け入れるのと同じコミットで入れる。
+- **サイドテーブル。**
+  - `ensureSideTable`、`tryRetainStrong`、`retainWeak`/`releaseWeak` を加える。
+  - `downgrade` を受け入れるのと同じコミットで、表現の判定と weak guard を入れる。
+  - 表現の判定は、制御語を更新するすべての経路で、算術の前と CAS が失敗した後に行う。偶数は inline の数、奇数は表である。
+  - 表内の数は整数のままなので、減算には `atomicrmw sub` を使える（本書 7.2）。
 - **`upgrade` の結果。** `Option<S>` は、U8 の nonnull 表現の上に載る。
 - **循環構築。**
   - 単相化により、`F` はインスタンスごとに具体的な Closure になる。そのため、所有受信者による Consuming 呼出しを直接生成できる見込みである。P26 の一般的な `Callable<owner>` witness がなくても進められるはずなので、着手時に試行で確かめる。
@@ -458,11 +447,11 @@ STATUS には、弱いメモリーについて確かめた範囲は「証明と 
 
 | 段階 | 状態 | 根拠 |
 | --- | --- | --- |
-| 型の形成 | `rc/T`・`arc/T` は形成され、受理される | `Binding/Binding.Types.cs:557-576` |
-| Binding | 共有限定の規則はある：Non-Copy、書込みの拒否、明示の `@objref`、`@follow@uniq` の `SharedPathAccess_Kd`。暗黙の `objref` 適応（引数と `objref/Self` 受信者）は、obj では通るが rc/arc では `NoApplicableOverload_Kd` になる（§10.2 違反）。upcast は、種別の一致を確かめていない | `Binding/Binding.ArgumentOperations.cs:197-275,936`、`Binding/Binding.ObjectViews.cs:43` |
-| 目録 | ID 24–31（`makeRc` から `Weak` まで）が `SourceExpected: false`。使用すると `UnsupportedBinding_Kd` になる | `Binding/KimiLibraryCatalog.cs:55-63`、`Binding/Binding.Diagnostics.cs:737-753` |
-| 所有権 | `SupportsType` は obj しか受け付けず、集成体の要素を再帰的に判定する。rc/arc の引数で `UnsupportedOwnership_Kd` になる | `Analysis/OwnershipAnalysis.Enums.cs:94-213` |
-| 生成 | `ObjectTypes.IsOwner`（obj のみ）が 24 か所にある。所有ハンドルの配置は `objectHandle` 一つを共有している。工場は制御語に 0 を書く。原子命令は一つもない | `ObjectTypes.cs`、`Emission/AggregateLayout.cs:121`、`Emission/LlvmModuleWriter.Objects.cs` |
+| 型の形成 | `rc/T`・`arc/T` は形成され、受理される | `Binding/Binding.Types.cs` |
+| Binding | 共有限定の規則はある：Non-Copy、書込みの拒否、明示の `@objref`、`@follow@uniq` の `SharedPathAccess_Kd`。暗黙の `objref` 適応（引数と `objref/Self` 受信者）は、obj では通るが rc/arc では `NoApplicableOverload_Kd` になる（§10.2 違反）。upcast は、種別の一致を確かめていない | `Binding/Binding.ArgumentOperations.cs`、`Binding/Binding.ObjectViews.cs` |
+| 目録 | ID 24–31（`makeRc` から `Weak` まで）が `SourceExpected: false`。使用すると `UnsupportedBinding_Kd` になる | `Binding/KimiLibraryCatalog.cs`、`Binding/Binding.Diagnostics.cs` |
+| 所有権 | `SupportsType` は obj しか受け付けず、集成体の要素を再帰的に判定する。rc/arc の引数で `UnsupportedOwnership_Kd` になる | `Analysis/OwnershipAnalysis.Enums.cs` |
+| 生成 | `ObjectTypes.IsOwner`（obj のみ）が 24 か所にある。所有ハンドルの配置は `objectHandle` 一つを共有している。工場は制御語に 0 を書く。原子命令は一つもない | `ObjectTypes.cs`、`Emission/AggregateLayout.cs`、`Emission/LlvmModuleWriter.Objects.cs` |
 | 試験 | `test-milestone34.ps1` はない。P34 は、Binding の `Kimi.Intrinsics.makeRc` で止まる | `tests/milestones/stage-baselines.json` |
 
 Program 34 を `makeObj` に置き換えて試した結果は次のとおり。
