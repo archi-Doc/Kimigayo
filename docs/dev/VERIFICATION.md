@@ -71,6 +71,10 @@ This command reports input sizes, retained record counts, iteration counts and t
 
 `Benchmark --borrow-storage` measures shared inspection-only and stored-reference workloads: first analysis allocation, retained dependency-table cells, physical table bytes and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Storage bounds and conflicting later call arguments remain regressions in `BorrowDependencyStorageTest`.
 
+`Benchmark --object-plans` measures direct and stored owning-object view analysis/emission with the same inputs as
+`StoredObjectViewTest`; fixed conditions and the command are in [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md).
+Allocation assertions remain in the normal Unit/Session suite; timing samples remain opt-in.
+
 ## Native fixtures
 
 `verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit codes, dependency checks and divergent-fixture timeouts are unchanged.

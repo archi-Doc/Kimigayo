@@ -1,13 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
 
 public class StoredObjectViewTest
 {
-    private const string Item = "struct Item\n    public let id: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.id\n    drop => Console.writeLine(\"drop\")\n";
+    private const string Item = VerificationWorkloads.ObjectItem;
 
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -19,6 +20,8 @@ public class StoredObjectViewTest
     [InlineData("Argument", "let stored = (owner@move, 1)\nfunc inspect(value: objref/Item) -> i32 => value.id\nrequire inspect(stored.0) == 7 else => $abort(\"argument\")")]
     [InlineData("Method", "let stored = (owner@move, 1)\nrequire stored.0.read() == 7 else => $abort(\"method\")")]
     [InlineData("Dynamic", "let stored: [1 of obj/Item] = [owner@move]\nfunc index() -> usize => 0\nrequire stored[index()].id == 7 else => $abort(\"index\")")]
+    [InlineData("SavedPosition", "let stored: [1 of obj/Item] = [owner@move]\nlet last = ^1\nrequire stored[last].id == 7 else => $abort(\"position\")")]
+    [InlineData("FromEnd", "let stored: [1 of obj/Item] = [owner@move]\nrequire stored[^1].id == 7 else => $abort(\"position\")")]
     [InlineData("Struct", "struct Box\n    public let item: obj/Item\n    public init(item: obj/Item) => self.item = item@move\nlet stored = Box.init(owner@move)\nrequire stored.item.id == 7 else => $abort(\"field\")")]
     [InlineData("BorrowedStruct", "struct Box\n    public let item: obj/Item\n    public init(item: obj/Item) => self.item = item@move\nfunc inspect(box: ref/Box) -> i32 => box.item.id\nlet stored = Box.init(owner@move)\nrequire inspect(stored) == 7 else => $abort(\"borrowed field\")")]
     [InlineData("BorrowedArray", "let stored: [1 of obj/Item] = [owner@move]\nfunc inspect(items: ref/[1 of obj/Item], index: isize) -> i32 => items[index].id\nrequire inspect(stored, 0) == 7 else => $abort(\"borrowed array\")")]
@@ -53,7 +56,7 @@ public class StoredObjectViewTest
     [InlineData(true)]
     public void WarmStoredViewAnalysisAndEmissionAllocateNothing(bool stored)
     {
-        var c = MinimalEmissionTest.Analyze(Item + "let owner = Kimi.Intrinsics.makeObj(Item.init())\n" + (stored ? "let stored = (owner@move, 1)\nrequire stored.0.id == 7" : "require owner.id == 7") + " else => $abort(\"read\")");
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ObjectView(stored));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var issue), MinimalEmissionTest.Describe(c, issue));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));

@@ -7,6 +7,12 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
+    internal const string ObjectItem = "struct Item\n    public let id: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.id\n    drop => Console.writeLine(\"drop\")\n";
+
+    internal static string ObjectView(bool stored)
+        => ObjectItem + "let owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
+            (stored ? "let stored = (owner@move, 1)\nrequire stored.0.id == 7" : "require owner.id == 7") + " else => $abort(\"read\")";
+
     internal static string InspectionLoans(int count, bool stored = false)
     {
         var source = new StringBuilder("func inspect(value: ref/string) -> bool => value == \"x\"\nfunc check()\n");
