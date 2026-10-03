@@ -1630,6 +1630,12 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
+            if (node.Kind == OwnershipValueKind.Element && operation.Projection >= 0)
+            {
+                value = this.ProjectedBorrowValue(operation.Projection, value);
+                continue;
+            }
+
             if (node.Kind == OwnershipValueKind.Sequence && operation.Kind == OwnershipOperationKind.Produce)
             {
                 // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence descends from its receiver: a borrowed
@@ -1743,6 +1749,82 @@ public sealed partial class OwnershipBody
             if (operation.Kind == OwnershipOperationKind.Consume && operation.Input == place && operation.Place >= 0)
             {
                 return this.borrowDefinitions[operation.Place] is >= 0 and var definition && definition < id ? definition : this.ProducingValue(operation.Place, id);
+            }
+        }
+
+        return -1;
+    }
+
+    // Recover a stored reference's actual input through an immutable inline path. A construction selects one
+    // payload; a call must publish one source for its whole result. Equal Origin names never select siblings.
+    private int ProjectedBorrowValue(int projection, int before)
+    {
+        var path = this.Projections[projection];
+        if (path.Path != projection)
+        {
+            return -1;
+        }
+
+        var root = path.Root;
+        var depth = 0;
+        for (var id = before - 1; id >= 0; id--)
+        {
+            if (this.Places[root] is not { Kind: OwnershipPlaceKind.Temporary } and not { Kind: OwnershipPlaceKind.Local, Mutable: false })
+            {
+                return -1;
+            }
+
+            var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.Call && operation.Place == root)
+            {
+                return this.ResultArgument(id);
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Write && operation.Place == root)
+            {
+                if (this.borrowDefinitions[root] != id || operation.Input < 0)
+                {
+                    return -1;
+                }
+
+                root = operation.Input;
+            }
+            else if (operation.Kind == OwnershipOperationKind.Consume && operation.Input == root && operation.Place >= 0)
+            {
+                root = operation.Place;
+            }
+            else if (operation.Kind == OwnershipOperationKind.CompleteConstruction && operation.Place == root)
+            {
+                var selected = projection;
+                for (var remaining = path.PathDepth - ++depth; remaining > 0; remaining--)
+                {
+                    selected = this.Projections[selected].Parent;
+                }
+
+                var payload = -1;
+                for (var i = 0; i < this.Constructions.Count; i++)
+                {
+                    var construction = this.Constructions[i];
+                    if (construction.Place == root && (uint)this.Projections[selected].Selector < (uint)construction.PayloadCount)
+                    {
+                        payload = construction.PayloadStart + this.Projections[selected].Selector;
+                        break;
+                    }
+                }
+
+                for (id--; id >= 0; id--)
+                {
+                    if (this.Operations[id] is { Kind: OwnershipOperationKind.PayloadPlacement } placement && placement.Place == payload)
+                    {
+                        if (depth == path.PathDepth)
+                        {
+                            return id;
+                        }
+
+                        root = placement.Input;
+                        break;
+                    }
+                }
             }
         }
 
