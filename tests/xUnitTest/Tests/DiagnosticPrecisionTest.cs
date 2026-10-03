@@ -212,6 +212,16 @@ public class DiagnosticPrecisionTest
         Assert.Equal(text, error.Text);
     }
 
+    // A closure Type has no written name: a mismatch shows the signature of its anonymous function, never the captured
+    // environment as Type arguments.
+    [Fact]
+    public void AClosureTypeIsShownByItsSignature()
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze("let offset: i32 = 1\nlet f = func [offset] (value: i32) -> i32 => value + offset\nlet n: i32 = f")));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal("expected i32, found closure (i32) -> i32", error.Label);
+    }
+
     // Publishes every front-end phase as a check does and returns its Errors.
     private static TestDiagnostic[] PublishedErrors(Compilation c)
     {
