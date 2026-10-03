@@ -93,7 +93,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
             {
                 continue;
             }
@@ -349,7 +349,7 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
-            case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
+            case OwnershipOperationKind.Read when ObjectTypes.HandleMode(place.Type) is not null:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
                 // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
@@ -463,7 +463,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Consume:
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
                 var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
-                    ObjectTypes.IsOwner(place.Type) && ObjectTypes.IsOwner(conversion.BoundType) &&
+                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(conversion.BoundType) == sourceMode &&
                     ReferenceEquals(SignatureType(this, conversion.Left.BoundType), place.Type) &&
                     (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(SignatureType(this, conversion.BoundType), body.Places[operation.Input].Type) &&
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);

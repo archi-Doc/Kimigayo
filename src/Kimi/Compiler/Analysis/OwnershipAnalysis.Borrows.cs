@@ -208,7 +208,7 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(projected);
         }
 
-        if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) && !ObjectTypes.IsOwner(path.BoundType) &&
+        if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) && ObjectTypes.HandleMode(path.BoundType) is null &&
             ElementAccess.OwnedPathRoot(path) is { } owner)
         {
             // Borrow the inline part in place; its Loan footprint is the static path (SPEC 15.6.2).

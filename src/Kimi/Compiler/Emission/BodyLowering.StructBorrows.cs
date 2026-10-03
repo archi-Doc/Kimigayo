@@ -60,7 +60,7 @@ internal sealed partial class BodyLowering
 
             if (ObjectTypes.IsBorrow(output))
             {
-                if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (ObjectTypes.IsOwner(storedHandle) || ObjectTypes.IsBorrow(storedHandle)) &&
+                if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (ObjectTypes.HandleMode(storedHandle) is not null || ObjectTypes.IsBorrow(storedHandle)) &&
                     output.Semantics == SemanticsKind.ObjRef && value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
                     ReferenceEquals(ValueType(body, Input(body, id, 0)), type) && (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
@@ -69,17 +69,18 @@ internal sealed partial class BodyLowering
                     return true;
                 }
 
-                var upcast = (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) &&
+                var upcast = (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) &&
                     operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
                     ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(SignatureType(this, conversion.BoundType), output) &&
                     ObjectTypes.Supports(type.Components[0], output.Components[0]);
-                if (!(ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type)) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
-                    (output.Semantics == SemanticsKind.ObjUniq && type.Semantics is not (SemanticsKind.Obj or SemanticsKind.ObjUniq)))
+                if (!(ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
+                    (output.Semantics == SemanticsKind.ObjUniq && type.Semantics != SemanticsKind.ObjUniq &&
+                        ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))
                 {
                     return Fail("Object borrow requires matching view and exclusive authority.", out failure);
                 }
 
-                if (ObjectTypes.IsOwner(type) && value.Count == 0)
+                if (ObjectTypes.HandleMode(type) is not null && value.Count == 0)
                 {
                     function.AddScalar(EmissionOpcode.ObjectBorrow, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
                     return true;
@@ -95,7 +96,7 @@ internal sealed partial class BodyLowering
                 return Fail("Object borrow requires its initialized owner or parent borrow.", out failure);
             }
 
-            if (ObjectTypes.IsOwner(type) || ObjectTypes.IsBorrow(type))
+            if (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow, Parent: ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion } selected &&
                     ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output);
@@ -103,12 +104,13 @@ internal sealed partial class BodyLowering
                     ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
                     call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);
                 if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection) ||
-                    (output.Semantics == SemanticsKind.Uniq && type.Semantics == SemanticsKind.ObjRef))
+                    (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.ObjUniq &&
+                        ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))
                 {
                     return Fail("Object payload address requires a proved complete-payload projection.", out failure);
                 }
 
-                if (ObjectTypes.IsOwner(type) && value.Count == 0)
+                if (ObjectTypes.HandleMode(type) is not null && value.Count == 0)
                 {
                     function.AddScalar(EmissionOpcode.ObjectPayload, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
                     return true;

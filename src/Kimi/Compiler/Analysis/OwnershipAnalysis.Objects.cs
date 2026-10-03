@@ -13,7 +13,7 @@ public sealed partial class OwnershipAnalysis
             return this.Expression(source.Left); // Never has no result and retains its evaluation/cleanup.
         }
 
-        if (!ObjectTypes.IsOwner(plan.OperandType) && !ObjectTypes.IsBorrow(plan.OperandType))
+        if (ObjectTypes.HandleMode(plan.OperandType) is null && !ObjectTypes.IsBorrow(plan.OperandType))
         {
             this.Expression(source.Left, PlaceUseKind.Read);
             this.Unsupported(source);

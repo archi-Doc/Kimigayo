@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, ObjectHandleMode? ObjectHandle = null, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -31,6 +31,8 @@ internal sealed class AggregateLayoutPool
     private readonly List<AggregateLayout> usedCollectionFields = new();
     private AggregateLayout? functionHandle;
     private AggregateLayout? objectHandle;
+    private AggregateLayout? rcHandle;
+    private AggregateLayout? arcHandle;
 
     /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
@@ -118,15 +120,36 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = this.functionHandle;
         }
 
-        if (ObjectTypes.IsOwner(type))
+        if (ObjectTypes.HandleMode(type) is { } mode)
         {
-            if (this.objectHandle is null)
+            var handle = mode.Counting switch
             {
-                this.objectHandle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: true);
-                this.pool.Add(this.objectHandle);
+                ObjectCountingStep.None => this.objectHandle,
+                ObjectCountingStep.NonAtomic => this.rcHandle,
+                ObjectCountingStep.Atomic => this.arcHandle,
+                _ => throw new InvalidOperationException("Unknown object counting step."),
+            };
+            if (handle is null)
+            {
+                handle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: mode);
+                this.pool.Add(handle);
+                switch (mode.Counting)
+                {
+                    case ObjectCountingStep.None:
+                        this.objectHandle = handle;
+                        break;
+                    case ObjectCountingStep.NonAtomic:
+                        this.rcHandle = handle;
+                        break;
+                    case ObjectCountingStep.Atomic:
+                        this.arcHandle = handle;
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unknown object counting step.");
+                }
             }
 
-            return this.resolved[type] = this.objectHandle;
+            return this.resolved[type] = handle;
         }
 
         var structure = StructStorage.IsStruct(type);
@@ -227,7 +250,7 @@ internal sealed class AggregateLayoutPool
             destroy &= (!array || count != 0) && !(structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage);
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
+                if (candidate.FunctionHandle || candidate.ObjectHandle is not null || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
                 {
                     continue;
                 }

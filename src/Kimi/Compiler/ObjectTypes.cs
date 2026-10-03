@@ -4,11 +4,38 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The implemented unique object-handle representation.</summary>
+internal enum ObjectCountingStep : byte
+{
+    None,
+    NonAtomic,
+    Atomic,
+}
+
+// SPEC 3.2, IMPL 21.2.3: payload authority and reference counting are independent properties of the static mode.
+internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
+{
+    internal LoanRequirement PayloadAuthority => this.Semantics switch
+    {
+        SemanticsKind.Obj => LoanRequirement.Uniq,
+        SemanticsKind.Rc or SemanticsKind.Arc => LoanRequirement.Ref,
+        _ => throw new InvalidOperationException("An object handle must have obj, rc or arc Semantics."),
+    };
+
+    internal ObjectCountingStep Counting => this.Semantics switch
+    {
+        SemanticsKind.Obj => ObjectCountingStep.None,
+        SemanticsKind.Rc => ObjectCountingStep.NonAtomic,
+        SemanticsKind.Arc => ObjectCountingStep.Atomic,
+        _ => throw new InvalidOperationException("An object handle must have obj, rc or arc Semantics."),
+    };
+}
+
+/// <summary>Object handle modes and borrowed views, independently of implementation support.</summary>
 internal static class ObjectTypes
 {
-    internal static bool IsOwner(BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj, Components.Count: 1 };
+    internal static ObjectHandleMode? HandleMode(BoundType? type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc, Components.Count: 1 }
+            ? new(type.Semantics) : null;
 
     internal static bool IsBorrow(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };

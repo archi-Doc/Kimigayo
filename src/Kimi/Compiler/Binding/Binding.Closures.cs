@@ -197,7 +197,7 @@ public sealed partial class Binding
 
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
-                    ReferenceTypes.IsStorage(type) || ObjectTypes.IsOwner(type)))))
+                    ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
         {
             if (entry is { } written)
             {

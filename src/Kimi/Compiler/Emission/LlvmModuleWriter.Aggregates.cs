@@ -149,8 +149,13 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "define internal void @__kimi_drop_aggregate", aggregate.Id);
         output.Write("(ptr %slot, ptr %location, i64 %length) #0 {\nentry:\n");
-        if (aggregate.ObjectHandle)
+        if (aggregate.ObjectHandle is { } objectHandle)
         {
+            if (objectHandle.Counting != ObjectCountingStep.None)
+            {
+                throw new InvalidOperationException("Counted object cleanup is not enabled by ownership analysis.");
+            }
+
             output.Write("  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n");
             return;
         }

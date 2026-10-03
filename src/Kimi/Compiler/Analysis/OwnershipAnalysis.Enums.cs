@@ -93,6 +93,23 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
+        var handle = ObjectTypes.HandleMode(type);
+        if (handle is null && ReferenceTypes.IsReference(type))
+        {
+            handle = ObjectTypes.HandleMode(type.Components[0]);
+        }
+
+        if (handle is { } mode)
+        {
+            // U1 classifies all strong handles; counted execution opens only here when its complete pipeline is ready.
+            return mode.Counting switch
+            {
+                ObjectCountingStep.None => true,
+                ObjectCountingStep.NonAtomic or ObjectCountingStep.Atomic => false,
+                _ => throw new InvalidOperationException("Unknown object counting step."),
+            };
+        }
+
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
         {
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
@@ -105,7 +122,7 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppend);
         }
 
-        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))
+        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type))
         {
             return true;
         }

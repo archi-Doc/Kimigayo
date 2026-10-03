@@ -463,7 +463,7 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
-            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.IsOwner(actual) || ObjectTypes.IsBorrow(actual)) &&
+            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.HandleMode(actual) is not null || ObjectTypes.IsBorrow(actual)) &&
                 !ReferenceEquals(actual.Components[0], pattern.Components[0]))
             {
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
@@ -672,7 +672,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (ObjectTypes.IsOwner(target) && (ObjectTypes.IsOwner(source) || ObjectTypes.IsBorrow(source)))
+        if (ObjectTypes.HandleMode(target) is not null && (ObjectTypes.HandleMode(source) is not null || ObjectTypes.IsBorrow(source)))
         {
             return this.BindObjectUpcast(conversion, scope, source, target);
         }

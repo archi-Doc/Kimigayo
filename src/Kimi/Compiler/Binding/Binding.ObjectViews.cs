@@ -40,9 +40,14 @@ public sealed partial class Binding
         }
 
         BoundType result;
-        if (ObjectTypes.IsOwner(target))
+        if (ObjectTypes.HandleMode(target) is { } targetMode)
         {
-            if (!ObjectTypes.IsOwner(actual) || KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+            if (ObjectTypes.HandleMode(actual) is not { } actualMode || actualMode != targetMode)
+            {
+                return this.FailMismatch(conversion, conversion, actual, target);
+            }
+
+            if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
             {
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }

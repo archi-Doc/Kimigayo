@@ -781,7 +781,7 @@ public sealed partial class OwnershipBody
                 }
             }
 
-            if (ObjectTypes.IsOwner(type) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
+            if (ObjectTypes.HandleMode(type) is not null || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
             {
                 for (var i = 0; i < type.Components.Count; i++)
                 {

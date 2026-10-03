@@ -9,7 +9,7 @@ internal static partial class LlvmModuleWriter
         var usesObjects = module.NeedsObjectRuntime || module.Objects.Count != 0;
         foreach (var layout in module.Aggregates)
         {
-            usesObjects |= layout.ObjectHandle;
+            usesObjects |= layout.ObjectHandle is not null;
         }
 
         if (!usesObjects)

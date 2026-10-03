@@ -1487,7 +1487,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ObjectTypes.IsOwner(type))
+            if (ObjectTypes.HandleMode(type) is not null)
             {
                 // An open view can hide any more-derived destructor, which has no complete effect bound.
                 if (binding.ProveSealed(type.Components[0], use) == ConstraintProof.Proven)
