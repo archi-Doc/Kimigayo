@@ -22,3 +22,8 @@ the payload being Copy or Owned. Opening side-table operations must add represen
 `SharedObjectRuntimeTest` checks generated branch/store order, maximum and preceding-count execution, source locations,
 clone lifetime, mixed obj/rc cleanup, returned/replaced handles and zero-allocation warm analysis/emission. Native
 allocation audits require one allocation per factory, none per clone, and exactly one final free.
+
+`SharedObjectOwnershipTest` additionally verifies that clone results keep external payload Loans without retaining the
+source handle slot, including scope exit and replacement. Payload destructor observations retain those Loans through
+release. Complete handles move through Tuple/Case decomposition without decomposing their pointees; inactive Cases
+release nothing. Borrowed object views still prevent their protecting handle from being moved (CLI/LSP checked).
