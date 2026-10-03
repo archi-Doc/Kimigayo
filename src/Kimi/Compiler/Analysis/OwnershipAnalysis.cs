@@ -449,8 +449,9 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
+                var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(expression);
-                secured = this.WriteResult(expression, this.resultPlace, value);
+                secured = this.WriteResult(expression, this.resultPlace, value, reported);
             }
         }
         else
@@ -701,10 +702,17 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Declare, field, id);
             if (field.InitializerKoto is { } initializer)
             {
+                var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(initializer);
                 if (value >= 0)
                 {
                     this.Emit(OwnershipOperationKind.Write, field, id, value);
+                }
+                else if (this.body.IssueStorage.Count > reported)
+                {
+                    // The initializer's analysis reported why it has no value; the binding is initialized, so its uses are
+                    // not reported again as uninitialized.
+                    this.Emit(OwnershipOperationKind.Produce, field, id);
                 }
             }
         }
@@ -1911,6 +1919,7 @@ public sealed partial class OwnershipAnalysis
 
     private int Jump(JumpKoto jump)
     {
+        var reported = this.body.IssueStorage.Count;
         var value = jump.Expression is { } expression ? this.Expression(expression) : -1;
         // The seed includes operand acquisition, but never this transfer's cleanup.
         // Consecutive bare transfers can reuse an as-yet unused seed: no source
@@ -1938,7 +1947,7 @@ public sealed partial class OwnershipAnalysis
         Koto? caughtTarget = null;
         if (returns)
         {
-            var secured = this.WriteResult(jump, this.resultPlace, value);
+            var secured = this.WriteResult(jump, this.resultPlace, value, jump.Expression is null ? -1 : reported);
             this.CheckConstruction(jump);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
             this.Deliver(jump, secured);

@@ -49,8 +49,16 @@ public sealed partial class OwnershipAnalysis
         return place;
     }
 
-    private int WriteResult(Koto source, int place, int input)
+    private int WriteResult(Koto source, int place, int input, int reported = -1)
     {
+        if (input < 0 && reported >= 0 && this.body.IssueStorage.Count > reported)
+        {
+            // The result expression's analysis already reported why it has no value; the result is initialized here, so its
+            // delivery is not reported again as an uninitialized result at the signature.
+            this.Emit(OwnershipOperationKind.Produce, source, place);
+            return -1;
+        }
+
         var write = input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
         if (write >= 0 && SlotTypes.IsResult(this.body.Places[place].Type) && this.resultDeclarations[place] >= 0)
         {

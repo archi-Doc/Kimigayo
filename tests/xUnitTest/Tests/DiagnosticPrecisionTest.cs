@@ -7,6 +7,8 @@ namespace XunitTest;
 
 public class DiagnosticPrecisionTest
 {
+    private const string FollowedField = "struct S\n    public var x: i32\n    public init(x: i32) => self.x = x\n    drop => ()\n";
+
     public static TheoryData<string> MutationNames => [.. DiagnosticCorpus.Mutations.Select(static x => x.Name)];
 
     [Fact]
@@ -108,6 +110,11 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var value = 1\n    let p = value@uniq\n    let inner = p@follow@ref\n    let other = p@follow@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    value = 9\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
+    // A result or binding whose expression already reported why it has no value is not reported again as uninitialized, at the
+    // signature or at the binding's later uses; `p@follow.x` of a borrowed non-Copy referent is an implementation limit (G57).
+    [InlineData(FollowedField + "func read(p: ref/S) -> i32 => p@follow.x\npublic func main() => ()", "UnsupportedOwnership_Kd")]
+    [InlineData(FollowedField + "func read(p: ref/S, c: bool) -> i32\n    if c => return p@follow.x\n    return 1\npublic func main() => ()", "UnsupportedOwnership_Kd")]
+    [InlineData(FollowedField + "func copy(p: ref/S) -> S\n    let s = S.init(p@follow.x)\n    return s@move\npublic func main() => ()", "UnsupportedOwnership_Kd")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
