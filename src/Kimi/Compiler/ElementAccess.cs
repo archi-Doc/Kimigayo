@@ -230,6 +230,8 @@ internal static class ElementAccess
     // its referent that is shared or matches the root's exclusive capability.
     internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
         => ReferenceEquals(receiver, access) ||
+            (receiver is { Semantics: SemanticsKind.ObjRef, Components.Count: 1 } && ObjectTypes.HandleMode(access) is not null &&
+                ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 
@@ -243,7 +245,7 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver))
+            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver) || ObjectTypes.HandleMode(receiver) is not null)
             {
                 return field.Left;
             }
@@ -304,7 +306,7 @@ internal static class ElementAccess
             return TryBorrowedTupleElement(field, out element, out var index) ? index : -1;
         }
 
-        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left))
+        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left) || ObjectTypes.HandleMode(left) is not null)
         {
             owner = left!.Components[0];
             for (var i = 0; i < StructStorage.Count(owner); i++)

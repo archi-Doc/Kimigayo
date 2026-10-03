@@ -96,6 +96,26 @@ internal sealed partial class BodyLowering
                 return Fail("Object borrow requires its initialized owner or parent borrow.", out failure);
             }
 
+            // A field projection borrows its slot, including through an object view; it is not a complete payload borrow.
+            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) &&
+                SignatureType(this, projected.BoundType) is var projectedType &&
+                (!ReferenceTypes.IsStorage(projectedType) || ReferenceEquals(projectedType, output.Components[0])) &&
+                ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
+            {
+                if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
+                    !ElementAccess.ReceiverMatches(type, SignatureType(this, ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq)), projectedRoot) ||
+                    !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
+                    !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
+                    (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
+                    (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
+                {
+                    return Fail("Projected borrow lacks a matching stored field and typed receiver.", out failure);
+                }
+
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, projectedOffset)]);
+                return true;
+            }
+
             if (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow, Parent: ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion } selected &&
@@ -148,26 +168,6 @@ internal sealed partial class BodyLowering
                 }
 
                 function.AddScalar(EmissionOpcode.Sequence, id, [this.PhysicalOperand(body, array), this.PhysicalOperand(body, subscript), new(EmissionOperandKind.Integer, type.Components[0].Length)], place: body.Operations.Count + id, location: location, op: "ArrayAddress", check: ArithmeticCheckKind.Bounds, representation: stride);
-                return true;
-            }
-
-            // A field holding a reference is projected only as its slot; a Reborrow of its referent loads it below.
-            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) &&
-                SignatureType(this, projected.BoundType) is var projectedType &&
-                (!ReferenceTypes.IsStorage(projectedType) || ReferenceEquals(projectedType, output.Components[0])) &&
-                ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
-            {
-                if (!this.TryBorrowedPathOffset(projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ElementAccess.ReceiverMatches(type, SignatureType(this, ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq)), projectedRoot) ||
-                    !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
-                    !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
-                    (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
-                    (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
-                {
-                    return Fail("Projected borrow lacks a matching stored field and typed receiver.", out failure);
-                }
-
-                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, projectedOffset)]);
                 return true;
             }
 
@@ -334,7 +334,8 @@ internal sealed partial class BodyLowering
     private bool TryBorrowedPathOffset(BinaryKoto field, Koto root, out int offset)
     {
         // Object views point at the allocation header; ordinary borrows point at payload storage.
-        offset = ObjectTypes.IsBorrow(SignatureType(this, ElementAccess.AccessType(root))) ? 16 : 0;
+        var rootType = SignatureType(this, ElementAccess.AccessType(root));
+        offset = ObjectTypes.IsBorrow(rootType) || ObjectTypes.HandleMode(rootType) is not null ? 16 : 0;
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
