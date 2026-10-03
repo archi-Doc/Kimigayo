@@ -46,6 +46,31 @@ public class AcquisitionRepairTest
         Assert.Contains("offers no Take", error.Advice);
     }
 
+    // A field read by value through a borrowed root, as a result or an initializer, is the same bare Place: one record at the
+    // field without a repair. It was UnsupportedOwnership_Kd with UninitializedPlace_Kd at the signature for the result.
+    [Theory]
+    [InlineData("func first(p: ref/(Resource, i32)) -> Resource => p.0\n", "p.0")]
+    [InlineData("func first(p: uniq/(Resource, i32)) -> Resource => p.0\n", "p.0")]
+    [InlineData("func first<A, B>(p: ref/(A, B)) -> A => p.0\n", "p.0")]
+    [InlineData("struct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item@move\nfunc read(holder: ref/Holder) -> i32\n    let item = holder.item\n    return item.value\n", "holder.item")]
+    public void AFieldReadThroughABorrowedRootIsOneTransferRecord(string program, string place)
+    {
+        var source = Resource + program + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
+        Assert.Equal(place, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal(place + " cannot be read as a Copy value", error.Label);
+        Assert.Null(error.Repairs);
+        Assert.Contains("offers no Take", error.Advice);
+    }
+
+    [Theory]
+    [InlineData("func first(p: ref/(Resource, i32)) -> i32 => p.1\n")]
+    [InlineData("func first(p: ref/(Resource, i32)) -> ref/Resource during p => p.0@ref\n")]
+    [InlineData("func first<A, B>(p: ref/(A, B)) -> ref/A during p => p.0@ref\n")]
+    public void ACopyReadOrABorrowOfAFieldIsAccepted(string program)
+        => Assert.Empty(DiagnosticCorpus.Check(Resource + program + "public func main() => ()\n").Diagnostics);
+
     [Fact]
     public void AnOwnedBindingInitializerOffersTheTransferAndTheBorrowAlternative()
     {

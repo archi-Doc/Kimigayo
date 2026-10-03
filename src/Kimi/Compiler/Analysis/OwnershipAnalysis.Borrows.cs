@@ -262,9 +262,21 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.Concrete(field.BoundType) is not { } type || !this.SupportsCopySnapshot(type, field))
+        if (this.Concrete(field.BoundType) is not { } type)
         {
-            this.Unsupported(field); // Non-Copy fields require an explicit reborrow, never an implicit Move.
+            this.Unsupported(field);
+            return -1;
+        }
+
+        if (this.compilation.Binding.ProveCopy(type, field) != ConstraintProof.Proven)
+        {
+            // SPEC 3.5: a Place is never moved by bare acquisition; a non-Copy field needs an explicit borrow or @move, which
+            // the shared path refutes. The read is still modeled, so later uses are checked and the result is delivered.
+            this.body.ReportIssue(new(field, OwnershipFailure.TransferRequired));
+        }
+        else if (!this.SupportsCopySnapshot(type, field))
+        {
+            this.Unsupported(field);
             return -1;
         }
 
