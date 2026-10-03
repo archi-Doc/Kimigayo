@@ -95,3 +95,4 @@ Shared payload authority failures retain conversion targets and rejected receive
 Contextually typed anonymous functions also use `BindConcreteClosure`; `Binding.ControlFlow.AddBodyResult` carries their erasure Type through selections. `ContextualClosureTest` covers this path and its public conversion diagnostics.
 Tuple captures use `ClosureEffects` part access, `ElementAccess.WritableRoot`/`OwnedPathRoot` and `OwnershipAnalysis.LocateElement` capture roots; `TupleCaptureTest` covers snapshots, Loans, consumption and erasure cleanup.
 Struct environments share the stored-part capture path; `ClosureEffects` reads computed accessor receiver arguments from retained property calls. `StructCaptureTest` covers captured fields/accessors, Owned erasure and destruction.
+`FunctionCaptureTest` covers common Function handles held by concrete or erased environments, including nested destruction and mutable capture replacement.
