@@ -344,6 +344,12 @@ public sealed partial class OwnershipBody
                                 else
                                 {
                                     (this.activatedLoans ??= new()).Add((issue.Source, issue.LoanSource));
+                                    if (this.CallReservations[r].Place >= 0)
+                                    {
+                                        // The activated input's Loan was rejected against this holder, as an acquisition is.
+                                        (this.rejectedAcquisitions ??= new()).Add((holder, this.CallReservations[r].Place));
+                                    }
+
                                     this.ReportIssue(issue);
                                 }
 

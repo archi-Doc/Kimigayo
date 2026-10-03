@@ -112,6 +112,8 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    value = 9\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var a = 1\n    let p = (a@uniq, 2)\n    let q = (a@uniq, 3)\n    p.0@follow = 5\n    q.0@follow = 6", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var a = 1\n    var b = 1\n    let p = (a@uniq, 2)\n    let q = (a@uniq, 3)\n    p.0@follow = 5\n    let r = b@ref\n    b = 2\n    require r == 1 else => $abort(\"r\")\n    q.0@follow = 6", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
+    [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    q.0@follow = 6", "CallActivationConflict_Kd")]
+    [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    var b = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    let r = b@ref\n    b = 2\n    require r == 1 else => $abort(\"r\")\n    q.0@follow = 6", "CallActivationConflict_Kd,ComparisonLoanConflict_Kd")]
     // A result or binding whose expression already reported why it has no value is not reported again as uninitialized, at the
     // signature or at the binding's later uses; a bare Copy of an object payload through its handle is an implementation limit.
     [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "UnsupportedOwnership_Kd")]
