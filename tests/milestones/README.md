@@ -137,7 +137,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
-| 40 | YES | PASS | PASS | PASS | IN_PROGRESS | The unchanged source builds and runs at Release O0/O2; sibling fields, calls and stored exclusive references keep their split identities. Full Session completion remains ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
+| 40 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE | Completed 2026-10-04 with unchanged source; sibling fields, calls and stored exclusive references keep their split identities. Session `20261003-154434-122-session-p40-u1-u2-session` passes all 34 completed harnesses ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
 
@@ -2022,10 +2022,11 @@ Closed Ben.
 Closed Eve.
 ```
 
-Current boundary (2026-10-03): the unchanged source builds and runs through `test-milestone40.ps1` at Release O0/O2.
+Completed 2026-10-04: the unchanged source builds and runs through `test-milestone40.ps1` at Release O0/O2.
 Sibling exclusive references acquired from owned Tuple payloads keep their independent capabilities through field
 access, call arguments, Reborrows and stored exclusive-reference reads. A child still suspends its own parent, and
-both siblings keep the original collection borrowed. Full Session verification is required before marking P40 DONE.
+both siblings keep the original collection borrowed. Session `20261003-154434-122-session-p40-u1-u2-session` passes
+15,830 tests, 338 native regression executions and all 34 completed milestone harnesses, completing P40.
 
 Separate feature checks (`DisjointArrayPairTest`, `DisjointSplitLoanTest`): an empty Array and zero-sized elements give `None` or distinct
 logical positions; rejections of a whole-collection read, write, `append` or Move while a pair reference is live, of
