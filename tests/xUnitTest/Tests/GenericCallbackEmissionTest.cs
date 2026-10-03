@@ -34,6 +34,8 @@ public class GenericCallbackEmissionTest
     // SPEC 10.5: a written closure header is evidence for T before the literal's body is checked, so an untyped integer
     // argument is fitted to it; it was UnprovenConstraint_Kd for `T is Copy`.
     [InlineData("HeaderEvidence", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nrequire apply(func [] (value: i32) -> i32 => value + 1, 2) == 3 else => $abort(\"header\")", "")]
+    [InlineData("GenericElementCall", "func callAt<T>(fs: ref/Array<(T) -> T>, x: T) -> T => fs[0](x@move)\nlet fs: Array<(i32) -> i32> = [func [] (v) => v * 2]\nlet ws: Array<(i64) -> i64> = [func [] (v) => v + 7]\nrequire callAt(fs@ref, 3) == 6 and callAt(ws@ref, 1@i64) == 8@i64 else => $abort(\"element\")", "")]
+    [InlineData("GenericFieldCall", "struct H<T>\n    public var f: (T) -> T\n    public init(f: (T) -> T) => self.f = f@move\nfunc run<T>(h: ref/H<T>, x: T) -> T => (h.f)(x@move)\nlet h = H<i32>.init(func [] (v) => v + 5)\nrequire run(h@ref, 1) == 6 else => $abort(\"field\")", "")]
     public void SharedCallsPreserveBehavior(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
 
