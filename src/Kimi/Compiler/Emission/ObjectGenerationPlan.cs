@@ -57,7 +57,7 @@ internal sealed class ObjectGenerationPlan
             for (var i = 0; i < operations.Count; i++)
             {
                 if ((operations[i].Kind == OwnershipOperationKind.Call && operations[i].Source is InvocationKoto { BoundCall: { } call } &&
-                    ReferenceEquals(call.Target, compilation.Library.MakeObj)) || operations[i].Source is IsKoto { BoundRuntimeTest: not null })
+                    call.Target.CompilerFunction is CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.Clone) || operations[i].Source is IsKoto { BoundRuntimeTest: not null })
                 {
                     hasObjects = true;
                     break;
@@ -88,13 +88,14 @@ internal sealed class ObjectGenerationPlan
                 }
 
                 if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
-                    !ReferenceEquals(call.Target, compilation.Library.MakeObj))
+                    call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc))
                 {
                     continue;
                 }
 
                 if (GenericStoragePlan.IsGeneric(body.Function) || call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
-                    ObjectTypes.HandleMode(call.ReturnType) is not { Counting: ObjectCountingStep.None } || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
+                    ObjectTypes.HandleMode(call.ReturnType) is not { Counting: ObjectCountingStep.None or ObjectCountingStep.NonAtomic } || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
+                    call.ReturnType.Semantics != (call.Target.CompilerFunction == CompilerFunctionKind.MakeObj ? SemanticsKind.Obj : SemanticsKind.Rc) ||
                     call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) ||
                     !ReferenceEquals(call.ArgumentOperations[0].ParameterType, payload) ||
                     FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
@@ -165,6 +166,7 @@ internal sealed class ObjectGenerationPlan
                     parameters.Add(new(value.ArgumentType!, "a0", parameterKind, 0));
                 }
 
+                parameters.Add(new("i64", "controlValue", AbiParameterKind.Context));
                 parameters.Add(new("ptr", "location", AbiParameterKind.Location));
                 parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
                 var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);

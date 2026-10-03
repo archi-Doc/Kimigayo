@@ -24,6 +24,7 @@ internal static partial class WindowsLowering
     internal const int FormatReason = 14;
     internal const int MissingKeyReason = 15;
     internal const int DuplicateKeyReason = 16;
+    internal const int ReferenceCountReason = 17;
 
     // Indices are stable internal ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -48,6 +49,7 @@ internal static partial class WindowsLowering
         new(FormatReason, "format", "KIMI_E_FORMAT: Formatting failed"),
         new(MissingKeyReason, "missing_key", "KIMI_E_MISSING_KEY: Dictionary key was not found"),
         new(DuplicateKeyReason, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
+        new(ReferenceCountReason, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

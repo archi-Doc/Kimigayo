@@ -190,7 +190,7 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Equal(17, WindowsLowering.AbortReasons.Length);
+        Assert.Equal(18, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         foreach (var reason in WindowsLowering.AbortReasons)
@@ -210,6 +210,8 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", WindowsLowering.AbortReasons[WindowsLowering.MissingKeyReason].Text);
         Assert.Equal(16, WindowsLowering.DuplicateKeyReason);
         Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", WindowsLowering.AbortReasons[WindowsLowering.DuplicateKeyReason].Text);
+        Assert.Equal(17, WindowsLowering.ReferenceCountReason);
+        Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", WindowsLowering.AbortReasons[WindowsLowering.ReferenceCountReason].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }

@@ -117,18 +117,26 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("rc/i32")]
     [InlineData("arc/i32")]
-    [InlineData("ref/rc/i32")]
     [InlineData("uniq/arc/i32")]
-    [InlineData("(rc/i32, i32)")]
     [InlineData("Option<arc/i32>")]
-    [InlineData("Array<rc/i32>")]
-    public void CountedOwnershipRemainsClosed(string type)
+    public void AtomicOwnershipRemainsClosed(string type)
     {
         var c = MinimalEmissionTest.Analyze($"func unsupported(value: {type}) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
         Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Theory]
+    [InlineData("rc/i32")]
+    [InlineData("ref/rc/i32")]
+    [InlineData("(rc/i32, i32)")]
+    [InlineData("Array<rc/i32>")]
+    public void RcOwnershipUsesOrdinaryStorageAndCleanup(string type)
+    {
+        var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var issue), MinimalEmissionTest.Describe(c, issue));
     }
 }

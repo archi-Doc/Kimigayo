@@ -101,11 +101,11 @@ public sealed partial class OwnershipAnalysis
 
         if (handle is { } mode)
         {
-            // U1 classifies all strong handles; counted execution opens only here when its complete pipeline is ready.
+            // Atomic ownership remains closed until its runtime transitions are implemented.
             return mode.Counting switch
             {
-                ObjectCountingStep.None => true,
-                ObjectCountingStep.NonAtomic or ObjectCountingStep.Atomic => false,
+                ObjectCountingStep.None or ObjectCountingStep.NonAtomic => true,
+                ObjectCountingStep.Atomic => false,
                 _ => throw new InvalidOperationException("Unknown object counting step."),
             };
         }

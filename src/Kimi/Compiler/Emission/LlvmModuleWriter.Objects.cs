@@ -90,6 +90,7 @@ internal static partial class LlvmModuleWriter
             }
 
             """);
+        WriteRcObjects(output);
         foreach (var item in module.Objects)
         {
             var id = item.Id;
@@ -165,7 +166,7 @@ internal static partial class LlvmModuleWriter
             WriteNumber(output, (long)layout.Size + 16);
             output.Write(", ptr %location, i64 %length)\n  store ptr ");
             Name(output, "@__kimi_object_descriptor", id);
-            output.Write(", ptr %header, align 8\n  %control = getelementptr i8, ptr %header, i64 8\n  store i64 0, ptr %control, align 8\n");
+            output.Write(", ptr %header, align 8\n  %control = getelementptr i8, ptr %header, i64 8\n  store i64 %controlValue, ptr %control, align 8\n");
             if (layout.Size != 0)
             {
                 output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n");

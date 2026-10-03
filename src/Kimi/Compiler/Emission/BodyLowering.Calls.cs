@@ -145,7 +145,8 @@ internal sealed partial class BodyLowering
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         var comparison = resolved?.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
-        var intrinsic = formatting || comparison;
+        var clone = resolved?.Target.CompilerFunction == CompilerFunctionKind.Clone;
+        var intrinsic = formatting || comparison || clone;
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
@@ -156,9 +157,16 @@ internal sealed partial class BodyLowering
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
-        var runtime = formatting || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+        var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+        if (clone && (plan.ArgumentOperations.Length != 1 || SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
+            !ReferenceTypes.StorageMatches(borrowedHandle.Components[0], returnType)))
+        {
+            return Fail("Strong clone requires a shared handle-slot borrow with the same result mode and payload.", out failure);
+        }
+
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
-        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
+        var callee = clone ? ObjectTypes.HandleMode(returnType) is { Counting: ObjectCountingStep.NonAtomic } ? WindowsLowering.CloneRc : null
+            : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && call.Parent is InterpolatedStringKoto { Formatting: { } formattingRoot } &&
             call.ArgumentNodes.Count == 2 && call.ArgumentNodes[1] is StringLiteralKoto && this.EstimateFormatting(formattingRoot).Capacity == 0)
         {
@@ -299,6 +307,12 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < callee!.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
+            if (creation is { } objectCreationPlan && physical.Kind == AbiParameterKind.Context)
+            {
+                this.callOperands.Add(new(EmissionOperandKind.Integer, objectCreationPlan.Result.Semantics == SemanticsKind.Obj ? 0 : 2));
+                continue;
+            }
+
             if (physical.Kind == AbiParameterKind.Context && physical.Type == "i32" && plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
             {
                 var kind = this.BuiltinFormatKind(plan);
@@ -364,7 +378,7 @@ internal sealed partial class BodyLowering
             }
 
             var entry = this.parameterArguments[physical.LogicalIndex];
-            var type = formatting ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            var type = formatting || clone ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
             if (!this.TryCallArgumentOperand(body, entry, id, type, physical.Kind, out var operand, out failure))
             {
                 return false;
