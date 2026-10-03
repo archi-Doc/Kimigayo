@@ -607,10 +607,6 @@ public sealed partial class Binding
     {
         declaration.Scope = scope;
         declaration.State = 3;
-        var visitor = this.originRewriteVisitor ??= new(this);
-        visitor.Declaration = declaration;
-        visitor.Visit(((VariableKoto)declaration.Owner).InitializerKoto!);
-        visitor.Declaration = null;
         for (var i = this.obligations.Count - 1; i >= 0; i--)
         {
             var obligation = this.obligations[i];
@@ -704,29 +700,6 @@ public sealed partial class Binding
             if (node.BoundType is { } type)
             {
                 node.BoundType = binding.RewriteOrigins(type, declaration);
-            }
-
-            if (binding.enumConstructions.TryGetValue(node, out var construction) && construction.IsValid)
-            {
-                var source = construction.PayloadOperations;
-                var operations = binding.argumentOperationScratch.Rent(source.Length);
-                try
-                {
-                    for (var i = 0; i < source.Length; i++)
-                    {
-                        operations[i] = source[i] with
-                        {
-                            SourceType = source[i].SourceType is { } input ? binding.RewriteOrigins(input, declaration) : null,
-                            ParameterType = source[i].ParameterType is { } parameter ? binding.RewriteOrigins(parameter, declaration) : null,
-                        };
-                    }
-
-                    construction.Set(construction.Case, binding.RewriteOrigins(construction.Type, declaration), operations.AsSpan(0, source.Length));
-                }
-                finally
-                {
-                    binding.argumentOperationScratch.Return(operations, clearArray: true);
-                }
             }
 
             if (node.BoundOrigin is { } origin)

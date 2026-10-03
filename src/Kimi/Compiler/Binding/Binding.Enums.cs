@@ -417,6 +417,8 @@ public sealed partial class Binding
                 continue;
             }
 
+            this.CompleteEnumOrigins(entry.Key, plan);
+
             if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
@@ -455,6 +457,37 @@ public sealed partial class Binding
                 }
 
                 plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
+            }
+        }
+    }
+
+    // The enclosing local has now solved all acquisition bounds. Complete this plan against those solutions without
+    // changing the source expressions' own call/adaptation certificates or their acquired source Types.
+    private void CompleteEnumOrigins(Koto use, BoundEnumConstruction construction)
+    {
+        for (var node = use.Parent; node is not null; node = node.Parent)
+        {
+            if (!this.initializerOrigins.TryGetValue(node, out var declaration) || declaration.State < 2 || declaration.Replacements.Count == 0)
+            {
+                continue;
+            }
+
+            var source = construction.PayloadOperations;
+            var operations = this.argumentOperationScratch.Rent(source.Length);
+            try
+            {
+                for (var i = 0; i < source.Length; i++)
+                {
+                    operations[i] = source[i] with { ParameterType = this.RewriteOrigins(source[i].ParameterType!, declaration) };
+                }
+
+                var type = this.RewriteOrigins(construction.Type, declaration);
+                construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
+                use.BoundType = type;
+            }
+            finally
+            {
+                this.argumentOperationScratch.Return(operations, clearArray: true);
             }
         }
     }
