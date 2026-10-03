@@ -50,6 +50,8 @@ internal sealed partial class GenericStoragePlan
 
     internal Dictionary<BoundCall, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
 
+    internal IReadOnlyList<CallEntry> Entries => this.entries;
+
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
     internal CallEntry? ExpansionParent { get; set; }
@@ -171,7 +173,7 @@ internal sealed partial class GenericStoragePlan
         {
             var operation = body.Operations[i];
             if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc) && !calls.Contains(call))
             {
                 calls.Add(call);
             }

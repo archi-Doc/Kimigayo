@@ -93,8 +93,10 @@ cleanup by handle mode. `SharedObjectRuntimeTest` covers counts, lifetime, gener
 `SharedObjectOwnershipTest` covers Tuple/Case transfer, clone result Origins, destruction observations and CLI/LSP Loans.
 `OwnershipAnalysis.Pointers.SupportsPointerValue` shares executable handle storage with raw Move acquisition;
 `SharedObjectCleanupTest` covers owning Array iteration, clear, abandoned arguments and rc dynamic base identity.
-`FunctionKoto.RequiresInstantiation` supplies the shared generic-context predicate; `OwnershipAnalysis.Call` records
-the generic factory boundary before generation (`GenericObjectFactoryTest`, including CLI/LSP and generic clone).
+`FunctionKoto.RequiresInstantiation` supplies the shared generic-context predicate. `Binding.InstantiateForwardedCall`
+closes acquisition Types while keeping source anchors; `GenericStoragePlan` includes factory calls in each entry.
+`ObjectGenerationPlan.PrepareInstances` appends their checked physical plans as the bounded destructor queue discovers
+entries, preserving existing IDs (`GenericObjectFactoryTest`: nested factories, external Loans, growth and warm reuse).
 `Binding.ArgumentOperations.ExpectedAdaptation` shares object authority with argument adaptation; `SharedObjectAdaptationTest` covers fixed expectations, result dependencies and native object views.
 Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLowering.Closures` and `LlvmModuleWriter.Closures`; `HeapClosureErasureTest` covers inline/heap selection, environment adapters and final destruction. `ClosureEffects` recognizes captured-object Copy Field inspection.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.

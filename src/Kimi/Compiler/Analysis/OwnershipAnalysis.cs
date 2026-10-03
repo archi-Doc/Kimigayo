@@ -181,13 +181,10 @@ public sealed partial class OwnershipAnalysis
             // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.3.6.9).
             var transfer = issue.Failure == OwnershipFailure.TransferRequired;
             var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
-            var note = issue is { Failure: OwnershipFailure.Unsupported, Related: FunctionKoto { RequiresInstantiation: true } }
-                ? "Object factories in generic function or container bodies are not implemented; their payload and destructor plans require concrete call contexts"
-                : AcquisitionNote(issue);
             issue.Source.Report(
                 DiagnosticRequirement.Ownership(issue.Failure),
                 issue.Code,
-                note: note,
+                note: AcquisitionNote(issue),
                 evidence: transfer ? [issue.Source.ToString()] : null,
                 advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
                 related: RelatedLocations(issue),
@@ -1396,13 +1393,6 @@ public sealed partial class OwnershipAnalysis
         if (plan.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
         {
             return this.WholeValueUpdate(call, plan);
-        }
-
-        if (plan.Target.CompilerFunction is CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc &&
-            this.body.Function.RequiresInstantiation)
-        {
-            // Keep checking argument acquisition and independent errors; the missing physical plan cannot certify emission.
-            this.body.ReportIssue(new(call, OwnershipFailure.Unsupported, Related: this.body.Function));
         }
 
         if (plan.Target.Declaration is FunctionKoto libraryBody && plan.Target.CompilerFunction == CompilerFunctionKind.None)

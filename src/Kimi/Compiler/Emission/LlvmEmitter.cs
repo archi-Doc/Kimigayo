@@ -166,7 +166,7 @@ public sealed class LlvmEmitter
             this.lowering.FormattingCalls = this.generics.FormattingCalls;
             this.lowering.ComparisonCalls = this.generics.ComparisonCalls;
             this.lowering.ComparisonHelpers = this.generics.ComparisonHelpers;
-            if (!this.objects.Prepare(c, module, this.lowering.AggregateLayouts, out failure))
+            if (!this.objects.Prepare(c, module, this.lowering.AggregateLayouts, this.generics, out failure))
             {
                 return false;
             }
@@ -201,6 +201,7 @@ public sealed class LlvmEmitter
             while (this.generics.HasPendingDestructors)
             {
                 if (!this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
+                    !this.objects.PrepareInstances(c, module, this.lowering.AggregateLayouts, this.generics, out failure) ||
                     !this.LowerInstances(c, module, out failure))
                 {
                     this.resourceLimit = this.generics.ResourceLimitExceeded;
@@ -253,6 +254,7 @@ public sealed class LlvmEmitter
             this.staticGetters.Clear();
             this.generics.Clear();
             c.Ownership.ClearInstances();
+            this.objects.Complete();
             this.objects.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
