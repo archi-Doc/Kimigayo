@@ -86,13 +86,15 @@ and pair signature validation), `KimiLibraryPrimitives` and catalog Function kin
 Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLowering.Closures` and `LlvmModuleWriter.Closures`; `HeapClosureErasureTest` covers inline/heap selection, environment adapters and final destruction. `ClosureEffects` recognizes captured-object Copy Field inspection.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.
 
+Contextually typed anonymous functions also use `BindConcreteClosure`; `Binding.ControlFlow.AddBodyResult` carries their erasure Type through selections. `ContextualClosureTest` covers this path and its public conversion diagnostics.
+Tuple captures use `ClosureEffects` part access, `ElementAccess.WritableRoot`/`OwnedPathRoot` and `OwnershipAnalysis.LocateElement` capture roots; `TupleCaptureTest` covers snapshots, Loans, consumption and erasure cleanup.
+Struct environments share the stored-part capture path; `ClosureEffects` reads computed accessor receiver arguments from retained property calls. `StructCaptureTest` covers captured fields/accessors, Owned erasure and destruction.
+`FunctionCaptureTest` covers common Function handles held by concrete or erased environments, including nested destruction and mutable capture replacement.
+`FixedArrayCaptureTest` covers fixed-array capture element authority, nested paths, consumption, erasure allocation and reverse destruction.
+
 ## Use and maintenance
 
 1. Read the owning specification and the relevant row, then trace callers and shared plans. Locate filenames with `rg --files src/Kimi/Compiler -g '*Comparison*.cs'`; find consumers with `rg -n 'BoundComparison' src/Kimi tests/xUnitTest`.
 2. Select related tests from their source, including allocation/reuse tests for hot paths. Follow [VERIFICATION.md](VERIFICATION.md) and [milestone programs](../../tests/milestones/README.md) for completion evidence; the table is not a complete verification command.
 3. Update affected entries in the same commit as changes to feature placement, phase responsibilities, entry points or listed source/test names. Add a row only for a distinct navigation need; retain representative entry points rather than cataloging every helper.
 4. Verify changed links, file stems/globs and method names against the checkout. Keep requirements in SPEC/IMPL, support boundaries in STATUS and detailed diagnostic rules in DIAGNOSTICS; link to them instead of copying their content.
-Contextually typed anonymous functions also use `BindConcreteClosure`; `Binding.ControlFlow.AddBodyResult` carries their erasure Type through selections. `ContextualClosureTest` covers this path and its public conversion diagnostics.
-Tuple captures use `ClosureEffects` part access, `ElementAccess.WritableRoot`/`OwnedPathRoot` and `OwnershipAnalysis.LocateElement` capture roots; `TupleCaptureTest` covers snapshots, Loans, consumption and erasure cleanup.
-Struct environments share the stored-part capture path; `ClosureEffects` reads computed accessor receiver arguments from retained property calls. `StructCaptureTest` covers captured fields/accessors, Owned erasure and destruction.
-`FunctionCaptureTest` covers common Function handles held by concrete or erased environments, including nested destruction and mutable capture replacement.

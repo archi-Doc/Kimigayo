@@ -131,7 +131,7 @@ public sealed partial class Binding
         }
 
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.Tuple ||
+                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.Tuple or BoundTypeKind.FixedArray ||
                     StructStorage.IsStruct(type) || ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
         {
             if (entry is { } written)
@@ -354,6 +354,7 @@ public sealed partial class Binding
             {
                 var use = node;
                 while (use.Parent is ParenthesizedKoto ||
+                    (use.Parent is IndexKoto index && ReferenceEquals(index.Left, use) && use.BoundType?.Kind == BoundTypeKind.FixedArray) ||
                     (use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use) &&
                         (use.BoundType?.Kind == BoundTypeKind.Tuple || (StructStorage.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
                 {
