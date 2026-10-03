@@ -23,6 +23,9 @@ public sealed partial class OwnershipBody
     private List<int>? borrowRoots;
     private List<int>? liveBorrowPlaces;
 
+    // Each acquisition reported against a holder's Loan, with the Place that received the rejected Loan.
+    private List<(int Holder, int Result)>? rejectedAcquisitions;
+
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
     internal int BorrowDependencyCapacity => this.borrowDependencies.Capacity;
 
@@ -48,6 +51,7 @@ public sealed partial class OwnershipBody
         this.borrowRoots?.Clear();
         this.preparedLoanConflicts?.Clear();
         this.activatedLoans?.Clear();
+        this.rejectedAcquisitions?.Clear();
         this.reservationOverlaps?.Clear();
         this.overlapActivations?.Clear();
         var count = this.Places.Count;
@@ -359,6 +363,16 @@ public sealed partial class OwnershipBody
                                 // SPEC 15.6.7: the operation conflicts with a reservation, which is shown as its lending point.
                                 this.ReportReservationConflict(new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved), own, reserved);
                                 continue;
+                            }
+
+                            if (this.RestatesRejectedAcquisition(holder, value.Count > 0 ? this.ValueOperands[value.Start] : accessId))
+                            {
+                                continue; // The rejected acquisition's record already states this overlap of the same two Loans.
+                            }
+
+                            if (operation.Kind == OwnershipOperationKind.Borrow && operation.Input >= 0)
+                            {
+                                (this.rejectedAcquisitions ??= new()).Add((holder, operation.Input));
                             }
 
                             this.ReportIssue(new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source));
@@ -1421,6 +1435,61 @@ public sealed partial class OwnershipBody
         return other >= 0 && Group(other) == Group(reservation);
 
         int Group(int id) => this.CallReservations[id].Argument >= 0 ? this.CallReservations[id].Argument : id;
+    }
+
+    // An access through the Loan of an acquisition already reported against this holder meets the same overlap again
+    // (`let other = value@uniq` while `inner` borrows `value`, then `other@follow = 2` while `inner` lives).
+    private bool RestatesRejectedAcquisition(int holder, int access)
+    {
+        for (var i = 0; this.rejectedAcquisitions is { } rejected && i < rejected.Count; i++)
+        {
+            if (rejected[i].Holder != holder)
+            {
+                continue;
+            }
+
+            for (var place = 0; place < this.Places.Count; place++)
+            {
+                if (this.ReceivedBorrow(place, rejected[i].Result) && this.IsBorrowAncestor(access, place))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a reference Place holds the result of a borrow, directly or through the Writes and Moves that transferred it.
+    private bool ReceivedBorrow(int place, int result)
+    {
+        for (var remaining = this.Places.Count; remaining > 0; remaining--)
+        {
+            if (place == result)
+            {
+                return true;
+            }
+
+            if (!ReferenceTypes.IsBorrow(this.Places[place].Type) || this.borrowDefinitions[place] is not (>= 0 and var definition))
+            {
+                return false;
+            }
+
+            var transferred = this.Operations[definition] switch
+            {
+                { Kind: OwnershipOperationKind.Write, Input: >= 0 } write => write.Input,
+                { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0 } moved => moved.Place,
+                _ => -1,
+            };
+            if (transferred < 0 || transferred == place)
+            {
+                return false;
+            }
+
+            place = transferred;
+        }
+
+        return false;
     }
 
     private bool IsBorrowAncestor(int value, int place)

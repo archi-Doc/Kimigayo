@@ -103,6 +103,11 @@ public class DiagnosticPrecisionTest
     [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
     [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    // A rejected acquisition states its overlap once; a later use of the rejected Loan meets the same holder again, while an
+    // independent access to the root during that holder's Loan is still its own problem.
+    [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var value = 1\n    let p = value@uniq\n    let inner = p@follow@ref\n    let other = p@follow@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    value = 9\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
