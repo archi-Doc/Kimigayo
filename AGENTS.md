@@ -20,7 +20,7 @@
    - **AST Inspection and Manipulation:** inspect syntax and semantics, apply edits against identified source snapshots, and produce reviewable source changes.
    - **Verifiable Changes:** associate checks, tests, and measurements with exact source and configuration, reporting outcomes and remaining uncertainty.
 
-The specification and implementation are not set in stone. The specification guides implementation, but implementation insights can also lead to revisions when the specification is contradictory, overly complex, or detrimental to performance. Let’s think carefully and refine both together, guided by the Kimigayo Principles, to build a better language.
+The specification and implementation are not set in stone. The specification guides implementation, but implementation insights can also lead to revisions: when the specification is contradictory, unsound or overly complex, or when a simpler, more consistent, more efficient or faster rule exists. Every revision must uphold the Kimigayo Principles and keep the language consistent and robust; these conditions are absolute. Let’s think carefully and refine both together to build a better language.
 
 # Coding Guidelines
 
@@ -34,7 +34,7 @@ The specification and implementation are not set in stone. The specification gui
 # Documentation Responsibilities
 
 - Consult [docs/dev/CODEMAP.md](docs/dev/CODEMAP.md) before compiler changes. It maps features and entry points to source and representative tests. Update it in the same commit for added/moved features, changed phase responsibilities or entry points, or stale references. Keep it concise and navigation-only, without spec rules or support status.
-- `docs/SPEC.md` and its chapters define required behavior; implementation limits must not weaken it. The formal spec must be self-contained: never reference, depend on, or treat `draft` proposals as authority. Integrate finalized proposals into the spec; never propagate spec changes back to proposals.
+- `docs/SPEC.md` and its chapters define required behavior. Never weaken it merely because the implementation is missing or incomplete: report such forms as unsupported and record the gap in `docs/STATUS.md` and PLAN. Revising a rule for the reasons above is a deliberate spec change, not a weakening, and needs no user approval: state its rationale and how it upholds the Kimigayo Principles in the commit, and update affected chapters, examples, tests and milestone programs in the same commit. The formal spec must be self-contained: never reference, depend on, or treat `draft` proposals as authority. Integrate finalized proposals into the spec; never propagate spec changes back to proposals.
 - Record every spec intake in `draft/INTEGRATED.md` in the same commit as the spec changes, mapping proposal sections to target sections or commit. Integration and freezing do not require completed implementation or tests.
 - For unresolved proposals, mark 一部取り込み (partially integrated), record integrated scope and open items, and freeze only that scope. Edit unresolved content only on explicit instruction, preserving frozen scope.
 - Freeze an entire proposal once every item is recorded as incorporated, rejected with a reason, or transferred to an identified separate proposal. Record closure with the final disposition and any final spec changes in the same commit: 取り込み済み (integrated) if any item was incorporated; otherwise 完了 (closed). Neither implies implementation support.
