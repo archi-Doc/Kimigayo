@@ -2609,19 +2609,27 @@ CloseParameters:
             return null;
         }
 
+        if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        {
+            // Only a named function among executable items takes attributes (SPEC 6.5, F.5); a misplaced one attaches to nothing,
+            // so the item it precedes is checked on its own.
+            reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
+            reader.PopAttribute();
+        }
+
         if (reader.CurrentTokenKind == TokenKind.Underscore && reader.PeekKind(1) == TokenKind.Equals)
         {
             var discardToken = reader.Read();
             reader.Advance();
-            var value = ParseExpression(ref reader);
-            return new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, value.Span.End), value);
+            var value = ParseRequiredExpression(ref reader);
+            return new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, Math.Max(discardToken.Span.End, value.Span.End)), value);
         }
 
         if (reader.CurrentTokenKind == TokenKind.Dollar && reader.PeekKind(1) is TokenKind.Identifier or TokenKind.Require)
         {
             var probe = reader;
             var start = probe.Read();
-            var require = probe.IsCurrentIdentifier("require") || probe.CurrentTokenKind == TokenKind.Require;
+            var require = probe.CurrentTokenKind == TokenKind.Require;
             if (require || probe.IsCurrentIdentifier("expect"))
             {
                 reader = probe;
@@ -2647,13 +2655,6 @@ CloseParameters:
                 var message = arguments.Length > 1 ? (malformed is { } cause ? new ErrorKoto(ref reader, arguments[1].Span) { Cause = cause } : arguments[1]) : null;
                 return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
             }
-        }
-
-        if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
-        {
-            // A misplaced attribute attaches to nothing, so the item it precedes is checked on its own.
-            reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
-            reader.PopAttribute();
         }
 
         if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
@@ -2867,10 +2868,11 @@ CloseParameters:
         var bindings = new List<IdentifierNameKoto>(2);
         var isTupleBinding = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
         ulong mutableSlots = 0;
+        DiagnosticKey? malformed = null;
 
         if (isTupleBinding)
         {
-            ParseForTupleBindings(ref reader, bindings, ref mutableSlots);
+            malformed = ParseForTupleBindings(ref reader, bindings, ref mutableSlots);
         }
         else if (TryParseForBinding(ref reader, out var binding, out var mutable))
         {
@@ -2879,7 +2881,7 @@ CloseParameters:
         }
         else
         {
-            reader.Expect(SyntaxForm.Name);
+            malformed = reader.Expect(SyntaxForm.Name);
             if (reader.CanRead &&
                 reader.CurrentTokenKind != TokenKind.In &&
                 !IsExpressionBoundary(ref reader))
@@ -2892,7 +2894,7 @@ CloseParameters:
 
         var iterable = ParseHeaderExpression(ref reader);
         var body = ParseRequiredBody(ref reader);
-        return new ForKoto(
+        var loop = new ForKoto(
             ref reader,
             SourceSpan.FromBounds(forToken.Span.Start, body.Span.End),
             bindings,
@@ -2900,54 +2902,29 @@ CloseParameters:
             body,
             isTupleBinding,
             mutableSlots);
+        if (malformed is { } cause)
+        {
+            // The slots the loop binds are unknown, so its iteration is not checked: the iterable and the body are, on their own.
+            reader.CodeContext.RecordRecovery(loop, cause);
+        }
+
+        return loop;
     }
 
-    private static void ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref ulong mutableSlots)
+    /// <summary>Parses the slots of <c>(slot, ...)</c> (SPEC 14.6.1, F.5); a failed slot is skipped whole and the list continues.</summary>
+    /// <returns>The key of the first Error, or <see langword="null"/> for a well-formed list.</returns>
+    private static DiagnosticKey? ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref ulong mutableSlots)
     {
         reader.Advance();
-        var expectsBinding = true;
-
-        while (reader.CanRead)
+        DiagnosticKey? malformed = null;
+        while (true)
         {
-            if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+            if (reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.In || IsExpressionBoundary(ref reader))
             {
-                // An empty list or a trailing comma is not a ForBinding form (SPEC F.5).
-                if (expectsBinding)
-                {
-                    reader.Expect(SyntaxForm.Name);
-                }
-
-                reader.Advance();
-                return;
+                // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.5).
+                malformed ??= reader.Expect(SyntaxForm.Name);
             }
-
-            if (!expectsBinding)
-            {
-                if (reader.CurrentTokenKind == TokenKind.Comma)
-                {
-                    reader.Advance();
-                }
-                else if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
-                {
-                    reader.Expect(SyntaxForm.CloseParenthesis);
-                    return;
-                }
-                else
-                {
-                    reader.Expect(SyntaxForm.Comma);
-                }
-
-                expectsBinding = true;
-                continue;
-            }
-
-            if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
-            {
-                reader.Expect(SyntaxForm.CloseParenthesis);
-                return;
-            }
-
-            if (TryParseForBinding(ref reader, out var binding, out var mutable))
+            else if (TryParseForBinding(ref reader, out var binding, out var mutable))
             {
                 if (mutable)
                 {
@@ -2962,16 +2939,33 @@ CloseParameters:
                 }
 
                 bindings.Add(binding);
-                expectsBinding = false;
             }
             else
             {
-                reader.Expect(SyntaxForm.Name);
-                reader.Advance();
+                // Not a slot, such as a nested list: the whole slot is skipped, so a following comma still continues the list.
+                malformed ??= reader.Expect(SyntaxForm.Name);
+                reader.SkipListItem();
             }
-        }
 
-        reader.Expect(SyntaxForm.CloseParenthesis);
+            if (reader.TryConsume(TokenKind.Comma))
+            {
+                continue;
+            }
+
+            if (reader.TryConsume(TokenKind.CloseParenthesis))
+            {
+                return malformed;
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
+            {
+                var missing = reader.Expect(SyntaxForm.CloseParenthesis);
+                return malformed ?? missing;
+            }
+
+            // Two slots without a comma between them; the next one is read.
+            malformed ??= reader.Expect(SyntaxForm.Comma);
+        }
     }
 
     // SPEC 14.6.1: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding.
@@ -3058,13 +3052,18 @@ CloseParameters:
 
             var oldPosition = reader.Position;
             var pattern = ParsePattern(ref reader);
-            var region = reader.EnterMatchArm();
+            var region = reader.EnterRegion();
             var guard = reader.TryConsume(TokenKind.If) ? ParseHeaderExpression(ref reader) : null;
             var parsedBody = ParseRequiredBody(ref reader);
             Koto body = parsedBody.IsExpressionBody ? parsedBody.Items[0] : parsedBody;
             arms.Add(new MatchArmKoto(pattern, body) { Guard = guard });
             end = body.Span.End;
             reader.RestoreRegion(region);
+            if (parsedBody.IsExpressionBody && reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
+            {
+                // An arm ends with its line, as a statement does; what remains there is no next arm.
+                reader.ExpectLineEnd();
+            }
 
             if (reader.Position == oldPosition)
             {
@@ -3095,8 +3094,7 @@ CloseParameters:
             sameLine = reader.CanRead && reader.SameLine(end, reader.CurrentTokenRange.Start);
             if (!sameLine || !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
-                reader.Diagnostic.Add(sameLine ? reader.CurrentTokenRange : new SourceSpan(end, 0), DiagnosticCode.TransferTargetExpected_Kd);
-                recovery = reader.Diagnostic.LastError;
+                recovery = reader.ReportOnce(sameLine ? reader.CurrentTokenRange : new SourceSpan(end, 0), DiagnosticCode.TransferTargetExpected_Kd);
                 validTarget = false;
                 label = string.Empty; // A malformed named target must not become an unnamed transfer.
             }
@@ -3218,7 +3216,11 @@ CloseParameters:
                 reader.Expect(SyntaxForm.ArrowBody);
             }
 
-            return ParseRequiredBlock(ref reader, true);
+            // The items of an indented body are regions of their own (SPEC 2.2.1).
+            var region = reader.EnterRegion();
+            var block = ParseRequiredBlock(ref reader, true);
+            reader.RestoreRegion(region);
+            return block;
         }
 
         var expression = ParseSingleBodyItem(ref reader, ifBody);
@@ -3473,8 +3475,7 @@ CloseParameters:
         Koto target;
         if (!sameLine || reader.CurrentTokenKind is not (TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.If or TokenKind.Match or TokenKind.Do))
         {
-            reader.Diagnostic.Add(sameLine ? reader.CurrentTokenRange : new SourceSpan(colon.Span.End, 0), DiagnosticCode.LabelTargetExpected_Kd);
-            recovery = reader.Diagnostic.LastError;
+            recovery = reader.ReportOnce(sameLine ? reader.CurrentTokenRange : new SourceSpan(colon.Span.End, 0), DiagnosticCode.LabelTargetExpected_Kd);
             target = new ErrorKoto(ref reader, colon.Span) { Cause = recovery };
             if (sameLine && !IsExpressionBoundary(ref reader))
             {
@@ -3705,7 +3706,7 @@ ProcessPrefix:
                     }
                     else
                     {
-                        var region = reader.EnterGrouping();
+                        var region = reader.EnterRegion();
                         index = ParseExpression(ref reader);
                         reader.RestoreRegion(region);
                     }
@@ -3759,7 +3760,7 @@ ProcessPrefix:
 
     private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {
-        var region = reader.EnterGrouping();
+        var region = reader.EnterRegion();
         var arguments = ParseArgumentListCore(ref reader, out argumentLabels);
         reader.RestoreRegion(region);
         return arguments;
@@ -3859,7 +3860,6 @@ Separator:
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader)
     {
-Loop:
         var tokenKind = reader.CurrentTokenKind;
         if (reader.IsParsingCompileTimeCondition && tokenKind.IsPrimitiveType())
         {
@@ -3975,8 +3975,10 @@ Loop:
                 return ParseCollectionLiteral(ref reader);
 
             case TokenKind.Separator:
-                reader.Advance();
-                goto Loop;
+            case TokenKind.EndBlock:
+            case TokenKind.Invalid when !reader.CanRead:
+                // The line, the body or the source ended where an expression was expected; the boundary stays for its owner.
+                return new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.Expression) };
 
             default:
                 {
@@ -4080,7 +4082,7 @@ Loop:
 
     private static Koto ParseParenthesizedExpression(ref TokenReader reader)
     {
-        var region = reader.EnterGrouping();
+        var region = reader.EnterRegion();
         var grouped = ParseGroupedExpression(ref reader);
         reader.RestoreRegion(region);
         return grouped;
@@ -4138,7 +4140,7 @@ Loop:
 
     private static Koto ParseCollectionLiteral(ref TokenReader reader)
     {
-        var region = reader.EnterGrouping();
+        var region = reader.EnterRegion();
         var literal = ParseCollectionLiteralCore(ref reader);
         reader.RestoreRegion(region);
         return literal;

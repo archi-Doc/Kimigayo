@@ -17,8 +17,8 @@ namespace Kimi.Compiler.Lexing;
 public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
 /// <summary>
-/// The restrictions of the region the parser is in: a grouping lifts them, a body or header adds one, and each enter
-/// method of <see cref="TokenReader"/> returns the region to restore afterwards.
+/// The restrictions of the region the parser is in (SPEC 2.2.1): a new delimiter region lifts them, a body or header adds one, and
+/// each enter method of <see cref="TokenReader"/> returns the region to restore afterwards.
 /// </summary>
 /// <param name="SingleBody">Whether the position lies in an expression body after <c>=&gt;</c>.</param>
 /// <param name="IfBody">Whether the position lies in the body of an if.</param>
@@ -119,21 +119,15 @@ public ref partial struct TokenReader
 
     internal bool ConstraintRequirement { get; set; }
 
-    /// <summary>Enters a grouping (an argument list, a parenthesized expression, an index or a collection literal), which lifts every region restriction.</summary>
-    /// <returns>The region to restore after the grouping.</returns>
-    internal ParseRegion EnterGrouping()
+    /// <summary>
+    /// Enters a new delimiter region (SPEC 2.2.1), which lifts every restriction of the enclosing one: a grouped expression, each
+    /// argument or element in parentheses or brackets, an indented body, whose items are regions of their own, and a match arm.
+    /// </summary>
+    /// <returns>The region to restore afterwards.</returns>
+    internal ParseRegion EnterRegion()
     {
         var previous = this.region;
         this.region = default;
-        return previous;
-    }
-
-    /// <summary>Enters a match arm, whose body is neither an expression body nor an if body of the enclosing region.</summary>
-    /// <returns>The region to restore after the arm.</returns>
-    internal ParseRegion EnterMatchArm()
-    {
-        var previous = this.region;
-        this.region = new(false, false, previous.Header);
         return previous;
     }
 
@@ -788,6 +782,74 @@ public ref partial struct TokenReader
         range = new SourceSpan(this.currentToken.Span.Start, 1);
         this.currentToken = new Token(remainingKind, SourceSpan.FromBounds(range.End, this.currentToken.Span.End));
         return true;
+    }
+
+    /// <summary>
+    /// Reports a problem with a code of its own at a span, unless an Error is already recorded there: a token is blamed once, so a
+    /// token the lexer rejected rests on that Error (DIAGNOSTICS.md §4.4).
+    /// </summary>
+    /// <param name="span">The span of the problem.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="argument">The optional message argument.</param>
+    /// <returns>The key of the Error that explains the recovery, or <see langword="null"/> when the code is no Error.</returns>
+    internal DiagnosticKey? ReportOnce(SourceSpan span, DiagnosticCode code, object? argument = null)
+        => this.Diagnostic.RecallError(span) || this.Diagnostic.Add(span, code, argument) ? this.Diagnostic.LastError : null;
+
+    /// <summary>
+    /// Skips, without reporting, the rest of one item of a delimited list after the caller blamed it: up to the comma that ends the
+    /// item or a closer at its level, which is the list's own or an enclosing grouping's, never past the line. Groupings and
+    /// recognized Type argument lists inside the item are skipped whole, so their commas and closers stay theirs.
+    /// </summary>
+    /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
+    internal void SkipListItem(bool typeArguments = false)
+    {
+        var nesting = 0;
+        var angles = 0;
+        while (this.CanRead)
+        {
+            switch (this.currentToken.Kind)
+            {
+                case TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock:
+                    return;
+
+                case TokenKind.Comma when nesting == 0 && angles == 0:
+                    return;
+
+                case TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace:
+                    nesting++;
+                    break;
+
+                case TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace:
+                    if (nesting == 0)
+                    {
+                        return;
+                    }
+
+                    nesting--;
+                    break;
+
+                case TokenKind.LessThan when this.currentToken.OpensTypeArguments:
+                    angles++;
+                    break;
+
+                case TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanEquals or TokenKind.GreaterThanGreaterThanEquals:
+                    if (angles == 0)
+                    {
+                        if (typeArguments && nesting == 0)
+                        {
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        angles = Math.Max(0, angles - (this.currentToken.Kind is TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanGreaterThanEquals ? 2 : 1));
+                    }
+
+                    break;
+            }
+
+            this.AdvanceOne();
+        }
     }
 
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)

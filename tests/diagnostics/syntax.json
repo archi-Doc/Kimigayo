@@ -409,5 +409,21 @@
   { "Name": "adjacent-comparison-before-dedent", "Source": "func f(a: i32, b: i32, c: i32, d: i32) -> bool\n    if a<b\n        return true\n    return c > d\npublic func main()\n    var x = f(1, 2, 3, 4)\n", "Intended": "an adjacent '<' whose only later '>' stands on a line that ends the header is a comparison, not Type arguments",
     "Records": [] },
   { "Name": "comparison-in-named-argument", "Source": "func f(x: bool, y: i32) -> i32 => y\npublic func main()\n    let a = 1\n    let b = 2\n    let c = 8\n    let r = f(x: a < b, y: c >> 1)\n    if r > 0 => Console.writeLine(\"\\(r)\")\n", "Intended": "a comparison in a named argument stays one, and a later shift keeps its token",
-    "Records": [] }
+    "Records": [] },
+  { "Name": "for-binding-number", "Source": "public func main()\n    for 1 in [1, 2]\n        Console.writeLine(\"x\")\n", "Intended": "a number where the for binding's Name belongs; the loop is a recovery, so its iteration is not checked and nothing crashes",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "1 in", "Length": 1, "Found": "1" } ] },
+  { "Name": "for-binding-nested-tuple", "Source": "public func main()\n    for ((a, b), c) in [((1, 2), 3)]\n        Console.writeLine(\"\\(c)\")\n", "Intended": "a nested list as a for slot; the slot is skipped whole and the list continues with c",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Name", "At": "(a, b)", "Length": 1, "Found": "(" } ] },
+  { "Name": "discard-without-value", "Source": "public func main()\n    let c = false\n    if c => _ =\n    Console.writeLine(\"a\")\n", "Intended": "a discard whose value is missing at the end of the line; the next statement is not taken as its value",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "_ =" } ] },
+  { "Name": "attribute-before-discard", "Source": "func f() -> i32 => 1\npublic func main()\n    #Foo\n    _ = f()\n", "Intended": "an attribute before a discard statement, which takes none; nothing attaches it to the value",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "Attribute", "At": "#Foo" } ] },
+  { "Name": "attribute-before-line-end", "Source": "public func main()\n    var x = #Attr\n    Console.writeLine(\"\\(x)\")\n", "Intended": "an attribute where an initializer belongs and nothing after it; the initializer is missing at the end of the line and the next statement keeps its own",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "Attribute", "At": "#Attr" }, { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "#Attr" } ] },
+  { "Name": "nested-body-after-arrow-body", "Source": "public func main()\n    var c = true\n    if c => while c\n        if c\n            c = false\n", "Intended": "an indented body inside a single-item body is reported once; its own items form a new region, so the nested if is not",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "ArrowBody", "After": "while c" } ] },
+  { "Name": "match-arm-leftover", "Source": "public func main()\n    let x = 1\n    match x\n        1 => Console.writeLine(\"a\") b\n        _ => ()\n", "Intended": "a token left on an arm's line ends the arm like a statement; it is not read as another arm",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "\") b", "Skip": 3, "Length": 1, "Found": "b" } ] },
+  { "Name": "label-target-lexical", "Source": "public func main()\n    label work: we\u0301rk\n", "Intended": "a label target the lexer rejected is blamed once, by the lexical Error",
+    "Records": [ { "Code": "InvalidIdentifier_Kd", "At": "we\u0301rk" } ] }
 ]
