@@ -82,6 +82,7 @@ Ownership table dimensions enter through `OwnershipStorage`; `PackedAnalysisTabl
 Strong object creation and clone declarations enter through `Library/Intrinsics.kimi`, `KimiLibraryObjects` (factory
 and pair signature validation), `KimiLibraryPrimitives` and catalog Function kinds. `SharedObjectBindingTest`,
 `CoreCatalogTest` and `CatalogSignatureValidationTest` cover source recognition, inference and contract tampering.
+`Binding.ArgumentOperations.ExpectedAdaptation` shares object authority with argument adaptation; `SharedObjectAdaptationTest` covers fixed expectations, result dependencies and native object views.
 
 ## Use and maintenance
 

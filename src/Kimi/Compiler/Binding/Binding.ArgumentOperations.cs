@@ -471,6 +471,14 @@ public sealed partial class Binding
             return new(ExpectedAdaptationKind.ReferentRead, referent);
         }
 
+        if (ObjectTypes.IsBorrow(expected) && IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && Compatible(actual.Components[0], expected.Components[0]))
+        {
+            // SPEC 10.2: object views use the same authority and acquisition row at every fixed expectation.
+            return this.AdaptObjectBorrow(node, expected, actual, this.ConstraintScope(node), false, out var adapted, out _, out var operation) &&
+                operation is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+                ? new(operation == ArgumentOperationKind.Reborrow ? ExpectedAdaptationKind.Reborrow : ExpectedAdaptationKind.SharedBorrow, adapted) : null;
+        }
+
         if (expected is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             return null;
@@ -933,7 +941,7 @@ public sealed partial class Binding
             kind = ArgumentOperationKind.Reborrow;
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
-        else if ((actual.Semantics == SemanticsKind.Obj || (explicitOwner && !exclusive && actual.Semantics is SemanticsKind.Rc or SemanticsKind.Arc)) &&
+        else if (ObjectTypes.HandleMode(actual) is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
             this.BorrowablePlace(source, scope, exclusive))
         {
             if (exclusive && !explicitOwner && !receiver)
