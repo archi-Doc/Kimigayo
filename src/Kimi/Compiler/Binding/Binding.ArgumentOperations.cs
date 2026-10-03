@@ -705,6 +705,11 @@ public sealed partial class Binding
                     return true;
                 }
 
+                if (ObjectTypes.HandleMode(access.Left.BoundType) is { } handle)
+                {
+                    return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowablePlace(access.Left, scope, true));
+                }
+
                 return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
                     ? !exclusive || receiver.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
                     : this.BorrowablePlace(access.Left, scope, exclusive);

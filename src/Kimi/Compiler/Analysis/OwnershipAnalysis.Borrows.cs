@@ -207,13 +207,7 @@ public sealed partial class OwnershipAnalysis
             (!ReferenceTypes.IsStorage(field.BoundType) || ReferenceEquals(type.Components[0], field.BoundType)) &&
             ElementAccess.BorrowedPathRoot(field) is { } root)
         {
-            if (type.Semantics == SemanticsKind.Uniq && ObjectTypes.HandleMode(this.Concrete(root.BoundType)) is not null)
-            {
-                this.Unsupported(field);
-                return -1;
-            }
-
-            var receiver = this.Receiver(root, type.Semantics == SemanticsKind.Uniq);
+            var receiver = this.Receiver(root, type.Semantics == SemanticsKind.Uniq, reservation);
             if (receiver < 0)
             {
                 return -1;
@@ -267,11 +261,11 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
-    private int Receiver(Koto root, bool exclusive = false)
+    private int Receiver(Koto root, bool exclusive = false, int reservation = -1)
     {
-        if (!exclusive && this.Concrete(root.BoundType) is { } handle && ObjectTypes.HandleMode(handle) is not null)
+        if (this.Concrete(root.BoundType) is { } handle && ObjectTypes.HandleMode(handle) is not null)
         {
-            return this.BorrowStruct(root, this.compilation.Binding.SharedObjectView(root, handle));
+            return this.BorrowIntermediate(root, this.compilation.Binding.ObjectView(root, handle, exclusive), reservation);
         }
 
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)

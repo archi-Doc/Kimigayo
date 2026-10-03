@@ -12,14 +12,14 @@ public sealed partial class OwnershipAnalysis
     {
         var exclusive = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
         var slotType = this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, source.BoundType!, type.Origin);
-        var slot = this.BorrowStruct(source, slotType, reservation);
+        var slot = this.BorrowIntermediate(source, slotType, reservation);
         if (slot < 0)
         {
             return -1;
         }
 
         var viewType = ObjectTypes.IsBorrow(type) ? type : this.compilation.Binding.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
-        var view = this.BorrowThrough(source, slot, viewType, reservation);
+        var view = ReferenceEquals(viewType, type) ? this.BorrowThrough(source, slot, viewType, reservation) : this.BorrowIntermediate(source, viewType, reservation, slot);
         return ReferenceEquals(viewType, type) ? view : this.BorrowThrough(source, view, type, reservation);
     }
 

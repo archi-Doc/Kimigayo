@@ -159,18 +159,12 @@ public sealed partial class OwnershipAnalysis
             // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
             // so a later argument may still inspect the same stored reference until the call activates all three.
             var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
-            var slotReservation = reserved ? this.NewCallReservation(this.body.CallReservations[reservation].Call, reservation) : -1;
             var slotType = ownedSlot ? this.compilation.Binding.Reference(mode, left.BoundType!)
                 : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
-            var slot = this.BorrowStruct(left, slotType, slotReservation);
+            var slot = this.BorrowIntermediate(left, slotType, reserved ? reservation : -1);
             if (slot < 0)
             {
                 return -1;
-            }
-
-            if (slotReservation >= 0)
-            {
-                this.CompleteCallReservation(slotReservation, this.Value(slot), slot);
             }
 
             // The slot is inspected only for its address value. A shared path yields the stored reference's shared
@@ -241,7 +235,7 @@ public sealed partial class OwnershipAnalysis
     private int BorrowThrough(Koto source, int reference, BoundType type, int reservation)
     {
         var result = this.Place(source, this.Concrete(type)!, OwnershipPlaceKind.Temporary, false);
-        var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
+        var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         this.SetValue(operation, OwnershipValueKind.Address, [this.Value(reference)], constant: reference);
         return this.RegisterTemporary(result);
     }

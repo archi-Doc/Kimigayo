@@ -161,6 +161,21 @@ public sealed partial class OwnershipAnalysis
         this.body.CallReservations[reservation] = this.body.CallReservations[reservation] with { Loaded = placed };
     }
 
+    // Intermediate references in one argument's acquisition path share its activation, but each has its own checked
+    // reservation. Reusing the final reservation would leave an intermediate exclusive borrow active during evaluation.
+    private int BorrowIntermediate(Koto source, BoundType type, int argument, int through = -1)
+    {
+        var reservation = argument >= 0 && type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
+            ? this.NewCallReservation(this.body.CallReservations[argument].Call, argument) : -1;
+        var result = through < 0 ? this.BorrowStruct(source, type, reservation) : this.BorrowThrough(source, through, type, reservation);
+        if (result >= 0 && reservation >= 0)
+        {
+            this.CompleteCallReservation(reservation, this.Value(result), result);
+        }
+
+        return result;
+    }
+
     private int NewCallReservation(Koto call, int argument = -1)
     {
         var id = this.body.CallReservations.Count;

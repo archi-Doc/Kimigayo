@@ -6,9 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 3.4.1: a field read lends the owning handle's payload through a shared object view.
-    internal BoundType SharedObjectView(Koto source, BoundType handle)
-        => this.Reference(SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
+    // SPEC 3.4.1: a field access lends the handle's payload in the access mode already checked by Binding.
+    internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
+        => this.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
     private BoundType? BindObjectUpcast(ConversionKoto conversion, BindingScope scope, BoundType actual, BoundType target)
     {

@@ -230,8 +230,8 @@ internal static class ElementAccess
     // its referent that is shared or matches the root's exclusive capability.
     internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
         => ReferenceEquals(receiver, access) ||
-            (receiver is { Semantics: SemanticsKind.ObjRef, Components.Count: 1 } && ObjectTypes.HandleMode(access) is not null &&
-                ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
+            (receiver is { Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 } && ObjectTypes.HandleMode(access) is { } mode &&
+                (receiver.Semantics == SemanticsKind.ObjRef || mode.PayloadAuthority == LoanRequirement.Uniq) && ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 

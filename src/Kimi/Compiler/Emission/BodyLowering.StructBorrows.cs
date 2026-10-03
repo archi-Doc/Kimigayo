@@ -108,7 +108,7 @@ internal sealed partial class BodyLowering
                     !ElementAccess.ReceiverMatches(type, SignatureType(this, ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq)), projectedRoot) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
                     !ReferenceEquals(SignatureType(this, projected.BoundType), output.Components[0]) ||
-                    (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.Uniq) ||
+                    (output.Semantics == SemanticsKind.Uniq && type.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq)) ||
                     (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
                 {
                     return Fail("Projected borrow lacks a matching stored field and typed receiver.", out failure);
