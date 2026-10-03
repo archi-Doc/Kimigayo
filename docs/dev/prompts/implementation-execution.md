@@ -5,7 +5,7 @@ Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, 
 ## Inputs
 
 - **Plan:** `docs/dev/PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
-- **Target:** the milestone or track stage (for example `D2a`) named by the request; otherwise the first action of PLAN §6. A paused milestone is not a target until PLAN resumes it.
+- **Target:** the milestone or track stage (for example `D2a`) named by the request; otherwise the target that PLAN §6 assigns. A paused milestone is not a target until PLAN resumes it.
 - **Diagnostics:** when a unit adds or changes a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication, follow the Diagnostic Development Workflow of `AGENTS.md` (detail in `docs/dev/DIAGNOSTICS.md` §10).
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
 - **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only to re-spell it for a SPEC revision (recorded in `tests/milestones/README.md`) or with the user's approval. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
@@ -57,7 +57,7 @@ reproducer (a failing test or program variant)
 1. The duration covers unit work only. Stop starting units when it has elapsed; finish or cleanly revert the current unit.
 2. Then run `./scripts/verify.ps1 -Mode Session [-Fixtures ...] [-Milestone <completed programs>]` once; it may run past the duration.
 3. Update the documents briefly, then commit:
-   - **docs/dev/PLAN.md:** §3 position (HEAD, test count), milestone and track states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds, and a track stage only when its own completion condition holds.
+   - **docs/dev/PLAN.md:** §3 position (the session's target, HEAD, test count), milestone and track states, §6 next three actions, §7 issues. Mark a milestone DONE only when every PLAN §5 condition holds, and a track stage only when its own completion condition holds.
    - **docs/dev/PLAN_HISTORY.md:** one table row for the session (date, what changed, result).
    - **docs/STATUS.md:** only if a support boundary changed; state it in one or two sentences.
    - **docs/SPEC.md:** changed only by the unit that revises it, never to describe implementation state.
