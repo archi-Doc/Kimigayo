@@ -3156,13 +3156,14 @@ CloseParameters:
         return ParseExpression(ref reader);
     }
 
+    // A Condition is a header expression: the indented body after it is the directive's target, never part of it (SPEC 19.1).
     private static Koto ParseRequiredCompileTimeCondition(ref TokenReader reader)
     {
         var previous = reader.IsParsingCompileTimeCondition;
         reader.IsParsingCompileTimeCondition = true;
         try
         {
-            return ParseRequiredExpression(ref reader);
+            return ParseHeaderExpression(ref reader);
         }
         finally
         {
@@ -3531,7 +3532,15 @@ ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
         if (reader.HeaderRegion && tokenKind is TokenKind.If or TokenKind.Match or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func)
         {
-            reader.Unexpected(SyntaxForm.HeaderBodyExpression);
+            var cause = reader.Unexpected(SyntaxForm.HeaderBodyExpression);
+            if (reader.IndentedBodyFollows())
+            {
+                // The indented body after the header is the statement's, so the expression is not read: the rest of the header's
+                // line rests on this Error, and the statement keeps its body (DIAGNOSTICS.md §4.4).
+                var start = reader.CurrentTokenRange.Start;
+                _ = reader.SkipHeaderLine();
+                return new ErrorKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd))) { Cause = cause };
+            }
         }
 
         if (tokenKind == TokenKind.Sharp)
