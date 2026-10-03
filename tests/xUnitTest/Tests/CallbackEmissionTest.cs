@@ -97,6 +97,27 @@ public class CallbackEmissionTest
         Assert.Empty(output.ToString());
     }
 
+    // An unsupported captured Type is reported at its capture entry rather than across the whole closure.
+    [Theory]
+    [InlineData("let t = (1, 2)\nlet f = func [t] () => t.0 + t.1")]
+    [InlineData("let t = (1, 2)\nlet f: () -> i32 = func [t] () => t.0 + t.1")]
+    [InlineData("let t = (1, 2)\nlet n = 3\nlet f = func [n, t] () => t.0 + n")]
+    public void UnsupportedCapturesAreReportedAtTheEntry(string source)
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        Assert.Equal(source.LastIndexOf('t', source.IndexOf(']', StringComparison.Ordinal)), error.Span!.Value.Start);
+        Assert.Equal(1, error.Span.Value.Length);
+        var identity = SourceIdentity.FromPath(path);
+        var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
+        Assert.Equal(error.Display!.Range, sent.Range);
+    }
+
     [Theory]
     [InlineData("let target = 6\nlet f: () -> i32 = func [] () => target")]
     [InlineData("let target = 6\nlet f: () -> i32 = func [target, target] () => target")]

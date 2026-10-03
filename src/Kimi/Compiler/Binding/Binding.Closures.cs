@@ -139,10 +139,10 @@ public sealed partial class Binding
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
                 if (source?.Type is { } captureType && !(ScalarTypes.Supports(captureType) || ReferenceEquals(captureType, BoundType.Unit)))
                 {
-                    return this.Fail(function, BindingFailure.Unsupported);
+                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (capture, captureType));
                 }
 
-                if (source is null || this.Capture(function, source, scope) is not { } environment)
+                if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
                     return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
                 }
@@ -168,7 +168,8 @@ public sealed partial class Binding
         return Complete(function, expected);
     }
 
-    private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope)
+    // An unsupported captured Type is reported at the written capture entry when there is one.
+    private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
         {
@@ -198,7 +199,15 @@ public sealed partial class Binding
                 (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
                     ReferenceTypes.IsStorage(type) || ObjectTypes.IsOwner(type)))))
         {
-            this.Fail(function, BindingFailure.Unsupported);
+            if (entry is { } written)
+            {
+                this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (written, type));
+            }
+            else
+            {
+                this.Fail(function, BindingFailure.Unsupported);
+            }
+
             return null;
         }
 
@@ -291,7 +300,7 @@ public sealed partial class Binding
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
-                if (source is null || this.Capture(function, source, scope) is not { } environment)
+                if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
                     return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
                 }
