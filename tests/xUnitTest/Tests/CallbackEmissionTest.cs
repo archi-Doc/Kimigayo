@@ -52,6 +52,9 @@ public class CallbackEmissionTest
     [InlineData("FunctionArrayIteration", "let n: i32 = 3\nvar fs: Array<(i32) -> i32> = []\nfs.append(func [n] (v) => v + n)\nfs.append(func [] (v) => v * 10)\nvar acc = 1\nfor f in fs@move\n    acc = f(acc)\nrequire acc == 40 else => $abort(\"iteration\")")]
     [InlineData("FunctionOption", "func choose(flag: bool) -> Option<(i32) -> i32>\n    if flag => return Option.Some(func [] (v) => v + 5)\n    return Option.None\nmatch choose(true)@move\n    .Some(let f) => require f(1) == 6 else => $abort(\"option\")\n    .None => $abort(\"none\")")]
     [InlineData("FunctionArrayRemove", "var fs: Array<(i32) -> i32> = []\nfs.append(func [] (v) => v + 1)\nlet g = fs.remove(0)\nrequire g(1) == 2 and fs.length == 0 else => $abort(\"remove\")")]
+    // A Dictionary of common Function values: the library's entry lookups return `Option<(ref/K, ref/V)>`, whose `ref/V` had no
+    // representation for a Function V, so building `tryInsert` failed after the check passed.
+    [InlineData("FunctionDictionary", "var ops: Dictionary<i32, (i32) -> i32> = [:]\nlet a = ops.tryInsert(1, func [] (v) => v + 1)\nlet b = ops.tryInsert(2, func [] (v) => v * 2)\nrequire ops.length == 2 else => $abort(\"length\")\nmatch ops.remove(2)\n    .Some((let k, let f)) => require f(5) == 10 else => $abort(\"f\")\n    .None => $abort(\"none\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
