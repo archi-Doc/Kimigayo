@@ -47,6 +47,11 @@ public class CallbackEmissionTest
     [InlineData("FunctionItemArgument", "func inc(value: i32) -> i32 => value + 1\nfunc apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nrequire apply(inc, 2) == 3 else => $abort(\"argument\")")]
     [InlineData("FunctionItemOverload", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc inc(v: i32) -> i32 => v + 1\nfunc inc(v: i64) -> i64 => v + 2\nrequire apply(inc, 2) == 3 else => $abort(\"overload\")")]
     [InlineData("FunctionItemReturn", "func make() -> (i32) -> string\n    return describe\nfunc describe(v: i32) -> string => if v > 0 => \"pos\" else => \"neg\"\nlet f = make()\nrequire f(3) == \"pos\" and f(-1) == \"neg\" else => $abort(\"return\")")]
+    // Common Function values as container elements and payloads: the library's owning iteration reads them through a raw
+    // pointer and a match moves them out of Option; both were generation failures after the check passed.
+    [InlineData("FunctionArrayIteration", "let n: i32 = 3\nvar fs: Array<(i32) -> i32> = []\nfs.append(func [n] (v) => v + n)\nfs.append(func [] (v) => v * 10)\nvar acc = 1\nfor f in fs@move\n    acc = f(acc)\nrequire acc == 40 else => $abort(\"iteration\")")]
+    [InlineData("FunctionOption", "func choose(flag: bool) -> Option<(i32) -> i32>\n    if flag => return Option.Some(func [] (v) => v + 5)\n    return Option.None\nmatch choose(true)@move\n    .Some(let f) => require f(1) == 6 else => $abort(\"option\")\n    .None => $abort(\"none\")")]
+    [InlineData("FunctionArrayRemove", "var fs: Array<(i32) -> i32> = []\nfs.append(func [] (v) => v + 1)\nlet g = fs.remove(0)\nrequire g(1) == 2 and fs.length == 0 else => $abort(\"remove\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 

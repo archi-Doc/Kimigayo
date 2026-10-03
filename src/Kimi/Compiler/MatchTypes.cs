@@ -12,8 +12,9 @@ internal static class MatchTypes
     // struct with a user destructor. Complete payload Types retain the Loans verified by ownership analysis.
     internal static bool SupportsOwnedPatternValue(BoundType type, Dictionary<BoundType, bool> cache)
     {
+        // A common Function value moves as its two words and is destroyed through its operations table.
         if (ScalarTypes.Supports(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
-            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Slice)
+            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function)
         {
             return true;
         }
