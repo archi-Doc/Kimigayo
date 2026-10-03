@@ -32,10 +32,8 @@ public static partial class Parser
             }
         }
 
-        if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, true))
-        {
-            end = close.End;
-        }
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        end = Math.Max(end, close.End);
 
         return new(ref reader, SourceSpan.FromBounds(type.Span.Start, end), type, arguments.ToArray());
     }

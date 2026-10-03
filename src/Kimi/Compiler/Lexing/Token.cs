@@ -34,6 +34,12 @@ public readonly record struct Token
     public readonly bool OpensTypeArguments; // 1
 
     /// <summary>
+    /// Indicates whether this closer closes no open grouping: the lexer reported it (SPEC 2.2.1), and recovery inside a delimited
+    /// list skips it as it skips any other token, while elsewhere it ends an expression as a closer does.
+    /// </summary>
+    public readonly bool ClosesNothing; // 1
+
+    /// <summary>
     /// The token span in the source document.
     /// </summary>
     public readonly SourceSpan Span; // 8
@@ -105,6 +111,13 @@ public readonly record struct Token
         this.OpensTypeArguments = opensTypeArguments;
     }
 
+    private Token(TokenKind closer, int start)
+    {
+        this.Kind = closer;
+        this.Span = new(start, 1);
+        this.ClosesNothing = true;
+    }
+
     /// <summary>
     /// Returns the token kind as a display string.
     /// </summary>
@@ -120,4 +133,11 @@ public readonly record struct Token
     /// <returns>The token.</returns>
     internal static Token LessThan(int start, bool opensTypeArguments)
         => new(start, opensTypeArguments);
+
+    /// <summary>Creates a closer that closes no open grouping (<see cref="ClosesNothing"/>).</summary>
+    /// <param name="closer">The closer's kind.</param>
+    /// <param name="start">The absolute source offset.</param>
+    /// <returns>The token.</returns>
+    internal static Token UnmatchedCloser(TokenKind closer, int start)
+        => new(closer, start);
 }

@@ -124,21 +124,30 @@ public static partial class Parser
             var end = token.Span.End;
             if (reader.TryConsume(TokenKind.At))
             {
-                var op = reader.Read();
-                operation = reader.GetSpan(op) switch
+                var op = reader.CurrentToken;
+                operation = op.Kind.IsIdentifierOrContextualKeyword() ? reader.GetSpan(op) switch
                 {
                     // SPEC 7.6.2: var changes only the mutability of the environment binding, with every operation.
                     Constants.MoveOperation => Constants.MoveOperation,
                     Constants.RefKeyword => Constants.RefKeyword,
                     Constants.UniqKeyword => Constants.UniqKeyword,
                     _ => null,
-                };
+                } : null;
                 if (operation is null)
                 {
+                    // A Name that is no operation is consumed with the report; punctuation still belongs to the list.
                     reader.Expect(SyntaxForm.CaptureOperation, op);
+                    if (op.Kind.IsIdentifierOrContextualKeyword())
+                    {
+                        reader.Advance();
+                        end = op.Span.End;
+                    }
                 }
-
-                end = op.Span.End;
+                else
+                {
+                    reader.Advance();
+                    end = op.Span.End;
+                }
             }
 
             captures.Add(new CaptureKoto(name, mutable, operation, SourceSpan.FromBounds(start, end)));
@@ -148,7 +157,7 @@ public static partial class Parser
             }
         }
 
-        reader.TryConsume(TokenKind.CloseBracket, out _, true);
+        reader.ExpectCloser(TokenKind.CloseBracket, out _);
         return captures.ToArray();
     }
 
@@ -318,13 +327,8 @@ public static partial class Parser
             reader.AllowArrayElementInference = allowInference;
         }
 
-        var end = element.Span.End;
-        if (reader.TryConsume(TokenKind.CloseBracket, out var close, true))
-        {
-            end = close.End;
-        }
-
-        return new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, end)), length, element);
+        reader.ExpectCloser(TokenKind.CloseBracket, out var close);
+        return new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, Math.Max(element.Span.End, close.End))), length, element);
     }
 
     private static Koto ParseArrayLength(ref TokenReader reader, int precedence = 0, bool expression = false)
@@ -334,7 +338,7 @@ public static partial class Parser
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
             var value = ParseArrayLength(ref reader, expression: true);
-            reader.TryConsume(TokenKind.CloseParenthesis, out var close, true);
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
             left = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(value.Span.End, close.End)), value);
         }
         else if (expression && token.Kind is TokenKind.Plus or TokenKind.Minus)
@@ -470,9 +474,9 @@ public static partial class Parser
                 comma = true;
             }
 
-            reader.TryConsume(TokenKind.CloseParenthesis, out var close, true);
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
             var children = items.ToArray();
-            var span = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, close.End));
+            var span = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, Math.Max(close.End, children.Length == 0 ? 0 : children[^1].Span.End)));
             if (children.Length == 0)
             {
                 return new UnitLiteralKoto(ref reader, span);
@@ -557,7 +561,7 @@ public static partial class Parser
             cause ??= reader.Expect(SyntaxForm.Pattern);
         }
 
-        reader.TryConsume(TokenKind.CloseParenthesis, out var end, true);
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var end);
         var payload = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End)), KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
         return cause is { } malformed
             ? new ErrorKoto(ref reader, payload.Span) { Cause = malformed }
@@ -577,10 +581,8 @@ public static partial class Parser
                 fields.Add(ParseDeclarationType(ref reader));
             }
             while (reader.TryConsume(TokenKind.Comma) && reader.CurrentTokenKind != TokenKind.CloseParenthesis);
-            if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, true))
-            {
-                end = close.End;
-            }
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            end = Math.Max(end, close.End);
         }
 
         var tuple = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, end), KotoKind.EnumCase, payload ? "(" : string.Empty, fields.ToArray(), suffix: payload ? ")" : string.Empty);

@@ -371,6 +371,7 @@ SkipLine:
         while (reader.CanRead)
         {
             // Attributes precede a parameter's Name, and the one boundary precedes the named section; either may follow the other.
+            var start = reader.Position;
             reader.SkipSeparators();
             while (true)
             {
@@ -447,11 +448,16 @@ SkipLine:
                 SkipParameter(ref reader);
                 reader.TryConsume(TokenKind.Comma);
             }
+
+            if (reader.Position == start)
+            {
+                break; // Nothing of the list could be read here; the closer's recovery takes the rest.
+            }
         }
 
-        if (!reader.TryConsume(TokenKind.CloseParenthesis, out close, true))
+        if (reader.ExpectCloser(TokenKind.CloseParenthesis, out close) is not null && close == default)
         {
-            return false;
+            return false; // The list ended without a closer, written or supplied by the tokenizer.
         }
 
         if (nameBoundary >= 0 && nameBoundary == (parameters?.Count ?? 0))
@@ -473,8 +479,7 @@ SkipLine:
         [NotNullWhen(true)] out FunctionParameterKoto? parameter)
     {
         parameter = null;
-        var externalNameToken = reader.Read();
-        if (!reader.TryGetIdentifier(externalNameToken, out var externalName))
+        if (!reader.TryReadName(out var externalName, out var externalNameSpan))
         {
             SkipParameter(ref reader);
             return false;
@@ -492,7 +497,7 @@ SkipLine:
                 if (earlier.ExternalName == externalName)
                 {
                     reader.Diagnostic.AddSyntax(
-                        externalNameToken.Span,
+                        externalNameSpan,
                         DiagnosticCode.DuplicateExternalParameterName_Kd,
                         externalName,
                         related: [reader.Diagnostic.Relate("declaration", earlier.ExternalNameSpan, reader.Diagnostic.Document, "first external parameter name")]);
@@ -502,14 +507,10 @@ SkipLine:
         }
 
         var internalName = externalName;
-        if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+        if (reader.TryConsume(TokenKind.EqualsGreaterThan) && !reader.TryReadName(out internalName, out _))
         {
-            if (!reader.TryRead(out var internalNameToken) ||
-                !reader.TryGetIdentifier(internalNameToken, out internalName))
-            {
-                SkipParameter(ref reader);
-                return false;
-            }
+            SkipParameter(ref reader);
+            return false;
         }
 
         var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self";
@@ -520,7 +521,7 @@ SkipLine:
         }
         else if (anonymous || allowsReceiverShorthand)
         {
-            parameterType = new SyntaxFormKoto(ref reader, externalNameToken.Span, KotoKind.InferredType, "_", []);
+            parameterType = new SyntaxFormKoto(ref reader, externalNameSpan, KotoKind.InferredType, "_", []);
         }
         else
         {
@@ -539,10 +540,10 @@ SkipLine:
         // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
         if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(ref reader, attribute)))
         {
-            reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameToken.Span);
+            reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);
         }
 
-        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameToken.Span };
+        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameSpan };
         return true;
     }
 
@@ -560,7 +561,7 @@ SkipLine:
     }
 
     private static void SkipParameter(ref TokenReader reader)
-        => reader.SkipUntil(TokenKind.Comma, TokenKind.Exclamation, TokenKind.CloseParenthesis);
+        => reader.SkipListItem();
 
     /// <summary>Parses the result Type after a function header's arrow; a line that ends at the arrow leaves a recovery Type.</summary>
     private static Koto ParseFunctionReturnType(ref TokenReader reader, SourceSpan arrow)
@@ -589,12 +590,7 @@ SkipLine:
         }
 
         var arguments = ParseArgumentList(ref reader, out var labels);
-        if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
-        {
-            reader.Expect(SyntaxForm.CloseParenthesis);
-            reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
-            reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
-        }
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
         var target = new SyntaxFormKoto(ref reader, baseSpan, KotoKind.ConstructorReference, "base", []);
         constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
@@ -679,32 +675,31 @@ Exit:
         // recover as an omitted header.
         var list = new OriginNameList();
         var reported = false;
-        reader.SkipSeparators();
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
-            var token = reader.Read();
-            if (!token.Kind.IsIdentifierOrContextualKeyword() || reader.GetSpan(token) is "static" or "_")
+            var token = reader.CurrentToken;
+            if (!token.Kind.IsIdentifierOrContextualKeyword() || token.Kind == TokenKind.Static)
             {
+                // Not a slot Name; the rest of the item is skipped, so a slot after the next comma is still read.
                 reader.Expect(SyntaxForm.OriginSlotName, token);
-                reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
+                reader.SkipListItem();
                 reported = true;
-                break;
             }
-
-            list.Add(reader.GetIdentifier(token), token.Span);
-            if (reader.TryConsume(TokenKind.Colon, out var relationToken, false))
+            else
             {
-                reader.Diagnostic.Add(relationToken, DiagnosticCode.OriginSchemaRelation_Kd);
-                reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBrace, TokenKind.EndBlock);
+                reader.Advance();
+                list.Add(reader.GetIdentifier(token), token.Span);
+                if (reader.TryConsume(TokenKind.Colon, out var relationToken, false))
+                {
+                    reader.Diagnostic.Add(relationToken, DiagnosticCode.OriginSchemaRelation_Kd);
+                    reader.SkipListItem();
+                }
             }
 
-            reader.SkipSeparators();
             if (!reader.TryConsume(TokenKind.Comma))
             {
                 break;
             }
-
-            reader.SkipSeparators();
         }
 
         if (list.Count == 0 && !reported && reader.CurrentTokenKind == TokenKind.CloseBrace)
@@ -712,11 +707,7 @@ Exit:
             reader.Expect(SyntaxForm.OriginSlotName);
         }
 
-        if (!reader.TryConsume(TokenKind.CloseBrace, out var close, true))
-        {
-            reader.SkipUntil(TokenKind.CloseBrace, TokenKind.EndBlock);
-            reader.TryConsume(TokenKind.CloseBrace, out close, false);
-        }
+        reader.ExpectCloser(TokenKind.CloseBrace, out var close);
 
         // The header is a related location of the diagnostics that name its slots (SPEC 15.3.2).
         list.HeaderSpan = new(open.Start, Math.Max(close.End, list.Spans.Count == 0 ? open.End : list.Spans[^1].End) - open.Start);
@@ -1139,13 +1130,8 @@ Exit:
         }
 
 CloseParameters:
-        if (!reader.TryConsume(TokenKind.CloseParenthesis, out var close, false))
-        {
-            // Whatever remains of the list is skipped after the one report at its first token.
-            reader.Expect(SyntaxForm.CloseParenthesis);
-            reader.SkipUntil(TokenKind.CloseParenthesis, TokenKind.Separator, TokenKind.EndBlock);
-            reader.TryConsume(TokenKind.CloseParenthesis, out close, false);
-        }
+        // Whatever remains of the list is skipped after the one report at its first token.
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
         end = Math.Max(end, close.End);
     }
@@ -1811,8 +1797,6 @@ CloseParameters:
         var argumentCount = 0;
         var invalidContent = false;
         var end = open.Span.End;
-        reader.SkipSeparators();
-
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseBrace or TokenKind.EndBlock))
         {
             if (reader.CurrentTokenKind == TokenKind.Underscore)
@@ -1842,19 +1826,14 @@ CloseParameters:
                 expression = ParseOriginExpression(ref reader);
             }
 
-            reader.SkipSeparators();
             if (!reader.TryConsume(TokenKind.Comma))
             {
                 break;
             }
-
-            reader.SkipSeparators();
         }
 
-        if (reader.TryConsume(TokenKind.CloseBrace, out var close, true))
-        {
-            end = close.End;
-        }
+        reader.ExpectCloser(TokenKind.CloseBrace, out var close);
+        end = Math.Max(end, close.End);
 
         if (arguments is not null && argumentCount != arguments.Length)
         {
@@ -1883,13 +1862,8 @@ CloseParameters:
         {
             var open = reader.Read().Span;
             var inner = ParseOriginExpression(ref reader);
-            var end = inner.Span.End;
-            if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, true))
-            {
-                end = close.End;
-            }
-
-            return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, end), inner);
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, Math.Max(inner.Span.End, close.End)), inner);
         }
 
         if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
@@ -1932,28 +1906,21 @@ CloseParameters:
         reader.Advance();
         var typeList = default(TemporaryKotoList);
         var end = reader.CurrentTokenRange.End;
-        reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
         Koto type;
         while (true)
         {
+            // A line boundary ends an unrecognized list: the tokenizer joins the lines of a recognized one (SPEC 2.2.1).
             type = ParseTypeArgument(ref reader);
             typeList.Add(type);
             end = type.Span.End;
-            reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
-            if (!reader.TryConsume(TokenKind.Comma))
-            {
-                break;
-            }
-
-            reader.SkipSeparators();
-            if (IsTypeClose(reader.CurrentTokenKind))
+            if (!reader.TryConsume(TokenKind.Comma) || IsTypeClose(reader.CurrentTokenKind))
             {
                 break;
             }
         }
 
         // The closer is checked only after a complete last argument; a failed argument explains an absent closer (DIAGNOSTICS.md §4.3).
-        if (type is ErrorKoto ? reader.TryConsume(TokenKind.GreaterThan, out var range, false) : reader.TryConsumeTypeClose(out range))
+        if (reader.TryConsumeTypeClose(out var range, report: type is not ErrorKoto))
         {
             end = Math.Max(end, range.End);
         }
@@ -2144,13 +2111,8 @@ CloseParameters:
                 var openRange = reader.CurrentTokenRange;
                 reader.Advance();
                 var operand = ParseCondition(ref reader);
-                var range = openRange;
-                if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
-                {
-                    range = SourceSpan.FromBounds(openRange.Start, closeRange.End);
-                }
-
-                return new ParenthesizedKoto(ref reader, range, operand);
+                reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange);
+                return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(operand.Span.End, closeRange.End)), operand);
             }
 
             if (!reader.CanRead ||
@@ -2919,6 +2881,7 @@ CloseParameters:
         DiagnosticKey? malformed = null;
         while (true)
         {
+            var start = reader.Position;
             if (reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.In || IsExpressionBoundary(ref reader))
             {
                 // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.5).
@@ -2963,8 +2926,12 @@ CloseParameters:
                 return malformed ?? missing;
             }
 
-            // Two slots without a comma between them; the next one is read.
+            // Two slots without a comma between them; the next one is read, unless nothing of this one could be.
             malformed ??= reader.Expect(SyntaxForm.Comma);
+            if (reader.Position == start)
+            {
+                return malformed;
+            }
         }
     }
 
@@ -3669,10 +3636,13 @@ ProcessPrefix:
                     reader.Advance();
                     var arguments = ParseArgumentList(ref reader, out var argumentLabels);
                     var end = arguments.Length == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
-                    if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
+                    var unclosed = reader.ExpectCloser(TokenKind.CloseParenthesis, out var range);
+                    if (arguments.Length > 0)
                     {
-                        end = Math.Max(end, range.End);
+                        RecoverItem(ref reader, arguments[^1], unclosed);
                     }
+
+                    end = Math.Max(end, range.End);
 
                     left = new InvocationKoto(
                         ref reader,
@@ -3712,13 +3682,9 @@ ProcessPrefix:
                     }
 
                     reader.TrySkipSeparatorsTo(TokenKind.CloseBracket);
-                    var end = Math.Max(openRange.End, index.Span.End);
-                    if (reader.TryConsume(TokenKind.CloseBracket, out var range, true))
-                    {
-                        end = Math.Max(end, range.End);
-                    }
+                    RecoverItem(ref reader, index, reader.ExpectCloser(TokenKind.CloseBracket, out var range));
+                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(Math.Max(openRange.End, index.Span.End), range.End)), left, index);
 
-                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, end), left, index);
                     return true;
                 }
 
@@ -3839,7 +3805,7 @@ Separator:
                     reader.CodeContext.RecordRecovery(last, cause);
                 }
 
-                reader.SkipUntilInLine(TokenKind.Comma, TokenKind.CloseParenthesis);
+                reader.SkipListItem();
                 if (reader.TryConsume(TokenKind.Comma))
                 {
                     tokenKind = reader.CurrentTokenKind;
@@ -4118,24 +4084,13 @@ Separator:
                 reader.SkipSeparators();
             }
 
-            if (reader.TryConsume(TokenKind.CloseParenthesis, out var close, true))
-            {
-                end = close.End;
-            }
-
-            return new TupleLiteralKoto(ref reader, SourceSpan.FromBounds(openToken.Span.Start, end), elements);
+            RecoverItem(ref reader, elements[^1], reader.ExpectCloser(TokenKind.CloseParenthesis, out var close));
+            return new TupleLiteralKoto(ref reader, SourceSpan.FromBounds(openToken.Span.Start, Math.Max(end, close.End)), elements);
         }
 
         reader.TrySkipSeparatorsTo(TokenKind.CloseParenthesis);
-        if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
-        {
-            end = Math.Max(end, closeRange.End);
-        }
-
-        return new ParenthesizedKoto(
-            ref reader,
-            SourceSpan.FromBounds(openToken.Span.Start, end),
-            operand);
+        RecoverItem(ref reader, operand, reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange));
+        return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(openToken.Span.Start, Math.Max(end, closeRange.End)), operand);
     }
 
     private static Koto ParseCollectionLiteral(ref TokenReader reader)
@@ -4163,16 +4118,8 @@ Separator:
         if (reader.TryConsume(TokenKind.Colon))
         {
             reader.SkipSeparators();
-            var end = openRange.End;
-            if (reader.TryConsume(TokenKind.CloseBracket, out var emptyDictionaryClose, true))
-            {
-                end = emptyDictionaryClose.End;
-            }
-
-            return new DictionaryLiteralKoto(
-                ref reader,
-                SourceSpan.FromBounds(openRange.Start, end),
-                []);
+            reader.ExpectCloser(TokenKind.CloseBracket, out var emptyDictionaryClose);
+            return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, emptyDictionaryClose.End)), []);
         }
 
         var first = ParseLiteralElement(ref reader);
@@ -4189,7 +4136,7 @@ Separator:
             reader.SkipSeparators();
             var value = ParseLiteralElement(ref reader);
             reader.SkipSeparators();
-            reader.TryConsume(TokenKind.CloseBracket, out var close, true);
+            RecoverItem(ref reader, value, reader.ExpectCloser(TokenKind.CloseBracket, out var close));
             return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(value.Span.End, close.End)), [value], first);
         }
 
@@ -4204,9 +4151,9 @@ Separator:
             {
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    reader.Expect(SyntaxForm.Comma);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
-                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    RecoverItem(ref reader, elements[^1], reader.Expect(SyntaxForm.Comma));
+                    reader.SkipListItem();
+                    if (reader.CurrentTokenKind != TokenKind.Comma)
                     {
                         break;
                     }
@@ -4223,16 +4170,9 @@ Separator:
                 reader.SkipSeparators();
             }
 
-            var end = elements[^1].Span.End;
-            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
-            {
-                end = closeRange.End;
-            }
-
-            return new ArrayLiteralKoto(
-                ref reader,
-                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
-                elements);
+            RecoverItem(ref reader, elements[^1], reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange));
+            var end = Math.Max(elements[^1].Span.End, closeRange.End);
+            return new ArrayLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), elements);
         }
 
         static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
@@ -4244,7 +4184,7 @@ Separator:
                 if (reader.CurrentTokenKind != TokenKind.Colon)
                 {
                     reader.Expect(SyntaxForm.Colon);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
+                    reader.SkipListItem();
                 }
                 else
                 {
@@ -4262,9 +4202,14 @@ Separator:
 
                 if (reader.CurrentTokenKind != TokenKind.Comma)
                 {
-                    reader.Expect(SyntaxForm.Comma);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket);
-                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    var cause = reader.Expect(SyntaxForm.Comma);
+                    if (entries.Count > 0)
+                    {
+                        RecoverItem(ref reader, entries[^1].Value, cause);
+                    }
+
+                    reader.SkipListItem();
+                    if (reader.CurrentTokenKind != TokenKind.Comma)
                     {
                         break;
                     }
@@ -4281,16 +4226,14 @@ Separator:
                 reader.SkipSeparators();
             }
 
-            var end = entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End;
-            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
+            var unclosed = reader.ExpectCloser(TokenKind.CloseBracket, out var closeRange);
+            if (entries.Count > 0)
             {
-                end = closeRange.End;
+                RecoverItem(ref reader, entries[^1].Value, unclosed);
             }
 
-            return new DictionaryLiteralKoto(
-                ref reader,
-                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
-                entries);
+            var end = Math.Max(entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End, closeRange.End);
+            return new DictionaryLiteralKoto(ref reader, SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)), entries);
         }
 
         static Koto ParseLiteralElement(ref TokenReader reader)
@@ -4302,6 +4245,17 @@ Separator:
             }
 
             return ParseExpression(ref reader);
+        }
+    }
+
+    // The item before text that a list's recovery skipped is a recovery, as the last argument of a call is (DIAGNOSTICS.md §4.4):
+    // what was written there is not known, so every check that reads the item rests on the Error, while the other items keep
+    // the context of the list.
+    private static void RecoverItem(ref TokenReader reader, Koto item, DiagnosticKey? cause)
+    {
+        if (cause is { } recovery && item is not ErrorKoto && reader.CodeContext.RecoveryCause(item) is null)
+        {
+            reader.CodeContext.RecordRecovery(item, recovery);
         }
     }
 
@@ -4395,14 +4349,8 @@ Separator:
             Koto? firstElement = null;
             var lastEnd = openRange.End;
             var hasComma = false;
-            while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+            while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Separator or TokenKind.EndBlock))
             {
-                if (reader.CurrentTokenKind == TokenKind.Separator)
-                {
-                    reader.Advance();
-                    continue;
-                }
-
                 var element = ParseDelimitedType(ref reader);
                 firstElement ??= element;
                 lastEnd = element.Span.End;
@@ -4415,16 +4363,16 @@ Separator:
                 else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
                 {
                     reader.Expect(SyntaxForm.Comma);
-                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
-                    reader.TryConsume(TokenKind.Comma);
+                    reader.SkipListItem();
+                    if (!reader.TryConsume(TokenKind.Comma))
+                    {
+                        break;
+                    }
                 }
             }
 
-            var end = Math.Max(openRange.End, lastEnd);
-            if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
-            {
-                end = Math.Max(end, closeRange.End);
-            }
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var closeRange);
+            var end = Math.Max(Math.Max(openRange.End, lastEnd), closeRange.End);
 
             var range = SourceSpan.FromBounds(openRange.Start, end);
             type = elements.Count == 1 && !hasComma
@@ -4516,11 +4464,13 @@ Separator:
         reader.Advance();
 
         List<TypeKoto>? list = default;
+        var skipped = false;
         while (reader.CanRead)
         {
+            var itemStart = reader.Position;
             if (IsTypeClose(reader.CurrentTokenKind))
             {
-                if (list is null)
+                if (list is null && !skipped)
                 {
                     reader.Expect(SyntaxForm.Type);
                 }
@@ -4529,13 +4479,8 @@ Separator:
                 return list;
             }
 
-            if (reader.CurrentTokenKind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-
-            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.Equals or TokenKind.EqualsGreaterThan or TokenKind.Colon)
+            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.Equals or TokenKind.EqualsGreaterThan or TokenKind.Colon ||
+                (reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace && !reader.CurrentToken.ClosesNothing))
             {
                 // The list ends without its closer; the caller consumes nothing more of it.
                 reader.Expect(SyntaxForm.CloseAngleBracket);
@@ -4561,27 +4506,23 @@ Separator:
             }
             else
             {
-                var first = reader.Read();
-                if (!reader.TryGetIdentifier(first, out var name))
-                {
-                    return list;
-                }
-
                 string? semantics = null;
-                var end = first.Span.End;
-                if (reader.TryConsume(TokenKind.Slash))
+                if (reader.TryReadName(out var name, out var first) && reader.TryConsume(TokenKind.Slash))
                 {
                     semantics = name;
-                    var second = reader.Read();
-                    if (!reader.TryGetIdentifier(second, out name))
-                    {
-                        return list;
-                    }
-
-                    end = second.Span.End;
+                    name = reader.TryReadName(out var semanticsName, out _) ? semanticsName : null;
                 }
 
-                typeKoto = new GenericParameterKoto(ref reader, SourceSpan.FromBounds(first.Span.Start, end), name, semantics);
+                if (name is null)
+                {
+                    // The failed parameter is skipped within the list, which continues after its comma.
+                    reader.SkipListItem(typeArguments: true);
+                    reader.TryConsume(TokenKind.Comma);
+                    skipped = true;
+                    goto Next;
+                }
+
+                typeKoto = new GenericParameterKoto(ref reader, SourceSpan.FromBounds(first.Start, reader.PreviousSyntaxEnd), name, semantics);
             }
 
             (list ??= new(2)).Add(typeKoto);
@@ -4593,8 +4534,14 @@ Separator:
             else if (!IsTypeClose(reader.CurrentTokenKind))
             {
                 reader.Expect(SyntaxForm.Comma);
-                reader.SkipUntil(TokenKind.Comma, TokenKind.GreaterThan);
+                reader.SkipListItem(typeArguments: true);
                 reader.TryConsume(TokenKind.Comma);
+            }
+
+Next:
+            if (reader.Position == itemStart)
+            {
+                break; // A token that neither starts nor ends a parameter, such as '!'.
             }
         }
 

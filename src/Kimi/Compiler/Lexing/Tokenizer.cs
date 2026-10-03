@@ -337,9 +337,13 @@ Loop:
                     {
                         this.PushIndentSource(singleKind);
                     }
-                    else if (singleDepth < 0)
+                    else if (singleDepth < 0 && !this.PopIndentSource(singleKind))
                     {
-                        this.PopIndentSource(singleKind);
+                        // A closer that closes no grouping is reported; it stays a closer, which list recovery skips.
+                        this.Add(Token.UnmatchedCloser(singleKind, this.position));
+                        this.tokenAdded++;
+                        this.Slice(1);
+                        continue;
                     }
 
                     this.AddTokenAndSlice(singleKind, 1);
@@ -375,6 +379,13 @@ Loop:
 
                 case Constants.SemicolonChar:
                     this.Report(this.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
+                    if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source is not (IndentSource.Block or IndentSource.LineContinuation))
+                    {
+                        // Inside a grouping no statement ends: the semicolon is an invalid token, which list recovery skips.
+                        this.AddTokenAndSlice(TokenKind.Invalid, 1);
+                        continue;
+                    }
+
                     // Recover as a separator so the parser can still inspect following syntax.
                     // This does not end the physical line or alter indentation.
                     this.AddTokenAndSlice(TokenKind.Separator, 1);
@@ -1071,6 +1082,9 @@ EndOfFile:
 
                     continue;
 
+                case Constants.SemicolonChar when nesting > 0 || this.IsDeclarationGenericContext():
+                    continue; // No statement ends inside a grouping or a declaration's generic list; the semicolon is reported there.
+
                 case Constants.SemicolonChar or Constants.EqualsChar or '"' or '\'':
                     return false;
             }
@@ -1569,11 +1583,15 @@ EndOfFile:
     {
         while (count-- > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
         {
-            this.PopIndentSource(TokenKind.GreaterThan);
+            _ = this.PopIndentSource(TokenKind.GreaterThan);
         }
     }
 
-    private void PopIndentSource(TokenKind expected)
+    /// <summary>Closes the grouping that a closer ends, with the bodies and continuations still open inside it.</summary>
+    /// <param name="expected">The closer read.</param>
+    /// <returns><see langword="false"/> when the closer matches no open grouping: it is reported, and the grouping it does not match
+    /// stays open.</returns>
+    private bool PopIndentSource(TokenKind expected)
     {
         var closesBody = false;
         while (this.indentCount > 0)
@@ -1625,7 +1643,7 @@ EndOfFile:
 
                 this.indentCount--;
                 this.nonBlockDepth--;
-                return;
+                return true;
             }
 
             break;
@@ -1635,6 +1653,7 @@ EndOfFile:
         // stack is left intact, so the still-open grouping can be matched (or reported)
         // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
         this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.MisplacedSyntax_Kd, SyntaxForm.UnmatchedCloser, null, this.sourceDocument);
+        return false;
     }
 
     // Marks the '<' at a position as a comparison.
