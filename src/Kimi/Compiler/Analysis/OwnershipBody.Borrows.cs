@@ -387,9 +387,12 @@ public sealed partial class OwnershipBody
                 AddOrigin(place, type.OriginArguments[i], (LoanRequirement)Math.Min((int)bound, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref)));
             }
 
+            // SPEC 3.3.6: shared access cannot use an inner uniq exclusively, so a Type below a shared layer (ref/uniq/T) keeps
+            // its inner Loans only in shared mode.
+            var inner = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef } ? LoanRequirement.Ref : bound;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                AddType(place, type.Components[i], bound);
+                AddType(place, type.Components[i], inner);
             }
         }
 

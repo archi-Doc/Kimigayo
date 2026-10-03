@@ -194,6 +194,31 @@ public class OwnedStoredReferenceTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 3.3.6: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
+    // referent, so two such borrows and reads through either coexist; each kept the inner reference's exclusive Loan before.
+    [Theory]
+    [InlineData("SharedLocal", "let p = value@uniq\nlet r = p@ref\nlet r2 = p@ref\nlet x: i32 = r\nrequire x == 1 and r2 == 1 and r == r2 else => $abort(\"read\")")]
+    [InlineData("SharedLocalTyped", "let p = value@uniq\nlet r: ref/uniq/i32 = p@ref\nlet r2: ref/uniq/i32 = p@ref\nrequire r == 1 and r2 == 1 else => $abort(\"read\")")]
+    [InlineData("SharedParentRead", "let p = value@uniq\nlet r = p@ref\nlet x: i32 = p\nrequire x == 1 and r == 1 else => $abort(\"read\")")]
+    [InlineData("SharedSlot", "let t = (value@uniq, 2)\nlet r = t.0@ref\nlet r2 = t.0@ref\nrequire r@follow@follow == r2@follow@follow and r == 1 else => $abort(\"read\")")]
+    public void SharedBorrowsOfAnExclusiveReferenceSlotCoexist(string name, string body)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceSharedSlot" + name, "var value = 1\n" + body, string.Empty);
+
+    [Theory]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nvalue = 5\nrequire r == 1 else => $abort(\"read\")", "value = 5")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet x: i32 = value\nrequire r == 1 else => $abort(\"read\")", "value")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0")]
+    public void ASharedSlotBorrowStillFreezesItsReference(string body, string conflict)
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
+        Assert.False(c.Emission.Validate(out _));
+    }
+
     [Fact]
     public void ASharedOuterLayerStaysReadOnly()
     {
