@@ -265,21 +265,18 @@ public class DivisionEmissionTest
     public void WarmDivisionAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Snapshot);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var bytes = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
+        Assert.Equal(0, bytes);
         Assert.True(success);
     }
 }
