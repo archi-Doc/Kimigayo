@@ -14,6 +14,10 @@ public sealed class FailedDeclarationUseTest
     [InlineData("func add(a: i32) -> i32 => a\nfunc add(a: i32) -> i32 => a\npublic func main()\n    let x = add(1)\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]
     [InlineData("struct Kimi\n    public var v: i32 = 0\npublic func main()\n    let k = Kimi.init()\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]
     [InlineData("open struct Base\n    public var a: i32 = 0\n    public struct Node\n        public var v: i32 = 0\nstruct Derived: Base\n    public var b: i32 = 0\n    public struct Node\n        public var w: i32 = 0\npublic func main()\n    let x: i32 = 1\n", nameof(DiagnosticCode.DuplicateBinding_Kd))]
+    // A parameter's nested borrow without its Origin (SPEC 3.3.6) keeps the candidate pending at each call, which published
+    // UnprovenConstraint_Kd at the call beside the declaration's MissingOriginBinding_Kd.
+    [InlineData("func read(p: ref/uniq/i32) -> i32 => p@follow@follow\npublic func main()\n    var a = 1\n    let t = (a@uniq, 2)\n    let x = read(t.0@ref)\n", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
+    [InlineData("func total<V>(d: ref/Dictionary<i32, ref/V>) -> i32 => d.length\npublic func main()\n    var a = 1\n    let entries = [7: a@ref]\n    let n = total(entries@ref)\n", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
     public void UsesOfAFailedDeclarationRestOnIt(string source, string code)
     {
         var records = DiagnosticCorpus.Check(source).Diagnostics;

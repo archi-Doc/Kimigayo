@@ -162,6 +162,38 @@ public sealed partial class Binding
         return null;
     }
 
+    // The first failed node inside a parameter Type whose outer layer resolved.
+    private static Koto? FailedSignaturePart(FunctionKoto function)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (FailedPart(function.Parameters[i].Type) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
+
+        static Koto? FailedPart(Koto node)
+        {
+            if (node.BindingState == BindingState.Invalid)
+            {
+                return node;
+            }
+
+            foreach (var child in node.ChildNodes)
+            {
+                if (FailedPart(child) is { } found)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+    }
+
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
         if (member.Right.Akind == KotoKind.ConstructorReference)
@@ -550,6 +582,7 @@ public sealed partial class Binding
             var pending = false;
             var error = false;
             Koto? incompleteSignature = null;
+            FunctionKoto? pendingFunction = null;
             Koto? invalidDeclaration = null;
             this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
@@ -580,6 +613,7 @@ public sealed partial class Binding
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
                 pending |= state == CandidateApplicability.Pending;
+                pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
                 error |= state == CandidateApplicability.Error;
                 invalidDeclaration ??= state == CandidateApplicability.Error ? InvalidDeclarationContextCause(function) : null;
                 if (state != CandidateApplicability.Applicable)
@@ -608,7 +642,10 @@ public sealed partial class Binding
 
             if (pending)
             {
-                return this.Fail(call, BindingFailure.UnprovenConstraint, true);
+                // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
+                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4).
+                return applicable == 0 && pendingFunction is not null && (IncompleteSignature(pendingFunction) ?? FailedSignaturePart(pendingFunction)) is { } failedSignature
+                    ? this.CompleteDependent(call, failedSignature) : this.Fail(call, BindingFailure.UnprovenConstraint, true);
             }
 
             if (applicable == 0 && incompleteSignature is not null)
