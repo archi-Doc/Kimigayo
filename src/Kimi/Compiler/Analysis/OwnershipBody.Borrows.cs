@@ -939,6 +939,33 @@ public sealed partial class OwnershipBody
         }
     }
 
+    // Whether an input Type names any non-static Origin of a result Type.
+    private static bool NamesResultOrigin(BoundType type, BoundType input)
+    {
+        if (type.Origin is { Kind: not OriginKind.Static } origin && NamedOriginRequirement(input, origin) != LoanRequirement.None)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (type.OriginArguments[i].Kind != OriginKind.Static && NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (NamesResultOrigin(type.Components[i], input))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
     // ends there. Liveness stops at it, and so does a stored dependency.
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
@@ -2004,9 +2031,11 @@ public sealed partial class OwnershipBody
             }
 
             // SPEC 15.6.3, 22.1.2.4: a result that names only Origins of the receiver's own Type, such as an Iterator's item
-            // `Option<uniq/T during source>`, keeps Loans the receiver's value holds, so it descends from the receiver.
+            // `Option<uniq/T during source>`, keeps Loans the receiver's value holds, so it descends from the receiver when no
+            // other input's Type names them; otherwise it may come from that input too.
             return plan.Receiver is not null && target.ReturnType?.BoundType is { } result && target.BoundSymbol?.Scope.Owner is DeclarationContainerKoto owner &&
-                NamesOnlyReceiverOrigins(result, owner, out var named) && named ? this.ReceiverEntry(call) : -1;
+                NamesOnlyReceiverOrigins(result, owner, out var named) && named && this.ReceiverEntry(call) is >= 0 and var receiver &&
+                !this.OtherInputNamesResult(call, receiver) ? receiver : -1;
         }
 
         // CallEntry operations immediately precede Call: receiver, explicit
@@ -2124,32 +2153,27 @@ public sealed partial class OwnershipBody
         }
 
         return sole;
+    }
 
-        static bool NamesResultOrigin(BoundType type, BoundType input)
+    // Whether an input of the call other than its receiver entry names an Origin of the call's result.
+    private bool OtherInputNamesResult(int call, int receiver)
+    {
+        if (this.Operations[call].Place < 0)
         {
-            if (type.Origin is { Kind: not OriginKind.Static } origin && NamedOriginRequirement(input, origin) != LoanRequirement.None)
+            return false;
+        }
+
+        var result = this.Places[this.Operations[call].Place].Type;
+        for (var entry = call - 1; entry > receiver; entry--)
+        {
+            var input = this.Operations[entry];
+            if (input.Place < 0 || NamesResultOrigin(result, this.Places[input.Place].Type))
             {
                 return true;
             }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (type.OriginArguments[i].Kind != OriginKind.Static && NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
-                {
-                    return true;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (NamesResultOrigin(type.Components[i], input))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
+
+        return false;
     }
 
     private bool ResultOriginsFromInput(BoundType result, BoundType input, out bool retained)

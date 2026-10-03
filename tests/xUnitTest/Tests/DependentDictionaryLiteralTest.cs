@@ -36,7 +36,8 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     public void ARemovedReferenceDescendsOnlyFromTheSoleInputNamingItsOrigins(string source)
     {
         // `remove` returns `Option<(K, V)>` with Origins of the receiver's Type only, so the item descends from
-        // `entries` and keeps its Loan on `value`; `insertOrReplace` may return its `value: V` argument instead.
+        // `entries` and keeps its Loan on `value`; `insertOrReplace` may return its `value: V` argument instead, and an input
+        // other than the receiver that names those Origins prevents the descent (SPEC 15.6.3).
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
