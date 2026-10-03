@@ -420,6 +420,16 @@ public sealed partial class Binding
             return this.BindFunctionReference(node, symbol, expected, scope);
         }
 
+        if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } && IsValueUse(node) &&
+            (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
+        {
+            // SPEC 7.6.4: without a fixed common Function Type, a function reference is a value of its own Function Item Type,
+            // which is not yet implemented (P26). A call argument bound before selection is left to the call, which converts
+            // it at a common Function parameter or reports it.
+            return this.Fail(node, BindingFailure.Unsupported, true);
+        }
+
         if (expected is not null && actual is not null && this.ErasesToFunction(node, actual, expected))
         {
             node.ErasedFunctionType = expected;

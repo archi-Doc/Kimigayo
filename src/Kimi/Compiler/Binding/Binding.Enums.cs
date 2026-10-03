@@ -314,6 +314,13 @@ public sealed partial class Binding
                     var actual = this.BindNode(source, scope, hint);
                     if (actual is null)
                     {
+                        if (source is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
+                        {
+                            // SPEC 7.6.4: without a fixed common Function payload Type the reference is a Function Item value,
+                            // which is not yet implemented (P26).
+                            this.Fail(source, BindingFailure.Unsupported, true);
+                        }
+
                         return Complete(use, null);
                     }
 

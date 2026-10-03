@@ -1,7 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -62,6 +66,7 @@ public class CallbackEmissionTest
     [InlineData("FunctionFieldCall", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nstruct G\n    public var h: H\n    public init(h: H) => self.h = h@move\nfunc call(h: ref/H, v: i32) -> i32 => (h.f)(v)\nlet k = 7\nlet h = H.init(func [k] (v) => v + k)\nlet g = G.init(H.init(func [] (v) => v * 5))\nrequire (h.f)(2) == 9 and call(h@ref, 1) == 8 and (g.h.f)(2) == 10 else => $abort(\"field\")")]
     [InlineData("FunctionElementCall", "let a = 10\nlet b = 20\nlet fs: Array<(i32) -> i32> = [func [a] (v) => v + a, func [b] (v) => v + b]\nvar total = 0\nvar i = 0\nwhile i < 2\n    total += fs[i](1)\n    i += 1\nrequire total == 32 else => $abort(\"element\")")]
     [InlineData("FunctionReceiverSharedArgument", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc peek(g: ref/((i32) -> i32)) -> i32 => g(1)\nfunc peekh(h: ref/H) -> i32 => (h.f)(1)\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nvar h = H.init(func [] (v) => v + 4)\nrequire r(peek(g@ref)) == 9 and (h.f)(peekh(h@ref)) == 9 else => $abort(\"shared\")")]
+    [InlineData("FunctionItemPayload", "func inc(v: i32) -> i32 => v + 1\nlet o: Option<(i32) -> i32> = Option.Some(inc)\nmatch o@move\n    .Some(let f) => require f(1) == 2 else => $abort(\"payload\")\n    .None => $abort(\"none\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -119,6 +124,53 @@ public class CallbackEmissionTest
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
+    }
+
+    // SPEC 7.6.4: without a fixed common Function Type a function reference is a value of its own Function Item Type, which is
+    // not yet implemented; the reference itself is reported, without a cascade at the enclosing declaration or requirement.
+    [Theory]
+    [InlineData("let f = inc", 1)]
+    [InlineData("let t = (inc, 1)", 1)]
+    [InlineData("let a = [inc]", 1)]
+    [InlineData("let x: i32 = inc", 1)]
+    [InlineData("func g() -> i32 => inc\nlet n = 1", 1)]
+    [InlineData("inc", 1)]
+    [InlineData("let b = inc == inc", 2)]
+    [InlineData("let o = Option.Some(inc)", 1)]
+    public void FunctionItemValuesReportTheReference(string body, int count)
+    {
+        var c = MinimalEmissionTest.Analyze("func inc(v: i32) -> i32 => v + 1\n" + body);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        var diagnostics = TestDiagnostics.Of(c);
+        Assert.Equal(count, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.True(x.Code == "UnsupportedBinding_Kd" && x.Text == "inc", x.ToString() + " " + x.Text));
+    }
+
+    [Fact]
+    public void CliAndLspPlaceTheFunctionItemValueAtTheReference()
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze("func inc(v: i32) -> i32 => v + 1\nlet f = inc", path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("Hello.kimi:2:9", console.Text, StringComparison.Ordinal);
+        Assert.Contains("let f = inc\n  |         ^^^", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnresolvedBinding", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var capability in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, capability)[identity]);
+            Assert.Equal(error.Display!.Range, sent.Range);
+            Assert.Equal(error.Code, sent.Code);
+            Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
+        }
     }
 
     // A reference receiver of a value call is used again at the call, so the Place it borrows stays lent while the arguments
