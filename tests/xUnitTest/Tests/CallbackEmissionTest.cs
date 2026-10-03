@@ -55,6 +55,10 @@ public class CallbackEmissionTest
     // A Dictionary of common Function values: the library's entry lookups return `Option<(ref/K, ref/V)>`, whose `ref/V` had no
     // representation for a Function V, so building `tryInsert` failed after the check passed.
     [InlineData("FunctionDictionary", "var ops: Dictionary<i32, (i32) -> i32> = [:]\nlet a = ops.tryInsert(1, func [] (v) => v + 1)\nlet b = ops.tryInsert(2, func [] (v) => v * 2)\nrequire ops.length == 2 else => $abort(\"length\")\nmatch ops.remove(2)\n    .Some((let k, let f)) => require f(5) == 10 else => $abort(\"f\")\n    .None => $abort(\"none\")")]
+    [InlineData("FunctionReferenceArgument", "func twice(f: ref/((i32) -> i32), v: i32) -> i32 => f(f(v))\nlet k = 1\nlet g: (i32) -> i32 = func [k] (v) => v + k\nrequire twice(g@ref, 0) == 2 else => $abort(\"ref\")")]
+    [InlineData("FunctionReferenceLocal", "let k = 5\nlet g: (i32) -> i32 = func [k] (v) => v + k\nlet r = g@ref\nrequire r(3) == 8 and r(4) == 9 else => $abort(\"local\")")]
+    [InlineData("FunctionUniqueReference", "func apply(f: uniq/((i32) -> i32), v: i32) -> i32 => f(v)\nvar g: (i32) -> i32 = func [] (v) => v * 2\nlet r = g@uniq\nrequire r(3) == 6 else => $abort(\"local\")\nrequire apply(g@uniq, 4) == 8 else => $abort(\"argument\")")]
+    [InlineData("FunctionPartReference", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nlet h = H.init(func [] (v) => v * 3)\nlet r = h.f@ref\nlet fs: Array<(i32) -> i32> = [func [] (v) => v + 1, func [] (v) => v + 2]\nlet e = fs[1]@ref\nrequire r(2) == 6 and e(1) == 3 else => $abort(\"part\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -104,6 +108,7 @@ public class CallbackEmissionTest
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nunsafe func raw(v: i32) -> i32 => v\nlet r = apply(raw, 2)")]
     [InlineData("func apply(f: (string) -> i32) -> i32 => f(\"ab\")\nlet n = apply(func [] (s) => s + 1)")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
+    [InlineData("let g: (i32) -> i32 = func [] (v) => v * 2\nlet r = g@ref\nlet h = g@move\nlet x = r(3)")]
     public void RejectsInvalidClosures(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

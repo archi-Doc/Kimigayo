@@ -303,11 +303,11 @@ internal sealed partial class BodyLowering
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
 
         // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
-        // receives the environment from the value itself.
-        if (concreteEntry is not null)
+        // receives the environment from the value itself, whose address leads the operands when a reference holds it.
+        var borrowed = plan.ReceiverType.Kind == BoundTypeKind.Semantics;
+        if (concreteEntry is not null || borrowed)
         {
-            var environment = this.aggregateLayouts.Get(receiverType)!;
-            if (plan.ReceiverType.Kind == BoundTypeKind.Semantics)
+            if (borrowed)
             {
                 var read = -1;
                 foreach (var loan in body.ComparisonLoans)
@@ -320,13 +320,14 @@ internal sealed partial class BodyLowering
 
                 if (read < 0)
                 {
-                    return Fail("Borrowed concrete call has no acquired receiver address.", out failure);
+                    return Fail("Borrowed value call has no acquired receiver address.", out failure);
                 }
 
                 function.Operands.Add(this.PhysicalOperand(body, read));
             }
             else
             {
+                var environment = this.aggregateLayouts.Get(receiverType)!;
                 function.Operands.Add(environment.Value.Layout.Size == 0 ? new(EmissionOperandKind.NullAddress, 0) : new(EmissionOperandKind.SlotAddress, operation.Input));
             }
         }
@@ -363,7 +364,7 @@ internal sealed partial class BodyLowering
             function.Operands.Add(new(EmissionOperandKind.NullAddress, 0));
         }
 
-        if (function.Operands.Count - start != abi.Parameters.Length)
+        if (function.Operands.Count - start != abi.Parameters.Length + (concreteEntry is null && borrowed ? 1 : 0))
         {
             return Fail("Common-function physical arguments do not match its ABI.", out failure);
         }

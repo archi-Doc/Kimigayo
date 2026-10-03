@@ -177,16 +177,20 @@ internal static partial class LlvmModuleWriter
         output.Write(", align 8\n");
     }
 
+    // The value is in Place's slot, or at the address of a leading operand beyond the ABI parameters when a reference holds it.
     private static void WriteValueCall(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
         var id = instruction.Operation;
+        var abi = instruction.Callee!;
+        var operands = function.GetOperands(instruction);
+        var first = operands.Length - abi.Parameters.Length;
         Name(output, "  %environment", id);
         output.Write(" = load i64, ptr ");
-        WriteSlot(output, function, instruction.Place);
+        WriteValueAddress(output, function, instruction, operands, first);
         output.Write(", align 8\n");
         Name(output, "  %operationsSlot", id);
         output.Write(" = getelementptr i8, ptr ");
-        WriteSlot(output, function, instruction.Place);
+        WriteValueAddress(output, function, instruction, operands, first);
         output.Write(", i64 8\n");
         Name(output, "  %operations", id);
         Name(output, " = load ptr, ptr %operationsSlot", id);
@@ -200,7 +204,6 @@ internal static partial class LlvmModuleWriter
         Name(output, "  %context", id);
         Name(output, " = load ptr, ptr %contextSlot", id);
         output.Write(", align 8\n");
-        var abi = instruction.Callee!;
         if (abi.Result != "void")
         {
             Name(output, "  %v", id);
@@ -214,16 +217,27 @@ internal static partial class LlvmModuleWriter
         output.Write(abi.Result);
         Name(output, " %entry", id);
         Name(output, "(i64 %environment", id);
-        var operands = function.GetOperands(instruction);
-        for (var i = 0; i < operands.Length; i++)
+        for (var i = first; i < operands.Length; i++)
         {
             output.Write(", ");
-            output.Write(abi.Parameters[i].Type);
+            output.Write(abi.Parameters[i - first].Type);
             output.Write(' ');
             WriteStorageAddress(output, function, operands[i]);
         }
 
         Name(output, ", ptr %context", id);
         output.Write(")\n");
+    }
+
+    private static void WriteValueAddress(TextWriter output, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands, int first)
+    {
+        if (first > 0)
+        {
+            WriteOperand(output, operands[0]);
+        }
+        else
+        {
+            WriteSlot(output, function, instruction.Place);
+        }
     }
 }
