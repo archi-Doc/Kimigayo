@@ -1056,6 +1056,13 @@ public sealed partial class Binding
 
                 return CandidateApplicability.Inapplicable;
             }
+
+            if (call.ArgumentNodes[i].BoundType is null && type.Kind == BoundTypeKind.Function && type.ContainsParameter &&
+                KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } literal &&
+                this.ClosureHeaderType(literal) is { } header && !InferInput(type, header, call.ArgumentNodes[i]))
+            {
+                return CandidateApplicability.Inapplicable; // SPEC 10.5: the written header is evidence for the generic parameters.
+            }
         }
 
         for (var i = 0; waiting != 0 && i < call.ArgumentNodes.Count; i++)

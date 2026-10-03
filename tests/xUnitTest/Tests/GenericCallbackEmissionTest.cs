@@ -31,6 +31,9 @@ public class GenericCallbackEmissionTest
     [InlineData("GenericResultNested", "func twice<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(f(v))\nlet g = func [] (value: i64) -> i64 => value * 3\nrequire twice(g, 2@i64) == 18 else => $abort(\"nested\")", "")]
     [InlineData("GenericResultTuple", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (p: (i32, i32)) -> (i32, i32) => (p.1, p.0)\nlet r = apply(g, (1, 2))\nrequire r.0 == 2 and r.1 == 1 else => $abort(\"tuple\")", "")]
     [InlineData("GenericResultString", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (s: string) -> string => s@move\nrequire apply(g, \"abc\") == \"abc\" else => $abort(\"string\")", "")]
+    // SPEC 10.5: a written closure header is evidence for T before the literal's body is checked, so an untyped integer
+    // argument is fitted to it; it was UnprovenConstraint_Kd for `T is Copy`.
+    [InlineData("HeaderEvidence", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nrequire apply(func [] (value: i32) -> i32 => value + 1, 2) == 3 else => $abort(\"header\")", "")]
     public void SharedCallsPreserveBehavior(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
 
@@ -80,5 +83,13 @@ public class GenericCallbackEmissionTest
         Assert.Empty(output.ToString());
         Assert.True(c.Ownership.Analyze().IsVerified);
         Assert.True(c.Emission.Validate(out error), error);
+    }
+
+    [Fact]
+    public void AClosureHeaderThatContradictsAnotherArgumentIsInapplicable()
+    {
+        var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nlet two: i32 = 2\nlet r = apply(func [] (value: i64) -> i64 => value, two)");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, static issue => issue.Code == Kimi.DiagnosticCode.NoApplicableOverload_Kd);
     }
 }
