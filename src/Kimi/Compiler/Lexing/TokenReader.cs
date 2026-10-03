@@ -473,14 +473,6 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Advances until the specified token kind is reached.
-    /// </summary>
-    /// <param name="kind1">The token kind at which to stop.</param>
-    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1)
-        => this.SkipUntil(kind1, kind1, kind1);
-
-    /// <summary>
     /// Advances until either of the specified token kinds is reached.
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
@@ -513,62 +505,11 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Advances to the start of the immediately following block without reporting; the caller has reported what it
-    /// expected. Stops before a subsequent statement.
+    /// Skips the indented block at the current <see cref="TokenKind.StartBlock"/> with the blocks nested in it; the tokenizer ends
+    /// every block it starts, so the skip ends at the block's own <see cref="TokenKind.EndBlock"/>.
     /// </summary>
-    /// <returns>
-    /// <see cref="TokenKind.StartBlock"/> when a block was found;
-    /// otherwise, the default value.
-    /// </returns>
-    public TokenKind SkipUntilStartBlock()
+    public void SkipCurrentBlock()
     {
-        var reachedNextStatement = false;
-        while (this.CanRead)
-        {
-            var tokenKind = this.currentToken.Kind;
-            if (tokenKind == TokenKind.StartBlock)
-            {
-                return tokenKind;
-            }
-
-            if (tokenKind == TokenKind.EndBlock)
-            {
-                return default;
-            }
-
-            if (tokenKind == TokenKind.Separator)
-            {
-                reachedNextStatement = true;
-                this.AdvanceOne();
-                continue;
-            }
-
-            if (reachedNextStatement)
-            {
-                return default;
-            }
-
-            this.AdvanceOne();
-        }
-
-        return default;
-    }
-
-    /// <summary>
-    /// Skips the current block while respecting nested blocks.
-    /// </summary>
-    /// <param name="isRootGroup">
-    /// <see langword="true"/> to skip until the next root group;
-    /// otherwise, to skip the current nested block.
-    /// </param>
-    public void SkipCurrentBlock(bool isRootGroup)
-    {
-        if (isRootGroup)
-        {
-            this.SkipUntil(TokenKind.RootGroup);
-            return;
-        }
-
         if (!this.TryConsume(TokenKind.StartBlock))
         {
             return;
@@ -590,10 +531,6 @@ public ref partial struct TokenReader
                     this.AdvanceOne();
                     return;
                 }
-            }
-            else if (kind == TokenKind.RootGroup)
-            {
-                return;
             }
 
             this.AdvanceOne();

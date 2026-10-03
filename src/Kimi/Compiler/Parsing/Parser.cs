@@ -189,7 +189,7 @@ public static partial class Parser
         var methodToken = reader.CurrentToken;
         if (!TryParseFunctionName(ref reader, anonymous, constructor, out var methodName))
         {
-            return null;
+            return Omitted(ref reader, anonymous);
         }
 
         var genericArguments = reader.CurrentTokenKind == TokenKind.LessThan
@@ -199,7 +199,7 @@ public static partial class Parser
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out _, true) ||
             !TryParseParameterList(ref reader, anonymous, constructor, specialization, out var parameters, out var nameBoundary, out var closeParenthesisRange))
         {
-            return null;
+            return Omitted(ref reader, anonymous);
         }
 
         Koto? returnType = null;
@@ -266,11 +266,22 @@ public static partial class Parser
         }
 
         return functionKoto;
+
+        // A declaration whose header failed is skipped with its body; a function expression leaves the rest to its expression.
+        static FunctionKoto? Omitted(ref TokenReader reader, bool anonymous)
+        {
+            if (!anonymous)
+            {
+                OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+            }
+
+            return null;
+        }
     }
 
     /// <summary>
     /// Reads the Name of a function declaration, <c>init</c> of a constructor, or the omitted Name of a function expression; a
-    /// qualified Name is read in full and reported. After an invalid Name the rest of the header's line is skipped.
+    /// qualified Name is read in full and reported. A failed Name ends the header, which the caller then skips with its body.
     /// </summary>
     private static bool TryParseFunctionName(ref TokenReader reader, bool anonymous, bool constructor, [NotNullWhen(true)] out string? name)
     {
@@ -296,51 +307,29 @@ public static partial class Parser
             return false;
         }
 
-        if (!reader.TryRead(out token))
+        if (constructor && token.Kind == TokenKind.Init)
         {
-            reader.Expect(anonymous ? SyntaxForm.OpenParenthesis : SyntaxForm.Name);
-            name = null;
-            return false;
-        }
-
-        if (!token.Kind.IsIdentifierOrContextualKeyword() && !(constructor && token.Kind == TokenKind.Init))
-        {
-            reader.Expect(SyntaxForm.Name, token);
-            goto SkipLine;
-        }
-
-        if (constructor)
-        {
+            reader.Advance();
             name = "init";
         }
-        else if (!reader.TryGetIdentifier(token, out name))
+        else if (!reader.TryReadName(out name, out _))
         {
-            goto SkipLine; // The invalid identifier is reported.
+            return false;
         }
 
         while (reader.TryConsume(TokenKind.Dot))
         {
             reader.Unexpected(SyntaxForm.QualifiedFunctionName, token.Span);
-            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+            if (!reader.TryReadName(out var memberName, out _))
             {
-                reader.Expect(SyntaxForm.Name);
-                goto SkipLine;
-            }
-
-            if (!reader.TryGetIdentifier(reader.Read(), out var memberName))
-            {
-                goto SkipLine;
+                name = null;
+                return false;
             }
 
             name += "." + memberName;
         }
 
         return true;
-
-SkipLine:
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, TokenKind.EndBlock);
-        name = null;
-        return false;
     }
 
     /// <summary>
@@ -599,30 +588,18 @@ SkipLine:
     /// <summary>Parses a Declaration Container header after its keyword, according to the capabilities of its kind (SPEC 6.1, 8.4).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="declarationKind">The declaration keyword kind; a struct, enum or Contract takes Type parameters, a struct or enum an Origin header, a struct or Contract a base list.</param>
-    /// <returns>The name, generic parameters, origin names and bases; the reader stands at the body's <see cref="TokenKind.StartBlock"/> when one follows.</returns>
-    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins, Koto[]? Bases) ParseDeclarationContainerHeader(ref TokenReader reader, TokenKind declarationKind)
+    /// <returns>The name, generic parameters, origin names and bases; the reader stands at the body's <see cref="TokenKind.StartBlock"/> when one follows.
+    /// The Name is <see langword="null"/> after an Error at it, and the caller skips the declaration with its body.</returns>
+    internal static (string? Name, List<TypeKoto>? GenericArguments, List<string>? Origins, Koto[]? Bases) ParseDeclarationContainerHeader(ref TokenReader reader, TokenKind declarationKind)
     {
         var supportsGenerics = declarationKind is TokenKind.Struct or TokenKind.Enum or TokenKind.Contract;
         var supportsOrigins = declarationKind is TokenKind.Struct or TokenKind.Enum;
-        string name = string.Empty;
         List<TypeKoto>? genericArguments = default;
         List<string>? origins = default;
         Koto[]? bases = null;
-        if (!reader.TryRead(out var token))
+        if (!reader.TryReadName(out var name, out _))
         {
-            reader.Expect(SyntaxForm.Name);
             goto Exit;
-        }
-
-        if (!token.Kind.IsIdentifierOrContextualKeyword())
-        {
-            reader.Expect(SyntaxForm.Name, token);
-            goto SkipAndExit;
-        }
-
-        if (reader.TryGetIdentifier(token, out var identifier))
-        {
-            name = identifier;
         }
 
         if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
@@ -655,10 +632,6 @@ SkipLine:
         // The header ends with its line; a body may follow on indented lines.
         reader.ExpectLineEnd(bodyMayFollow: true);
         reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
-        goto Exit;
-
-SkipAndExit:
-        reader.SkipUntilStartBlock();
 
 Exit:
         return (name, genericArguments, origins, bases);
@@ -723,20 +696,19 @@ Exit:
     {
         reader.ReportMisplacedAttributes();
         var token = reader.CurrentToken;
-        if (token.Kind.IsIdentifierOrContextualKeyword())
+        if (!token.Kind.IsIdentifierOrContextualKeyword())
         {
-            reader.Advance();
-            if (IdentifierNameKoto.TryCreate(ref reader, token, out var name))
-            {
-                return name;
-            }
-        }
-        else
-        {
-            reader.Expect(SyntaxForm.Name);
+            OmitDeclaration(ref reader, reader.Expect(SyntaxForm.Name));
+            return null;
         }
 
-        SkipDeclarationLine(ref reader);
+        reader.Advance();
+        if (IdentifierNameKoto.TryCreate(ref reader, token, out var name))
+        {
+            return name;
+        }
+
+        OmitDeclaration(ref reader, reader.Diagnostic.LastError); // The invalid identifier is reported once.
         return null;
     }
 
@@ -865,7 +837,7 @@ Exit:
             if (hasInlineAccessors)
             {
                 reader.Unexpected(SyntaxForm.IndentedBody);
-                reader.SkipCurrentBlock(false);
+                reader.SkipCurrentBlock();
             }
             else
             {
@@ -2540,13 +2512,34 @@ CloseParameters:
     internal static void SkipDeclarationLine(ref TokenReader reader)
     {
         // The reader stays at the line boundary, so the enclosing item ends there and the next line keeps its own statement.
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+        if (reader.CurrentTokenKind != TokenKind.StartBlock)
+        {
+            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+        }
+
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
         }
 
         reader.ClearContext();
+    }
+
+    /// <summary>
+    /// Skips a declaration that no header introduces after its Error, with the rest of its line and its body, and records the
+    /// omission, so a check over the member set rests on the Error (DIAGNOSTICS.md §4.3, §4.4).
+    /// </summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="cause">The key of the Error.</param>
+    internal static void OmitDeclaration(ref TokenReader reader, DiagnosticKey? cause)
+    {
+        if (cause is { } key && !reader.InExcludedSyntax)
+        {
+            // Excluded syntax records no omission for the selected program (SPEC 19.5).
+            reader.CodeContext.Kotonoha.RecordOmission(key);
+        }
+
+        SkipDeclarationLine(ref reader);
     }
 
     private static bool IntroducesDeclaration(ref TokenReader reader)
@@ -2671,6 +2664,12 @@ CloseParameters:
 
                 var state = reader.TakeContext();
                 var declaration = ParseDeclarationContainerHeader(ref reader, token.Kind);
+                if (declaration.Name is null)
+                {
+                    OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+                    return null;
+                }
+
                 var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
@@ -4472,7 +4471,7 @@ Separator:
             {
                 if (list is null && !skipped)
                 {
-                    reader.Expect(SyntaxForm.Type);
+                    reader.Expect(specialization ? SyntaxForm.Type : SyntaxForm.Name);
                 }
 
                 reader.TryConsumeTypeClose(out _);

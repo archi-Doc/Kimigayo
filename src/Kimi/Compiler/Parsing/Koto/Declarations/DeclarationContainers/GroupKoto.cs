@@ -169,6 +169,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
             reader.TryConsume(TokenKind.ColonColon);
             var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
             var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
+            if (qualifiedName is null)
+            {
+                // A target whose Name failed declares no alias; the declaration is skipped with what it would attach.
+                Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+                return;
+            }
+
             if (state.HasNonAliasDeclaration)
             {
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
@@ -194,6 +201,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
         {
             reader.Advance();
             var name = KotoHelper.ValidateAndGetNamespace(ref reader);
+            if (name.IsEmpty)
+            {
+                // A root group whose Name failed merges with no other; it is skipped with its body.
+                Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+                return;
+            }
+
             var context = reader.TakeContext();
             var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, context, token.Span, codeContext: reader.CodeContext);
             reader.Document(groupKoto, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), context.AttributeKoto);

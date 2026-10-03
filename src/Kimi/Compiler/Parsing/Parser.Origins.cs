@@ -101,7 +101,7 @@ public static partial class Parser
                 reader.AddDiagnostic(DiagnosticCode.AttachedOriginRelation_Kd);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
-                    reader.SkipCurrentBlock(false);
+                    reader.SkipCurrentBlock();
                 }
                 else
                 {

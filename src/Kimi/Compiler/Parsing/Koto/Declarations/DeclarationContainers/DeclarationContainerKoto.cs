@@ -618,7 +618,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
             return;
         }
 
@@ -691,6 +691,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         reader.Advance();
         var state = reader.TakeContext();
         var declaration = Parser.ParseDeclarationContainerHeader(ref reader, tokenKind);
+        if (declaration.Name is null)
+        {
+            // Without its Name the declaration merges with no other; it is skipped with its body (DIAGNOSTICS.md §4.4).
+            Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+            return true;
+        }
+
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
@@ -778,13 +785,19 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     return true;
                 }
 
-                var name = reader.Read();
+                var name = reader.CurrentToken;
                 if (!name.Kind.IsIdentifierOrContextualKeyword())
                 {
-                    reader.Expect(SyntaxForm.Name, name);
+                    Parser.OmitDeclaration(ref reader, reader.Expect(SyntaxForm.Name));
+                    return true;
                 }
 
-                if (IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
+                reader.Advance();
+                if (!IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
+                {
+                    Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError); // The invalid identifier is reported once.
+                }
+                else
                 {
                     Koto head = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? Parser.ParseOriginApplication(ref reader, identifier) : identifier;
                     Parser.ValidateAssociatedParameters(ref reader, head);
@@ -902,16 +915,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The unsupported declaration's first token.</param>
     protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
-    {
-        var cause = reader.Expect(SyntaxForm.Declaration, token);
-        if (!reader.InExcludedSyntax)
-        {
-            // Excluded syntax records no omission for the selected program (SPEC 19.5).
-            reader.CodeContext.Kotonoha.RecordOmission(cause);
-        }
-
-        Parser.SkipDeclarationLine(ref reader);
-    }
+        => Parser.OmitDeclaration(ref reader, reader.Expect(SyntaxForm.Declaration, token));
 
     /// <summary>Writes one type constraint in the syntax used by this Declaration Container kind.</summary>
     /// <param name="constraint">The constraint to write.</param>

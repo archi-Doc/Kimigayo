@@ -181,7 +181,7 @@ public static partial class Parser
                 SkipCompileTimeHeaderRemainder(ref scan);
                 if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    scan.SkipCurrentBlock(false);
+                    scan.SkipCurrentBlock();
                 }
 
                 continue;
@@ -227,7 +227,7 @@ public static partial class Parser
 
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
-                scan.SkipCurrentBlock(false);
+                scan.SkipCurrentBlock();
             }
 
             invalidCondition |= result == CompileTimeConditionResult.Error;
@@ -303,7 +303,7 @@ public static partial class Parser
                 SkipCompileTimeHeaderRemainder(ref reader);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    reader.SkipCurrentBlock(false);
+                    reader.SkipCurrentBlock();
                 }
 
                 continue;
@@ -409,7 +409,7 @@ public static partial class Parser
             SkipCompileTimeHeaderRemainder(ref reader);
             if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
-                reader.SkipCurrentBlock(false);
+                reader.SkipCurrentBlock();
             }
 
             return;
@@ -417,7 +417,7 @@ public static partial class Parser
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
             return;
         }
 
@@ -425,7 +425,7 @@ public static partial class Parser
         _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
             return;
         }
 
