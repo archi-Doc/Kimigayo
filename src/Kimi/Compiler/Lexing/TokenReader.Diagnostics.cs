@@ -73,18 +73,17 @@ public ref partial struct TokenReader
 
         if (this.currentToken.Kind == TokenKind.StartBlock)
         {
-            if (bodyMayFollow)
+            if (!bodyMayFollow)
             {
-                return;
+                // The block is skipped whole, so its lines are no items of the enclosing body and its end does not end that body.
+                this.Unexpected(SyntaxForm.IndentedBody);
+                this.SkipCurrentBlock();
             }
 
-            this.Unexpected(SyntaxForm.IndentedBody);
-        }
-        else
-        {
-            this.Expect(SyntaxForm.LineEnd);
+            return;
         }
 
+        this.Expect(SyntaxForm.LineEnd);
         this.SkipUntil(bodyMayFollow ? TokenKind.StartBlock : TokenKind.Separator, TokenKind.Separator, TokenKind.EndBlock);
     }
 

@@ -111,11 +111,10 @@ public class FunctionBodyParseTest
         var localDeclarationTail = ParseSingleFunction(
             """
             func LocalDeclarationTail()
-                struct Local
-                    var value: i32
+                func local() => ()
             """);
         Assert.False(localDeclarationTail.Body!.HasTrailingExpression);
-        Assert.IsType<StructKoto>(Assert.Single(localDeclarationTail.Body.Items));
+        Assert.IsType<FunctionKoto>(Assert.Single(localDeclarationTail.Body.Items));
     }
 
     [Fact]
@@ -187,8 +186,7 @@ public class FunctionBodyParseTest
     {
         var source = """
             func Evaluate(x: i32) -> i32
-                struct Local
-                    var value: i32
+                func local() => ()
                 while x < 0
                     exit 0
                 match x
@@ -212,7 +210,7 @@ public class FunctionBodyParseTest
 
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         var restoredBody = Assert.IsType<CodeBlockKoto>(restoredFunction.Body);
-        Assert.IsType<StructKoto>(restoredBody.Items[0]);
+        Assert.IsType<FunctionKoto>(restoredBody.Items[0]);
         Assert.IsType<WhileKoto>(restoredBody.Items[1]);
         Assert.False(restoredBody.HasTrailingExpression);
         Assert.IsType<MatchKoto>(restoredBody.Items[^1]);

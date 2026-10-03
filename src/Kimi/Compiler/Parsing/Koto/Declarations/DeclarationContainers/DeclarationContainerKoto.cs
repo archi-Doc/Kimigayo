@@ -613,36 +613,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     }
 
     /// <summary>Consumes an unimplemented Declaration Container body without producing members.</summary>
-    /// <param name="reader">The token reader.</param>
+    /// <param name="reader">The token reader at the body's <see cref="TokenKind.StartBlock"/>; a Container parses only a body.</param>
     protected static void SkipUnimplementedBody(ref TokenReader reader)
-    {
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            reader.SkipCurrentBlock();
-            return;
-        }
-
-        var depth = 0;
-        while (reader.CanRead)
-        {
-            if (reader.CurrentTokenKind == TokenKind.StartBlock)
-            {
-                depth++;
-            }
-            else if (reader.CurrentTokenKind == TokenKind.EndBlock)
-            {
-                if (depth == 0)
-                {
-                    reader.Advance();
-                    return;
-                }
-
-                depth--;
-            }
-
-            reader.Advance();
-        }
-    }
+        => reader.SkipCurrentBlock();
 
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
     /// <param name="reader">The token reader.</param>
@@ -678,7 +651,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected bool TryParseDeclarationContainer(ref TokenReader reader, Token token)
     {
         var tokenKind = token.Kind;
-        if (tokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        if (!Parser.IsContainerDeclarationStart(ref reader))
         {
             return false;
         }
@@ -1256,9 +1229,23 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         var token = reader.CurrentToken;
+        if (token.Kind == TokenKind.StartBlock)
+        {
+            // An indented block that no member header introduces is skipped whole; it never ends the Container (SPEC 2.2.1).
+            Parser.OmitDeclaration(ref reader, reader.Unexpected(SyntaxForm.IndentedBody));
+            return;
+        }
+
         if (state.ParseDeclarationContainers &&
             this.TryParseDeclarationContainer(ref reader, token))
         {
+            return;
+        }
+
+        if (!state.ParseDeclarationContainers && Parser.IsContainerDeclarationStart(ref reader))
+        {
+            // No Container nests in an enum or a Contract (SPEC 6.1.1); the declaration is skipped with its body.
+            Parser.OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
             return;
         }
 

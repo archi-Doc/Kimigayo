@@ -2542,9 +2542,32 @@ CloseParameters:
         SkipDeclarationLine(ref reader);
     }
 
+    /// <summary>
+    /// Gets whether a Container keyword at the current token declares a Container. The contextual keyword is a Name (SPEC 2.5.1)
+    /// where an expression continues after it, through an operator, a member access, a call or an index, and where its line ends
+    /// without an indented body; anything else, its Name or a token no expression takes there, makes it a declaration.
+    /// </summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> for a Container declaration.</returns>
+    internal static bool IsContainerDeclarationStart(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        {
+            return false;
+        }
+
+        var next = reader.PeekKind(1);
+        return next switch
+        {
+            TokenKind.Separator => reader.PeekKind(2) == TokenKind.StartBlock,
+            TokenKind.EndBlock => false,
+            _ => InfixLeftBindingPower[(byte)next] == 0 && !IsPostfixOperator[(byte)next],
+        };
+    }
+
     private static bool IntroducesDeclaration(ref TokenReader reader)
-        => reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or
-            TokenKind.Contract or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
+        => IsContainerDeclarationStart(ref reader) ||
+            reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
             (reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket)) ||
             (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
 
@@ -2651,44 +2674,10 @@ CloseParameters:
                 ParseNamedFunctionBody(ref reader, function);
                 return function;
 
-            case TokenKind.Group:
-            case TokenKind.Struct:
-            case TokenKind.Enum:
-            case TokenKind.Extension:
-            case TokenKind.Contract:
-                reader.Advance();
-                if (token.Kind == TokenKind.Extension)
-                {
-                    reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
-                }
-
-                var state = reader.TakeContext();
-                var declaration = ParseDeclarationContainerHeader(ref reader, token.Kind);
-                if (declaration.Name is null)
-                {
-                    OmitDeclaration(ref reader, reader.Diagnostic.LastError);
-                    return null;
-                }
-
-                var container = DeclarationContainerKoto.CreateStandalone(
-                    reader.CodeContext,
-                    token.Kind,
-                    state,
-                    token.Span,
-                    declaration.Name);
-                container.AddHeader(token.Kind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
-                container.SetBases(declaration.Bases);
-
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    container.Parse(ref reader);
-                }
-                else if (token.Kind == TokenKind.Enum)
-                {
-                    reader.CodeContext.RecordRecovery(container, reader.Expect(SyntaxForm.Body));
-                }
-
-                return container;
+            case TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract when IsContainerDeclarationStart(ref reader):
+                // No Container nests in an executable block (SPEC 6.1.1); the declaration is skipped with its body.
+                OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
+                return null;
 
             default:
                 return ParseExpression(ref reader);

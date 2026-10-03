@@ -111,6 +111,9 @@ public enum SyntaxForm : ushort
     /// <summary>An extension declaration, which the language does not introduce.</summary>
     ExtensionDeclaration,
 
+    /// <summary>A Container declaration where no Container nests: in an enum, a Contract or an executable block (SPEC 6.1.1).</summary>
+    ContainerDeclaration,
+
     /// <summary>An associate declaration outside a Contract.</summary>
     AssociatedTypeDeclaration,
 

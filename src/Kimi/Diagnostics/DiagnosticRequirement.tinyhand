@@ -169,6 +169,11 @@
     Phrase="extension declaration"
     Advice="Extension declarations are not introduced (SPEC Appendix D); declare the members in the container itself."
 
+  + Name="Syntax.ContainerDeclaration"
+    Description="a Container is declared where Containers nest"
+    Phrase="Container declaration"
+    Advice="Containers nest only at the project root and in groups and structs; declare it there."
+
   + Name="Syntax.AssociatedTypeDeclaration"
     Description="an associate declaration stands in a Contract"
     Phrase="associate declaration outside a Contract"

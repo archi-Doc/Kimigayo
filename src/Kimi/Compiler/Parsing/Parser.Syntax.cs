@@ -338,7 +338,7 @@ public static partial class Parser
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
             var value = ParseArrayLength(ref reader, expression: true);
-            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            RecoverItem(ref reader, value, reader.ExpectCloser(TokenKind.CloseParenthesis, out var close));
             left = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(value.Span.End, close.End)), value);
         }
         else if (expression && token.Kind is TokenKind.Plus or TokenKind.Minus)
