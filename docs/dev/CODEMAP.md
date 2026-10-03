@@ -91,6 +91,7 @@ Tuple captures use `ClosureEffects` part access, `ElementAccess.WritableRoot`/`O
 Struct environments share the stored-part capture path; `ClosureEffects` reads computed accessor receiver arguments from retained property calls. `StructCaptureTest` covers captured fields/accessors, Owned erasure and destruction.
 `FunctionCaptureTest` covers common Function handles held by concrete or erased environments, including nested destruction and mutable capture replacement.
 `FixedArrayCaptureTest` covers fixed-array capture element authority, nested paths, consumption, erasure allocation and reverse destruction.
+`Binding.FunctionTypes.FixedCaptureSignature` checks fixed result contracts from capture Types; `Binding.TypeOrigins.ContainsOrigin` shares complete Origin identity with diagnostics. `ClosureResultOriginTest` covers result Loans, shared pointer/aggregate results, environment destruction and closed dependent-result boundaries.
 
 ## Use and maintenance
 

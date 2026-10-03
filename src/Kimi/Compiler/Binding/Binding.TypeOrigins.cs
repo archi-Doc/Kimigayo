@@ -6,6 +6,51 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
+    private static bool ContainsOrigin(BoundType type, BoundOrigin origin)
+    {
+        if (Contains(type.Origin, origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Contains(type.OriginArguments[i], origin))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ContainsOrigin(type.Components[i], origin))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Contains(BoundOrigin? expression, BoundOrigin atom)
+        {
+            if (ReferenceEquals(expression, atom))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < (expression?.Operands.Count ?? 0); i++)
+            {
+                if (Contains(expression!.Operands[i], atom))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression);
 

@@ -22,24 +22,6 @@ public sealed partial class Binding
         return syntax is TypeSemanticsKoto { Type: not null, HasOrigin: true, IsTransparentWrapper: false };
     }
 
-    private static bool ContainsOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (ReferenceEquals(type.Origin, origin))
-        {
-            return true;
-        }
-
-        foreach (var component in type.Components)
-        {
-            if (ContainsOrigin(component, origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
     // null for any other position, such as an accessor signature or an attached relation.
     private static DeclarationContainerKoto? StorageOriginType(Koto use)

@@ -9,12 +9,10 @@ public sealed partial class Binding
     internal static bool CallableSignatureFits(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool PerCallSignature(BoundType signature)
-    {
-        if (signature.Components[1].CarriesOrigin)
-        {
-            return false;
-        }
+        => !signature.Components[1].CarriesOrigin && PerCallInputs(signature);
 
+    private static bool PerCallInputs(BoundType signature)
+    {
         var inputs = signature.Components[0];
         for (var i = 0; i < inputs.Components.Count; i++)
         {
@@ -27,6 +25,88 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    private bool FixedCaptureSignature(BoundType signature, Koto receiver)
+    {
+        if (!PerCallInputs(signature))
+        {
+            return false;
+        }
+
+        var result = signature.Components[1];
+        var type = receiver.BoundType!;
+        type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        return type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure } &&
+            this.ProveCopy(result, receiver) == ConstraintProof.Proven && FixedType(result);
+
+        // A concrete Copy result may retain shared external Origins already carried by Copy captures. No per-call
+        // substitution or receiver-storage Loan is needed; erased, exclusive and receiver-dependent results stay closed.
+        bool FixedType(BoundType part)
+        {
+            if (!FixedOrigin(part.Origin))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < part.OriginArguments.Count; i++)
+            {
+                if (!FixedOrigin(part.OriginArguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (!FixedType(part.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool FixedOrigin(BoundOrigin? origin)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (!FixedOrigin(origin.Operands[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            var found = false;
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                var captured = closure.Captures[i].Environment.Type!;
+                if (ContainsOrigin(captured, origin))
+                {
+                    // Equal lifetime names do not prove which capture supplied the result. A Non-Copy carrier may
+                    // require a receiver-dependent reborrow even when another capture carries the same Origin.
+                    if (this.ProveCopy(captured, receiver) != ConstraintProof.Proven)
+                    {
+                        return false;
+                    }
+
+                    found = true;
+                }
+            }
+
+            return found;
+        }
     }
 
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)

@@ -82,10 +82,8 @@ public class FixedArrayCaptureTest
     }
 
     [Fact]
-    public void ReturningACapturedElementReferenceRemainsExplicitlyUnsupported()
+    public void ReturningACapturedElementReferenceKeepsItsFixedOrigin()
     {
-        var c = MinimalEmissionTest.Analyze("let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\nf()");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd && x.Node.ToString() == "f()");
-        Assert.False(c.Emission.Validate(out _));
+        ScalarEmissionTest.EmitFixture("FixedArrayCaptureReferenceResult", "let n = 7\nlet values: [1 of ref/i32] = [n@ref]\nlet f = func [values] () => values[0]\nlet result = f()\nrequire result == 7 else => $abort(\"result\")", string.Empty);
     }
 }

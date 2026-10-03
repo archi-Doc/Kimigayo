@@ -194,9 +194,8 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        // This slice supports independent results and fresh direct input Origins.
-        // Fixed external/result dependencies still need the full callable contract.
-        if (!PerCallSignature(signature))
+        // Fresh direct input Origins and fixed shared capture results retain their complete call contracts.
+        if (!PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method))
         {
             return this.Fail(call, BindingFailure.Unsupported);
         }
