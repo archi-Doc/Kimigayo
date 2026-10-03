@@ -50,6 +50,20 @@ public class SharedObjectCleanupTest
     }
 
     [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Clear", "entries.clear()")]
+    [InlineData("Remove", "_ = entries.remove(1)\n_ = entries.remove(2)")]
+    [InlineData("OwningExit", "for pair in entries@move\n    require pair.1.value == 7 else => $abort(\"item\")\n    exit")]
+    public void DictionaryReleasesEveryStoredReference(string name, string cleanup)
+    {
+        var source = Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\nvar entries: Dictionary<i32, rc/Item> = [:]\n" +
+            "_ = entries.tryInsert(1, Kimi.Intrinsics.clone(owner@ref))\n_ = entries.tryInsert(2, Kimi.Intrinsics.clone(owner@ref))\n" +
+            "_ = owner@move\n" + cleanup + "\nConsole.writeLine(\"done\")";
+        // Four entries, each with two links and the aligned (i32, handle) payload, plus one counted object.
+        NativeAllocationAudit.WriteFixture("SharedRcDictionary" + name, source, 2, 2, 148, "drop\ndone\n");
+    }
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void AbandonedArgumentsReleaseAcquiredClones()
     {
