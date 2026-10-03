@@ -220,6 +220,8 @@ The common expected-Type adaptation binds shared object borrows from obj/rc/arc 
 
 Factories inside generic function or container bodies report located UnsupportedOwnership rather than a generation failure; concrete call contexts and recursively discovered destructor factories remain U6. Generic rc clone preserves external payload Origins and executes without allocation.
 
+Bare scalar Copy reads through obj/rc `@follow` remain UnsupportedOwnership (G68); the explicit `@follow@ref` payload borrow executes.
+
 Rc base upcasts preserve dynamic Type identity and complete payload destruction. Array clear and early owning-iteration exit, and argument evaluation abandoned by return, release acquired handles correctly; raw storage transfers complete obj/rc handles only with explicit Move.
 
 An rc/arc exclusive object borrow explains its shared-only payload authority, an inapplicable exclusive receiver retains the actual and required Types, and an obj clone attempt explains that strong clone accepts rc/arc only. CLI/LSP, long names, rebinding and independent errors are verified.
