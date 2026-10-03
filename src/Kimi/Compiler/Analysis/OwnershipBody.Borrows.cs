@@ -1457,6 +1457,56 @@ public sealed partial class OwnershipBody
             }
         }
 
+        // The opposite direction: an access through the earlier holder meets a Place that holds the rejected Loan, directly or
+        // as a placed part (`let q = (a@uniq, 3)` rejected while `p` holds `a`, then `p.0@follow = 5` while `q` lives).
+        for (var i = 0; this.rejectedAcquisitions is { } rejected && i < rejected.Count; i++)
+        {
+            if (this.IsBorrowAncestor(access, rejected[i].Holder) && this.HoldsRejectedLoan(holder, rejected[i].Result))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether an aggregate built by a construction placed a payload that descends from a borrow result.
+    private bool ConstructedFrom(int aggregate, int result)
+    {
+        for (var i = 0; i < this.Constructions.Count; i++)
+        {
+            var plan = this.Constructions[i];
+            if (plan.Place != aggregate)
+            {
+                continue;
+            }
+
+            for (var op = 0; op < this.Operations.Count; op++)
+            {
+                if (this.Operations[op] is { Kind: OwnershipOperationKind.PayloadPlacement } placement &&
+                    placement.Place >= plan.PayloadStart && placement.Place < plan.PayloadStart + plan.PayloadCount &&
+                    (placement.Input == result || this.IsBorrowAncestor(op, result)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a Place's stored value was built from the result of a rejected acquisition: its defining Write's input descends
+    // from that result.
+    private bool HoldsRejectedLoan(int holder, int result)
+    {
+        for (var op = 0; op < this.Operations.Count; op++)
+        {
+            if (this.Operations[op] is { Kind: OwnershipOperationKind.Write, Input: >= 0 } write && write.Place == holder)
+            {
+                return this.IsBorrowAncestor(op, result) || this.ConstructedFrom(write.Input, result);
+            }
+        }
+
         return false;
     }
 
