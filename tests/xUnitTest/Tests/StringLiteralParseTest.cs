@@ -22,8 +22,8 @@ public class StringLiteralHelperTest
             // Empty raw strings with three and four quotes per delimiter.
             { "\"\"\"\"\"\"", ScanStringLiteralResult.Invalid, 6, 6 },
             { "\"\"\"\"\"\"\"\"", ScanStringLiteralResult.Invalid, 8, 8 },
-            { "\"\"\"\nText\n\"\"\"", ScanStringLiteralResult.MultilineString, 3, 12 },
-            { "\"\"\"\r\nText\r\n\"\"\"", ScanStringLiteralResult.MultilineString, 3, 14 },
+            { "\"\"\"\nText\n\"\"\"", ScanStringLiteralResult.String, 3, 12 },
+            { "\"\"\"\r\nText\r\n\"\"\"", ScanStringLiteralResult.String, 3, 14 },
         };
 
     [Theory]
@@ -99,7 +99,7 @@ public class StringLiteralHelperTest
 
         var result = StringLiteralHelper.ScanStringLiteral(Text, out var quoteCount, out var length);
 
-        Assert.True(result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString);
+        Assert.Equal(ScanStringLiteralResult.String, result);
         Assert.Equal(1, quoteCount);
         Assert.Equal(Text.Length, length);
     }
@@ -291,7 +291,7 @@ public class StringLiteralIntegrationTest
     {
         var result = StringLiteralHelper.ScanStringLiteral(literal, out var quoteCount, out var length);
 
-        Assert.True(result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString);
+        Assert.Equal(ScanStringLiteralResult.String, result);
         Assert.Equal(literal.Length, length);
 
         var valueSource = quoteCount == 1

@@ -101,10 +101,7 @@ public enum TokenKind : byte
     EndBlock,
     NumericLiteral, // 1.23d
     CharLiteral, // 'a'
-    StringLiteral, // "text"
-    RawStringLiteral, // """text"""
-    SingleLineComment, // // comment
-    MultiLineComment, // /* comment */
+    StringLiteral, // "text" and """raw text"""; comments produce no token
 
     // Single token
     At, // @

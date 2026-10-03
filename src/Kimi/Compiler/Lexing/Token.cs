@@ -55,11 +55,6 @@ public readonly record struct Token
     public int Length => this.Span.Length;
 
     /// <summary>
-    /// Gets a value indicating whether the token has a valid kind.
-    /// </summary>
-    public bool IsValid => this.Kind != TokenKind.Invalid;
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="Token"/> struct.
     /// </summary>
     /// <param name="kind">The token kind.</param>

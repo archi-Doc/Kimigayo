@@ -1401,11 +1401,11 @@ EndOfFile:
     private void ReadStringLiteral()
     {
         var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
-        if (result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString)
+        if (result == ScanStringLiteralResult.String)
         {// Like every other literal, the token spans the literal as written, delimiters included.
             this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
         }
-        else if (result is ScanStringLiteralResult.Interpolation or ScanStringLiteralResult.MultilineInterpolation)
+        else if (result == ScanStringLiteralResult.Interpolation)
         {
             this.AddTokenAndSlice(TokenKind.InterpolatedStringLiteral, stringLiteralLength);
         }

@@ -19,17 +19,11 @@ public enum ScanStringLiteralResult : byte
     /// <summary>The string literal is malformed.</summary>
     Invalid,
 
-    /// <summary>A single-line string literal was found.</summary>
+    /// <summary>A string literal without interpolation was found, on one line or several.</summary>
     String,
 
-    /// <summary>A multiline string literal was found.</summary>
-    MultilineString,
-
-    /// <summary>A single-line string containing interpolation was found.</summary>
+    /// <summary>An escaped string literal containing interpolation was found, on one line or several.</summary>
     Interpolation,
-
-    /// <summary>A multiline string containing interpolation was found.</summary>
-    MultilineInterpolation,
 }
 
 /// <summary>
@@ -486,10 +480,7 @@ public static class StringLiteralHelper
             if (text[delimiter] == '"')
             {
                 stringLiteralLength = delimiter + 1;
-                var multiline = text[..delimiter].IndexOfAny('\r', '\n') >= 0;
-                return interpolated
-                    ? (multiline ? ScanStringLiteralResult.MultilineInterpolation : ScanStringLiteralResult.Interpolation)
-                    : (multiline ? ScanStringLiteralResult.MultilineString : ScanStringLiteralResult.String);
+                return interpolated ? ScanStringLiteralResult.Interpolation : ScanStringLiteralResult.String;
             }
 
             var close = FindInterpolationEnd(text[(delimiter + 1)..], depth + 1);
@@ -514,8 +505,6 @@ public static class StringLiteralHelper
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
-        var isMultiline = span[..delimiterIndex].IndexOfAny('\r', '\n') >= 0;
-
         // Treat surplus quotes before the closing delimiter as content.
         var i = delimiterIndex + doubleQuoteCount;
         while (i < span.Length && span[i] == '"')
@@ -525,9 +514,7 @@ public static class StringLiteralHelper
         }
 
         stringLiteralLength = doubleQuoteCount + delimiterIndex + doubleQuoteCount;
-        return isMultiline ?
-            ScanStringLiteralResult.MultilineString :
-            ScanStringLiteralResult.String;
+        return ScanStringLiteralResult.String;
     }
 
     private static int IndexOfInterpolationOrUnescapedQuote(ReadOnlySpan<char> text)
