@@ -58,7 +58,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 });
+        => function.RequiresInstantiation;
 
     internal void Clear()
     {

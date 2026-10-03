@@ -73,6 +73,10 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the parsed signature span before the function's span is extended by its body.</summary>
     internal SourceSpan SignatureSpan { get; }
 
+    // Binding establishes both the function's own parameters and its declaring container's parameters.
+    internal bool RequiresInstantiation => !this.IsSpecialization &&
+        (this.GenericArguments.Count != 0 || this.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 });
+
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
