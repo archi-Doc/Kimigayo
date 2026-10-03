@@ -700,6 +700,11 @@
     Category="Language"
     Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
 
+  + Name="PlacementActivationConflict_Kd"
+    Category="Language"
+    Message="An exclusive reference placed into this value is acquired exclusively, as a call argument is, and conflicts with a Loan on its referent that remains live, such as its own Reborrow child"
+    Advice="End the use of the Reborrow child before the parent reference is placed, or place only one of them"
+
   + Name="CallEffectConflict_Kd"
     Category="Language"
     Message="This requirement call may affect a Loan that an earlier result keeps, and no effect bound available here excludes it"

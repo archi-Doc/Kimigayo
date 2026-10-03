@@ -207,7 +207,7 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
 /// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
-public readonly record struct OwnershipLending(Koto Input, InvocationKoto Call);
+public readonly record struct OwnershipLending(Koto Input, Koto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
@@ -220,7 +220,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
         OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
         OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
-        OwnershipFailure.ComparisonLoanConflict => this.Activation ? DiagnosticCode.CallActivationConflict_Kd :
+        OwnershipFailure.ComparisonLoanConflict => this.Activation ? (this.Source is InvocationKoto ? DiagnosticCode.CallActivationConflict_Kd : DiagnosticCode.PlacementActivationConflict_Kd) :
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
         OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
@@ -551,9 +551,9 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, Koto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
 
-internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
+internal readonly record struct OwnershipCallReservation(Koto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

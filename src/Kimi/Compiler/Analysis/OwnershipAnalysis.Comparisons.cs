@@ -83,7 +83,7 @@ public sealed partial class OwnershipAnalysis
         return place;
     }
 
-    private int BeginSharedLoan(int place, InvocationKoto? call = null, int guard = -1, bool access = false)
+    private int BeginSharedLoan(int place, Koto? call = null, int guard = -1, bool access = false)
     {
         var parent = this.CurrentLoanHead;
         while (this.body.LoanStates.Count < this.body.Operations.Count)

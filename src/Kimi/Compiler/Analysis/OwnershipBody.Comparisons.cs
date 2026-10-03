@@ -42,7 +42,7 @@ public sealed partial class OwnershipBody
             operation = operation with { LoanMode = loan.Reservation >= 0 ? LoanRequirement.Uniq : LoanRequirement.Ref };
         }
 
-        if (loan.Call is { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
+        if (loan.Call is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
             ReferenceEquals(operation.Source, loan.Call) && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Write)
         {
             return false; // The selected intrinsic operates through its acquired target Loan.
@@ -295,7 +295,7 @@ public sealed partial class OwnershipBody
     private bool ValidElementWriteLoan(int id)
     {
         var loan = this.ComparisonLoans[id];
-        if (loan.Call is { BoundCall: { } call } syntax && loan.Mode == LoanRequirement.Uniq &&
+        if (loan.Call is InvocationKoto { BoundCall: { } call } syntax && loan.Mode == LoanRequirement.Uniq &&
             call.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
         {
             if (loan.Access || loan.Projection != -1 || loan.Guard != -1 || loan.Depth <= 0 ||

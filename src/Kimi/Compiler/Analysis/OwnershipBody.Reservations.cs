@@ -237,10 +237,14 @@ public sealed partial class OwnershipBody
                     entry++;
                 }
 
-                if (entry == this.Operations.Count || !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
-                    (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
-                        ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
-                        : this.Operations[entry].Kind != OwnershipOperationKind.Call))
+                // A call activates its reserved arguments right before it is entered; a literal activates each placed exclusive
+                // reference right before it places or stores it (PLAN G53).
+                if (entry == this.Operations.Count ||
+                    (operation.Source is not InvocationKoto ? this.Operations[entry].Kind is not (OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.StoreDictionaryEntry)
+                        : !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
+                        (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
+                            ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
+                            : this.Operations[entry].Kind != OwnershipOperationKind.Call)))
                 {
                     return false;
                 }

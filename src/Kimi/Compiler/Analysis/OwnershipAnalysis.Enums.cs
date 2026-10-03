@@ -299,6 +299,8 @@ public sealed partial class OwnershipAnalysis
 
         var plan = this.body.ConstructionStorage.Count;
         this.body.ConstructionStorage.Add(new(output, null, start, elements.Count));
+        // Placed exclusive references are reserved until the literal completes, as the arguments of a call are.
+        var loanDepth = this.comparisonDepth++;
         var completes = true;
         for (var i = 0; i < elements.Count; i++)
         {
@@ -309,17 +311,24 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            var reservationMark = this.body.CallReservations.Count;
+            this.ReservePlacedReference(source, elements[i], start + i, value);
+            this.ActivateCallReservations(source, reservationMark);
             this.Emit(OwnershipOperationKind.PayloadPlacement, elements[i], start + i, value);
             this.RegisterTemporary(start + i);
         }
 
         if (!completes)
         {
+            this.EndComparisonLoans(loanDepth, source);
+            this.comparisonDepth = loanDepth;
             return -1;
         }
 
         var complete = this.Emit(OwnershipOperationKind.CompleteConstruction, source, output);
         this.body.OperationSteps[complete] = plan;
+        this.EndComparisonLoans(loanDepth, source);
+        this.comparisonDepth = loanDepth;
         return this.RegisterTemporary(output);
     }
 }
