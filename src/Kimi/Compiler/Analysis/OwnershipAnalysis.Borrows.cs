@@ -139,7 +139,7 @@ public sealed partial class OwnershipAnalysis
             return borrowedElement;
         }
 
-        if (unwrapped is IndexKoto index && ((index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && ElementAccess.StaticSelector(index) < 0) ||
+        if (unwrapped is IndexKoto index && !ElementAccess.IsSlicing(index) && ((index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && ElementAccess.StaticSelector(index) < 0) ||
             (ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array))) &&
             type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
         {

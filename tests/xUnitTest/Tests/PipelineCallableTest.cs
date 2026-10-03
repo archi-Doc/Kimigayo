@@ -19,6 +19,12 @@ public class PipelineCallableTest
     public void SliceIteratorEmits()
         => ScalarEmissionTest.EmitFixture("SliceIterator", "struct Item\n    public let value: i32 = 42\nlet a: [1 of Item] = [Item.init()]\nvar cursor = a[..].iterate()\nmatch cursor@uniq.next()@move\n    .Some(let value) => require value.value == 42 else => $abort(\"value\")\n    .None => $abort(\"empty\")", string.Empty);
 
+    [Theory]
+    [InlineData("Direct", "0..1")]
+    [InlineData("Resolved", "(0..1)")]
+    public void BorrowingASliceValueUsesItsTemporaryInsteadOfAnElementSlot(string name, string key)
+        => ScalarEmissionTest.EmitFixture("SliceBorrowTemporary" + name, "struct Item\n    public let value: i32 = 42\nlet a: [1 of Item] = [Item.init()]\nvar cursor = a[" + key + "].iterate()\nmatch cursor@uniq.next()@move\n    .Some(let value) => require value.value == 42 else => $abort(\"value\")\n    .None => $abort(\"empty\")", string.Empty);
+
     private const string Source = "struct Item\n    public let value: i32 = 3\nfunc apply<T, F>(value: ref/T, visit: uniq/F) -> bool\n    F is Callable<uniq, (ref/T) -> bool>\n    return visit(value)\nlet item = Item.init()\nvar visit = func (value: ref/Item) => value.value == 3\nrequire apply(item@ref, visit@uniq) else => $abort(\"callback\")";
 
     [Fact]
