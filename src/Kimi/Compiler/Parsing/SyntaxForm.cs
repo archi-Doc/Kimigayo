@@ -177,6 +177,9 @@ public enum SyntaxForm : ushort
     /// <summary>A '?' after a bare Semantics shorthand such as 'ref'.</summary>
     SemanticsShorthandSuffix,
 
+    /// <summary>A '?' after a Place result, which is never optional (SPEC 7.1.1).</summary>
+    PlaceResultSuffix,
+
     /// <summary>'move' or 'copy' written as a Semantics prefix.</summary>
     OperationAsSemanticsPrefix,
 

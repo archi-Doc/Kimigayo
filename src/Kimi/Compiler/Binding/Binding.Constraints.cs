@@ -323,7 +323,13 @@ public sealed partial class Binding
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
                     {
                         var clause = container.ConstraintNodes[j];
-                        if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
+                        if (IsRecovery(clause, out _))
+                        {
+                            // The parser reported a part of the clause; its parts are not judged again, and the clause rests on the Error.
+                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                            this.Fail(clause, BindingFailure.InvalidConstraint);
+                        }
+                        else if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[container]);
                         }

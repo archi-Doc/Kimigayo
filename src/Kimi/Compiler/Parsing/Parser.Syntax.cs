@@ -292,10 +292,11 @@ public static partial class Parser
         return new ErrorKoto(ref reader, missing) { Cause = cause };
     }
 
-    private static Koto ParseRootName(ref TokenReader reader, bool type)
+    private static Koto ParseRootName(ref TokenReader reader, bool type, bool disambiguateGenerics = false)
     {
+        // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.6).
         var start = reader.Read().Span.Start;
-        var name = type ? ParseType(ref reader, false) : ParseName(ref reader);
+        var name = type ? ParseType(ref reader, parseOrigin: false, disambiguateGenerics, optionalSuffix: false) : ParseName(ref reader);
         return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), KotoKind.RootName, "::", [name]);
     }
 
@@ -421,7 +422,8 @@ public static partial class Parser
             {
                 return false;
             }
-            else if (kind is TokenKind.NumericLiteral or TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Percent)
+            else if (kind is TokenKind.NumericLiteral or TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Percent ||
+                (kind == TokenKind.Slash && i >= 2 && reader.PeekKind(i - 2) == TokenKind.Dot))
             {
                 return true;
             }

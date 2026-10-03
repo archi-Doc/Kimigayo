@@ -433,7 +433,13 @@ public static partial class Parser
             }
             else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
-                reader.Expect(SyntaxForm.Comma);
+                // The part of the parameter before what the comma's report blamed is a recovery, as a list item is (DIAGNOSTICS.md §4.4).
+                var cause = reader.Expect(SyntaxForm.Comma);
+                if (parameter is not null)
+                {
+                    RecoverItem(ref reader, parameter.DefaultValue ?? parameter.Type, cause);
+                }
+
                 SkipParameter(ref reader);
                 reader.TryConsume(TokenKind.Comma);
             }
@@ -1526,9 +1532,9 @@ CloseParameters:
     {
         var start = reader.CurrentTokenRange.Start;
         var left = ParseTypeInternal(ref reader, disambiguateGenerics);
-        if (left is null)
+        if (left is ErrorKoto)
         {
-            return reader.NewErrorKoto();
+            return left;
         }
 
         while (reader.CanRead)
@@ -1539,7 +1545,13 @@ CloseParameters:
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
-                var accessor = ParseTypeInternal(ref reader, disambiguateGenerics) ?? reader.NewErrorKoto();
+                var accessor = ParseTypeMember(ref reader);
+                if (accessor is ErrorKoto failed)
+                {
+                    // The member Name failed, so the qualified Type is the Error's recovery, as a failed head is.
+                    return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, failed.Span.End))) { Cause = failed.Cause };
+                }
+
                 left = new MemberAccessKoto(
                     ref reader,
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
@@ -1589,27 +1601,34 @@ CloseParameters:
 
         return optionalSuffix ? ParseOptionalSuffix(ref reader, left, parseBorrowOrigin: !disambiguateGenerics) : left;
 
-        static Koto? ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics)
+        // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.4.3); a fixed
+        // array or a root name there is where the Name was expected. A '/' after the member is left to the enclosing construct.
+        static Koto ParseTypeMember(ref TokenReader reader)
         {
-            if (reader.CurrentTokenKind == TokenKind.Underscore)
+            if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                reader.Expect(SyntaxForm.Type);
+                return ParseBareParenthesizedType(ref reader);
             }
 
+            if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+            {
+                var cause = reader.Expect(SyntaxForm.Name);
+                return new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
+            }
+
+            return new TypeSemanticsKoto(ref reader, reader.Read());
+        }
+
+        static Koto ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics)
+        {
             if (reader.CurrentTokenKind == TokenKind.ColonColon)
             {
-                return ParseRootName(ref reader, true);
+                return ParseRootName(ref reader, true, disambiguateGenerics);
             }
 
             if (reader.CurrentTokenKind == TokenKind.OpenBracket)
             {
                 return ParseFixedArrayType(ref reader);
-            }
-
-            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Comma or TokenKind.CloseParenthesis or TokenKind.CloseBrace or TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.Equals)
-            {
-                reader.Expect(SyntaxForm.Type);
-                return null;
             }
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
@@ -1618,6 +1637,20 @@ CloseParameters:
             }
 
             var token = reader.CurrentToken;
+            if (!(token.Kind.IsPrimitiveType() || token.Kind.IsIdentifierOrContextualKeyword() || token.Kind == TokenKind.Self))
+            {
+                // A token that starts no Type is where the Type was expected. A literal, '_' or a token the lexer rejected stands where
+                // the Type was written and is consumed with the report; any other token is left to end the enclosing construct.
+                var cause = reader.Expect(SyntaxForm.Type);
+                var span = reader.InsertionSpan;
+                if (token.Kind is TokenKind.NumericLiteral or TokenKind.StringLiteral or TokenKind.CharLiteral or TokenKind.Underscore or TokenKind.Invalid && reader.CanRead)
+                {
+                    reader.Advance();
+                }
+
+                return new ErrorKoto(ref reader, span) { Cause = cause };
+            }
+
             reader.Advance();
 
             if (token.Kind.IsIdentifierOrContextualKeyword() && reader.CurrentTokenKind == TokenKind.Slash)
@@ -1659,13 +1692,7 @@ CloseParameters:
                 return result;
             }
 
-            if (token.Kind.IsPrimitiveType() || token.Kind.IsIdentifierOrContextualKeyword() || token.Kind == TokenKind.Self)
-            {
-                return new TypeSemanticsKoto(ref reader, token);
-            }
-
-            reader.Expect(SyntaxForm.Type, token);
-            return null;
+            return new TypeSemanticsKoto(ref reader, token);
         }
     }
 
@@ -1896,6 +1923,11 @@ CloseParameters:
         {
             end = Math.Max(end, range.End);
         }
+        else
+        {
+            // The argument before what the closer's report blamed is a recovery, as a list item is (DIAGNOSTICS.md §4.4).
+            RecoverItem(ref reader, type, reader.Diagnostic.LastError);
+        }
 
         return new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList.ToArray());
     }
@@ -2009,6 +2041,7 @@ CloseParameters:
     /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
     public static IsKoto? ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
+        var lastError = reader.Diagnostic.LastError;
         var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
 
         if (!reader.TryConsume(TokenKind.Is, out var isRange, false))
@@ -2022,6 +2055,11 @@ CloseParameters:
         var condition = ParseCondition(ref reader);
         reader.ConstraintRequirement = previousRequirement;
         var constraint = new IsKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, Math.Max(isRange.End, condition.Span.End)), subject, condition);
+        if (reader.Diagnostic.LastError is { } cause && !cause.Equals(lastError))
+        {
+            // A part of the Constraint failed: the Constraint is a recovery, so Binding judges none of its parts (DIAGNOSTICS.md §4.3).
+            reader.CodeContext.RecordRecovery(constraint, cause);
+        }
 
         if (finishLine)
         {
@@ -4442,8 +4480,25 @@ Separator:
         }
 
         var keyword = reader.Read();
-        var type = ParseType(ref reader, parseOrigin: true);
-        return new PlaceResultKoto(ref reader, SourceSpan.FromBounds(keyword.Span.Start, type.Span.End), type);
+        var type = ParseType(ref reader, parseOrigin: true, optionalSuffix: false);
+        DiagnosticKey? optional = null;
+        if (reader.CurrentTokenKind == TokenKind.Question)
+        {
+            // A Place is never optional (SPEC 7.1.1): the '?' is reported and the result rests on the Error.
+            optional = reader.Unexpected(SyntaxForm.PlaceResultSuffix);
+            while (reader.TryConsume(TokenKind.Question))
+            {
+            }
+        }
+
+        ParseBorrowOriginSuffix(ref reader, type);
+        var place = new PlaceResultKoto(ref reader, SourceSpan.FromBounds(keyword.Span.Start, type.Span.End), type);
+        if (optional is { } cause)
+        {
+            reader.CodeContext.RecordRecovery(place, cause);
+        }
+
+        return place;
     }
 
     private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader, bool allowLength = false, bool specialization = false)
@@ -4476,7 +4531,7 @@ Separator:
             }
 
             TypeKoto typeKoto;
-            if (reader.IsCurrentIdentifier("length") && !specialization)
+            if (reader.IsCurrentIdentifier("length") && !specialization && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
             {
                 var start = reader.Read().Span.Start;
                 var name = ParseName(ref reader);

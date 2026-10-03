@@ -273,6 +273,11 @@
     Phrase="Constraint prefix"
     Advice="A body begins with its Constraint prefix, whose subject is a generic parameter of the declaration (SPEC 7.4); parenthesize a runtime 'is' test."
 
+  + Name="Syntax.PlaceResultSuffix"
+    Description="a Place result takes no '?'"
+    Phrase="'?' after a Place result"
+    Advice="A Place is never optional; a Place that stores an Option is written place ref/(T?)."
+
   + Name="Syntax.SemanticsShorthandSuffix"
     Description="a Semantics shorthand takes no '?'"
     Phrase="'?' after a Semantics shorthand"

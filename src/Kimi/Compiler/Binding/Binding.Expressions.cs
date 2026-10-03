@@ -510,6 +510,11 @@ public sealed partial class Binding
                 {
                     this.BindMatch(recoveredMatch, scope, null);
                 }
+                else if (recovered is IsKoto clause)
+                {
+                    // A recovery Constraint keeps an Error constraint and binds none of its parts, as a function's does.
+                    clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                }
                 else
                 {
                     foreach (var part in recovered.ChildNodes)
