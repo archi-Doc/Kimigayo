@@ -41,8 +41,8 @@ public sealed partial class KimiLibrary
         BareName(key, "K") && BareName(value, "V") && BareName(address.Type, "u8") &&
         BareName(stride, "isize");
 
-    // These private unsafe primitives transfer acquired values into physical slots: placeEntry appends one slot for a key
-    // and value after the source proves absence; placeValue refills a live slot whose value was moved out.
+    // The private unsafe primitive placeEntry transfers an acquired key and value into one physical slot appended after the
+    // source proves the key absent.
     private bool ValidDictionaryPlacement(BindingSymbol symbol)
     {
         if (symbol.CompilerFunction != CompilerFunctionKind.StoragePlaceDictionaryEntry ||

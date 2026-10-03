@@ -215,7 +215,6 @@ public sealed partial class Binding
             IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
 
-    // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
     // SPEC 13.3: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string. Never fits
     // every operator, and a pointer operand is displaced by SPEC 5.3 before this test.
     private static bool NonNumericOperand(BoundType type)
@@ -224,6 +223,7 @@ public sealed partial class Binding
     // SPEC 13.2, 13.3: a numeric Type without the integer operators (%, bitwise, shift, increment, decrement), a floating-point Type.
     private static bool NonIntegerOperand(BoundType type) => type.IsNumeric && !type.HasIntegerArithmetic;
 
+    // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
     private static bool IsLiteralOnlyRange(Koto node)
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));

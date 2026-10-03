@@ -102,8 +102,6 @@ public sealed partial class Binding
         return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
-    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
-    // sources with the same layers keep the ordinary common-borrow rule.
     // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
     // result sources reaches no syntax the survey cannot bind yet.
     private static bool SurveyablePosition(Koto node)
@@ -117,6 +115,8 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
+    // sources with the same layers keep the ordinary common-borrow rule.
     private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
     {
         BoundType? scalar = null;

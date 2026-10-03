@@ -64,7 +64,7 @@ public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, B
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);
 
-public readonly record struct PatternWarning(Koto Pattern, Koto CoveringPattern, int CoveringArm);
+public readonly record struct PatternWarning(Koto Pattern, int CoveringArm);
 
 public sealed class BoundMatch
 {
@@ -83,10 +83,6 @@ public sealed class BoundMatch
     internal List<BoundMatchArm> ArmStorage { get; } = new();
 
     internal List<byte> CaseCoverage { get; } = new();
-
-    internal BoundType? ExpectedType { get; set; }
-
-    internal BoundType? ResultType { get; set; }
 
     internal bool Invalid { get; set; }
 
@@ -107,8 +103,6 @@ public sealed class BoundMatch
         this.Invalid = this.Pending = false;
         this.SubjectBorrow = null;
         this.Mode = SubjectMode.Shared;
-        this.ExpectedType = null;
-        this.ResultType = null;
         this.PositionStorage.Clear();
         this.ArmStorage.Clear();
         this.CaseCoverage.Clear();
