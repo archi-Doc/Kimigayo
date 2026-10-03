@@ -5,12 +5,19 @@
 状態：計画案。未着手。基準は `dev` の `92b6cb9b`。2026-10-03 にユーザーが方針を決めた（本書 8）。
 
 - PLAN のマイルストーン順は保つ。
-- rc/arc の設計と実装は並行する作業として進める。
-- D1 と D5 は採用する。
+- rc/arc の設計と実装は、同じセッションで P40・P26 の単位と交互に進める。
+- D1 と D5 を採用する。
+- arc の検証は、IR 検査と証明で行う。
+- nonnull Option 表現は、P35 より前に rc/arc の作業の中で入れる。
 
-着手の形と残りの判断は、本書 8 の未決事項による。
+本書は、マイルストーン P34（Program 34：rc/arc の生成、強参照の複製、ハンドルの Move、最後の解放）を完成させる作業単位を定める。あわせて、P35（Weak）の前提になる nonnull Option 表現を入れ、P35 が同じ制御語の上に載るように境界を決める。仕様の要求は SPEC と IMPL がすでに定めている。本書で仕様に手を入れるのは、次の四点である（U0）。
 
-本書は、マイルストーン P34（Program 34：rc/arc の生成、強参照の複製、ハンドルの Move、最後の解放）を完成させる作業単位を定める。あわせて、P35（Weak）が同じ制御語の上に載るように境界を決める。仕様の要求は SPEC と IMPL がすでに定めている。本書で仕様に手を入れるのは、本書 3 の D1 と D5 の二点だけである。SPEC の節は「§n」、IMPL の節は「IMPL §n」、本書の節は「本書 n」と書く。
+- D1：`clone` と `Weak` の宣言形
+- D5：Abort コード
+- 本書 8.2 の §3.4.1 の明確化
+- IMPL §21.2.3.3 の検証手段（本書 6）
+
+SPEC の節は「§n」、IMPL の節は「IMPL §n」、本書の節は「本書 n」と書く。
 
 ## 1. 目的と範囲
 
@@ -30,14 +37,14 @@
 - 強参照の解放と、最後の解放による破棄・解放（§16.3.3）
 - `arc` の原子的な数え方（IMPL §21.2.3）
 - 集成体・コレクション・Closure・総称インスタンス内の rc/arc ハンドル
-- rc/arc からの upcast と実行時 `is`（本書 4 の U7）
+- rc/arc からの upcast と実行時 `is`（本書 4 の U8）
+- nonnull Option 表現（IMPL §21.1.5、本書 4 の U7）。P34 の完了条件ではないが、P35 より前に入れる（本書 8.1）。Toolchain T2 の前半（`Option<ref/T>` の import 引数）はこの単位に移る
 
 **含まない。**
 
 - Weak、`downgrade`、`upgrade`、循環構築（P35。本書 7 に接続点だけを書く）
 - 静的記憶域（P36）、フロー精密化（P33）、Program 38
 - 並行実行（付録 D.2）
-- nonnull Option 表現（IMPL §21.1.5、Toolchain T2）
 - obj ハンドルを通した Field 書込み（本書 2.3。rc/arc は共有アクセスしか持たないので P34 には要らない）
 
 ## 2. 現状（2026-10-03 の調査と CLI 試行）
@@ -173,15 +180,16 @@ P34 には表を作る経路がない。奇数の分岐は、P35 で `downgrade`
 
 | 単位 | 内容 | 主なテストと検証 |
 | --- | --- | --- |
-| **U0 仕様** | 次を正式仕様に入れる。<br>・D1：`clone` と `Weak` の pair 形（§3.2.2、§13.5.8、§22.1.1、LIBRARY.md）<br>・D5：§22.5.4 の Abort コードと、IMPL §21.2.3.1 からの参照<br>・本書 8.3 の §3.4.1 の明確化<br>・本書 8.2 の 1 で決めた検証の手段（IMPL §21.2.3.3）<br>`draft/INTEGRATED.md` には本書を「一部取り込み」として記録する | 文書のみ。SPEC の例をパースして確かめる |
+| **U0 仕様** | 次を正式仕様に入れる。<br>・D1：`clone` と `Weak` の pair 形（§3.2.2、§13.5.8、§22.1.1、LIBRARY.md）<br>・D5：§22.5.4 の Abort コードと、IMPL §21.2.3.1 からの参照<br>・本書 8.2 の §3.4.1 の明確化<br>・検証の手段（IMPL §21.2.3.3。本書 6）<br>`draft/INTEGRATED.md` には本書を「一部取り込み」として記録する | 文書のみ。SPEC の例をパースして確かめる |
 | **U1 区別の導入（挙動不変）** | `IsOwningHandle`/`IsExclusiveOwner` を導入し、24 か所を分類する。`AggregateLayout` にハンドル種別を加え、破棄の振り分けを用意する。この時点では rc/arc は `SupportsType` で引き続き拒否する | 既存の `ObjectRuntimeTest`、`PipelineObjectTest`、`RuntimeTypeTest`、`BorrowAcquisitionTest`、`CallReservationTest`、Object 系の native fixture。診断スナップショットは不変 |
 | **U2 直接の Field 読取り** | 所有ハンドル（まず obj）からの Field 読取りと、共有受信者の呼出しを、所有権解析と生成で扱う（D7） | 本書 2.2 の再現（`first.id`、`handle.id`、`counter.value`）を obj で通す。書込みが診断で止まることも確かめる。native fixture は `ObjectRuntimeFieldRead*`。P33 にも効く |
 | **U3 宣言と Binding** | `Intrinsics.kimi` に `makeRc`・`makeArc`・強参照の `clone` を宣言する。目録の Function 種別と検証を加える。`IsCompleteOwnershipFamily` を P34 の部分（24–26）と全体に分ける。`CoreCatalogTest` の数と STATUS を直す。本書 2.3 の診断三件を、Diagnostic Development Workflow に従って直す | `SharedObjectBindingTest`（新設）：推論、明示の型引数、obj・objref・Weak でない値の拒否、ObjectPayload を外した payload の拒否。診断コーパスと CLI 出力の確認。Program 34 の段階基準は、Binding 通過・所有権で停止に移る |
 | **U4 所有権解析** | `SupportsType` で rc/arc を受理する。Move、引数での消費、結果、代入による置換（古い値の解放）、`@objref`、`@follow@ref`、`clone` の取得（呼出しの間だけの共有借用）、破棄の観測（D6）を扱う | `SharedObjectOwnershipTest`（新設）。肯定ケース：複製した後に元のハンドルを Move・破棄しても複製を使える（Origin を持つ payload を含む。D6）。否定ケース：payload の借用中の Move、`h@uniq` が生きている間の `clone(h@ref)`、スコープを越えて返す `rc/Counter{number}`、`@follow@uniq`、`@objuniq`、排他受信者。段階基準は生成に移る |
 | **U5 rc の実行時と生成** | rc の工場関数（制御語 2）、`__kimi_rc_retain`/`__kimi_rc_release`、破棄の振り分け、`clone` の生成、`@objref`・`@follow@ref`・Field 読取りの生成、上限超過の Abort（D4、D5） | native fixture `SharedRc*.ll`（O0/O2）：破棄がちょうど一回で順序が正しいこと、Move で数が変わらないこと、所有引数の消費での解放、代入置換、ハンドルスロットの `swap`、借用を持つ payload。上限超過は、テスト側の driver が制御語を最大値近くに偽造して retain を呼び、`KIMI_E_REF_COUNT` を確かめる。`NativeAllocationAudit` で、`makeRc` が 1 回確保、`clone` が 0 回、最後の解放が 1 回解放することを確かめる（`Purpose=Allocation`） |
-| **U6 arc の原子的な数え方** | `__kimi_arc_retain`/`__kimi_arc_release` の CAS ループと順序（D4） | 生成 IR の検査テスト：各操作の ordering と、`atomicrmw sub` がないこと。`SharedArc*.ll` は U5 と同じ観測をする。並行性の検証は本書 6 |
-| **U7 隣接する形** | ハンドルの置き場所として、Tuple、struct Field、固定長配列、`Array<rc/T>`、Dictionary の値、`Option<rc/T>`（現行のタグ付き表現）、Closure の Move・借用 capture、総称インスタンスを扱う。型の `destroyValues` は mode ごとに作る。`@rc/V`・`@arc/V`・`@objref/V` の upcast と実行時 `is` を扱う。総称本体での `makeRc` は `makeObj` と同じ制限にし、未対応なら診断で止める | 対応する形ごとに肯定の native テストを置く。未対応の形は診断で止まることを確かめる（完了条件 4） |
-| **U8 P34 の完成** | `test-milestone34.ps1` を加える。README の行と `stage-baselines.json` の P34 項目を更新・削除する。STATUS、PLAN（G4 を P35 の Weak 側に縮める）、LIBRARY.md、CODEMAP の「Object views」行を更新する。`src/Benchmark/SharedObjects.md` に測定を置く | `-Milestone 34` と Session 検証 |
+| **U6 arc の原子的な数え方** | `__kimi_arc_retain`/`__kimi_arc_release` の CAS ループと順序（D4） | 生成 IR の検査テスト：各操作の ordering と、`atomicrmw sub` がないこと。`SharedArc*.ll` は U5 と同じ観測をする。ordering の証明は本書 6 |
+| **U7 nonnull Option 表現** | IMPL §21.1.5 のとおり、`Option<R>`（R は `ref`・`uniq`・`obj`・`rc`・`arc`・`objref`・`objuniq`）を一語で表す。null を `None` とする。構築、Case の判定、配置、片付け、生成キャッシュをこの表現にする。`None` は片付けの責任を持たない。`Option<ref/T>`・`Option<uniq/T>` の import 引数を受け付ける（STATUS の現在の拒否を外す） | 配置のテスト：大きさ・整列・stride がすべて 8。`Option<Option<R>>` とハンドルを含む Tuple は対象外のまま、タグ付きであること。native fixture `NonnullOption*.ll`：match、構築、`Some` だけを片付けること（obj の解放、rc の release）。`ForeignBorrowImportTest` に Option 引数を加える |
+| **U8 隣接する形** | ハンドルの置き場所として、Tuple、struct Field、固定長配列、`Array<rc/T>`、Dictionary の値、`Option<rc/T>`（U7 の表現）、Closure の Move・借用 capture、総称インスタンスを扱う。型の `destroyValues` は mode ごとに作る。`@rc/V`・`@arc/V`・`@objref/V` の upcast と実行時 `is` を扱う。総称本体での `makeRc` は `makeObj` と同じ制限にし、未対応なら診断で止める | 対応する形ごとに肯定の native テストを置く。未対応の形は診断で止まることを確かめる（完了条件 4） |
+| **U9 P34 の完成** | `test-milestone34.ps1` を加える。README の行と `stage-baselines.json` の P34 項目を更新・削除する。STATUS、PLAN（G4 を P35 の Weak 側に縮める）、LIBRARY.md、CODEMAP の「Object views」行を更新する。`src/Benchmark/SharedObjects.md` に測定を置く | `-Milestone 34` と Session 検証 |
 
 Program 34 の期待出力：
 
@@ -206,12 +214,13 @@ pwsh -Command "./scripts/verify.ps1 -Class SharedObjectRuntimeTest,ObjectRuntime
 
 ```text
 U0 ─ U1 ─┬─ U2 ─┐
-         └─ U3 ─┴─ U4 ─ U5 ─ U6 ─ U7 ─ U8
+         └─ U3 ─┴─ U4 ─ U5 ─ U6 ─ U7 ─ U8 ─ U9 ─ (P35)
 ```
 
 - U2 は U3 と独立している。obj だけでも価値がある。
 - U5 までで rc の Program 34 前半が動く。U6 で後半の arc が動く。
-- P34 は、P33 の残り（フロー精密化、継承 Field の射影、Program 33）に依存しない。PLAN のマイルストーン順は保ち、rc/arc はそれと並行して進める（本書 8.1）。並行の形は本書 8.2 の 2 による。
+- U7 を U8 の前に置くのは、`Option<rc/T>` を最終的な表現で一度だけ作るためである。
+- P34 は、P33 の残り（フロー精密化、継承 Field の射影、Program 33）に依存しない。PLAN のマイルストーン順は保ち、rc/arc の単位は同じセッションで P40・P26 の単位と交互に進める（本書 8.1）。交互に進めるので、作業ツリーの競合は生じない。
 
 ## 6. 検証方針
 
@@ -220,12 +229,12 @@ U0 ─ U1 ─┬─ U2 ─┐
   - `clone` と非最後の解放が 0 回であること。
   - `makeRc`/`makeArc` が 1 回であること。
   - 最後の解放が 1 回の `Free` であること。
-- **arc の並行性。** 次の四段で行う。
+- **arc の並行性（決定、本書 8.1）。** P34 も P35 も、次の二段で行う。
   1. 生成 IR の ordering を検査テストで固定する。
-  2. IMPL §21.2.3.3 の各矢印を、どの release/acquire の対が満たすかの対応表を `artifacts/verify/` に記録する。
-  3. 任意：生成した補助関数を複数スレッドから呼ぶ native の負荷テストを置く。x64 は TSO なので、これで分かるのは原子性と交錯であり、弱いメモリーモデルではない。
-  4. 弱いメモリーモデルの検証（GenMC や herd などのモデル検査）は、道具の選択が要る。選ぶまでは STATUS に未検証として残す（本書 8）。
-- **弱いメモリー上の検証の意味（本書 8 の 4 の判断材料）。**
+  2. IMPL §21.2.3.3 の各矢印を、どの release/acquire の対が満たすかの対応表（証明）を `artifacts/verify/` に記録する。P35 では、移行 CAS、`upgrade` と最後の解放の競合、weak guard の矢印を加える。
+
+  モデル検査と実機の負荷テスト（x64 の多スレッドも ARM64 も）は行わない。U0 では、IMPL §21.2.3.3 の「Weak-memory behavior … is validated」の手段を、この二段として書き足す。STATUS には、弱いメモリーについて確かめた範囲は証明と IR 検査であることを記録する。
+- **弱いメモリー上の検証の意味（決定の判断材料）。**
   - **守りたい性質。** IMPL §21.2.3.3 の矢印、とくに「それまでのすべての強参照の解放 → 最後の解放 → payload の破棄」を守る。例を挙げる。
 
     ```text
@@ -247,11 +256,10 @@ U0 ─ U1 ─┬─ U2 ─┐
     | 2. 証明（矢印と synchronizes-with の対応表） | 設計の正しさ。P34 の inline 数え方（retain は relaxed、release 減算＋acquire fence）は、Rust の `Arc` や C++ の `shared_ptr` と同じ定番の形で、議論が確立している | 小 |
     | 3. モデル検査（GenMC など） | 手順を小さな C プログラム（2–3 スレッド）に写し、C11/RC11 モデルが許すすべての実行について、解放後の使用、二重解放、復活がないことを列挙して確かめる | 中。Linux 上の道具なので WSL か Docker が要る。モデルと生成 IR がずれる危険を、1 で ordering の一致を確かめて補う |
     | 4. 弱いメモリーの実機（ARM64）での負荷テスト | 実機での異常の検出（確率的） | プロファイルの外 |
-  - **推奨。**
-    - P34 は 1 と 2 で完了とする。
-    - P35 は 3 を入れる。P35 では、inline からサイドテーブルへの移行 CAS、`upgrade` と最後の解放の競合、weak guard が加わる。これらは独自の設計で誤りやすい。
-    - IMPL §21.2.3.3 は「Weak-memory behavior … is validated」と求めているが、手段は書いていない。手段（P34 は証明と IR 検査、P35 はモデル検査）を IMPL に書き足すかどうかも決める。
-    - なお、Kimigayo にはまだソースのスレッドがなく（付録 D.2）、ordering の誤りはいまのところ観測できない。
+  - **決定。** 手段 1 と 2 だけを使う（本書 8.1）。
+    - 当初の推奨は、P35 でモデル検査を入れることだった。P35 では、inline からサイドテーブルへの移行 CAS、`upgrade` と最後の解放の競合、weak guard が加わり、独自の設計で誤りやすいからである。
+    - 決定によってこれを行わないので、P35 の証明は遷移ごとに書く。
+    - Kimigayo にはまだソースのスレッドがなく（付録 D.2）、ordering の誤りはいまのところ観測できない。
 - **診断。** U3 と U4 の診断の追加・変更は、Diagnostic Development Workflow の五段を踏む。
 
 ## 7. P35（Weak）への接続
@@ -263,7 +271,7 @@ U0 ─ U1 ─┬─ U2 ─┐
   どちらにするかは P35 の着手時に決める。
 - **Weak の `clone`。** 強参照の `clone` との多重定義になる。目録には新しい安定 ID を加え、強参照の `clone`=26 は保つ。二つの候補は引数型で排他になる（`ref/(s/T)` に `Weak<…>` を渡すと `s = owner` になり、要件が否定される）。
 - **サイドテーブル。** `ensureSideTable`、`tryRetainStrong`、`retainWeak`/`releaseWeak` を加える。D4 の奇数分岐と weak guard は、`downgrade` の受理と同じコミットで入れる。
-- **`upgrade` の結果。** `upgrade` は `Option<S>` を返す。U7 の `Option<rc/T>` の上に載る。nonnull 表現（T2）は別の単位である。
+- **`upgrade` の結果。** `upgrade` は `Option<S>` を返す。U7 の nonnull 表現と、U8 の `Option<rc/T>` の上に載る。
 - **循環構築。** 単相化により `F` はインスタンスごとに具体的な Closure になる。そのため、所有受信者による Consuming 呼出しを直接生成でき、P26 の一般的な `Callable<owner>` witness がなくても進められる見込みである。着手時に試行で確かめる。`T is Owned` と Building 状態（strong 0、weak 2）も扱う。
 - **Program 38。** P33、P36、P24 も要るので、P35 では Weak の段階まで進めるだけである。
 
@@ -274,24 +282,11 @@ U0 ─ U1 ─┬─ U2 ─┐
 1. **着手時期と PLAN の順序。** マイルストーンは PLAN の順（P40 → P26 → …）に進める。rc/arc の設計と実装は、それと並行して進める。
 2. **D1 を採用する。** `clone`（および P35 の `Weak`）は `<s/T>` に `s is rc or arc` を付けて宣言し、SPEC §13.5.8・§22.1.1 と LIBRARY.md の表現をそれに揃える。
 3. **D5 を採用する。** Abort コードは `KIMI_E_REF_COUNT` とする。
+4. **arc の弱いメモリー検証。** P34 も P35 も、IR 検査と証明で行う。モデル検査と実機の負荷テストは行わない。その手段を IMPL §21.2.3.3 に書き足す（本書 6）。
+5. **並行の形。** 同じセッションで、P40・P26 の単位と交互に進める。別の worktree は使わない。
+6. **nonnull Option 表現（IMPL §21.1.5）。** rc/arc の作業の中で P35 より前に入れる（U7）。P35 の `upgrade` は `Option<S>` を返し、P38 は `Option<rc/Lamp>` を静的に持つので、表現を後から変えてやり直すことを避ける。obj、`ref`、`uniq` にも効き、Toolchain T2 の前半を引き取る。
 
-### 8.2. 未決事項
-
-1. **arc の弱いメモリー検証の手段。** 判断材料は本書 6。推奨は次のとおり。
-   - P34 は、IR 検査と証明で完了とする。
-   - P35 でモデル検査を入れる。WSL か Docker の上に GenMC などを置く。
-   - 検証の手段を IMPL §21.2.3.3 に書き足す。
-2. **並行の形。** 次のどちらにするか。
-
-   | 形 | 内容 | 注意点 |
-   | --- | --- | --- |
-   | (a) 別セッション | rc/arc を別のセッションと worktree で進める | U1（`ObjectTypes.IsOwner` の分割）と U4 は、P40・P26 も触る `OwnershipBody.*`・`BodyLowering.*` に及ぶので、競合の解消が要る |
-   | (b) 交互 | 同じセッションで P40・P26 の単位と交互に進める | 競合はないが、進みは遅い |
-
-   推奨は (a) で、U1 を最初に小さく入れて早く共有する。
-3. **nonnull Option 表現（IMPL §21.1.5、T2）を入れる時期。** P35 の `upgrade` は `Option<S>` を返し、P38 は `Option<rc/Lamp>` を静的に持つ。表現を後から変えると、ハンドルを含む Option の生成と試験をやり直すことになる。推奨は、rc/arc の作業の中で P35 より前に入れることである。obj・`ref`・`uniq` にも効く。
-
-### 8.3. 判断は要らないが、U0 で扱うこと
+### 8.2. 判断は要らないが、U0 で扱うこと
 
 1. **§3.4.1 の明確化。** §3.4.1 は、Field の選択を続ける層として、安全な値参照と pair 層しか挙げていない。オブジェクトハンドル（`first.id`）では、View Target のメンバーを選ぶことが明示されていない。Program 33・34 と Binding はこの解釈に立っているので、その旨を一文足す。payload の権限は、§13.5.5.1 の表による。
 2. **Weak の内部の形。** コンパイラー管理にするか、Kimigayo ソースで書くかは、P35 の着手時に決める（本書 7）。
@@ -300,9 +295,9 @@ U0 ─ U1 ─┬─ U2 ─┐
 
 | 文書 | 更新する単位 |
 | --- | --- |
-| SPEC §13.5.8・§22.1.1・§22.5.4、IMPL §21.2.3.1、`draft/INTEGRATED.md` | U0 |
+| SPEC §3.2.2・§3.4.1・§13.5.8・§22.1.1・§22.5.4、IMPL §21.2.3.1・§21.2.3.3、`draft/INTEGRATED.md` | U0 |
 | LIBRARY.md | U0、U3 |
 | `src/Kimi/Library/README.md`（数え方を IR で生成する理由） | U5 |
-| CODEMAP の「Object views and runtime Type tests」行（共有ハンドル、補助関数の位置） | U1、U5 |
-| STATUS（Kimi ライブラリー、Exclusive objects の行、arc の検証範囲） | 支援の境界が変わる U3–U8 |
-| PLAN、PLAN_HISTORY、`tests/milestones/README.md` | 各セッションの終わりと U8 |
+| CODEMAP の「Object views and runtime Type tests」行（共有ハンドル、補助関数の位置）と enum 配置の行（nonnull Option） | U1、U5、U7 |
+| STATUS（Kimi ライブラリー、Exclusive objects の行、arc の検証範囲、Foreign imports の `Option<ref/T>`） | 支援の境界が変わる U3–U9 |
+| PLAN（rc/arc を交互に進めること、Toolchain T2 の縮小、G4）、PLAN_HISTORY、`tests/milestones/README.md` | 各セッションの終わり、U7、U9 |
