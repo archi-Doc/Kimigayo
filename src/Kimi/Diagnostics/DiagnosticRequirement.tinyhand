@@ -117,7 +117,7 @@
   + Name="Syntax.OpenModifier"
     Description="the open modifier precedes a struct"
     Phrase="'open' modifier"
-    Advice="'open' applies only to a struct (SPEC 6.2.2)."
+    Advice="'open' applies only to a struct and immediately precedes 'struct' (SPEC 6.2.2)."
 
   + Name="Syntax.Decoration"
     Description="the declaration takes no modifier or attribute"

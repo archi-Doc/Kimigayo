@@ -1004,6 +1004,17 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
     }
 
+    // A repeated modifier is named as written, whether it is an access modifier or a flag such as open.
+    [Theory]
+    [InlineData("open open struct S\n    let x: i32\n", "open")]
+    [InlineData("public public struct S\n    let x: i32\n", "public")]
+    public void DuplicateModifierIsNamedAsWritten(string source, string modifier)
+    {
+        var (_, diagnostics) = Parse(source);
+        var duplicate = Assert.Single(diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicateModifier_Kd));
+        Assert.Contains($"'{modifier}'", duplicate.Message);
+    }
+
     private static (GroupKoto Root, TestDiagnostic[] Diagnostics) Parse(string source)
     {
         var kotonoha = ParseTestHelper.Parse(source);

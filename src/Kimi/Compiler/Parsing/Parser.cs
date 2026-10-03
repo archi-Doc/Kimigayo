@@ -244,13 +244,20 @@ public static partial class Parser
 
             // A constructor accepts an access modifier and a common Body (SPEC 6.2.3).
             if (genericArguments is not null || returnType is not null ||
-                context.AttributeKoto is not null || context.ModifierKind != context.ModifierKind.ExtractAccessibilityModifiers())
+                context.AttributeKoto is not null || context.ModifierKind.Judged() != context.ModifierKind.ExtractAccessibilityModifiers())
             {
-                functionKoto.Unexpected(SyntaxForm.ConstructorHeader);
+                // The attributes it reports are kept as its recovery, so they mark nothing and are not resolved (SPEC 6.5).
+                if (functionKoto.Unexpected(SyntaxForm.ConstructorHeader) is { } decorated)
+                {
+                    for (var attribute = context.AttributeKoto; attribute is not null; attribute = attribute.AttributeChain)
+                    {
+                        reader.CodeContext.RecordRecovery(attribute, decorated);
+                    }
+                }
             }
         }
 
-        if (specialization && (genericArguments is null || context.AttributeKoto is not null || context.ModifierKind != 0))
+        if (specialization && (genericArguments is null || context.AttributeKoto is not null || context.ModifierKind.Judged() != 0))
         {
             // Without Type arguments the specialization cannot be matched, so its Binding rests on this Error; a decoration leaves it checkable.
             var key = functionKoto.Unexpected(SyntaxForm.SpecializationHeader);
@@ -361,12 +368,13 @@ public static partial class Parser
         {
             // Attributes precede a parameter's Name, and the one boundary precedes the named section; either may follow the other.
             var start = reader.Position;
+            var attributed = false;
             reader.SkipSeparators();
             while (true)
             {
                 if (reader.CurrentTokenKind == TokenKind.Sharp)
                 {
-                    _ = ParseAttributeKoto(ref reader);
+                    attributed |= ParseAttributeKoto(ref reader) is not null;
                     reader.SkipSeparators();
                     continue;
                 }
@@ -407,6 +415,14 @@ public static partial class Parser
 
             if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
             {
+                if (attributed)
+                {
+                    // Attributes before the closer precede no parameter: its Name was expected there, and they attach to nothing,
+                    // neither to the result Type nor to the body.
+                    reader.Expect(SyntaxForm.Name);
+                    _ = reader.PopAttribute();
+                }
+
                 break;
             }
 
@@ -533,7 +549,7 @@ public static partial class Parser
 
         // A specialization's restated defaults and attributes are Binding's requirement (SPEC 8.8.2); the parser keeps them. A
         // misplaced attribute already reported before the list is kept here for the tree, not written on the parameter.
-        if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(ref reader, attribute)))
+        if (anonymous && (internalName != externalName || defaultValue is not null || HasWrittenAttribute(attribute)))
         {
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);
         }
@@ -542,17 +558,35 @@ public static partial class Parser
         return true;
     }
 
-    private static bool HasWrittenAttribute(ref TokenReader reader, AttributeKoto? attribute)
+    /// <summary>Gets whether an attribute chain holds an attribute in its place: one reported as misplaced is kept only so the
+    /// source round-trips, and it marks nothing (DIAGNOSTICS.md §4.4).</summary>
+    /// <param name="attribute">The first attribute of the chain.</param>
+    /// <returns><see langword="true"/> when an attribute of the chain was not reported as misplaced.</returns>
+    internal static bool HasWrittenAttribute(AttributeKoto? attribute)
     {
         for (; attribute is not null; attribute = attribute.AttributeChain)
         {
-            if (reader.CodeContext.RecoveryCause(attribute) is null)
+            if (attribute.CodeContext.RecoveryCause(attribute) is null)
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>Reports the pending attributes before an item that takes none (SPEC 6.5), such as a Constraint, an Origin relation
+    /// or an enum Case; each is kept for the item's first node as the recovery of its report, as a misplaced attribute is.</summary>
+    /// <param name="reader">The token reader.</param>
+    internal static void ReportPendingAttributes(ref TokenReader reader)
+    {
+        for (var attribute = reader.AttributeKoto; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            if (reader.CodeContext.RecoveryCause(attribute) is null)
+            {
+                reader.CodeContext.RecordRecovery(attribute, reader.Unexpected(SyntaxForm.Attribute, attribute.Span));
+            }
+        }
     }
 
     private static void SkipParameter(ref TokenReader reader)
@@ -1145,6 +1179,8 @@ CloseParameters:
     /// </summary>
     private static bool TryParseAccessorHeader(ref TokenReader reader, PropertyKoto property, out AccessorHeader header)
     {
+        // An accessor list takes no attributes (SPEC 6.5): one is reported and kept for the accessor, which is still read.
+        reader.ReportMisplacedAttributes();
         var start = reader.CurrentTokenRange.Start;
         var modifier = ParseAccessorAccessibility(ref reader);
         var modifierEnd = reader.PreviousEnd;
@@ -1224,6 +1260,13 @@ CloseParameters:
             reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.DuplicatePropertyAccessor_Kd, accessor.AccessorText);
         }
     }
+
+    /// <summary>Gets the modifiers a declaration check judges: each 'static', and an 'open' anywhere but directly before 'struct', is
+    /// reported where it is read and kept only for recovery (SPEC 6.1, 6.2.2), so no declaration check reports it again.</summary>
+    /// <param name="kind">The written modifiers.</param>
+    /// <returns>The modifiers other than static and open.</returns>
+    internal static ModifierKind Judged(this ModifierKind kind)
+        => kind & ~(ModifierKind.Static | ModifierKind.Open);
 
     /// <summary>Writes declaration modifiers as source text.</summary>
     /// <param name="kind">The modifiers to write.</param>
@@ -1330,15 +1373,37 @@ CloseParameters:
             switch (tokenKind)
             {
                 case TokenKind.Separator:
+                    if (reader.ModifierKind != ModifierKind.NoModifier)
+                    {
+                        // Modifiers share the line of the word that introduces their declaration (Appendix F.3), so modifiers
+                        // that end their line introduce nothing: the declaration is missing after them and they are dropped,
+                        // while attributes before them still precede the next declaration. A static, already reported, is
+                        // no modifier that needs one. An indented body after them would be the missing declaration's, so it is
+                        // skipped with the header, as after a header that fails (OmitDeclaration).
+                        if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
+                        {
+                            var cause = reader.Expect(SyntaxForm.Declaration);
+                            if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                            {
+                                OmitDeclaration(ref reader, cause);
+                                inspectHeader = true;
+                                continue;
+                            }
+                        }
+
+                        reader.ModifierKind = ModifierKind.NoModifier;
+                    }
+
                     reader.Advance();
                     inspectHeader = true;
                     continue;
 
                 case TokenKind.Static:
-                    // static is not a declaration modifier; it is kept only for recovery (SPEC 6.1).
+                    // static is not a declaration modifier; each is reported here and kept only for recovery (SPEC 6.1), so
+                    // neither a repetition nor a declaration check reports it again (Judged).
                     reader.Unexpected(SyntaxForm.StaticModifier);
-
-                    ReadFlag(ref reader, ModifierKind.Static);
+                    reader.ModifierKind |= ModifierKind.Static;
+                    reader.Advance();
                     continue;
 
                 case TokenKind.Open:
@@ -1355,6 +1420,27 @@ CloseParameters:
 
                 case TokenKind.Sharp:
                     inspectHeader = true;
+                    if (reader.ModifierKind != ModifierKind.NoModifier)
+                    {
+                        if (reader.PeekKind(1) is TokenKind.If or TokenKind.Switch or TokenKind.Case)
+                        {
+                            // A directive is an item of its own (Appendix F.8): the modifiers before it introduce nothing.
+                            if ((reader.ModifierKind & ~ModifierKind.Static) != ModifierKind.NoModifier)
+                            {
+                                reader.Expect(SyntaxForm.Declaration);
+                            }
+
+                            reader.ModifierKind = ModifierKind.NoModifier;
+                        }
+                        else
+                        {
+                            // Attributes precede a declaration's modifiers (Appendix F.3): one after them is misplaced, and it
+                            // is kept for the declaration as that Error's recovery.
+                            reader.ReportMisplacedAttributes();
+                            continue;
+                        }
+                    }
+
                     if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
                     {
                         ParseCompileTimeIfPrefix(ref reader);
@@ -1391,9 +1477,10 @@ CloseParameters:
                     {
                         ReportDanglingHeader(ref reader);
                     }
-                    else if (reader.ModifierKind.HasFlag(ModifierKind.Open) && tokenKind != TokenKind.Struct)
+                    else if (reader.ModifierKind.HasFlag(ModifierKind.Open) && (tokenKind != TokenKind.Struct || reader.PeekKind(-1) != TokenKind.Open))
                     {
-                        // open applies only to structures (SPEC 6.2.2, F.3).
+                        // open applies only to structures and immediately precedes struct (SPEC 6.2.2, F.3). It is reported here
+                        // only, so the declaration's own checks do not judge it again (Judged).
                         reader.Unexpected(SyntaxForm.OpenModifier, openSpan);
                     }
 
@@ -1421,7 +1508,7 @@ CloseParameters:
         {
             if (reader.ModifierKind.HasFlag(flag))
             {
-                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, flag.ToString());
+                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
             }
 
             reader.ModifierKind |= flag;
@@ -2495,6 +2582,7 @@ CloseParameters:
         var function = state.Function;
         if (IsOriginRelationStart(ref reader))
         {
+            ReportPendingAttributes(ref reader);
             var relation = ParseOriginRelation(ref reader);
             if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true } and not { IsSpecialization: true })
             {
@@ -2515,6 +2603,7 @@ CloseParameters:
         // kept for Binding to reject, never read as an expression.
         if (function is not null && !state.SeenExecutableItem && IsEffectStart(ref reader, specification: false))
         {
+            ReportPendingAttributes(ref reader);
             var effect = ParseEffectBound(ref reader);
             if (!excluded)
             {
@@ -2535,6 +2624,7 @@ CloseParameters:
             var isGenericParameter = !rootQualified && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
             if (!state.SeenExecutableItem || isGenericParameter)
             {
+                ReportPendingAttributes(ref reader);
                 var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
                 var constraint = ParseTypeConstraint(ref reader);
                 if (constraint is not null && function is { IsDestructor: false } && !excluded)

@@ -49,7 +49,7 @@ internal static class CompileTimeConditionEvaluator
             return false;
         }
 
-        if (HasAttribute(node))
+        if (Parser.HasWrittenAttribute(node.AttributeChain))
         {
             return Invalid(node);
         }
@@ -115,20 +115,6 @@ internal static class CompileTimeConditionEvaluator
             default:
                 return Invalid(node);
         }
-    }
-
-    // An attribute the parser reported as misplaced marks nothing; the node it is kept on is checked alone.
-    private static bool HasAttribute(Koto node)
-    {
-        for (var attribute = node.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-        {
-            if (attribute.CodeContext.RecoveryCause(attribute) is null)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static bool Invalid(Koto node)

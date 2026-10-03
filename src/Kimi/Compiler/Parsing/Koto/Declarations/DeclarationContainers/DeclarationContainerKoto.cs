@@ -721,6 +721,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (token.Kind == TokenKind.Associate)
         {
+            // An associate declaration takes no attributes (SPEC 6.5).
+            Parser.ReportPendingAttributes(ref reader);
             reader.Advance();
             if (Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
             {
@@ -811,7 +813,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 }
 
                 if (propertyKoto.IsContractRequirement &&
-                    (propertyKoto.Modifier != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
+                    (propertyKoto.Modifier.Judged() != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
                 {
                     propertyKoto.Unexpected(SyntaxForm.Decoration);
                 }
@@ -841,7 +843,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             reader.Document(destructor, token.Span, context.AttributeKoto);
 
             // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
-            if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null)
+            if (context.ModifierKind.Judged() != ModifierKind.NoModifier || context.AttributeKoto is not null)
             {
                 destructor.Unexpected(SyntaxForm.Decoration);
             }
@@ -1150,9 +1152,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void ParseMemberItem(ref TokenReader reader, ref MemberParseState state)
     {
-        // SPEC 8.4.10.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject.
+        // SPEC 8.4.10.1: an effect specification is a Contract item; elsewhere it is kept for Binding to reject. Like the
+        // Constraints and relations below, it takes no attributes (SPEC 6.5).
         if (Parser.IsEffectStart(ref reader, specification: true))
         {
+            Parser.ReportPendingAttributes(ref reader);
             this.AddLast(Parser.ParseEffectBound(ref reader));
             return;
         }
@@ -1161,6 +1165,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var acceptsTypeConstraints = state.AcceptsTypeConstraints || reader.InExcludedSyntax;
         if (Parser.IsOriginRelationStart(ref reader))
         {
+            Parser.ReportPendingAttributes(ref reader);
             var relation = Parser.ParseOriginRelation(ref reader);
             if (!acceptsTypeConstraints)
             {
@@ -1174,6 +1179,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (state.ParseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
         {
+            Parser.ReportPendingAttributes(ref reader);
             if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
             {
                 reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);

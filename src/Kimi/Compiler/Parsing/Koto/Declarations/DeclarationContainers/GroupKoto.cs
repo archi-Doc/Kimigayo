@@ -158,6 +158,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
         var tokenKind = token.Kind;
         if (tokenKind == TokenKind.Alias)
         {
+            // An alias takes no modifier or attribute: the pending ones are taken before its target is read, so none lands there.
+            var context = reader.TakeContext();
             reader.Advance();
             string? aliasName = null;
             if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
@@ -182,8 +184,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
             else
             {
-                var context = reader.TakeContext();
-                if (context.ModifierKind != default || context.AttributeKoto is not null)
+                if (context.ModifierKind.Judged() != default || context.AttributeKoto is not null)
                 {
                     reader.Unexpected(SyntaxForm.Decoration, token.Span);
                 }

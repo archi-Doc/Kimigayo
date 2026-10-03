@@ -205,14 +205,14 @@ public static partial class Parser
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
         function.IsRequirement = true;
-        if (function.Modifier is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
+        if (function.Modifier.Judged() is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
         {
             function.Unexpected(SyntaxForm.Decoration);
         }
 
         foreach (var parameter in function.Parameters)
         {
-            if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
+            if (parameter.DefaultValue is not null || HasWrittenAttribute(parameter.AttributeChain))
             {
                 parameter.Type.Unexpected(SyntaxForm.RequirementParameterDefault);
             }
@@ -572,6 +572,8 @@ public static partial class Parser
 
     internal static Koto ParseEnumCase(ref TokenReader reader)
     {
+        // A Case takes no attributes (SPEC 6.5).
+        ReportPendingAttributes(ref reader);
         var name = ParseName(ref reader);
         var fields = default(TemporaryKotoList);
         var end = name.Span.End;
