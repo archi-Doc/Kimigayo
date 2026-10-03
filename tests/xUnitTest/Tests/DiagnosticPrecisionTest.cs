@@ -222,6 +222,16 @@ public class DiagnosticPrecisionTest
         Assert.Equal("expected i32, found closure (i32) -> i32", error.Label);
     }
 
+    // SPEC 23.3.6.2: a startup main that breaks the startup rules is located at its signature, not over its body.
+    [Fact]
+    public void AnInvalidStartupMainIsLocatedAtItsSignature()
+    {
+        const string Source = "public func main() -> i32\n    return 0\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.InvalidStartupMain_Kd), record.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(Source.IndexOf("main()", StringComparison.Ordinal), "main() -> i32".Length), record.Span);
+    }
+
     // Publishes every front-end phase as a check does and returns its Errors.
     private static TestDiagnostic[] PublishedErrors(Compilation c)
     {
