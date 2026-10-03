@@ -33,6 +33,22 @@ public class AcquisitionRepairTest
         Assert.Empty(DiagnosticCorpus.Check(UnnecessaryUnsafeBlockTest.Apply(source, repair.Edits)).Diagnostics);
     }
 
+    // A Function value call names the same transfer; it was NoApplicableOverload_Kd without the spelling or a repair.
+    [Theory]
+    [InlineData("func run(f: (Resource) -> i32) -> i32\n    let r = Resource.init(1)\n    return f(r)\npublic func main() => ()\n", "r")]
+    [InlineData("func apply<T>(f: (T) -> T, v: T) -> T => f(v)\npublic func main() => ()\n", "v")]
+    public void AFunctionValueCallOffersTheTransfer(string program, string place)
+    {
+        var source = Resource + program;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
+        Assert.Equal(place, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        var repair = Assert.Single(error.Repairs!);
+        Assert.Equal("Append @move to transfer " + place + " to f", repair.Title);
+        Assert.Equal([RepairCondition.Take], repair.Verified);
+        Assert.Empty(DiagnosticCorpus.Check(UnnecessaryUnsafeBlockTest.Apply(source, repair.Edits)).Diagnostics);
+    }
+
     // A Place reached through a shared reference, a dynamically indexed element and a Dictionary element offer no Take.
     [Theory]
     [InlineData("struct Holder\n    public var item: Resource\n    public init(item: Resource) => self.item = item\nfunc total(holder: ref/Holder) => consume(holder.item)\npublic func main() => ()\n", "holder.item")]

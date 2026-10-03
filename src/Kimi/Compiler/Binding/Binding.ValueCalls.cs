@@ -222,9 +222,14 @@ public sealed partial class Binding
                 }
 
                 actual = this.ArgumentType(source, actual);
+                this.transferRequired = this.lendingRequired = false;
                 if (!this.AdaptInput(source, parameter, actual, scope, null, null, out var adapted, out var quality, out var kind))
                 {
-                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    // SPEC 15.1.5: name the missing spelling when a bare Place was the obstacle, as an ordinary call does.
+                    var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate;
+                    return failure != BindingFailure.NoApplicableCandidate && this.acquisitionPlace is { } place
+                        ? this.FailAcquisition(call, failure, place, this.acquisitionObject, true)
+                        : this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 if (parameter.Origin is { Kind: OriginKind.Input } && adapted.Origin is { } argumentOrigin)
