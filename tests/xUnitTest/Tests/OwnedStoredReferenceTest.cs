@@ -163,6 +163,48 @@ public class OwnedStoredReferenceTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 3.4, 13.5.5.1: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
+    // `ref/uniq/i32`) is reached through both addresses; the inner exclusive reference is not copied.
+    [Theory]
+    [InlineData("SlotWrite", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire value == 5 else => $abort(\"changed\")")]
+    [InlineData("SlotCompound", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nr@follow@follow += 4\nrequire value == 5 else => $abort(\"changed\")")]
+    [InlineData("SlotRead", "let t = (value@uniq, 2)\nlet r = t.0@ref\nlet seen: i32 = r@follow@follow\nrequire seen == 1 and r@follow == 1 and r == 1 else => $abort(\"read\")")]
+    [InlineData("SlotReborrow", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@uniq\ninner@follow = 6\nrequire value == 6 else => $abort(\"changed\")")]
+    [InlineData("LocalWrite", "var p = value@uniq\nlet q = p@uniq\nq@follow@follow = 3\nrequire value == 3 else => $abort(\"changed\")")]
+    [InlineData("LocalRead", "let p = value@uniq\nlet q = p@ref\nrequire q@follow@follow == 1 and q@follow == 1 else => $abort(\"read\")")]
+    [InlineData("Parameter", "let t = (value@uniq, 2)\nrequire read(t.0@ref) == 1 else => $abort(\"read\")")]
+    public void AReferenceToAStoredReferenceFollowsBothLayers(string name, string body)
+    {
+        const string Read = "func read(p: ref/(uniq/i32 during inner)) -> i32 => p@follow@follow\n";
+        ScalarEmissionTest.EmitFixture("OwnedStoredReferenceLayered" + name, Read + "var value = 1\n" + body, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow")]
+    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow")]
+    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow")]
+    public void ConflictsThroughBothLayersReject(string body, string conflict)
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Fact]
+    public void ASharedOuterLayerStaysReadOnly()
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\nvar t = (value@uniq, 2)\nlet r = t.0@ref\nr@follow@follow = 5");
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void OwnedStoredReferenceAnalysisReusesItsStorage()

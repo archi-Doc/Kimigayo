@@ -203,6 +203,26 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(loaded);
         }
 
+        if (left is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed &&
+            this.Concrete(left.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } inner)
+        {
+            // SPEC 3.4, 13.5.5.1: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T) is read only
+            // for its address through the outer reference, as a stored slot is, not copied; an exclusive inner reference is
+            // not Copy, and a shared outer path yields its shared capability.
+            var outer = this.StoredReference(KotoHelper.UnwrapParentheses(followed.Left), mode);
+            if (outer < 0)
+            {
+                return -1;
+            }
+
+            var acquired = mode == SemanticsKind.Ref && inner.Semantics == SemanticsKind.Uniq
+                ? this.compilation.Binding.SharedReference(inner.Components[0], inner.Origin) : inner;
+            var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+            this.Emit(OwnershipOperationKind.Produce, left, pointer);
+            this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(outer)]);
+            return this.RegisterTemporary(pointer);
+        }
+
         return this.ExpressionCore(left, PlaceUseKind.Read, null);
     }
 
