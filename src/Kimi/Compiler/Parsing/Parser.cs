@@ -1592,7 +1592,7 @@ CloseParameters:
             {
                 // In a conversion, a following '<' may start a comparison.
                 // Type declarations and nested type arguments have no such ambiguity.
-                if (disambiguateGenerics && !HasAdjacentGenericArguments(ref reader, left.Span))
+                if (disambiguateGenerics && !OpensAdjacentTypeArguments(ref reader, left.Span))
                 {
                     break;
                 }
@@ -3419,7 +3419,7 @@ CloseParameters:
             {
                 var negated = reader.TryConsume(TokenKind.Not);
                 right = ParseConstraintSubject(ref reader);
-                if (reader.CurrentTokenKind == TokenKind.LessThan && HasAdjacentGenericArguments(ref reader, right.Span))
+                if (OpensAdjacentTypeArguments(ref reader, right.Span))
                 {
                     right = ParseGenericsPostfix(ref reader, right);
                 }
@@ -3747,46 +3747,15 @@ ProcessPrefix:
 
     private static bool IsGenericPostfix(ref TokenReader reader, Koto left)
         => left is IdentifierNameKoto or MemberAccessKoto or GenericsKoto &&
-            HasAdjacentGenericArguments(ref reader, left.Span);
+            OpensAdjacentTypeArguments(ref reader, left.Span);
 
-    private static bool HasAdjacentGenericArguments(ref TokenReader reader, SourceSpan targetSpan)
-    {
-        if (reader.CurrentTokenRange.Start != targetSpan.End)
-        {
-            return false;
-        }
-
-        // Require adjacent, balanced angle brackets to distinguish generics from comparisons.
-        var depth = 0;
-        for (var offset = 0; ; offset++)
-        {
-            switch (reader.PeekKind(offset))
-            {
-                case TokenKind.LessThan:
-                    depth++;
-                    break;
-                case TokenKind.GreaterThan:
-                    if (--depth == 0)
-                    {
-                        return true;
-                    }
-
-                    break;
-                case TokenKind.GreaterThanGreaterThan:
-                    depth -= 2;
-                    if (depth <= 0)
-                    {
-                        return true;
-                    }
-
-                    break;
-                case TokenKind.Separator:
-                case TokenKind.EndBlock:
-                case TokenKind.Invalid:
-                    return false;
-            }
-        }
-    }
+    /// <summary>
+    /// Determines whether the current <c>&lt;</c> applies Type arguments to the syntax that ends at <paramref name="targetSpan"/>: it is
+    /// adjacent to it, and the tokenizer found its matching <c>&gt;</c> (SPEC 12.4.2, <see cref="Token.OpensTypeArguments"/>). Otherwise
+    /// it compares values, so spaces around a comparison avoid the ambiguity.
+    /// </summary>
+    private static bool OpensAdjacentTypeArguments(ref TokenReader reader, SourceSpan targetSpan)
+        => reader.CurrentToken.OpensTypeArguments && reader.CurrentTokenRange.Start == targetSpan.End;
 
     private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {

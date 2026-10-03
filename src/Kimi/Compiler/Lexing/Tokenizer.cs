@@ -79,7 +79,6 @@ internal ref struct Tokenizer
     private int nonBlockDepth;
     private int sharedBodyIndentDepth;
     private int tokenAdded;
-    private int genericLookaheadEnd;
 
     // Only malformed literals allocate this map. A delimiter opened before the rejected literal cannot be diagnosed
     // independently until the literal's extent is known; delimiters opened by later source items remain independent.
@@ -503,13 +502,8 @@ Loop:
 
                 case Constants.GreaterThanChar:
                     {// > >= >> >>=
-                        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
-                        {
-                            this.PopIndentSource(TokenKind.GreaterThan);
-                            this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
-                            continue;
-                        }
-
+                        // The longest spelling is kept; '>' and '>>' close one or two recognized Type argument lists, and the parser
+                        // splits '>>' and '>>=' where it reads Types (SPEC 2.4). '>=' closes none.
                         var next = this.NextChar;
                         if (next == Constants.EqualsChar)
                         {
@@ -517,6 +511,7 @@ Loop:
                         }
                         else if (next == Constants.GreaterThanChar)
                         {
+                            this.CloseTypeArguments(2);
                             if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
                             {
                                 this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
@@ -528,6 +523,7 @@ Loop:
                         }
                         else
                         {
+                            this.CloseTypeArguments(1);
                             this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
                         }
 
@@ -554,12 +550,15 @@ Loop:
                         }
                         else
                         {
-                            if (this.IsGenericOpen())
+                            var opensTypeArguments = this.IsGenericOpen();
+                            if (opensTypeArguments)
                             {
                                 this.PushIndentSource(IndentSource.AngleBracket);
                             }
 
-                            this.AddTokenAndSlice(TokenKind.LessThan, 1);
+                            this.Add(Token.LessThan(this.position, opensTypeArguments));
+                            this.tokenAdded++;
+                            this.Slice(1);
                         }
 
                         continue;
@@ -939,7 +938,13 @@ EndOfFile:
         Debug.Assert(this.nonBlockDepth == 0);
     }
 
-    private bool IsGenericOpen()
+    /// <summary>
+    /// Determines whether the '&lt;' at the current position opens Type arguments or parameters: it follows a Name, adjacent to it in an
+    /// expression (SPEC 12.4.2), and its matching '&gt;' follows within the grouping that encloses it. Its content continues on a later
+    /// line only as SPEC 2.2.1 lets the content of a delimiter continue, and a '&lt;' that is not adjacent, as in a declaration
+    /// <c>List &lt;T&gt;</c>, continues only when the line ends after it. Otherwise it is a comparison.
+    /// </summary>
+    private readonly bool IsGenericOpen()
     {
         if (this.tokenCount == 0)
         {
@@ -947,68 +952,170 @@ EndOfFile:
         }
 
         var previous = this.tokens[this.tokenCount - 1];
-        if (!(previous.Kind.IsIdentifierOrContextualKeyword() || previous.Kind.IsPrimitiveType() || previous.Kind == TokenKind.Self) ||
-            (previous.Span.End != this.position && !this.IsDeclarationGenericContext()))
+        if (!(previous.Kind.IsIdentifierOrContextualKeyword() || previous.Kind.IsPrimitiveType() || previous.Kind == TokenKind.Self))
         {
             return false;
         }
 
-        if (this.position < this.genericLookaheadEnd)
+        var multiline = true;
+        if (previous.Span.End != this.position)
         {
-            return true;
+            if (!this.IsDeclarationGenericContext())
+            {
+                return false;
+            }
+
+            var after = 1 + CountSpaces(this.span[1..]);
+            multiline = after >= this.span.Length || this.span[after] is Constants.CrChar or Constants.LfChar ||
+                (this.span[after] == Constants.SlashChar && after + 1 < this.span.Length && this.span[after + 1] == Constants.SlashChar);
         }
 
-        // Cache balanced lookahead so nested arguments do not rescan the same suffix.
+        // Angle brackets count only outside nested groupings, whose own '<' is judged when it is read.
         var depth = 1;
+        var nesting = 0;
+        var openingIndent = -1;
         for (var i = 1; i < this.span.Length; i++)
         {
             var c = this.span[i];
-            if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '/')
+            switch (c)
             {
-                var end = this.span[(i + 2)..].IndexOfAny('\r', '\n');
-                if (end < 0)
-                {
-                    return false;
-                }
+                case Constants.SlashChar when i + 1 < this.span.Length && this.span[i + 1] == Constants.SlashChar:
+                    {
+                        var end = this.span[(i + 2)..].IndexOfAny(Constants.CrChar, Constants.LfChar);
+                        if (end < 0)
+                        {
+                            return false;
+                        }
 
-                i += end + 1;
-            }
-            else if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '*')
-            {
-                var end = this.span[(i + 2)..].IndexOf("*/");
-                if (end < 0)
-                {
-                    return false;
-                }
+                        i += end + 1; // The line break is read next.
+                        continue;
+                    }
 
-                i += end + 3;
-            }
-            else if (c == '<')
-            {
-                depth++;
-            }
-            else if (c == '=' && i + 1 < this.span.Length && this.span[i + 1] == '>')
-            {
-                i++;
-            }
-            else if (c == '>' && this.span[i - 1] != '-')
-            {
-                if (--depth == 0)
-                {
-                    this.genericLookaheadEnd = this.position + i;
-                    return true;
-                }
-            }
-            else if (c is ';' or '=' or '"' or '\'')
-            {
-                return false;
+                case Constants.SlashChar when i + 1 < this.span.Length && this.span[i + 1] == Constants.AsteriskChar:
+                    {
+                        var end = this.span[(i + 2)..].IndexOf("*/");
+                        if (end < 0)
+                        {
+                            return false;
+                        }
+
+                        i += end + 3;
+                        continue;
+                    }
+
+                case Constants.CrChar or Constants.LfChar:
+                    {
+                        // The content continues on the next effective line when it is indented deeper than the line of the '<', or when
+                        // the closer stands at that line's indentation; any other line starts a new item, so no '>' there matches.
+                        if (!multiline)
+                        {
+                            return false;
+                        }
+
+                        if (openingIndent < 0)
+                        {
+                            var lineStart = this.sourceText[..this.position].LastIndexOfAny(Constants.CrChar, Constants.LfChar) + 1;
+                            openingIndent = CountSpaces(this.sourceText[lineStart..]);
+                        }
+
+                        var next = this.NextEffectiveLine(i, out var indent);
+                        if (next < 0 || !(indent > openingIndent || (indent == openingIndent && this.span[next] == Constants.GreaterThanChar)))
+                        {
+                            return false;
+                        }
+
+                        i = next - 1;
+                        continue;
+                    }
+
+                case Constants.OpenParenthesisChar or Constants.OpenBracketChar or Constants.OpenBraceChar:
+                    nesting++;
+                    continue;
+
+                case Constants.CloseParenthesisChar or Constants.CloseBracketChar or Constants.CloseBraceChar:
+                    if (nesting-- == 0)
+                    {
+                        return false; // The enclosing grouping closes first.
+                    }
+
+                    continue;
+
+                case Constants.LessThanChar when nesting == 0:
+                    depth++;
+                    continue;
+
+                case Constants.MinusChar when i + 1 < this.span.Length && this.span[i + 1] == Constants.GreaterThanChar:
+                    i++; // '->' of a Function Type.
+                    continue;
+
+                case Constants.EqualsChar when i + 1 < this.span.Length && this.span[i + 1] == Constants.GreaterThanChar:
+                    if (nesting == 0)
+                    {
+                        return false; // An expression body; inside braces it binds an Origin name.
+                    }
+
+                    i++;
+                    continue;
+
+                case Constants.GreaterThanChar when nesting == 0:
+                    if (i + 1 < this.span.Length && this.span[i + 1] == Constants.EqualsChar && this.span[i - 1] != Constants.GreaterThanChar)
+                    {
+                        i++; // '>=' is one token and closes nothing.
+                        continue;
+                    }
+
+                    if (--depth == 0)
+                    {
+                        return true;
+                    }
+
+                    continue;
+
+                case Constants.SemicolonChar or Constants.EqualsChar or '"' or '\'':
+                    return false;
             }
         }
 
         return false;
     }
 
-    private bool IsDeclarationGenericContext()
+    // The first character of the next line after the line break at span[index] that holds more than spaces and a line comment,
+    // with that line's indentation; -1 at the end of the source.
+    private readonly int NextEffectiveLine(int index, out int indent)
+    {
+        var i = index;
+        while (true)
+        {
+            i += this.span[i] == Constants.CrChar && i + 1 < this.span.Length && this.span[i + 1] == Constants.LfChar ? 2 : 1;
+            indent = CountSpaces(this.span[i..]);
+            i += indent;
+            if (i >= this.span.Length)
+            {
+                return -1;
+            }
+
+            if (this.span[i] is Constants.CrChar or Constants.LfChar)
+            {
+                continue;
+            }
+
+            if (this.span[i] == Constants.SlashChar && i + 1 < this.span.Length && this.span[i + 1] == Constants.SlashChar)
+            {
+                var end = this.span[i..].IndexOfAny(Constants.CrChar, Constants.LfChar);
+                if (end < 0)
+                {
+                    return -1;
+                }
+
+                i += end;
+                continue;
+            }
+
+            return i;
+        }
+    }
+
+    private readonly bool IsDeclarationGenericContext()
     {
         if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
         {
@@ -1457,6 +1564,15 @@ EndOfFile:
         }
     }
 
+    // Closes up to count recognized Type argument lists at the top of the stack.
+    private void CloseTypeArguments(int count)
+    {
+        while (count-- > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
+        {
+            this.PopIndentSource(TokenKind.GreaterThan);
+        }
+    }
+
     private void PopIndentSource(TokenKind expected)
     {
         var closesBody = false;
@@ -1464,6 +1580,20 @@ EndOfFile:
         {
             var entry = this.indentStack[this.indentCount - 1];
             var indentSource = entry.Source;
+            if (indentSource == IndentSource.AngleBracket && expected != TokenKind.GreaterThan)
+            {
+                // The '<' had no matching '>' before this enclosing closer after all: it is a comparison, not a grouping.
+                this.indentCount--;
+                this.nonBlockDepth--;
+                if (entry.SharesBodyIndent)
+                {
+                    this.sharedBodyIndentDepth--;
+                }
+
+                this.DemoteTypeArgumentsOpen(entry.Position);
+                continue;
+            }
+
             if (indentSource == IndentSource.Block)
             {
                 // A body opens only at a line start, so this closer shares a line with body content.
@@ -1505,6 +1635,19 @@ EndOfFile:
         // stack is left intact, so the still-open grouping can be matched (or reported)
         // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
         this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.MisplacedSyntax_Kd, SyntaxForm.UnmatchedCloser, null, this.sourceDocument);
+    }
+
+    // Marks the '<' at a position as a comparison.
+    private void DemoteTypeArgumentsOpen(int position)
+    {
+        for (var t = this.tokenCount - 1; t >= 0; t--)
+        {
+            if (this.tokens[t].Start == position && this.tokens[t].Kind == TokenKind.LessThan)
+            {
+                this.tokens[t] = Token.LessThan(position, false);
+                return;
+            }
+        }
     }
 
     /// <summary>Gets where a missing closer is inserted: right after the last written token, or a fallback when none was written.</summary>
