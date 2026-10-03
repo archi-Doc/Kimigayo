@@ -22,6 +22,10 @@ public class CallbackEmissionTest
     [InlineData("Unused", "let value: i32 = 6\nlet f: () -> i32 = func [value] () => 7\nrequire f() == 7 else => $abort(\"unused\")")]
     [InlineData("Block", "let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    return n\nrequire f() == 6 else => $abort(\"block\")")]
     [InlineData("Unit", "let n = ()\nlet f: () -> () = func [n] () => n\nf()\nf()")]
+    // SPEC 7.6.4: a stored concrete Closure converts to the parameter's common Function Type at an argument, as at an
+    // initialization; it was NoApplicableOverload_Kd unless the argument was a literal.
+    [InlineData("StoredArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet g = func [] (value: i32) -> i32 => value * 2\nrequire apply(g, 3) == 6 and apply(g, 4) == 8 and g(5) == 10 else => $abort(\"stored\")")]
+    [InlineData("MovedArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet k: i32 = 3\nlet g = func [k] (value: i32) -> i32 => value * k\nrequire apply(g@move, 3) == 9 else => $abort(\"moved\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -64,6 +68,8 @@ public class CallbackEmissionTest
     [InlineData("let n: i32\nlet f: () -> i32 = func [n] () => 6")]
     [InlineData("func eat(f: (i32) -> bool) -> i32 => 0\nlet f: (i32) -> bool = func (v: i32) => true\nf(eat(f@move))")]
     [InlineData("let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    func nested() -> i32 => n\n    return nested()")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet h = func [] (value: i64) -> i64 => value\nlet x = apply(h, 3)")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
     public void RejectsInvalidClosures(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

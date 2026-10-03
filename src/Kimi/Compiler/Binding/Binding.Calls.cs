@@ -753,6 +753,13 @@ public sealed partial class Binding
 
                     selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
                 }
+                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure } closureType && selectedOperations[i].ParameterType is { } erased &&
+                    this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
+                {
+                    // SPEC 7.6.4: the selected parameter fixes the common Function Type the Closure value is converted to.
+                    call.ArgumentNodes[i].ErasedFunctionType = erased;
+                    selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
+                }
             }
 
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
@@ -1233,6 +1240,14 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (argument.BoundType is { } closureType && this.ErasesToFunction(argument, closureType, type))
+                {
+                    // SPEC 7.6.4: a concrete Closure value converts to the parameter's common Function Type, as at an
+                    // initialization; the argument is bound with that expectation once the call is selected.
+                    operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    continue;
+                }
+
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
                 if (argument.BoundType is { } actual)
@@ -1377,6 +1392,14 @@ public sealed partial class Binding
             if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver))
             {
                 return false;
+            }
+
+            if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
+                actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure })
+            {
+                // SPEC 7.6.4: a concrete Closure meets a common Function Type through its signature; the conversion itself is
+                // judged once the parameter Type is complete.
+                actual = closure.Signature;
             }
 
             pattern = this.FormedApplication(pattern, function, arguments);

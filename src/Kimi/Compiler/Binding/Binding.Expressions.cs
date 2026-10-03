@@ -387,6 +387,14 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
+    // receiver is Shared and its environment is Copy without carried Origins (the supported subset of the Owned-environment
+    // rule). Initializations, returns and call arguments share this one judgment.
+    private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
+        => expected.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
+            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
+            CallableSignatureFits(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin;
+
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
         if (expected is { ContainsParameter: true })
@@ -412,9 +420,7 @@ public sealed partial class Binding
             return this.BindFunctionReference(node, symbol, expected, scope);
         }
 
-        if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
-            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
-            CallableSignatureFits(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin)
+        if (expected is not null && actual is not null && this.ErasesToFunction(node, actual, expected))
         {
             node.ErasedFunctionType = expected;
             return expected;
