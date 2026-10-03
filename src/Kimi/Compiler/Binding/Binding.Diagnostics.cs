@@ -543,6 +543,7 @@ public sealed partial class Binding
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();
         this.prerequisites.Clear();
+        this.partPrerequisites.Clear();
         this.prerequisiteStore.Clear();
         this.derivedIssues.Clear();
         this.consulted.Clear();
@@ -634,7 +635,7 @@ public sealed partial class Binding
     }
 
     /// <summary>Records that a declaration-level check read a part outside a consultation frame; the part explains the node's failure when it did not resolve.
-    /// Declaration checks run once per Bind, so the record outlives the per-pass prerequisite storage.</summary>
+    /// The record belongs to the pass, like every other prerequisite.</summary>
     /// <param name="node">The checked node.</param>
     /// <param name="part">The part it read.</param>
     private void AddPrerequisite(Koto node, Koto part)

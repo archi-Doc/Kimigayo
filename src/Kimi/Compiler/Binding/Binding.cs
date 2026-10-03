@@ -67,7 +67,9 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
+        // Check publishes both kinds of failure again.
         this.issues.Clear();
+        this.derivedIssues.Clear();
         return this.Result = this.Check(BindingMode.Final);
     }
 
@@ -87,221 +89,35 @@ public sealed partial class Binding
         this.running = true;
         try
         {
-            // Every later phase rests on Binding, so its facts are discarded with Binding's.
+            // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
+            // leaves no result behind.
+            this.Result = default;
             this.compilation.Diagnostics.InvalidateSemantics();
-            this.storageVersion++;
-            this.issues.Clear();
-            this.libraryImports.Clear();
-            this.constraintDiagnosticCauses?.Clear();
-            this.ResetPrerequisites();
-            this.objectPayloadCauses?.Clear();
-            this.ResetMatches();
-            this.resultContexts.Clear();
-            this.resultCursor = 0;
-            this.ResetStartup();
-            this.ResetSpecializations();
             this.compilation.InvalidateOwnership();
-            this.receiverOperations.Clear();
-            this.adaptations.Clear();
-            this.ResetSyntheticCalls();
-            this.pairFollows.Clear();
-            this.implicitPairFollows.Clear();
-            foreach (var construction in this.enumConstructions.Values)
+            this.ResetPass(mode);
+            this.IndexSources();
+            this.kimiValid = this.IndexLibrary();
+            if (this.kimiValid)
             {
-                construction.IsValid = false;
+                this.BindDeclarations(mode);
+                this.BindBodies();
+                this.ValidateBoundDeclarations(mode);
+                this.kimiValid = this.Library.ValidateBoundDeclarations();
+            }
+            else
+            {
+                // A malformed compiler library must not enter indexing/overload chains; only the indexed sources are pruned.
+                this.PruneCandidateScopes();
+                this.PrunePatternScopes();
+                this.PruneMatchPlans();
             }
 
-            this.nodes.Clear();
-            this.aliases.Clear();
-            this.ResetAliases();
-            this.obligations.Clear();
-            this.obligationSet.Clear();
-            this.inheritedOriginTypes.Clear();
-            this.ResetCapabilities(mode);
-            this.ResetContracts();
-            foreach (var scope in this.scopes.Values)
-            {
-                scope.Reset();
-            }
-
-            foreach (var symbol in this.symbols.Values)
-            {
-                if (symbol.Property is { } property)
-                {
-                    property.IsVerified = false;
-                }
-
-                if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
-                {
-                    symbol.Type = null;
-                }
-
-                symbol.Next = null;
-                symbol.ConditionalDeclaration = null;
-                symbol.Resolving = false;
-                symbol.HeaderBound = false;
-                symbol.ReceiverIndex = -1;
-                symbol.ObjectPayloadOptOut = null;
-            }
-
-            // The indexer resets every semantic field before any header or expression is evaluated.
-            foreach (var module in this.compilation.SourceModules)
-            {
-                this.indexer.Scope = this.GetScope(module.RootKoto, null);
-                this.indexer.Visit(module.RootKoto);
-            }
-
-            this.IndexModuleReferences();
-            this.Library.Restore();
-            this.kimiValid = this.Library.ValidateDeclarations();
-            if (!this.kimiValid)
-            {
-                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
-                // A malformed compiler library must not enter indexing/overload chains.
-                return this.Result = this.Check(mode);
-            }
-
-            this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
-            this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
-            this.scopes[this.Library.Console] = this.Library.ConsoleScope;
-            this.scopes[this.Library.Test] = this.Library.TestScope;
-            this.scopes[this.Library.Text] = this.Library.TextScope;
-            this.indexer.Scope = this.Library.Scope;
-            var libraryRoot = this.Library.Kotonoha.RootKoto;
-            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
-            {
-                var declaration = libraryRoot.NestedContainers[i];
-                if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
-                {
-                    continue;
-                }
-
-                if (this.Library.SignatureScope(declaration) is { } signatureScope)
-                {
-                    this.indexer.Scope = signatureScope;
-                    for (var m = 0; m < declaration.Members.Count; m++)
-                    {
-                        this.indexer.Visit(declaration.Members[m]);
-                    }
-
-                    this.indexer.Scope = this.Library.Scope;
-                }
-                else
-                {
-                    this.indexer.Visit(declaration);
-                }
-            }
-
-            for (var i = 0; i < libraryRoot.Members.Count; i++)
-            {
-                this.indexer.Visit(libraryRoot.Members[i]);
-            }
-
-            // Source guards are all indexed now; a removed guard may have become an arm body.
-            // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
-            this.PruneCandidateScopes();
-            this.cLayoutInstances.Clear();
-            this.storagePrepared = false;
-            this.ValidateDefaultAliases();
-            this.PrepareOriginDeclarations();
-            this.BindSchemas();
-            this.PrepareAssociatedOrigins();
-            this.PrepareAliases();
-            this.PrepareContracts();
-            this.BindConstraints();
-            this.BindTypeOriginContracts();
-            for (var i = 0; i < this.nodes.Count; i++)
-            {
-                if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
-                {
-                    this.BindHeader(symbol);
-                }
-            }
-
-            this.ValidateLayoutFragments();
-            this.ValidateLibraryImports();
-            this.ValidateBaseDeclarations();
-            this.PrepareStorage();
-            this.ValidateInlineLayouts();
-            this.ValidateCLayoutFields();
-            this.ComputeOriginRequirements();
-            this.ValidateSignatures();
-            this.ValidateContractDeclarations();
-            this.PrepareEffectBounds();
-            this.capabilitiesReady = true;
-            this.ValidateConformances(mode, false);
-            this.ValidateConstraintEnvironments();
-            this.PrepareSpecializations();
-            foreach (var module in this.compilation.SourceModules)
-            {
-                this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
-            }
-
-            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
-            {
-                var declaration = libraryRoot.NestedContainers[i];
-                if (this.Library.SignatureScope(declaration) is { } signatureScope)
-                {
-                    for (var m = 0; m < declaration.Members.Count; m++)
-                    {
-                        this.BindNode(declaration.Members[m], signatureScope);
-                    }
-                }
-                else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
-                {
-                    this.BindNode(declaration, this.Library.Scope);
-                }
-            }
-
-            for (var i = 0; i < libraryRoot.Members.Count; i++)
-            {
-                this.BindNode(libraryRoot.Members[i], this.Library.Scope);
-            }
-
-            this.PrunePatternScopes();
-            this.PruneMatchPlans();
-            this.ClearCapabilityResults();
-            this.ValidateOriginRelations();
-            this.ValidateAssociatedApplications();
-            this.ValidateCopyDeclarations(mode);
-            this.ComputeOriginRequirements();
-            this.ValidateOriginRequirements();
-            this.ValidateApiAccess(mode);
-            // Base constraints need capability evidence; propagate failures before certificates.
-            this.ValidateBaseDeclarations(mode);
-            // Property certificates must include final Origin and declaration API validity.
-            this.ValidateProperties(mode);
-            this.ValidateConformances(mode, true);
-            this.ValidateConstraintUses(mode);
-            // Late witness failures can invalidate declarations that normalized their projections.
-            // Revisit dependent certificates only while declaration states change monotonically.
-            while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
-            {
-                this.ClearCapabilityResults();
-                this.ValidateBaseDeclarations(mode);
-                this.ValidateProperties(mode);
-                this.ValidateConformances(mode, true);
-            }
-
-            this.ClearCapabilityResults();
-            this.ValidateEffectBounds();
-            this.ValidateIterationWitnesses();
-            this.ValidateExpressionProjectionInputs(mode);
-            this.CompleteEnumAcquisitions();
-            this.CompletePatternAcquisitions();
-            if (mode == BindingMode.Final)
-            {
-                this.CompleteAliasWarnings();
-            }
-
-            this.kimiValid = this.Library.ValidateBoundDeclarations();
             if (!this.kimiValid)
             {
                 this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
-            this.Result = this.Check(mode);
-            return this.Result;
+            return this.Result = this.Check(mode);
         }
         finally
         {
@@ -509,25 +325,11 @@ public sealed partial class Binding
             return;
         }
 
+        // An edit revokes the whole pass, exactly as the next Bind discards it; associated Origin parameters of the edited
+        // trees are recreated.
         this.Result = default;
-        this.issues.Clear();
-        this.libraryImports.Clear();
-        this.constraintDiagnosticCauses?.Clear();
-        this.ResetPrerequisites();
-        this.partPrerequisites.Clear();
-        this.obligations.Clear();
-        this.obligationSet.Clear();
+        this.ResetPass(BindingMode.Provisional);
         this.associatedOrigins.Clear();
-        this.ResetStartup();
-        this.ResetCapabilities(BindingMode.Provisional);
-        this.ResetContracts();
-        foreach (var symbol in this.symbols.Values)
-        {
-            if (symbol.Property is { } property)
-            {
-                property.IsVerified = false;
-            }
-        }
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -633,6 +435,236 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // Discards every fact of the latest pass. Cross-pass storage stays: interned Types, Origins and Constraints, scopes and
+    // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
+    private void ResetPass(BindingMode mode)
+    {
+        this.storageVersion++;
+        this.issues.Clear();
+        this.libraryImports.Clear();
+        this.constraintDiagnosticCauses?.Clear();
+        this.ResetPrerequisites();
+        this.objectPayloadCauses?.Clear();
+        this.ResetMatches();
+        this.resultContexts.Clear();
+        this.resultCursor = 0;
+        this.ResetStartup();
+        this.ResetSpecializations();
+        this.receiverOperations.Clear();
+        this.adaptations.Clear();
+        this.ResetSyntheticCalls();
+        this.pairFollows.Clear();
+        this.implicitPairFollows.Clear();
+        foreach (var construction in this.enumConstructions.Values)
+        {
+            construction.IsValid = false;
+        }
+
+        this.nodes.Clear();
+        this.aliases.Clear();
+        this.ResetAliases();
+        this.obligations.Clear();
+        this.obligationSet.Clear();
+        this.inheritedOriginTypes.Clear();
+        this.ResetCapabilities(mode);
+        this.ResetContracts();
+        foreach (var scope in this.scopes.Values)
+        {
+            scope.Reset();
+        }
+
+        foreach (var symbol in this.symbols.Values)
+        {
+            if (symbol.Property is { } property)
+            {
+                property.IsVerified = false;
+            }
+
+            if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
+            {
+                symbol.Type = null;
+            }
+
+            symbol.Next = null;
+            symbol.ConditionalDeclaration = null;
+            symbol.Resolving = false;
+            symbol.HeaderBound = false;
+            symbol.ReceiverIndex = -1;
+            symbol.ObjectPayloadOptOut = null;
+        }
+    }
+
+    // The indexer resets every semantic field of the source trees before any header or expression is evaluated.
+    private void IndexSources()
+    {
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.indexer.Scope = this.GetScope(module.RootKoto, null);
+            this.indexer.Visit(module.RootKoto);
+        }
+
+        this.IndexModuleReferences();
+    }
+
+    // Restores and indexes the embedded Kimi library; false when its declarations are malformed.
+    private bool IndexLibrary()
+    {
+        this.Library.Restore();
+        if (!this.Library.ValidateDeclarations())
+        {
+            return false;
+        }
+
+        this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
+        this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
+        this.scopes[this.Library.Console] = this.Library.ConsoleScope;
+        this.scopes[this.Library.Test] = this.Library.TestScope;
+        this.scopes[this.Library.Text] = this.Library.TextScope;
+        this.indexer.Scope = this.Library.Scope;
+        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+        {
+            var declaration = libraryRoot.NestedContainers[i];
+            if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
+            {
+                continue;
+            }
+
+            if (this.Library.SignatureScope(declaration) is { } signatureScope)
+            {
+                this.indexer.Scope = signatureScope;
+                for (var m = 0; m < declaration.Members.Count; m++)
+                {
+                    this.indexer.Visit(declaration.Members[m]);
+                }
+
+                this.indexer.Scope = this.Library.Scope;
+            }
+            else
+            {
+                this.indexer.Visit(declaration);
+            }
+        }
+
+        for (var i = 0; i < libraryRoot.Members.Count; i++)
+        {
+            this.indexer.Visit(libraryRoot.Members[i]);
+        }
+
+        return true;
+    }
+
+    // Declarations, Constraints, Contracts, headers, storage and signatures, before any body is bound.
+    private void BindDeclarations(BindingMode mode)
+    {
+        // Source guards are all indexed now; a removed guard may have become an arm body.
+        // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
+        this.PruneCandidateScopes();
+        this.cLayoutInstances.Clear();
+        this.storagePrepared = false;
+        this.ValidateDefaultAliases();
+        this.PrepareOriginDeclarations();
+        this.BindSchemas();
+        this.PrepareAssociatedOrigins();
+        this.PrepareAliases();
+        this.PrepareContracts();
+        this.BindConstraints();
+        this.BindTypeOriginContracts();
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
+            {
+                this.BindHeader(symbol);
+            }
+        }
+
+        this.ValidateLayoutFragments();
+        this.ValidateLibraryImports();
+        this.ValidateBaseDeclarations();
+        this.PrepareStorage();
+        this.ValidateInlineLayouts();
+        this.ValidateCLayoutFields();
+        this.ComputeOriginRequirements();
+        this.ValidateSignatures();
+        this.ValidateContractDeclarations();
+        this.PrepareEffectBounds();
+        this.capabilitiesReady = true;
+        this.ValidateConformances(mode, false);
+        this.ValidateConstraintEnvironments();
+        this.PrepareSpecializations();
+    }
+
+    // Source bodies, then the library bodies outside the compiler-intrinsic declarations.
+    private void BindBodies()
+    {
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
+        }
+
+        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+        {
+            var declaration = libraryRoot.NestedContainers[i];
+            if (this.Library.SignatureScope(declaration) is { } signatureScope)
+            {
+                for (var m = 0; m < declaration.Members.Count; m++)
+                {
+                    this.BindNode(declaration.Members[m], signatureScope);
+                }
+            }
+            else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+            {
+                this.BindNode(declaration, this.Library.Scope);
+            }
+        }
+
+        for (var i = 0; i < libraryRoot.Members.Count; i++)
+        {
+            this.BindNode(libraryRoot.Members[i], this.Library.Scope);
+        }
+    }
+
+    // Declaration checks that need the bound bodies: Origin requirements, API access, certificates and witnesses.
+    private void ValidateBoundDeclarations(BindingMode mode)
+    {
+        this.PrunePatternScopes();
+        this.PruneMatchPlans();
+        this.ClearCapabilityResults();
+        this.ValidateOriginRelations();
+        this.ValidateAssociatedApplications();
+        this.ValidateCopyDeclarations(mode);
+        this.ComputeOriginRequirements();
+        this.ValidateOriginRequirements();
+        this.ValidateApiAccess(mode);
+        // Base constraints need capability evidence; propagate failures before certificates.
+        this.ValidateBaseDeclarations(mode);
+        // Property certificates must include final Origin and declaration API validity.
+        this.ValidateProperties(mode);
+        this.ValidateConformances(mode, true);
+        this.ValidateConstraintUses(mode);
+        // Late witness failures can invalidate declarations that normalized their projections.
+        // Revisit dependent certificates only while declaration states change monotonically.
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
+        {
+            this.ClearCapabilityResults();
+            this.ValidateBaseDeclarations(mode);
+            this.ValidateProperties(mode);
+            this.ValidateConformances(mode, true);
+        }
+
+        this.ClearCapabilityResults();
+        this.ValidateEffectBounds();
+        this.ValidateIterationWitnesses();
+        this.ValidateExpressionProjectionInputs(mode);
+        this.CompleteEnumAcquisitions();
+        this.CompletePatternAcquisitions();
+        if (mode == BindingMode.Final)
+        {
+            this.CompleteAliasWarnings();
+        }
     }
 
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
