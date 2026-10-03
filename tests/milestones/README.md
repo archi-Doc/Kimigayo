@@ -137,7 +137,7 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
-| 40 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-10-03 per SPEC §4.6.10 (the approved `tryGetPairUniq` design). Binding passes; ownership analysis first reports `ComparisonLoanConflict_Kd` at `source.balance`: field access and calls through two sibling pair references conflict ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
+| 40 | YES | PASS | PASS | PASS | IN_PROGRESS | The unchanged source builds and runs at Release O0/O2; sibling fields, calls and stored exclusive references keep their split identities. Full Session completion remains ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
 
@@ -2002,7 +2002,7 @@ replaced through one pair, destroying each old value once, and the Array grows a
 `settle` holds two neighbors of a fixed array exclusively at once to exchange them, `^1` and `3` name one element and
 give `None`, and a pair over an `Array<uniq/i32>` reaches both referents, which are free again after its last use.
 
-Expected stdout (derived from SPEC §4.6.10; native execution is blocked):
+Expected stdout (verified at Release O0/O2):
 
 ```text
 Balances 20, 25, 25.
@@ -2022,13 +2022,12 @@ Closed Ben.
 Closed Eve.
 ```
 
-Current boundary (2026-10-03): Binding passes; ownership analysis first reports `ComparisonLoanConflict_Kd` at
-`source.balance`. A field read or update through one pair reference (also inside that reference's replacement), a
-follow through both stored-reference elements and a call that takes both references each conflict with the sibling
-reference's Loan, although SPEC §4.6.10 lets the references be used independently. Whole-referent `@follow` reads
-and writes already pass; a probe of this source without the conflicting accesses runs identically at O0 and O2.
+Current boundary (2026-10-03): the unchanged source builds and runs through `test-milestone40.ps1` at Release O0/O2.
+Sibling exclusive references acquired from owned Tuple payloads keep their independent capabilities through field
+access, call arguments, Reborrows and stored exclusive-reference reads. A child still suspends its own parent, and
+both siblings keep the original collection borrowed. Full Session verification is required before marking P40 DONE.
 
-Separate checks (planned for `test-milestone40.ps1`): an empty Array and zero-sized elements give `None` or distinct
+Separate feature checks (`DisjointArrayPairTest`, `DisjointSplitLoanTest`): an empty Array and zero-sized elements give `None` or distinct
 logical positions; rejections of a whole-collection read, write, `append` or Move while a pair reference is live, of
 `tryGetPairUniq` on a shared receiver, of two ordinary `receiver[i]@uniq` borrows with runtime indices (no inference
 from runtime inequality) and of a pair reference used after the collection's borrow ends.

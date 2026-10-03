@@ -297,7 +297,8 @@ public sealed partial class OwnershipBody
                                             this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type,
                                             this.Places[sourcePlace].Type.Components[0])) ||
                                     this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) && !this.IsDisjointProjection(accessId, p))
+                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) &&
+                                !this.IsDisjointProjection(accessId, p) && !this.IsDisjointSplitChild(receiver, p))
                             {
                                 conflict = true;
                             }
@@ -1751,6 +1752,77 @@ public sealed partial class OwnershipBody
     private bool HasSingleBorrowDefinition(int place)
         => this.borrowDefinitions[place] >= 0 &&
         (this.Places[place].Kind == OwnershipPlaceKind.Temporary || this.Places[place] is { Kind: OwnershipPlaceKind.Local, Mutable: false });
+
+    // SPEC 15.6.3: simultaneously held exclusive references in distinct owned Tuple payloads are independent
+    // capabilities. Reborrowing a child preserves that split; borrowing a shared reference's stored target does not.
+    // These are reference identities, not a claim that different reference slots imply disjoint shared referents.
+    private bool IsDisjointSplitChild(int value, int holder)
+    {
+        if (!this.HasSingleBorrowDefinition(holder) || this.SplitChild(value) is not (>= 0 and var left) ||
+            this.SplitChild(this.borrowDefinitions[holder]) is not (>= 0 and var right) || left == right)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < this.Decompositions.Count; i++)
+        {
+            var split = this.Decompositions[i];
+            if (this.Places[split.Place].Type.Kind == BoundTypeKind.Tuple &&
+                left >= split.PayloadStart && left < split.PayloadStart + split.PayloadCount &&
+                right >= split.PayloadStart && right < split.PayloadStart + split.PayloadCount)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int SplitChild(int value)
+    {
+        for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
+        {
+            var operation = this.Operations[value];
+            var node = this.Values[value];
+            if (operation.Kind == OwnershipOperationKind.AcquirePattern && node.Kind == OwnershipValueKind.None && operation.Place >= 0 &&
+                this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Payload, Type.Semantics: SemanticsKind.Uniq })
+            {
+                return operation.Place;
+            }
+
+            if (node.Kind is OwnershipValueKind.Alias or OwnershipValueKind.Address && node.Count == 1)
+            {
+                value = this.ValueOperands[node.Start];
+                continue;
+            }
+
+            if (node.Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField && node.Count == 1 &&
+                ValuePlaceForBorrow(operation) is >= 0 and var loaded &&
+                (this.Places[loaded].Type.Semantics == SemanticsKind.Uniq ||
+                    (node.Kind == OwnershipValueKind.PointerLoad && ValuePlaceForBorrow(this.Operations[this.ValueOperands[node.Start]]) is >= 0 and var pointer &&
+                        this.Places[pointer].Type is { Kind: BoundTypeKind.Semantics, Components: [{ Semantics: SemanticsKind.Uniq }] })))
+            {
+                // A shared read can adapt a stored uniq reference to ref; the stored capability still proves independence.
+                value = this.ValueOperands[node.Start];
+                continue;
+            }
+
+            var source = operation.Kind switch
+            {
+                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry => operation.Place,
+                OwnershipOperationKind.Write => operation.Input,
+                _ => -1,
+            };
+            if (source < 0 || !this.HasSingleBorrowDefinition(source) || this.borrowDefinitions[source] >= value)
+            {
+                return -1;
+            }
+
+            value = this.borrowDefinitions[source];
+        }
+
+        return -1;
+    }
 
     // SPEC 15.6.2: distinct inline field/Tuple selectors under the same root
     // designate disjoint places. Unknown steps, nonliteral subscripts and different
