@@ -257,7 +257,7 @@ All allocations use the 16-byte-aligned allocator of §22.5.2. These are interna
 
 The complete payload begins at `header + 16` in every mode. `16 + payload size` is checked against 2^63 − 1 and allocation limits, and allocation failure Aborts. Payload alignment above 16 is unsupported and diagnosed before generation. There is no over-allocation, private prefix or mode-dependent payload offset. The handle's static Semantics, not the descriptor, selects the counting behavior.
 
-Every count is a `u64` with `MaxRefCount = 2^63 - 1`, including the internal weak guard. An increment at the maximum Aborts before updating; counts never wrap, and no migration happens merely to extend the maximum. An even counted-header control stores `strong << 1`; an odd control stores `sideTablePointer | 1`, and clearing only the low bit recovers the aligned address-space-0 pointer, preserving all high bits. The control of a normal unpublished object starts at zero and becomes 2 (strong = 1) when publication follows construction. A final zero is never reused.
+Every count is a `u64` with `MaxRefCount = 2^63 - 1`, including the internal weak guard. An increment at the maximum Aborts with KIMI_E_REF_COUNT (SPEC §22.5.4) before updating; counts never wrap, and no migration happens merely to extend the maximum. An even counted-header control stores `strong << 1`; an odd control stores `sideTablePointer | 1`, and clearing only the low bit recovers the aligned address-space-0 pointer, preserving all high bits. The control of a normal unpublished object starts at zero and becomes 2 (strong = 1) when publication follows construction. A final zero is never reused.
 
 The side-table strong count is 1..MaxRefCount while Alive, and zero both while Building and after final release. **There is no Building sentinel.** Only a factory holding unpublished construction authority may change zero to one, exactly once; observing zero grants no such authority. Cyclic construction starts with strong = 0 and weak = 2: one guard plus the builder's Weak. The complete lifecycle is not inferred solely from count bits.
 
@@ -286,19 +286,27 @@ all earlier weak releases -> final weak release -> free side table
 
 The strong-release guarantee must survive inline-to-table migration. These obligations cover runtime initialization, counting, cleanup calls and frees; they define no source-level concurrent payload access, thread transfer or language memory model (Appendix D.2).
 
-**Non-normative implementation candidate:**
+**Windows profile transitions.** The profile implements these transitions; `rc` performs the same transitions without atomics. Orderings use LLVM names (Relaxed is `monotonic`).
 
-| Operation | Candidate ordering |
-| --- | --- |
-| Resolve the published table from the control | Acquire |
-| Publish migration CAS | AcqRel on success, carrying earlier releases |
-| Strong/weak retain CAS | Relaxed |
-| Successful upgrade CAS | Acquire; failure Relaxed |
-| Strong/weak decrement | Release, with an Acquire fence before final destruction or free |
-| Unpublished initialization | Ordinary stores |
-| Publish cyclic strong 0 -> 1 | Release |
+| Transition | Update and success condition | `arc` ordering |
+| --- | --- | --- |
+| Creation | Unpublished header (descriptor, control 2) and payload | Ordinary stores |
+| Inline retain | Even control below the maximum: +2. Odd control: table strong retain | CAS, monotonic on success and failure |
+| Inline release | Even control: −2. Odd control: table strong release. Only a successful 2 → 0 is final | CAS, release on success and monotonic on failure; when final, an acquire fence precedes destruction and free |
+| Table resolution | The table address from an odd control | Acquire |
+| Migration (first downgrade) | Control to `table \| 1`; only success transfers count authority. On failure, an even control retries with its latest count; a table found instead frees the candidate and is used | AcqRel on success, carrying earlier releases; a found table follows table resolution |
+| Table strong retain | Strong below the maximum: +1 | CAS, monotonic |
+| `upgrade` | Strong 0: `None`; maximum: Abort; otherwise +1, and only then `table.object` is read | CAS, acquire on success and monotonic on failure |
+| Table strong release | −1; an old value of 1 is final: destruction, free, then the weak-guard release | `fetch_sub` release; when final, an acquire fence |
+| Weak retain | Weak below the maximum: +1 (`downgrade`, Weak `clone`) | CAS, monotonic |
+| Weak release | −1; an old value of 1 is final: the table free | `fetch_sub` release; when final, an acquire fence |
+| Cyclic publication | Strong 0 → 1, only by the factory holding construction authority | Release |
 
-On CAS failure, the latest representation is rechecked; a failure that discovers a table pointer still needs an Acquire observation before accessing the table. Inline decrements use a control CAS, and table decrements may use `fetch_sub`. LLVM spells Relaxed as `monotonic`, and compare-exchange orderings must satisfy its verifier constraints, including no release or acq_rel failure ordering. Alternative implementations must prove the normative arrows. Weak-memory behavior, not just possible interleavings, is validated, and generated IR and native count protocols are verified separately. Allocation and destructors have no lock-free guarantee.
+A CAS retry reuses the observed value and rechecks the representation. The header control is never updated by `atomicrmw`, because a migration may replace it with a table pointer. Compare-exchange orderings satisfy the LLVM verifier, which forbids release and acq_rel failure orderings.
+
+**Validation.** Each transition has (1) a written proof that it establishes the normative arrows above and the invariants of §21.2.3.2: one authoritative count location, destruction and free only after a successful update to zero, no header access after the free, Abort before updating at the maximum, a migration that changes no count and is never reversed, and no dereference of an expired table's object pointer; and (2) generated-IR checks of its ordering, update target, success branch and the absence of header accesses after the free. Native single-threaded tests verify the count protocols separately. Model checking and hardware stress tests are not required. Alternative implementations must prove the normative arrows.
+
+**Object publication.** Creation publishes a completed object by returning its handle to the creating thread; a normal return creates no cross-thread synchronization. A mechanism that transfers a handle to another thread belongs to Appendix D.2 and must itself supply the synchronization from publication to payload use. Allocation and destructors have no lock-free guarantee.
 
 ### 21.2.4. Value-borrow storage
 

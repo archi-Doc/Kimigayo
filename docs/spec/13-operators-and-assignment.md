@@ -629,14 +629,14 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
-These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` satisfies [ObjectPayload](08-generics-constraints-and-contracts.md#8472-objectpayload): every creation API declares `T is ObjectPayload`, and the cyclic factories additionally `T is Owned`. `S` is a valid complete `rc`/`arc` handle Type. Eligibility is an intrinsic formation rule, not a user Contract, and does not extend the current object and runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
+These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` satisfies [ObjectPayload](08-generics-constraints-and-contracts.md#8472-objectpayload): every creation API declares `T is ObjectPayload`, and the cyclic factories additionally `T is Owned`. ObjectPayload is an intrinsic requirement, not a user Contract, and does not extend the current object and runtime-Contract boundary. The operations on an existing strong handle take one pair `<s/T>` with the Semantics requirement `s is rc or arc`; `S` denotes the complete `s/T`, with the eligibility of §3.2.2. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
 | `Kimi.Intrinsics.makeObj<T>(value)` | `T -> obj/T` | Store a complete value in a new exclusive object |
 | `Kimi.Intrinsics.makeRc<T>(value)` | `T -> rc/T` | Create non-atomic strong ownership, initially one |
 | `Kimi.Intrinsics.makeArc<T>(value)` | `T -> arc/T` | The same, with atomic counting |
-| `Kimi.Intrinsics.clone<S>(value)` | `ref/S -> S` | Retain one more strong reference to the same object, view and mode |
+| `Kimi.Intrinsics.clone<s/T>(value)` | `ref/(s/T) -> s/T` | Retain one more strong reference to the same object, view and mode |
 | `Kimi.Intrinsics.makeRcCyclic<T, F>(build)` | `F -> rc/T` | Cyclic construction, below |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>(build)` | `F -> arc/T` | The corresponding `arc` construction |
 
@@ -663,9 +663,11 @@ A required allocation failure, or an increment at the count maximum, Aborts befo
 
 | API | Input -> result | Contract |
 | --- | --- | --- |
-| `Kimi.Intrinsics.downgrade<S>(value)` | `ref/S -> Weak<S>` | Retain a weak responsibility for the same target; the strong count is unchanged |
-| `Kimi.Intrinsics.upgrade<S>(value)` | `ref/Weak<S> -> Option<S>` | Retain a live strong and return `Some`; otherwise `None` |
-| `Kimi.Intrinsics.clone<S>(value)` | `ref/Weak<S> -> Weak<S>` | Retain another responsibility for the same weak table |
+| `Kimi.Intrinsics.downgrade<s/T>(value)` | `ref/(s/T) -> Weak<s/T>` | Retain a weak responsibility for the same target; the strong count is unchanged |
+| `Kimi.Intrinsics.upgrade<s/T>(value)` | `ref/Weak<s/T> -> Option<s/T>` | Retain a live strong and return `Some`; otherwise `None` |
+| `Kimi.Intrinsics.clone<s/T>(value)` | `ref/Weak<s/T> -> Weak<s/T>` | Retain another responsibility for the same weak table |
+
+Each operation requires `s is rc or arc`. The strong and Weak `clone` never both apply: a `ref/Weak<…>` argument binds `s = owner` for the strong form, whose requirement is then Refuted.
 
 Inputs remain Initialized. `downgrade` accepts only a completed strong `rc`/`arc` handle, not `obj`, object borrows or raw pointers, and its first side table may require allocation; `upgrade` and `clone` do not allocate. Results keep the same object, view and mode. `upgrade` secures a live strong before reading the table's object pointer, and its race with a final `arc` release determines success (§21.2.3). `None` during Building may precede later publication, whereas failure after the final release is permanent. A maximum-count failure Aborts rather than returning `None`.
 

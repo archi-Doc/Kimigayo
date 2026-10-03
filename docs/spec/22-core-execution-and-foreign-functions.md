@@ -20,7 +20,7 @@ The table is the minimal set that language rules name, not a promise of a genera
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Kimi.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Kimi.Copy, E is Kimi.Copy} |
-| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
+| `Weak<s/T>` | Compiler-managed Non-Copy struct requiring `s is rc or arc`; always holds a target table, with no empty constructor. Kimi.Intrinsics.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
 | `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; `UniqIndexable<isize>` (§4.6.9), §4.7 mutation/capacity APIs, the read operations of §4.6.6, literals, and the `Iterable`/`UniqIterable`/`IntoIterable` conformances with the items of §14.6.2 |
 | `Position: Equatable, Utf8Format` | Closed Contract (§8.4.7) with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<isize>`; conforming Types exactly the twelve integer Types, `FromEnd<T>`, `Start` and `End`. The integer conformance is built in and bound to a Kimi internal function; integers gain no members (§4.6.2) |
 | `PositionRange: Equatable, Utf8Format` | Closed Contract with `Self is Copy`, `Self is Owned` and `func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>`; conforming Types exactly `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` (§4.6.4) |
@@ -76,9 +76,9 @@ The following reference collects the public function names. Types are abbreviate
 | `Kimi.Intrinsics.makeObj<T>` | `(value: T) -> obj/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeRc<T>` | `(value: T) -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArc<T>` | `(value: T) -> arc/T` | §13.5.8 |
-| `Kimi.Intrinsics.clone<S>` | Strong: `ref/S -> S`; Weak: `ref/Weak<S> -> Weak<S>` | §13.5.8–9 |
-| `Kimi.Intrinsics.downgrade<S>` | `ref/S -> Weak<S>` | §13.5.9 |
-| `Kimi.Intrinsics.upgrade<S>` | `ref/Weak<S> -> Option<S>` | §13.5.9 |
+| `Kimi.Intrinsics.clone<s/T>` | Strong: `ref/(s/T) -> s/T`; Weak: `ref/Weak<s/T> -> Weak<s/T>`; both require `s is rc or arc` | §13.5.8–9 |
+| `Kimi.Intrinsics.downgrade<s/T>` | `ref/(s/T) -> Weak<s/T>` | §13.5.9 |
+| `Kimi.Intrinsics.upgrade<s/T>` | `ref/Weak<s/T> -> Option<s/T>` | §13.5.9 |
 | `Kimi.Intrinsics.makeRcCyclic<T, F>` | `F -> rc/T` | §13.5.8 |
 | `Kimi.Intrinsics.makeArcCyclic<T, F>` | `F -> arc/T` | §13.5.8 |
 | `Kimi.Iteration.owning<I>` | `I -> OwningIterator<I>` | §22.1.2.3 |
@@ -503,12 +503,13 @@ Fixed diagnostics use an ASCII identifier, an English reason and the source loca
 Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
 ```
 
-Catalog codes are unique. They include KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), KIMI_E_INT_SHIFT_COUNT (Shift count out of range), KIMI_E_INT_CONVERSION (Integer conversion out of range) and KIMI_E_INDEX_BOUNDS (Index out of bounds). The codes are used as follows:
+Catalog codes are unique. They include KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), KIMI_E_INT_SHIFT_COUNT (Shift count out of range), KIMI_E_INT_CONVERSION (Integer conversion out of range), KIMI_E_INDEX_BOUNDS (Index out of bounds) and KIMI_E_REF_COUNT (Reference count limit exceeded). The codes are used as follows:
 
 - Integer division or remainder by zero uses KIMI_E_INT_DIV_ZERO; the signed minimum divided by -1 uses KIMI_E_INT_OVERFLOW, while its remainder is 0 and does not Abort (§13.3). Wrapping integer Types raise neither code for an unrepresentable result.
 - A shift count outside `0 <= count < left operand bit width` uses KIMI_E_INT_SHIFT_COUNT. Discarded left-shift bits do not trigger overflow.
 - A runtime integer conversion outside the target range uses KIMI_E_INT_CONVERSION, as does a float-to-integer failure, including NaN and infinities. A conversion of a finite source that rounds to floating infinity uses `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range`. These codes identify the failures required by §13.5.4; direct literal fitting failures remain compile-time errors.
 - Ordinary element indexing outside the receiver bounds uses KIMI_E_INDEX_BOUNDS, including constant indices and zero-length arrays. Dictionary indexing with an absent key uses `KIMI_E_MISSING_KEY: Dictionary key was not found`; an absent result from a try-prefixed operation is not an Abort.
+- An increment of a strong or weak count at its maximum (§13.5.8, §13.5.9) uses KIMI_E_REF_COUNT before updating. It reports the start of the call expression of the explicit operation, `clone`, `downgrade` or `upgrade`; no count is incremented implicitly.
 - Formatting defines `KIMI_E_ARG_RANGE: Argument out of range` and `KIMI_E_FORMAT: Formatting failed`; their triggers are in the [formatting profile](utf8-formatting.md).
 
 Unavailable OS codes are omitted, and FormatMessageW is not used. Displayed logical paths escape non-ASCII and control characters as `\u{HEX}` and backslash as `\\`; the actual path and provenance are preserved internally.

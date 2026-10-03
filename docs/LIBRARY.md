@@ -426,7 +426,7 @@ Targets must contain complete values; these operations do not repair uninitializ
 | `makeObj<T>(value: T) -> obj/T` | `T is ObjectPayload` | Creates a uniquely owned object. |
 | `makeRc<T>(value: T) -> rc/T` | `T is ObjectPayload` | Creates an object with strong count one and non-atomic reference counting. |
 | `makeArc<T>(value: T) -> arc/T` | `T is ObjectPayload` | Creates an object with strong count one and atomic reference counting. |
-| `clone<S>(value: ref/S) -> S` | S is a valid complete rc/arc handle Type. | Duplicates the strong handle without allocation, retaining the same object and view. |
+| `clone<s/T>(value: ref/(s/T)) -> s/T` | `s is rc or arc` | Duplicates the strong handle without allocation, retaining the same object and view. |
 
 Ordinary creation does not require Owned; payload dependencies survive in the object handle. Strong clone is not a deep copy or an obj duplicator. The argument borrows the handle slot, as in `Intrinsics.clone(handle@ref)`. Atomic counting alone grants no payload thread-safety guarantee.
 
@@ -434,19 +434,19 @@ Ordinary creation does not require Owned; payload dependencies survive in the ob
 
 [Specification: Weak values](spec/03-types-and-values.md#322-weak-reference-values) and [Weak operations](spec/13-operators-and-assignment.md#1359-weak-reference-operations).
 
-`struct Weak<S>` is a Non-Copy root Type, where S is a valid complete rc/arc handle Type. It always refers to a target table, has no empty initializer and does not expose the payload directly. Use `Option<Weak<S>>` for absence. Expiration does not erase its Type's dependencies.
+`struct Weak<s/T>` is a Non-Copy root Type requiring `s is rc or arc`. It always refers to a target table, has no empty initializer and does not expose the payload directly. Use `Option<Weak<s/T>>` for absence. Expiration does not erase its Type's dependencies.
 
 The following functions belong to `Intrinsics`:
 
 | Function | Guarantee |
 | --- | --- |
-| `downgrade<S>(value: ref/S) -> Weak<S>` | Creates a weak handle without retaining the payload strongly; creating the weak table may allocate. |
-| `upgrade<S>(value: ref/Weak<S>) -> Option<S>` | Retains and returns the strong handle if the target is alive; otherwise None. |
-| `clone<S>(value: ref/Weak<S>) -> Weak<S>` | Duplicates the weak handle. |
+| `downgrade<s/T>(value: ref/(s/T)) -> Weak<s/T>` | Creates a weak handle without retaining the payload strongly; creating the weak table may allocate. |
+| `upgrade<s/T>(value: ref/Weak<s/T>) -> Option<s/T>` | Retains and returns the strong handle if the target is alive; otherwise None. |
+| `clone<s/T>(value: ref/Weak<s/T>) -> Weak<s/T>` | Duplicates the weak handle. |
 | `makeRcCyclic<T, F>(build: F) -> rc/T` | Requires `T is ObjectPayload`, `T is Owned` and `F is Callable<owner, (Weak<rc/T>) -> T>`. |
 | `makeArcCyclic<T, F>(build: F) -> arc/T` | Requires `T is ObjectPayload`, `T is Owned` and `F is Callable<owner, (Weak<arc/T>) -> T>`. |
 
-Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure and reference-count overflow Abort.
+Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure Aborts, and a count increment at its maximum Aborts with `KIMI_E_REF_COUNT`.
 
 ### 5.4. Raw Storage
 
