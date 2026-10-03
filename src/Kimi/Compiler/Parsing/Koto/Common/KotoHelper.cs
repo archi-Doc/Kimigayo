@@ -119,7 +119,7 @@ public static partial class KotoHelper
     /// <returns>The validated namespace name.</returns>
     public static ReadOnlySpan<char> ValidateAndGetNamespace(ref TokenReader reader)
     {
-        if (reader.IsEnd)
+        if (!reader.CanRead)
         {
             return default;
         }
@@ -199,7 +199,7 @@ public static partial class KotoHelper
     public static List<string> ParseQualifiedNameSegments(ref TokenReader reader)
     {
         var list = new List<string>(4);
-        if (reader.IsEnd)
+        if (!reader.CanRead)
         {
             return list;
         }

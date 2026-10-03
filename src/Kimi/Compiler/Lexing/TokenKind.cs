@@ -4,6 +4,8 @@ namespace Kimi.Compiler.Lexing;
 
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>
+/// The ranges follow the keyword classes of SPEC 2.5.1: every kind below <see cref="Alias"/> is a reserved word, which is never a
+/// Name; the kinds from <see cref="Alias"/> through <see cref="Identifier"/> can be Names (<see cref="TokenHelper.IsIdentifierOrContextualKeyword"/>).<br/>
 /// When adding a new TokenKind, remember to do the following:<br/>
 /// Add the spelling to TokenHelper (the text table and, for keywords, GetKeywordOrIdentifierKind).<br/>
 /// Add the necessary handling to Tokenizer.<br/>
@@ -13,7 +15,7 @@ public enum TokenKind : byte
 {
     Invalid,
 
-    // Keywords (Primitive types)
+    // Reserved words: primitive types
     Bool,
     Isize,
     Usize,
@@ -32,14 +34,21 @@ public enum TokenKind : byte
     Char,
     String,
 
-    // Keywords
+    // Reserved words
     True = 32,
     False,
     Let,
     Var,
     Func,
 
-    // Expression keyword
+    // Access and inheritance (reserved)
+    Public,
+    Protected,
+    Private,
+    Internal,
+    Open,
+
+    // Reserved words of expressions and statements
     If, // if
     Else, // else
     Case, // case
@@ -68,7 +77,7 @@ public enum TokenKind : byte
     Do,
     Switch, // compile-time #switch only
 
-    // Contextual keyword
+    // Contextual keywords: Names outside their contexts
     Alias = 96,
     RootGroup,
     Group,
@@ -77,11 +86,6 @@ public enum TokenKind : byte
     Extension,
     Contract,
     Static,
-    Public,
-    Protected,
-    Private,
-    Internal,
-    Open,
     In, // in; contextual delimiter in a for expression
     Associate,
     Get,

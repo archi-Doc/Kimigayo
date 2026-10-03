@@ -197,7 +197,7 @@ internal ref struct Tokenizer
         this.currentIndentLevel = 0;
         do
         {
-            this.Read();
+            this.ReadLogicalLine();
         }
         while (this.position < this.sourceText.Length);
     }
@@ -283,7 +283,12 @@ internal ref struct Tokenizer
         return count;
     }
 
-    private int Read()
+    /// <summary>
+    /// Reads one logical line: its tokens, the physical lines that continue it inside delimiters, and the layout tokens that the
+    /// indentation of the next effective line produces (SPEC 2.2.1). The indentation stack lives for one logical line only; the
+    /// body levels it leaves open become <see cref="currentIndentLevel"/>.
+    /// </summary>
+    private void ReadLogicalLine()
     {
         this.tokenAdded = 0;
         this.indentCount = 0;
@@ -327,7 +332,7 @@ Loop:
                     continue;
                 }
                 else if (leadClass == 2)
-                {
+                {// A character that is always a complete token by itself.
                     TokenHelper.TryGetSingleCharTokenKind(c, out var singleKind, out var singleDepth);
                     if (singleDepth > 0)
                     {
@@ -663,24 +668,8 @@ Loop:
                     }
 
                 default:
-                    if (TokenHelper.TryGetSingleCharTokenKind(c, out var tokenKind, out var groupingDepth))
-                    {// Single char token
-                        if (groupingDepth > 0)
-                        {
-                            this.PushIndentSource(tokenKind);
-                        }
-                        else if (groupingDepth < 0)
-                        {
-                            this.PopIndentSource(tokenKind);
-                        }
-
-                        this.AddTokenAndSlice(tokenKind, 1);
-                    }
-                    else
-                    {// Number literal, keyword, or identifier
-                        this.ReadLiteralKeywordOrIdentifier();
-                    }
-
+                    // A non-ASCII Name, or a character that starts no token, which the identifier path reports.
+                    this.ReadLiteralKeywordOrIdentifier();
                     continue;
             }
         }
@@ -753,11 +742,6 @@ LineContent:
         {
             this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
             indentLevel = 0;
-        }
-
-        if (this.currentIndentLevel < 0)
-        {
-            this.currentIndentLevel = indentLevel;
         }
 
         // A "->" continuation ends before the next line at or above its own level; that line
@@ -931,7 +915,7 @@ LineContent:
             if (this.span.IsEmpty)
             {
                 // An outer-aligned closer can consume the last character above.
-                // ReadAll will not call Read again to close the enclosing bodies.
+                // ReadAll will not call ReadLogicalLine again to close the enclosing bodies.
                 goto EndOfFile;
             }
 
@@ -940,7 +924,7 @@ LineContent:
                 this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             }
 
-            return this.tokenAdded;
+            return;
         }
 
 EndOfFile:
@@ -953,8 +937,6 @@ EndOfFile:
 
         Debug.Assert(this.blockDepth == 0);
         Debug.Assert(this.nonBlockDepth == 0);
-
-        return this.tokenAdded;
     }
 
     private bool IsGenericOpen()

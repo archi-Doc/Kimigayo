@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
-using Arc.Collections;
 
 namespace Kimi.Compiler.Lexing;
 
@@ -26,14 +25,10 @@ public static partial class TokenHelper
     // For each keyword length, the set of lowercase first characters (bit 0 = 'a') that begin a keyword.
     private static readonly uint[] KeywordFirstCharMasks = new uint[MaxKeywordLength + 1];
 
-    // Single-character token classification, indexed by ASCII code.
+    // The characters that are always a complete token by themselves, indexed by ASCII code. The tokenizer's lead-character
+    // table (Tokenizer.LeadClass) sends exactly these characters here; every other punctuation has a longer spelling.
     private static readonly TokenKind[] SingleCharTokenKinds = new TokenKind[128];
     private static readonly sbyte[] SingleCharGroupingDepths = new sbyte[128];
-
-    /// <summary>
-    /// Maps UTF-16 keyword spellings to their corresponding keyword token kinds.
-    /// </summary>
-    public static readonly Utf16Hashtable<TokenKind> KeywordToTokenKind;
 
     // Characters that terminate an identifier/keyword scan, as a 128-bit ASCII bitmap.
     private static readonly ulong SeparatorBitsLow;
@@ -75,7 +70,7 @@ public static partial class TokenHelper
         Set(TokenKind.Char, Constants.CharKeyword);
         Set(TokenKind.String, Constants.StringKeyword);
 
-        // Keywords
+        // Reserved words
         Set(TokenKind.True, Constants.TrueKeyword);
         Set(TokenKind.False, Constants.FalseKeyword);
         Set(TokenKind.Let, Constants.LetKeyword);
@@ -83,8 +78,13 @@ public static partial class TokenHelper
         Set(TokenKind.Func, Constants.FuncKeyword);
         Set(TokenKind.Try, "try");
         Set(TokenKind.Underscore, "_");
+        Set(TokenKind.Public, Constants.PublicKeyword);
+        Set(TokenKind.Protected, Constants.ProtectedKeyword);
+        Set(TokenKind.Private, Constants.PrivateKeyword);
+        Set(TokenKind.Internal, Constants.InternalKeyword);
+        Set(TokenKind.Open, Constants.OpenKeyword);
 
-        // Expression keyword
+        // Reserved words of expressions and statements
         Set(TokenKind.If, Constants.IfKeyword);
         Set(TokenKind.Else, Constants.ElseKeyword);
         Set(TokenKind.Case, Constants.CaseKeyword);
@@ -113,7 +113,7 @@ public static partial class TokenHelper
         Set(TokenKind.Base, "base");
         Set(TokenKind.ColonColon, "::");
 
-        // Contextual keyword
+        // Contextual keywords
         Set(TokenKind.Alias, Constants.AliasKeyword);
         Set(TokenKind.RootGroup, Constants.RootgroupKeyword);
         Set(TokenKind.Group, Constants.GroupKeyword);
@@ -122,11 +122,6 @@ public static partial class TokenHelper
         Set(TokenKind.Extension, Constants.ExtensionKeyword);
         Set(TokenKind.Contract, Constants.ContractKeyword);
         Set(TokenKind.Static, Constants.StaticKeyword);
-        Set(TokenKind.Public, Constants.PublicKeyword);
-        Set(TokenKind.Protected, Constants.ProtectedKeyword);
-        Set(TokenKind.Private, Constants.PrivateKeyword);
-        Set(TokenKind.Internal, Constants.InternalKeyword);
-        Set(TokenKind.Open, Constants.OpenKeyword);
         Set(TokenKind.Associate, Constants.AssociateKeyword);
         Set(TokenKind.Get, Constants.GetKeyword);
         Set(TokenKind.Set, Constants.SetKeyword);
@@ -189,9 +184,6 @@ public static partial class TokenHelper
 
         SetSingleChar(Constants.SharpChar, TokenKind.Sharp, 0);
         SetSingleChar(Constants.DollarChar, TokenKind.Dollar, 0);
-        SetSingleChar(Constants.AmpersandChar, TokenKind.Ampersand, 0);
-        SetSingleChar(Constants.AsteriskChar, TokenKind.Asterisk, 0);
-        SetSingleChar(Constants.DotChar, TokenKind.Dot, 0);
         SetSingleChar(Constants.CommaChar, TokenKind.Comma, 0);
         SetSingleChar(Constants.OpenBracketChar, TokenKind.OpenBracket, +1);
         SetSingleChar(Constants.CloseBracketChar, TokenKind.CloseBracket, -1);
@@ -199,30 +191,14 @@ public static partial class TokenHelper
         SetSingleChar(Constants.CloseParenthesisChar, TokenKind.CloseParenthesis, -1);
         SetSingleChar(Constants.OpenBraceChar, TokenKind.OpenBrace, +1);
         SetSingleChar(Constants.CloseBraceChar, TokenKind.CloseBrace, -1);
-        SetSingleChar(Constants.ColonChar, TokenKind.Colon, 0);
-        SetSingleChar(Constants.BarChar, TokenKind.Bar, 0);
-        SetSingleChar(Constants.CaretChar, TokenKind.Caret, 0);
-        SetSingleChar(Constants.EqualsChar, TokenKind.Equals, 0);
-        SetSingleChar(Constants.ExclamationChar, TokenKind.Exclamation, 0);
-        SetSingleChar(Constants.GreaterThanChar, TokenKind.GreaterThan, 0);
-        SetSingleChar(Constants.LessThanChar, TokenKind.LessThan, 0);
-        SetSingleChar(Constants.MinusChar, TokenKind.Minus, 0);
-        SetSingleChar(Constants.PercentChar, TokenKind.Percent, 0);
-        SetSingleChar(Constants.PlusChar, TokenKind.Plus, 0);
-        SetSingleChar(Constants.SlashChar, TokenKind.Slash, 0);
         SetSingleChar(Constants.QuestionChar, TokenKind.Question, 0);
 
-        KeywordToTokenKind = new();
         for (var i = (int)TokenKind.Bool; i < (int)TokenKind.Identifier; i++)
         {
             var text = TokenTexts[i];
-            if (text.Length > 0)
+            if (text.Length is > 0 and <= MaxKeywordLength && text[0] is >= 'a' and <= 'z')
             {
-                KeywordToTokenKind.TryAdd(text, (TokenKind)i);
-                if (text.Length <= MaxKeywordLength && text[0] is >= 'a' and <= 'z')
-                {
-                    KeywordFirstCharMasks[text.Length] |= 1u << (text[0] - 'a');
-                }
+                KeywordFirstCharMasks[text.Length] |= 1u << (text[0] - 'a');
             }
         }
 
@@ -280,15 +256,6 @@ public static partial class TokenHelper
     }
 
     /// <summary>
-    /// Determines whether a token starts an indentation block.
-    /// </summary>
-    /// <remarks>The check relies on the block token kinds forming a contiguous range.</remarks>
-    /// <param name="tokenKind">The token kind to inspect.</param>
-    /// <returns><see langword="true"/> if <paramref name="tokenKind"/> is a block-starting token; otherwise, <see langword="false"/>.</returns>
-    public static bool IsBlockToken(this TokenKind tokenKind)
-        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
-
-    /// <summary>
     /// Determines whether a token represents a primitive type keyword.
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
@@ -298,23 +265,22 @@ public static partial class TokenHelper
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
     /// <summary>
-    /// Determines whether a token represents a reserved keyword.
+    /// Determines whether a token is a reserved word, which is never a Name (SPEC 2.5.1).
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> for a reserved keyword.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsKeyword(this TokenKind tokenKind)
-        => tokenKind < TokenKind.Alias;
+        => tokenKind is > TokenKind.Invalid and < TokenKind.Alias;
 
     /// <summary>
-    /// Determines whether a token can be used as an identifier.
+    /// Determines whether a token can be used as a Name: an identifier, or a contextual keyword outside its context (SPEC 2.5.1).
     /// </summary>
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> for an identifier or contextual keyword.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
-        => tokenKind >= TokenKind.Alias && tokenKind <= TokenKind.Identifier &&
-            tokenKind is not (TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open);
+        => tokenKind is >= TokenKind.Alias and <= TokenKind.Identifier;
 
     /// <summary>
     /// Classifies identifier-like text as a keyword.
@@ -453,7 +419,7 @@ public static partial class TokenHelper
         => text.SequenceEqual(keyword1) ? kind1 : text.SequenceEqual(keyword2) ? kind2 : text.SequenceEqual(keyword3) ? kind3 : TokenKind.Identifier;
 
     /// <summary>
-    /// Tries to classify a single-character token and reports its grouping-depth effect.
+    /// Tries to classify a character that is always a complete token by itself, and reports its grouping-depth effect.
     /// </summary>
     /// <param name="c">The character to classify.</param>
     /// <param name="tokenKind">When this method returns, contains the token kind for <paramref name="c"/>, or <see cref="TokenKind.Invalid"/>.</param>

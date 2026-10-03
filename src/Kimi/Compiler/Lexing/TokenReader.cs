@@ -91,11 +91,6 @@ public ref partial struct TokenReader
     public readonly bool CanRead => this.Position < this.tokens.Length;
 
     /// <summary>
-    /// Gets a value indicating whether all tokens have been consumed.
-    /// </summary>
-    public readonly bool IsEnd => this.Position >= this.tokens.Length;
-
-    /// <summary>
     /// Gets the current token. At the end of the sequence this is an invalid token positioned at the end of the source.
     /// </summary>
     public readonly Token CurrentToken => this.currentToken;
@@ -109,11 +104,6 @@ public ref partial struct TokenReader
     /// Gets the source range of the current token, or an empty range at the end of the source.
     /// </summary>
     public readonly SourceSpan CurrentTokenRange => this.currentToken.Span;
-
-    /// <summary>
-    /// Gets the source length of the current token.
-    /// </summary>
-    public readonly int CurrentTokenLength => this.currentToken.Length;
 
     // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
     private ParseRegion region;
@@ -738,8 +728,17 @@ public ref partial struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
+    /// <summary>Gets the token at the specified offset from the current token without advancing; offset zero is the current token,
+    /// which differs from the token at <see cref="Position"/> after <see cref="TryConsumeTypeClose"/> split it.</summary>
+    /// <param name="offset">The number of tokens to look ahead.</param>
+    /// <returns>The token, or the end token beyond the end of the sequence.</returns>
     internal readonly Token PeekToken(int offset)
     {
+        if (offset == 0)
+        {
+            return this.currentToken;
+        }
+
         var index = this.Position + offset;
         return (uint)index < (uint)this.tokens.Length ? this.tokens[index] : this.endToken;
     }
