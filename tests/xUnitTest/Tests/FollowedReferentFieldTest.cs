@@ -19,14 +19,19 @@ public class FollowedReferentFieldTest
     [InlineData("SharedReads", "func f(p: ref/S) -> i32\n    let view = p@follow.x@ref\n    let y = p@follow.x\n    return view + y\nvar s = S.init(4)\nrequire f(s@ref) == 8 else => $abort(\"read\")")]
     [InlineData("Uses", "func bump(v: uniq/i32) => v@follow += 1\nfunc same(a: ref/S, b: ref/S) -> bool => a@follow.x == b@follow.x\nfunc g(p: uniq/S) -> i32\n    bump(p@follow.x@uniq)\n    let t = p@follow.inner\n    let c = p@follow.inner.0 < p@follow.x\n    p@follow.inner = (1, 2)\n    return t.0 + p@follow.x\nvar s = S.init(4)\nvar s2 = S.init(5)\nrequire g(s@uniq) == 10 and same(s@ref, s2@ref) and s.inner.1 == 2 else => $abort(\"uses\")")]
     [InlineData("Match", "func h(p: uniq/S) -> i32\n    match p@follow.inner\n        (let a, let b) => return a + b\nvar s = S.init(4)\nrequire h(s@uniq) == 11 else => $abort(\"match\")")]
+    [InlineData("DisjointParts", "func f(p: uniq/S) -> i32\n    let view = p@follow.inner.1@ref\n    p@follow.inner.0 += 1\n    return view\nfunc g(p: uniq/S) -> i32\n    let r = p@follow.inner@ref\n    let u = p@follow.x@uniq\n    u@follow = 1\n    return r.0\nvar s = S.init(4)\nrequire f(s@uniq) == 6 and s.inner.0 == 6 else => $abort(\"f\")\nrequire g(s@uniq) == 6 and s.x == 1 else => $abort(\"g\")")]
     [InlineData("Tuple", "func read(p: ref/(i32, i32)) -> i32 => p@follow.1\nlet t = (1, 2)\nrequire read(t@ref) == 2 else => $abort(\"tuple\")")]
     public void AFollowedReferentFieldIsReachedThroughItsReference(string name, string body)
         => ScalarEmissionTest.EmitFixture("FollowedReferentField" + name, S + body, string.Empty);
 
     [Theory]
-    [InlineData("    let view = p@follow.x@ref\n    p@follow.x = 3\n    return view", "p")]
+    [InlineData("    let view = p@follow.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
     [InlineData("    let view = p@follow.x@ref\n    p.x = 3\n    return view", "p.x")]
-    [InlineData("    let view = p.x@ref\n    p@follow.x = 3\n    return view", "p")]
+    [InlineData("    let view = p.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
+    [InlineData("    let view = p@follow.inner.0@ref\n    p@follow.inner.0 += 1\n    return view", "p@follow.inner.0 += 1")]
+    [InlineData("    let view = p@follow.inner@ref\n    p@follow.inner.0 += 1\n    return view.0", "p@follow.inner.0 += 1")]
+    [InlineData("    let u = p@follow.x@uniq\n    let r = p@follow.x@ref\n    u@follow = 1\n    return r", "p")]
+    [InlineData("    let u = p@follow.x@uniq\n    let v = p.x\n    u@follow = 1\n    return v", "p.x")]
     public void AWriteWhileAFollowedFieldIsBorrowedConflicts(string body, string conflict)
     {
         var c = MinimalEmissionTest.Analyze(S + "func f(p: uniq/S) -> i32\n" + body + "\npublic func main() => ()");

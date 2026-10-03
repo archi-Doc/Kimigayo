@@ -257,9 +257,10 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!);
         }
 
-        // SPEC 13.5.5.1, 15.6.2: the reference of an explicitly selected referent (`p@follow.x`) lends its referent as the
-        // adapted receiver of `p.x` does, shared for a read and exclusive for a write, so the access holds a Loan.
-        if (ElementAccess.IsFollowedRoot(root) && this.Concrete(root.BoundType) is { Components.Count: 1 } reference)
+        // SPEC 13.5.5.1, 15.6.2: for a shared access the reference of an explicitly selected referent (`p@follow.x`) lends its
+        // referent as the adapted receiver of `p.x` does; an exclusive access uses the reference itself, so a write is judged
+        // by its own path and disjoint parts stay separate.
+        if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Concrete(root.BoundType) is { Components.Count: 1 } reference)
         {
             return this.BorrowStruct(root, this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
         }

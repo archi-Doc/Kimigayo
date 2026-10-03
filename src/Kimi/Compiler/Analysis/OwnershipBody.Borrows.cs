@@ -970,9 +970,9 @@ public sealed partial class OwnershipBody
 
             selectors[depth++] = selector;
             var receiver = KotoHelper.UnwrapParentheses(level.Left);
-            if (ReferenceEquals(receiver, KotoHelper.UnwrapParentheses(root)))
+            if (ReferenceEquals(receiver, KotoHelper.UnwrapParentheses(root)) || ReferenceEquals(ElementAccess.FollowedReference(receiver), root))
             {
-                return true;
+                return true; // The base is the root, or the root's referent selected with @follow.
             }
 
             if (receiver is not BinaryKoto parent)
