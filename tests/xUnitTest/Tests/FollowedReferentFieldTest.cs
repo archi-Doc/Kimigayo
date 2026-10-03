@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -9,7 +11,7 @@ namespace XunitTest;
 // SPEC 13.5.5.1, 15.6.2: a field or Tuple element of an explicitly selected referent (`p@follow.x`) is reached through the
 // reference as `p.x` is, and a borrow of it depends on that reference (SPEC 13.5.5). It was UnsupportedOwnership_Kd, and
 // Binding gave `p@follow.x@ref` an Origin unrelated to `p`.
-public class FollowedReferentFieldTest
+public class FollowedReferentFieldTest(ITestOutputHelper output)
 {
     private const string S = "struct S\n    public var x: i32\n    public var inner: (i32, i32)\n    public init(x: i32)\n        self.x = x\n        self.inner = (x + 1, x + 2)\n    drop => ()\n";
 
@@ -28,17 +30,32 @@ public class FollowedReferentFieldTest
     [InlineData("    let view = p@follow.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
     [InlineData("    let view = p@follow.x@ref\n    p.x = 3\n    return view", "p.x")]
     [InlineData("    let view = p.x@ref\n    p@follow.x = 3\n    return view", "p@follow.x")]
-    [InlineData("    let view = p@follow.inner.0@ref\n    p@follow.inner.0 += 1\n    return view", "p@follow.inner.0 += 1")]
-    [InlineData("    let view = p@follow.inner@ref\n    p@follow.inner.0 += 1\n    return view.0", "p@follow.inner.0 += 1")]
+    [InlineData("    let view = p@follow.inner.0@ref\n    p@follow.inner.0 += 1\n    return view", "p@follow.inner.0")]
+    [InlineData("    let view = p@follow.inner@ref\n    p@follow.inner.0 += 1\n    return view.0", "p@follow.inner.0")]
     [InlineData("    let u = p@follow.x@uniq\n    let r = p@follow.x@ref\n    u@follow = 1\n    return r", "p")]
     [InlineData("    let u = p@follow.x@uniq\n    let v = p.x\n    u@follow = 1\n    return v", "p.x")]
     public void AWriteWhileAFollowedFieldIsBorrowedConflicts(string body, string conflict)
     {
-        var c = MinimalEmissionTest.Analyze(S + "func f(p: uniq/S) -> i32\n" + body + "\npublic func main() => ()");
+        var source = S + "func f(p: uniq/S) -> i32\n" + body + "\npublic func main() => ()";
+        var path = Path.GetFullPath("followed-field-update.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Source.ToString() == conflict);
         Assert.False(c.Emission.Validate(out _));
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        output.WriteLine(console.Text);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal("ComparisonLoanConflict_Kd", error.Code);
+        Assert.Equal(conflict, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        var identity = SourceIdentity.FromPath(path);
+        var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
+        Assert.Equal(error.Display!.Range, sent.Range);
+        output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
     }
 
     [Fact]

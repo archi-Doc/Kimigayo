@@ -193,7 +193,7 @@ public sealed partial class OwnershipAnalysis
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
             KotoHelper.UnwrapParentheses(unary.Operand) is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is not null)
         {
-            return this.UpdateBorrowedField(unary, field);
+            return this.WriteBorrowedField(unary, field);
         }
 
         if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&

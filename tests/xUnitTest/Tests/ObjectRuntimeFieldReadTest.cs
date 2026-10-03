@@ -40,21 +40,20 @@ public class ObjectRuntimeFieldReadTest(ITestOutputHelper output)
     [Theory]
     [InlineData("owner.id = 9")]
     [InlineData("owner.id += 1")]
-    public void DirectWritesRemainDiagnosed(string operation)
+    public void ImmutableOwnersRejectDirectWrites(string operation)
     {
-        var text = "struct Item\n    public var id: i32 = 7\nvar owner = Kimi.Intrinsics.makeObj(Item.init())\n" + operation;
+        var text = "struct Item\n    public var id: i32 = 7\nlet owner = Kimi.Intrinsics.makeObj(Item.init())\n" + operation;
         var path = Path.GetFullPath("object-field-write.kimi");
         var c = MinimalEmissionTest.Analyze(text, path);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
-        c.Ownership.ReportDiagnostics();
+        c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
-        Assert.Equal("UnsupportedOwnership_Kd", error.Code);
+        Assert.Equal("InvalidAssignment_Kd", error.Code);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
-        Assert.Equal(operation, text.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal("owner.id", text.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);

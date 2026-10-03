@@ -102,8 +102,9 @@ public sealed partial class Binding
             return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.1: a shared layer bounds the path to shared access.
         }
 
-        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field && StructStorage.IsStruct(field.Left.BoundType) &&
-            !IsSpecialField(field, out _) && !Writable(field.Left))
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
+            (StructStorage.IsStruct(field.Left.BoundType) || ObjectTypes.HandleMode(field.Left.BoundType) is not null) &&
+            !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
         }

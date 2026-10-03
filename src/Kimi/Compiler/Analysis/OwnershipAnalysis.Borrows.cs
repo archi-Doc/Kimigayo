@@ -315,31 +315,50 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    private int WriteBorrowedField(BinaryKoto assignment, MemberAccessKoto field)
+    private int WriteBorrowedField(Koto source, MemberAccessKoto field)
     {
-        if (assignment.Akind != KotoKind.Equals)
-        {
-            return this.UpdateBorrowedField(assignment, field);
-        }
-
-        // SPEC 13.7: secure the RHS, then replace the field through its exclusive address, borrowed through the receiver,
-        // like a referent: the old value is destroyed by its Type's plan and the new one moves in.
+        // SPEC 13.7: secure the RHS, then acquire the field's exclusive address once. References and owning object
+        // paths share the same read/update/replacement, including destruction of the old value.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        if (ElementAccess.AccessType(root, true) is not { Semantics: SemanticsKind.Uniq } receiverType || field.BoundType is not { } stored)
+        var receiverType = this.Concrete(ElementAccess.AccessType(root, true));
+        var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
+        if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || ObjectTypes.HandleMode(receiverType) is { PayloadAuthority: LoanRequirement.Uniq }) ||
+            this.Concrete(field.BoundType) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
         {
-            this.Unsupported(assignment);
+            this.Unsupported(source);
             return -1;
         }
 
-        var input = this.Expression(assignment.Right);
-        var address = input < 0 ? -1 : this.BorrowStruct(field, this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType.Origin));
+        var right = source is BinaryKoto binary ? this.Expression(binary.Right) : -1;
+        if (source is BinaryKoto && right < 0)
+        {
+            return -1;
+        }
+
+        var referenceType = this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType!.Origin);
+        var address = this.BorrowStruct(field, referenceType);
         if (address < 0)
         {
             return -1;
         }
 
+        var input = right;
+        var previous = -1;
+        if (operation != KotoKind.Equals)
+        {
+            previous = this.Value(this.LoadThrough(field, address, 1, referenceType));
+            var operand = source is BinaryKoto ? this.Value(right) : previous >= 0 ? this.IncrementOne(source) : -1;
+            input = previous >= 0 && operand >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+                ? this.ComputeUpdate(source, stored, previous, operand, operation) : -1;
+        }
+
+        if (input < 0)
+        {
+            return -1;
+        }
+
         this.StorePointer(field, this.Value(address), input);
-        return this.Temporary(assignment);
+        return operation == KotoKind.Equals ? this.Temporary(source) : this.UpdateResult(source, previous, input);
     }
 
     // A generic integer or generic wrapping integer in a definition body (SPEC 8.4.7.3): numeric in every instance. Universal
@@ -355,44 +374,4 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsUpdate(Koto target, BoundType? type, KotoKind operation, bool pointer = false)
         => operation != KotoKind.Invalid && this.Concrete(type) is { } concrete &&
             (concrete.IsNumeric || this.GenericInteger(target) || (pointer && ReferenceTypes.IsPointer(concrete) && operation is KotoKind.Plus or KotoKind.Minus));
-
-    private int UpdateBorrowedField(Koto source, MemberAccessKoto field)
-    {
-        var operation = ElementAccess.UpdateOperator(source.Akind);
-        var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = ElementAccess.AccessType(root, true);
-        if (receiverType?.Semantics != SemanticsKind.Uniq || !this.SupportsUpdate(field, field.BoundType, operation))
-        {
-            this.Unsupported(source);
-            return -1;
-        }
-
-        // SPEC 13.7.2: secure the RHS, then the receiver and old value. The receiver is read like that of a simple
-        // write; nothing runs between reading the old value and storing the new one.
-        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
-        var receiver = right < 0 ? -1 : this.Receiver(root, true);
-        var receiverValue = this.Value(receiver);
-        var previous = -1;
-        if (receiver >= 0)
-        {
-            var read = this.Temporary(field);
-            previous = this.Value(read);
-            this.SetValue(previous, OwnershipValueKind.BorrowedField, [receiverValue]);
-        }
-
-        if (source is not BinaryKoto)
-        {
-            right = previous >= 0 ? this.IncrementOne(source) : -1;
-        }
-
-        if (previous < 0 || right < 0 || !this.flow!.Nodes[source].CanCompleteNormally)
-        {
-            return -1;
-        }
-
-        var updated = this.ComputeUpdate(source, field.BoundType, previous, right, operation);
-        var write = this.Emit(OwnershipOperationKind.WriteBorrowedField, source, receiver, updated);
-        this.SetValue(write, OwnershipValueKind.BorrowedFieldWrite, [receiverValue, this.Value(updated)]);
-        return this.UpdateResult(source, previous, updated);
-    }
 }
