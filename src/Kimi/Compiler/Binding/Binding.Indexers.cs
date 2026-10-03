@@ -56,10 +56,12 @@ public sealed partial class Binding
             core = core.Components[0]; // SPEC 3.4.1: selection continues at the referent.
         }
 
-        // SPEC 4.6, 4.6.9: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them; only the
-        // concrete sequences, bound before this, read a range as a slice.
+        // SPEC 4.6, 4.6.9: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them, when it
+        // takes a Range key; for any other receiver a range reads as the slice that only the concrete sequences offer
+        // (NotIndexable_Kd).
         this.exclusiveIndexers.Remove(source);
-        if (core is null || this.Library.Indexable is not { } indexable)
+        if (core is null || this.Library.Indexable is not { } indexable ||
+            (source.Right is RangeKoto && core.Kind != BoundTypeKind.Dictionary && !this.TakesRangeKey(core, indexable)))
         {
             return false;
         }
@@ -124,6 +126,25 @@ public sealed partial class Binding
 
         result = Complete(source, element);
         return true;
+    }
+
+    // Whether a registered Indexable conformance of the receiver's declaration takes a Range or ClosedRange key.
+    private bool TakesRangeKey(BoundType core, BindingSymbol indexable)
+    {
+        if (core.Symbol is not { Declaration: StructKoto or EnumKoto } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < identities.Count; i++)
+        {
+            if (ReferenceEquals(identities[i].Contract.Declaration, indexable.Declaration) && identities[i].Contract.Type is { Components: [var key] } && IsRangeShape(key))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The one conformance of the owner to a bound reference of the Contract declaration that takes the key's Type, or null.
