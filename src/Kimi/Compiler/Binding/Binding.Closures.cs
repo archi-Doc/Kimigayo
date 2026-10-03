@@ -45,6 +45,11 @@ public sealed partial class Binding
         var scope = this.scopes[function];
         for (var i = 0; i < count; i++)
         {
+            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType })
+            {
+                continue; // SPEC 10.5: an omitted parameter Type takes the fixed expected input.
+            }
+
             var type = this.BindType(function.Parameters[i].Type, scope);
             if (type is null || !ReferenceEquals(type, inputs.Components[i]))
             {
@@ -109,6 +114,10 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.symbols[function.Parameters[i]].Type = expected.Components[0].Components[i];
+            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+            {
+                Complete(inferred, expected.Components[0].Components[i]);
+            }
         }
 
         if (function.Captures is { } captures)

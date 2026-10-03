@@ -26,6 +26,13 @@ public class CallbackEmissionTest
     // initialization; it was NoApplicableOverload_Kd unless the argument was a literal.
     [InlineData("StoredArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet g = func [] (value: i32) -> i32 => value * 2\nrequire apply(g, 3) == 6 and apply(g, 4) == 8 and g(5) == 10 else => $abort(\"stored\")")]
     [InlineData("MovedArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet k: i32 = 3\nlet g = func [k] (value: i32) -> i32 => value * k\nrequire apply(g@move, 3) == 9 else => $abort(\"moved\")")]
+    // SPEC 10.5, 7.6.4: an omitted parameter Type takes the fixed expected input (the SPEC's own `makeAdder` example was a
+    // TypeMismatch_Kd), at a return, an initialization, an argument, a generic argument and between overloads by arity.
+    [InlineData("OmittedReturn", "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\nlet f = makeAdder(10)\nrequire f(5) == 15 else => $abort(\"return\")")]
+    [InlineData("OmittedInitializer", "let f: (i32) -> i32 = func [] (value) => value + 1\nrequire f(5) == 6 else => $abort(\"initializer\")")]
+    [InlineData("OmittedArgument", "func apply(f: (i32) -> bool) -> bool => f(1)\nlet k: i32 = 1\nrequire apply(func [k] (v) => v == k) else => $abort(\"argument\")")]
+    [InlineData("OmittedGeneric", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nlet two: i32 = 2\nrequire apply(func [] (value) => value + 1, two) == 3 else => $abort(\"generic\")")]
+    [InlineData("OmittedArity", "func apply(f: (i32) -> i32) -> i32 => f(1)\nfunc apply(f: (i32, i32) -> i32) -> i32 => f(1, 2)\nrequire apply(func [] (a) => a + 1) == 2 and apply(func [] (a, b) => a + b) == 3 else => $abort(\"arity\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -69,6 +76,8 @@ public class CallbackEmissionTest
     [InlineData("func eat(f: (i32) -> bool) -> i32 => 0\nlet f: (i32) -> bool = func (v: i32) => true\nf(eat(f@move))")]
     [InlineData("let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    func nested() -> i32 => n\n    return nested()")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet h = func [] (value: i64) -> i64 => value\nlet x = apply(h, 3)")]
+    [InlineData("let f = func [] (value) => value + 1")]
+    [InlineData("func apply(f: (string) -> i32) -> i32 => f(\"ab\")\nlet n = apply(func [] (s) => s + 1)")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
     public void RejectsInvalidClosures(string source)
     {
