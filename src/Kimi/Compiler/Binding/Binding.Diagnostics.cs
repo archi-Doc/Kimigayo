@@ -279,15 +279,20 @@ public sealed partial class Binding
     private BoundType? FailMismatch(Koto node, Koto at, string actual, string expected)
         => this.RecordMismatch(node, at, actual, expected);
 
+    // Keep semantic identities even when their short names agree. Format only at publication, never during Binding.
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
+        => this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+
+    // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
+    // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
+    private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        // Keep semantic identities even when their short names agree. Format only at publication, never during Binding.
         if (node.BindingFailure == BindingFailure.None)
         {
-            (this.mismatches ??= new(ReferenceEqualityComparer.Instance))[node] = (at, actual, expected);
+            (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }
 
-        return this.Fail(node, BindingFailure.TypeMismatch);
+        return this.Fail(node, failure, unresolved);
     }
 
     /// <summary>Fails an operation whose operand Type has no such operator, or a shift whose count is not an integer Type
@@ -298,14 +303,7 @@ public sealed partial class Binding
     /// <see cref="BindingFailure.InvalidShiftCount"/>.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailOperand(Koto node, BoundType operand, BindingFailure failure)
-    {
-        if (node.BindingFailure == BindingFailure.None)
-        {
-            (this.operatorOperands ??= new(ReferenceEqualityComparer.Instance))[node] = operand;
-        }
-
-        return this.Fail(node, failure);
-    }
+        => this.FailExplained(ref this.operatorOperands, node, failure, operand);
 
     // SPEC 13.2, 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings,
     // and + or += whose other operand is a string gets the literal that joins the same operands in the same order as Advice. A
@@ -350,14 +348,7 @@ public sealed partial class Binding
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-    {
-        if (node.BindingFailure == BindingFailure.None)
-        {
-            (this.writeTargets ??= new(ReferenceEqualityComparer.Instance))[node] = target;
-        }
-
-        return this.Fail(node, AccessFailure(target));
-    }
+        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target), target);
 
     // SPEC 3.5, 15.1.5, 23.3.6.9: the Advice of a bare Place that needs @move states what the Transfer candidate cannot: the borrow
     // alternative where a reference may be meant, or, for a Place without Take, the alternatives that remain.
@@ -409,8 +400,9 @@ public sealed partial class Binding
         return parent;
     }
 
-    private void NoteAcquisition(Koto node, Koto place, bool @object = false)
-        => (this.acquisitionPlaces ??= new(ReferenceEqualityComparer.Instance))[node] = (place, @object);
+    // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
+    private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
+        => this.FailExplained(ref this.acquisitionPlaces, node, failure, (place, @object), unresolved);
 
     // SPEC 3.5, 15.1.5, 23.3.6.9: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it:
     // an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer has Take judged from the Place's path.

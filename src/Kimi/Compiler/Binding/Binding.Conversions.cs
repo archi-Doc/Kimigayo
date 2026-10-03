@@ -261,8 +261,7 @@ public sealed partial class Binding
     {
         if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
         {
-            this.NoteAcquisition(conversion, conversion.Left);
-            return this.Fail(conversion, BindingFailure.TransferRequired);
+            return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
         conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;

@@ -71,6 +71,19 @@ public class BorrowAcquisitionTest
         }
     }
 
+    [Fact]
+    public void ACaptureEntryExplainsOnlyItsOwnFailure()
+    {
+        // The closure already failed for its duplicate parameter, so the rejected entry records nothing: the duplicate is not
+        // reported at the capture entry as if it were the entry's problem.
+        const string Source = "let n: i32 = 1\nlet f = func [n@uniq] (a: i32, a: i32) -> i32 => a";
+        var c = MinimalEmissionTest.Analyze(Source);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
+        Assert.NotEqual("n@uniq", error.Text);
+    }
+
     [Theory]
     [InlineData("var number: i32 = 1\nlet r = number@uniq\nlet first = r\nr@follow += 1\nfirst@follow += 1")]
     [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func [r] () => r@follow += 1\nr@follow += 1\nbump()")]

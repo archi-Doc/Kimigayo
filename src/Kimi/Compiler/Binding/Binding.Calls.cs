@@ -640,7 +640,7 @@ public sealed partial class Binding
                 }
                 else if (failure != BindingFailure.NoApplicableCandidate && this.acquisitionPlace is { } place)
                 {
-                    this.NoteAcquisition(call, place, this.acquisitionObject);
+                    return this.FailAcquisition(call, failure, place, this.acquisitionObject, true);
                 }
 
                 return this.Fail(call, failure, true);

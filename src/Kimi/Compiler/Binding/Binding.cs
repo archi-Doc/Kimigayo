@@ -138,143 +138,7 @@ public sealed partial class Binding
                 continue; // Pairwise declaration failures are normalized as one group below.
             }
 
-            var requirement = DiagnosticRequirement.Binding(issue.Failure);
-            if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-                this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
-                cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
-            {
-                // The recorded missing Name of the Constraint is its prerequisite.
-                issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
-            }
-            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
-            {
-                // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
-                var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
-                issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
-            {
-                // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
-                var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-                issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
-            }
-            else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
-            {
-                var (code, evidence, note) = this.TryFailure(issue.Node);
-                issue.Node.Report(requirement, code, note: note, evidence: evidence);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
-            {
-                // SPEC 15.3.5: the formation condition of Loan<T>.
-                issue.Node.Report(
-                    requirement,
-                    issue.Code,
-                    note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
-                    advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
-            }
-            else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
-            {
-                // FailObjectPayload records the declaring Type before it fails the use.
-                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
-            }
-            else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
-            {
-                var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
-                string? shapeNote = null;
-                for (var c = 0; c < rejected.Length; c++)
-                {
-                    var candidate = rejected[c];
-                    var label = candidate.Function.Name;
-                    if (candidate.Actual is { } actual && candidate.Expected is { } expected)
-                    {
-                        var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                        label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
-                        // Keep the compared Types even when the related-location limit omits this candidate.
-                        shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
-                    }
-
-                    candidates[c] = ("candidate", candidate.Function, label);
-                }
-
-                // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
-                // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
-                var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
-            }
-            else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
-            {
-                this.ReportParameterShapes(issue.Node, requirement, shapes);
-            }
-            else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
-            {
-                this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
-            }
-            else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
-            {
-                ReportProtectedPlacement(issue.Node, requirement);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
-            {
-                this.ReportEffectBound(effect, requirement);
-            }
-            else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 8.4.10.6: reported at the violating effect.
-            }
-            else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 15.3.2: an undeclared storage name, at the name.
-            }
-            else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
-            }
-            else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
-            {
-                this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
-            }
-            else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
-            {
-                this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
-            }
-            else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
-            {
-                this.ReportWrite(issue.Node, target, requirement, issue.Code);
-            }
-            else if (issue.Code is DiagnosticCode.NonNumericOperand_Kd or DiagnosticCode.NonIntegerOperand_Kd or DiagnosticCode.InvalidShiftCount_Kd &&
-                this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
-            {
-                this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
-            }
-            else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
-            {
-                // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
-                // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
-                var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-                issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
-            }
-            else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
-            {
-                var subject = rangeFailure.Subject;
-                var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
-                var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
-                    "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
-                issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
-            }
-            else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
-            {
-                // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
-                var start = DiagnosticTypeName(unproven.Subject.Components[0]);
-                var end = DiagnosticTypeName(unproven.Subject.Components[1]);
-                var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
-                    ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
-                    : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
-                issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
-            }
-            else
-            {
-                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
-            }
+            this.ReportIssue(issue);
         }
 
         foreach (var node in this.derivedIssues)
@@ -683,6 +547,149 @@ public sealed partial class Binding
         node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
         node.BindingFailure = failure;
         return null;
+    }
+
+    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
+    // failure only (FailExplained), so at most one table answers for a node.
+    private void ReportIssue(BindingIssue issue)
+    {
+        var requirement = DiagnosticRequirement.Binding(issue.Failure);
+        if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
+            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
+            cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
+        {
+            // The recorded missing Name of the Constraint is its prerequisite.
+            issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
+        }
+        else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
+        {
+            // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
+            var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
+            issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
+        {
+            // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
+            var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
+            issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
+        }
+        else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
+        {
+            var (code, evidence, note) = this.TryFailure(issue.Node);
+            issue.Node.Report(requirement, code, note: note, evidence: evidence);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
+        {
+            // SPEC 15.3.5: the formation condition of Loan<T>.
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
+                advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
+        }
+        else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
+        {
+            // FailObjectPayload records the declaring Type before it fails the use.
+            issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+        }
+        else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+        {
+            var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+            string? shapeNote = null;
+            for (var c = 0; c < rejected.Length; c++)
+            {
+                var candidate = rejected[c];
+                var label = candidate.Function.Name;
+                if (candidate.Actual is { } actual && candidate.Expected is { } expected)
+                {
+                    var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
+                    label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
+                    // Keep the compared Types even when the related-location limit omits this candidate.
+                    shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                }
+
+                candidates[c] = ("candidate", candidate.Function, label);
+            }
+
+            // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
+            // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
+            var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
+            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
+        }
+        else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
+        {
+            this.ReportParameterShapes(issue.Node, requirement, shapes);
+        }
+        else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
+        {
+            this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
+        {
+            ReportProtectedPlacement(issue.Node, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
+        {
+            this.ReportEffectBound(effect, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 8.4.10.6: reported at the violating effect.
+        }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 15.3.2: an undeclared storage name, at the name.
+        }
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
+        }
+        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
+        {
+            this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
+        }
+        else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
+        {
+            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
+        }
+        else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
+        {
+            this.ReportWrite(issue.Node, target, requirement, issue.Code);
+        }
+        else if (issue.Code is DiagnosticCode.NonNumericOperand_Kd or DiagnosticCode.NonIntegerOperand_Kd or DiagnosticCode.InvalidShiftCount_Kd &&
+            this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
+        {
+            this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
+        {
+            // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
+            // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
+            var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+        }
+        else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
+        {
+            var subject = rangeFailure.Subject;
+            var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
+            var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
+                "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
+            issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+        }
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
+        {
+            // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
+            var start = DiagnosticTypeName(unproven.Subject.Components[0]);
+            var end = DiagnosticTypeName(unproven.Subject.Components[1]);
+            var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
+                ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
+                : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
+            issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
+        }
+        else
+        {
+            issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+        }
     }
 
     private BindingResult Check(BindingMode mode)

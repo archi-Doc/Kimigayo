@@ -257,8 +257,7 @@ public sealed partial class Binding
                 environment.MutableCapture = capture.IsMutable;
                 if (this.CaptureEntry(function, capture, source, environment) is { } failure)
                 {
-                    (this.captureFailures ??= new(ReferenceEqualityComparer.Instance))[function] = (capture, source.Type!);
-                    return this.Fail(function, failure);
+                    return this.FailExplained(ref this.captureFailures, function, failure, (capture, source.Type!));
                 }
             }
         }
