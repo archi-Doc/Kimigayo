@@ -190,6 +190,17 @@ public class DiagnosticPrecisionTest
         Assert.Equal(label, error.Label);
     }
 
+    // SPEC 23.3.6.4: a repeated loop binding is one problem at the later name; the loop rests on it.
+    [Theory]
+    [InlineData("let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nfor (a, a) in pairs => ()")]
+    [InlineData("var entries = [1: 2]\nfor (a, a) in entries => ()")]
+    public void ARepeatedLoopBindingIsReportedOnceAtTheLaterName(string source)
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(source.IndexOf("a, a)", StringComparison.Ordinal) + 3, 1), error.Span);
+    }
+
     // Publishes every front-end phase as a check does and returns its Errors.
     private static TestDiagnostic[] PublishedErrors(Compilation c)
     {

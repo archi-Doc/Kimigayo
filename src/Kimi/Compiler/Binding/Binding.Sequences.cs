@@ -98,11 +98,11 @@ public sealed partial class Binding
 
         var sharedTuple = layers != 0;
         var result = this.BeginResult(source, scope, BoundType.Unit);
-        var duplicate = false;
+        Koto? duplicate = null;
         for (var i = 0; i < source.Bindings.Count; i++)
         {
             var name = source.Bindings[i];
-            duplicate |= name.BoundSymbol!.Next is not null;
+            duplicate ??= name.BoundSymbol!.Next is not null ? name : null;
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             if (sharedTuple && slot is not null)
             {
@@ -120,9 +120,10 @@ public sealed partial class Binding
         }
 
         this.BindNode(source.Body, scope);
-        if (duplicate)
+        if (duplicate is not null)
         {
-            return this.Fail(source, BindingFailure.Duplicate);
+            // The repeated name reports the duplicate at the later binding (SPEC 23.3.6.4); the loop rests on it.
+            return this.CompleteDependent(source, duplicate);
         }
 
         if (iterable is null)
