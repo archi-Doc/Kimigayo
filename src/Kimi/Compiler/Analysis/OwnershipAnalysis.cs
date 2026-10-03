@@ -924,6 +924,15 @@ public sealed partial class OwnershipAnalysis
                     return address;
                 }
 
+                if (use == PlaceUseKind.Consume && this.FollowsReference(conversion) && this.Concrete(conversion.BoundType) is { } referent &&
+                    this.compilation.Binding.ProveCopy(referent, conversion) != ConstraintProof.Proven)
+                {
+                    // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, and a reference offers no Take.
+                    // The reference is still read and the value modeled, so the result is delivered and later uses are checked.
+                    this.body.ReportIssue(new(conversion, OwnershipFailure.TransferRequired));
+                    return this.StoredReference(conversion) < 0 ? -1 : this.Temporary(conversion);
+                }
+
                 if (this.ReadsStoredReference(conversion))
                 {
                     var stored = this.StoredReference(conversion);

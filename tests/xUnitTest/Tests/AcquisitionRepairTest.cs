@@ -64,7 +64,26 @@ public class AcquisitionRepairTest
         Assert.Contains("offers no Take", error.Advice);
     }
 
+    // The same holds for a selected referent read by value (SPEC 13.5.5.1): one record at `p@follow`, without the
+    // UnsupportedOwnership_Kd and UninitializedPlace_Kd records it published before.
     [Theory]
+    [InlineData("func first<A>(p: ref/A) -> A => p@follow\n")]
+    [InlineData("func first(p: ref/Resource) -> Resource => p@follow\n")]
+    [InlineData("func first(p: uniq/Resource) -> i32\n    let resource = p@follow\n    return resource.value\n")]
+    public void AReferentReadByValueIsOneTransferRecord(string program)
+    {
+        var source = Resource + program + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), error.Code);
+        Assert.Equal("p@follow", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal("p@follow cannot be read as a Copy value", error.Label);
+        Assert.Null(error.Repairs);
+        Assert.Contains("offers no Take", error.Advice);
+    }
+
+    [Theory]
+    [InlineData("func first(p: ref/i32) -> i32 => p@follow\n")]
+    [InlineData("func first(p: ref/Resource) -> ref/Resource during p => p@follow@ref\n")]
     [InlineData("func first(p: ref/(Resource, i32)) -> i32 => p.1\n")]
     [InlineData("func first(p: ref/(Resource, i32)) -> ref/Resource during p => p.0@ref\n")]
     [InlineData("func first<A, B>(p: ref/(A, B)) -> ref/A during p => p.0@ref\n")]
