@@ -277,7 +277,7 @@ public sealed partial class OwnershipAnalysis
         else
         {
             // SPEC 4.6.6, 4.6.9: a Place reached through a Slice or a borrow is not part of an owned root; a Copy one is read as the root.
-            root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+            root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture
                 ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
             if (root >= 0)
             {

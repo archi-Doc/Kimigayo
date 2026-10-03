@@ -92,9 +92,9 @@ public class CallbackEmissionTest
 
     // An unsupported captured Type is reported at its capture entry rather than across the whole closure.
     [Theory]
-    [InlineData("let t = (1, 2)\nlet f = func [t] () => t.0 + t.1")]
-    [InlineData("let t = (1, 2)\nlet f: () -> i32 = func [t] () => t.0 + t.1")]
-    [InlineData("let t = (1, 2)\nlet n = 3\nlet f = func [n, t] () => t.0 + n")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f = func [t] () => 1")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f: () -> i32 = func [t] () => 1")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet n = 3\nlet f = func [n, t] () => n")]
     public void UnsupportedCapturesAreReportedAtTheEntry(string source)
     {
         var path = Path.GetFullPath("Hello.kimi");

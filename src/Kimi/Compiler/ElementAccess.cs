@@ -143,12 +143,12 @@ internal static class ElementAccess
         // Pattern body bindings have their own local identity; a var pattern
         // permits writes to its acquired value just like a var declaration.
         // Guard candidates remain excluded by their distinct symbol kind.
-        if (source is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local } symbol } root)
+        if (source is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.Capture } symbol } root)
         {
             return null;
         }
 
-        return Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
+        return symbol.MutableCapture || Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
     }
 
     // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw
@@ -279,7 +279,7 @@ internal static class ElementAccess
             }
 
             var receiver = KotoHelper.UnwrapParentheses(field.Left);
-            if (receiver is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } root)
+            if (receiver is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } root)
             {
                 return root;
             }

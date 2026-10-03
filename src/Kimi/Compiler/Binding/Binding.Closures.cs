@@ -131,7 +131,7 @@ public sealed partial class Binding
         }
 
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Closure ||
+                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple ||
                     ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
         {
             if (entry is { } written)
@@ -353,9 +353,11 @@ public sealed partial class Binding
             if (node.BoundSymbol is { Kind: BindingSymbolKind.Capture } symbol && ReferenceEquals(symbol.Declaration, this.function))
             {
                 var use = node;
-                while (use.Parent is ParenthesizedKoto parentheses)
+                while (use.Parent is ParenthesizedKoto ||
+                    (use.BoundType?.Kind == BoundTypeKind.Tuple && use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use)))
                 {
-                    use = parentheses;
+                    // Reading or updating a captured Tuple part obtains that part's authority, not a whole-Tuple Move.
+                    use = use.Parent;
                 }
 
                 var valueCall = use.Parent as InvocationKoto;
@@ -365,10 +367,10 @@ public sealed partial class Binding
                     ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected : null;
                 var memberBorrow = memberCall?.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
                 // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
-                var fieldRead = ObjectTypes.HandleMode(symbol.Type) is not null && use.Parent is MemberAccessKoto field &&
+                var fieldRead = ObjectTypes.HandleMode(use.BoundType) is not null && use.Parent is MemberAccessKoto field &&
                     ReferenceEquals(field.Left, use) && field.BoundSymbol?.Property?.IsStored == true &&
                     field.BoundType is { } fieldType && binding.ProveCopy(fieldType, this.function) == ConstraintProof.Proven && !this.UsesReferentExclusively(field);
-                var exclusiveReference = symbol.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
+                var exclusiveReference = use.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
@@ -380,8 +382,8 @@ public sealed partial class Binding
                     }
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
-                    (!exclusiveReference && binding.ProveCopy(symbol.Type!, this.function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
-                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !fieldRead && !InspectedString(use)))
+                    (!exclusiveReference && use.BoundType is { } usedType && binding.ProveCopy(usedType, this.function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
+                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !fieldRead && !InspectedValue(use)))
                 {
                     // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
                     this.plan.Receiver = SemanticsKind.Owner;
@@ -391,14 +393,9 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        private static bool InspectedString(Koto use)
+        private static bool InspectedValue(Koto use)
         {
-            if (!ReferenceEquals(use.BoundType, BoundType.String))
-            {
-                return false;
-            }
-
-            if (use.Parent is BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals })
+            if (ReferenceEquals(use.BoundType, BoundType.String) && use.Parent is BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals })
             {
                 return true;
             }
