@@ -132,7 +132,7 @@ public sealed partial class Binding
 
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple ||
-                    ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
+                    StructStorage.IsStruct(type) || ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
         {
             if (entry is { } written)
             {
@@ -354,9 +354,10 @@ public sealed partial class Binding
             {
                 var use = node;
                 while (use.Parent is ParenthesizedKoto ||
-                    (use.BoundType?.Kind == BoundTypeKind.Tuple && use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use)))
+                    (use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use) &&
+                        (use.BoundType?.Kind == BoundTypeKind.Tuple || (StructStorage.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
                 {
-                    // Reading or updating a captured Tuple part obtains that part's authority, not a whole-Tuple Move.
+                    // Reading or updating a captured stored part obtains that part's authority, not a whole-value Move.
                     use = use.Parent;
                 }
 
@@ -364,8 +365,24 @@ public sealed partial class Binding
                 var called = valueCall?.BoundValueCall;
                 var receiver = called is not null && ReferenceEquals(called.Receiver, use);
                 var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
-                    ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected : null;
-                var memberBorrow = memberCall?.ReceiverOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
+                    ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected :
+                    use.Parent is MemberAccessKoto property && ReferenceEquals(property.Left, use)
+                        ? (binding.PropertyCall(property, PropertyAccessorKind.Set) ?? binding.PropertyCall(property, PropertyAccessorKind.Get))?.BoundCall : null;
+                var memberOperation = memberCall?.ReceiverOperation ?? default;
+                if (memberCall is not null && memberOperation.Source is null)
+                {
+                    // Accessor calls pass their receiver as an explicit argument; ordinary methods retain it separately.
+                    foreach (var argument in memberCall.ArgumentOperations)
+                    {
+                        if (ReferenceEquals(argument.Source, use))
+                        {
+                            memberOperation = argument;
+                            break;
+                        }
+                    }
+                }
+
+                var memberBorrow = memberOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
                 // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
                 var fieldRead = ObjectTypes.HandleMode(use.BoundType) is not null && use.Parent is MemberAccessKoto field &&
                     ReferenceEquals(field.Left, use) && field.BoundSymbol?.Property?.IsStored == true &&
@@ -373,7 +390,7 @@ public sealed partial class Binding
                 var exclusiveReference = use.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
-                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberCall!.ReceiverOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
+                    (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
                     (exclusiveReference && this.UsesReferentExclusively(use)))
                 {
                     if (this.plan.Receiver != SemanticsKind.Owner)
