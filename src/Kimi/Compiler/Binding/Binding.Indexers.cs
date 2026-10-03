@@ -56,8 +56,10 @@ public sealed partial class Binding
             core = core.Components[0]; // SPEC 3.4.1: selection continues at the referent.
         }
 
+        // SPEC 4.6, 4.6.9: a Dictionary or user receiver takes a key of the key's own Type, a range literal among them; only the
+        // concrete sequences, bound before this, read a range as a slice.
         this.exclusiveIndexers.Remove(source);
-        if (source.Right is RangeKoto || core is null || this.Library.Indexable is not { } indexable)
+        if (core is null || this.Library.Indexable is not { } indexable)
         {
             return false;
         }

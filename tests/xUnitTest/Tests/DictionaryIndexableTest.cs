@@ -17,6 +17,39 @@ public class DictionaryIndexableTest
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
+    // SPEC 4.6, 4.6.9: a Dictionary takes a key of its key Type, so a range literal is a Range key, not a slice; only the
+    // concrete sequences read a range as a slice.
+    [Fact]
+    public void ARangeLiteralIsAKeyOfARangeKeyedDictionary()
+    {
+        const string Source = """
+            var spans: Dictionary<Range<i32, i32>, string> = [1..2: "a"]
+            let key: Range<i32, i32> = 1..2
+            Console.writeLine(spans[key])
+            spans[1..2] = "b"
+            Console.writeLine(spans[1..2])
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryIndexableRangeKey", Source, "a\nb\n");
+    }
+
+    [Fact]
+    public void ARangeLiteralSelectsAUserRangeIndexable()
+    {
+        const string Source = """
+            struct Spans
+                Self is Indexable<Range<i32, i32>>
+                associate Element is i32
+                var value: i32
+                public init(value: i32) => self.value = value
+                public func index(self, key: ref/Range<i32, i32>) -> place ref/i32 during self => self.value
+            let spans = Spans.init(7)
+            let key: Range<i32, i32> = 1..2
+            require spans[key] == 7 and spans[1..2] == 7 else => $abort("range key")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryIndexableUserRangeKey", Source, "ok\n");
+    }
+
     [Fact]
     public void DirectEntriesPreserveStoredKeysAndSourceLoans()
     {
