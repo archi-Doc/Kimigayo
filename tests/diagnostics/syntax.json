@@ -551,5 +551,19 @@
   { "Name": "header-body-expression-keeps-body", "Source": "var a = true\nwhile if a\n    a = false\nConsole.writeLine(\"hi\")\n", "Intended": "a body-bearing expression in a statement header is reported once; the indented body after the header stays the statement's",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "HeaderBodyExpression", "At": "if a", "Length": 2 } ] },
   { "Name": "condition-body-expression", "Source": "#if do\n    Console.writeLine(\"a\")\nConsole.writeLine(\"hi\")\n", "Intended": "a Condition is a header: a body-bearing expression there is reported once, and the indented block stays the target of the #if",
-    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "HeaderBodyExpression", "At": "do", "Length": 2 } ] }
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "HeaderBodyExpression", "At": "do", "Length": 2 } ] },
+  { "Name": "excluded-member-declaring-constraint", "Source": "struct S<T>\n    let x: T\n    #switch\n        #case false\n            func f() -> ()\n                T is Copy\n                return\n        #case _\n            func f() -> ()\n                T is Copy\n                return\nenum E<T>\n    A\n    #if false\n    func g() -> ()\n        T is Copy\n        return\nConsole.writeLine(\"hi\")\n", "Intended": "an excluded member is parsed under its container's header, so its Constraint on the declaring Type's parameters is accepted as when selected (SPEC 7.4, 19.5)",
+    "Records": [] },
+  { "Name": "directive-in-parameter-list", "Source": "func f(#if true x: i32) => ()\nf(1)\nConsole.writeLine(\"hi\")\n", "Intended": "a directive in a parameter list selects nothing; it is reported once, its Condition is set aside and the parameter after it is read",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "CompileTimeDirective", "At": "#if" } ] },
+  { "Name": "directive-in-operand", "Source": "let a = 1 + #if true 2\nConsole.writeLine(\"\\(a)\")\n", "Intended": "a directive before an operand selects nothing; it is reported once and the operand after its Condition is read",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "CompileTimeDirective", "At": "#if" } ] },
+  { "Name": "directive-in-match-arms", "Source": "func f(x: i32) -> i32\n    return match x\n        #if true\n        1 => 1\n        _ => 0\nConsole.writeLine(\"\\(f(1))\")\n", "Intended": "a directive in a match arm list selects no arm; its line is reported once and skipped, and the arms after it are read",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "CompileTimeDirective", "At": "#if" } ] },
+  { "Name": "switch-in-match-arms", "Source": "func f(x: i32) -> i32\n    return match x\n        #switch\n            #case true\n                1 => 1\n        _ => 0\nConsole.writeLine(\"\\(f(1))\")\n", "Intended": "a #switch in a match arm list is reported once and skipped with its Case Group",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "CompileTimeDirective", "At": "#switch" } ] },
+  { "Name": "keyword-attribute-name", "Source": "#match\nfunc f() => ()\nf()\nConsole.writeLine(\"hi\")\n", "Intended": "a reserved word after '#' is no attribute Name; it is reported once, and the construct it would start is not read",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "AttributeName", "At": "match", "Found": "match" } ] },
+  { "Name": "keyword-attribute-name-block", "Source": "#match\n    #case _\n        Console.writeLine(\"x\")\nConsole.writeLine(\"hi\")\n", "Intended": "an indented body after a reserved word that ends the line of '#' would be the construct's that word starts, so it is skipped with it",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "AttributeName", "At": "match", "Found": "match" } ] }
 ]

@@ -294,8 +294,6 @@ public sealed class FunctionKoto : DeclarationKoto
     public IReadOnlyList<FunctionParameterKoto> Parameters
         => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
 
-    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
-
     internal DeclarationContainerKoto? DeclaringContainer { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>

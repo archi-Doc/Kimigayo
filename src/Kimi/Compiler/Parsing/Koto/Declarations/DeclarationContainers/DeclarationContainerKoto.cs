@@ -1259,6 +1259,22 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="state">The member state that keeps the detached container.</param>
     /// <returns>The container that receives the excluded declarations.</returns>
+    /// <remarks>The detached container shares this container's generic parameters, so excluded members are parsed under the same
+    /// header as selected ones, such as a member's Constraint on the declaring Type's parameters (SPEC 7.4, 19.5).</remarks>
     private DeclarationContainerKoto ExcludedOwner(ref TokenReader reader, ref MemberParseState state)
-        => reader.InExcludedSyntax ? this : state.Detached ??= CreateStandalone(reader.CodeContext, this.TokenKind, default, this.Span, string.Empty);
+    {
+        if (reader.InExcludedSyntax)
+        {
+            return this;
+        }
+
+        if (state.Detached is null)
+        {
+            var detached = CreateStandalone(reader.CodeContext, this.TokenKind, default, this.Span, string.Empty);
+            detached.genericArguments = this.genericArguments;
+            state.Detached = detached;
+        }
+
+        return state.Detached;
+    }
 }

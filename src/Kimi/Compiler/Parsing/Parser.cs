@@ -1946,6 +1946,40 @@ CloseParameters:
 
         var nameToken = reader.CurrentToken;
         var wellFormed = nameToken.Kind.IsIdentifierOrContextualKeyword() && UnicodeIdentifierHelper.IsUppercase(reader.GetSpan(nameToken));
+        if (!wellFormed && nameToken.Kind.IsKeyword())
+        {
+            if (nameToken.Kind is TokenKind.If or TokenKind.Switch or TokenKind.Case)
+            {
+                // A directive selects whole items (SPEC 19.1), so here it selects nothing: it is one problem, its Condition is read
+                // and set aside, and what follows it is parsed in place.
+                reader.Unexpected(SyntaxForm.CompileTimeDirective, SourceSpan.FromBounds(attributeToken.Span.Start, nameToken.Span.End));
+                reader.Advance();
+                if (nameToken.Kind != TokenKind.Switch && !reader.TryConsume(TokenKind.Underscore) && !IsExpressionBoundary(ref reader))
+                {
+                    _ = ParseRequiredCompileTimeCondition(ref reader);
+                }
+            }
+            else
+            {
+                // A reserved word is no attribute Name, and the construct it would start is not read: `#match` or `#for` is one
+                // problem at the word, and what follows it on the line is parsed in place. An indented body after a word that ends
+                // its line would be that construct's, so it is skipped with it.
+                reader.Expect(SyntaxForm.AttributeName);
+                reader.Advance();
+                if (reader.CurrentTokenKind == TokenKind.Separator && reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    reader.SkipCurrentBlock();
+                }
+            }
+
+            if (previousAttribute is not null)
+            {
+                reader.PushAttribute(previousAttribute);
+            }
+
+            return null;
+        }
+
         if (!wellFormed)
         {
             reader.Expect(SyntaxForm.AttributeName);
@@ -3041,6 +3075,19 @@ CloseParameters:
                     SourceSpan.FromBounds(matchToken.Span.Start, end),
                     expression,
                     arms);
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) is TokenKind.If or TokenKind.Switch or TokenKind.Case)
+            {
+                // A directive selects whole items, and an arm is none (SPEC 19.1, Appendix F.8): it is one problem, and its line is
+                // skipped with the indented arms of a block form or a #switch; the arms after it are read as usual.
+                reader.Unexpected(SyntaxForm.CompileTimeDirective, SourceSpan.FromBounds(reader.CurrentTokenRange.Start, reader.PeekToken(1).Span.End));
+                if (reader.SkipHeaderLine())
+                {
+                    reader.SkipCurrentBlock();
+                }
+
+                continue;
             }
 
             var oldPosition = reader.Position;
