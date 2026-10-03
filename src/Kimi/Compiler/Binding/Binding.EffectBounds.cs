@@ -925,7 +925,7 @@ public sealed partial class Binding
         private bool Allows(CompilerFunctionKind kind) => kind switch
         {
             CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => !this.confined,
-            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or
+            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
                 >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or

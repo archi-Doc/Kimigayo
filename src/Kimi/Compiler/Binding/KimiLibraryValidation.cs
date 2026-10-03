@@ -32,7 +32,8 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
                         KimiDeclarationId.WriteLine => this.ValidWriteLine(),
                         KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
-                        KimiDeclarationId.MakeObj => this.ValidMakeObj(),
+                        KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc => this.ValidObjectFactory(symbol, entry.Id),
+                        KimiDeclarationId.Clone => this.ValidStrongClone(symbol),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.LendingIterator => this.ValidLendingIterator(symbol),
                         KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable => this.ValidBorrowingIterable(symbol, entry.Id == KimiDeclarationId.UniqIterable),
@@ -107,7 +108,7 @@ public sealed partial class KimiLibrary
             var matches = ReferenceEquals(symbol.Declaration.BoundSymbol, symbol) && symbol.Declaration.BindingState == BindingState.Resolved &&
                 this.ValidBoundStorageOperation(symbol, entry.Id) && this.ValidBoundCollectionOperation(symbol, entry.Id) && ValidBoundPrimitive(symbol, entry.Id) &&
                 this.ValidBoundFormattingLayout(symbol, entry.Id) && this.ValidBoundFormattingSignature(symbol, entry.Id, KimiLibraryCatalog.Entries[i].Container) &&
-                this.ValidBoundRecordLayout(symbol, entry.Id);
+                this.ValidBoundRecordLayout(symbol, entry.Id) && ValidBoundStrongClone(symbol, entry.Id);
             if (matches && entry.Id == KimiDeclarationId.LendingIterator)
             {
                 matches = this.ValidBoundLendingIterator(symbol);
@@ -874,16 +875,6 @@ public sealed partial class KimiLibrary
 
         return true;
     }
-
-    private bool ValidMakeObj()
-        => this.MakeObj.CompilerFunction == CompilerFunctionKind.MakeObj && ReferenceEquals(this.MakeObj.Scope, this.IntrinsicsScope) &&
-        ReferenceEquals(this.MakeObj.Declaration.Parent, this.Intrinsics) &&
-        this.MakeObj.Declaration is FunctionKoto { Name: "makeObj", NameBoundaryIndex: -1, Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 1, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
-        f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
-        f.TypeConstraints[0] is IsKoto { Left: { } constrained, Right: { } required } && BareName(constrained, "T") && BareName(required, "ObjectPayload") && // SPEC 13.5.8
-
-        f.Parameters[0] is { InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } p &&
-        BareName(p.Type, "T") && f.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: { } inner } && BareName(inner, "T");
 
     private bool Valid(BindingSymbol symbol, IntrinsicKind kind)
         => symbol.Intrinsic == kind && ReferenceEquals(symbol.Scope, this.Scope) &&

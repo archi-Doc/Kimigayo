@@ -4,3 +4,9 @@ public func exchange<T>(target: uniq/T ! with => value: T) -> T
 public func swap<T>(first: uniq/T, second: uniq/T) -> ()
 public func makeObj<T>(value: T) -> obj/T
     T is ObjectPayload
+public func makeRc<T>(value: T) -> rc/T
+    T is ObjectPayload
+public func makeArc<T>(value: T) -> arc/T
+    T is ObjectPayload
+public func clone<s/T>(value: ref/(s/T)) -> s/T
+    s is rc or arc

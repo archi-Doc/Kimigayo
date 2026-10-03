@@ -339,12 +339,15 @@ public sealed partial class KimiLibrary
     public KimiDeclarationState GetDeclarationState(KimiDeclarationId id)
         => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.declarations[index].State : KimiDeclarationState.Missing;
 
-    /// <summary>Gets a value indicating whether all ownership declarations are validated; not a runtime support certificate.</summary>
-    public bool IsCompleteOwnershipFamily =>
+    /// <summary>Gets a value indicating whether the strong ownership declarations are validated; not a runtime support certificate.</summary>
+    public bool IsCompleteStrongOwnershipFamily =>
         this.GetDeclarationState(KimiDeclarationId.MakeObj) == KimiDeclarationState.Validated &&
         this.GetDeclarationState(KimiDeclarationId.MakeRc) == KimiDeclarationState.Validated &&
         this.GetDeclarationState(KimiDeclarationId.MakeArc) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.Clone) == KimiDeclarationState.Validated &&
+        this.GetDeclarationState(KimiDeclarationId.Clone) == KimiDeclarationState.Validated;
+
+    /// <summary>Gets a value indicating whether all ownership declarations are validated; not a runtime support certificate.</summary>
+    public bool IsCompleteOwnershipFamily => this.IsCompleteStrongOwnershipFamily &&
         this.GetDeclarationState(KimiDeclarationId.Downgrade) == KimiDeclarationState.Validated &&
         this.GetDeclarationState(KimiDeclarationId.Upgrade) == KimiDeclarationState.Validated &&
         this.GetDeclarationState(KimiDeclarationId.MakeRcCyclic) == KimiDeclarationState.Validated &&

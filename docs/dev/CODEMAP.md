@@ -79,6 +79,10 @@ Object modes enter through `ObjectTypes.HandleMode` (`ObjectHandleMode.PayloadAu
 
 Ownership table dimensions enter through `OwnershipStorage`; `PackedAnalysisTable` stores Loan modes and liveness for `OwnershipBody.Borrows`. `BorrowDependencyStorageTest`, `OwnershipStorageLimitTest` and `Benchmark --borrow-storage` cover reuse, retained space, Resource diagnostics and fixed-workload measurements.
 
+Strong object creation and clone declarations enter through `Library/Intrinsics.kimi`, `KimiLibraryObjects` (factory
+and pair signature validation), `KimiLibraryPrimitives` and catalog Function kinds. `SharedObjectBindingTest`,
+`CoreCatalogTest` and `CatalogSignatureValidationTest` cover source recognition, inference and contract tampering.
+
 ## Use and maintenance
 
 1. Read the owning specification and the relevant row, then trace callers and shared plans. Locate filenames with `rg --files src/Kimi/Compiler -g '*Comparison*.cs'`; find consumers with `rg -n 'BoundComparison' src/Kimi tests/xUnitTest`.

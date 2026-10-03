@@ -13,6 +13,8 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.Exchange, PrimitiveType.Parameter, [PrimitiveType.UniqParameter, PrimitiveType.Parameter], Generic: true),
         new(KimiDeclarationId.Swap, PrimitiveType.Unit, [PrimitiveType.UniqParameter, PrimitiveType.UniqParameter], Generic: true),
         new(KimiDeclarationId.MakeObj, PrimitiveType.ObjectParameter, [PrimitiveType.Parameter], Generic: true),
+        new(KimiDeclarationId.MakeRc, PrimitiveType.RcParameter, [PrimitiveType.Parameter], Generic: true),
+        new(KimiDeclarationId.MakeArc, PrimitiveType.ArcParameter, [PrimitiveType.Parameter], Generic: true),
         new(KimiDeclarationId.WriteLine, PrimitiveType.Unit, [PrimitiveType.RefString]),
         new(KimiDeclarationId.TestTempDirectory, PrimitiveType.String, []),
     ];
@@ -25,6 +27,8 @@ public sealed partial class KimiLibrary
         Parameter,
         UniqParameter,
         ObjectParameter,
+        RcParameter,
+        ArcParameter,
     }
 
     private static bool BoundPrimitiveType(BoundType? type, PrimitiveType expected, FunctionKoto function, BoundType? element, int input = -1)
@@ -35,7 +39,9 @@ public sealed partial class KimiLibrary
             PrimitiveType.RefString => BoundInputBorrow(type, BoundType.String, SemanticsKind.Ref, function, input),
             PrimitiveType.Parameter => element is not null && ReferenceEquals(type, element),
             PrimitiveType.UniqParameter => element is not null && BoundInputBorrow(type, element, SemanticsKind.Uniq, function, input),
-            PrimitiveType.ObjectParameter => element is not null && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj, Symbol: null, Origin: null, OriginArguments.Count: 0, Components: [var payload] } && ReferenceEquals(payload, element),
+            PrimitiveType.ObjectParameter or PrimitiveType.RcParameter or PrimitiveType.ArcParameter => element is not null &&
+                type is { Kind: BoundTypeKind.Semantics, Symbol: null, Origin: null, OriginArguments.Count: 0, Components: [var payload] } && ReferenceEquals(payload, element) &&
+                type.Semantics == (expected == PrimitiveType.ObjectParameter ? SemanticsKind.Obj : expected == PrimitiveType.RcParameter ? SemanticsKind.Rc : SemanticsKind.Arc),
             _ => false,
         };
 
