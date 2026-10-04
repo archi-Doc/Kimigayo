@@ -398,6 +398,22 @@ public sealed partial class Binding
         {
             this.BindNode(callee, scope);
             group = callee.BoundSymbol;
+            var inner = KotoHelper.UnwrapParentheses(callee);
+            var named = inner is GenericsKoto { Identifier: { } identifier } ? identifier : inner;
+            if (callee is ParenthesizedKoto && named is IdentifierNameKoto or MemberAccessKoto && named.BoundSymbol is { Kind: BindingSymbolKind.Function } function)
+            {
+                // SPEC 12.4.2: parentheses stay part of a referenced function name, so `(f)(1)` is the call `f(1)`; a member is
+                // selected again as a callee, with its receiver.
+                callee = named;
+                generic = inner as GenericsKoto;
+                group = function;
+                if (named is MemberAccessKoto calleeMember)
+                {
+                    var frame = this.BeginConsultation(calleeMember);
+                    group = this.Member(calleeMember, scope, expected);
+                    this.EndConsultation(calleeMember, frame);
+                }
+            }
         }
 
         if (group?.EnumCase is not null)
@@ -910,6 +926,12 @@ public sealed partial class Binding
                 generic.BindingState = BindingState.Resolved;
             }
 
+            for (var wrapper = call.Method; wrapper is ParenthesizedKoto parentheses; wrapper = parentheses.Operand)
+            {
+                wrapper.BoundSymbol = winner;
+                wrapper.BindingState = BindingState.Resolved;
+            }
+
             call.BoundSymbol = winner;
             if (selected.IsConstructor)
             {
@@ -1087,8 +1109,8 @@ public sealed partial class Binding
             }
         }
 
-        var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
+        var receiver = this.CallReceiver(generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method));
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1100,7 +1122,7 @@ public sealed partial class Binding
         }
 
         var receiverSlot = receiver is null ? -1 : function.BoundSymbol!.ReceiverIndex;
-        var receiverPath = receiver is not null && (generic?.Identifier ?? call.Method) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
+        var receiverPath = receiver is not null && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
         if (receiver is not null)
         {
             if (receiverSlot < 0 || receiver.BoundType is not { } receiverType)
