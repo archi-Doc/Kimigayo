@@ -33,6 +33,24 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("CommonAnonymousDefaults" + reversed + borrow, source, string.Empty);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void OrdinaryRankingSelectsOneOfDifferentContextsBeforeTheBody(bool reversed, bool borrow)
+    {
+        var alternative = Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal);
+        var source = (reversed ? alternative + First : First + alternative) + "require apply(func [] (x) => x) == 42 else => $abort(\"selection\")";
+        if (borrow)
+        {
+            source = source.Replace("action: F", "action: ref/F", StringComparison.Ordinal).Replace("action: G", "action: ref/G", StringComparison.Ordinal)
+                .Replace("Callable<owner,", "Callable<", StringComparison.Ordinal).Replace("action@move(", "action(", StringComparison.Ordinal);
+        }
+
+        ScalarEmissionTest.EmitFixture("DifferentAnonymousDefaults" + reversed + borrow, source, string.Empty);
+    }
+
     [Fact]
     public void NamedArgumentsCompareTheirOwnPositions()
     {
@@ -42,19 +60,25 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("CommonAnonymousNamed", Source, string.Empty);
     }
 
-    [Fact]
-    public void CapturesKeepConcreteStorageAndCleanup()
-    {
-        const string Source = Overloads + "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet item = Item.init()\nrequire apply(func [item@move] (x) => x + item.value) == 49 else => $abort(\"capture\")\nConsole.writeLine(\"done\")";
-        ScalarEmissionTest.EmitFixture("CommonAnonymousCapture", Source, "drop\ndone\n");
-    }
-
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SelectedBodyFailureKeepsItsOwnCause(bool independent)
+    public void CapturesKeepConcreteStorageAndCleanup(bool different)
     {
-        var source = Overloads + "let result = apply(func [] (x) => true)" + (independent ? "\nlet bad: i32 = false" : string.Empty);
+        var overloads = First + (different ? Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) : Second);
+        var source = overloads + "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\nlet item = Item.init()\nrequire apply(func [item@move] (x) => x + item.value) == 49 else => $abort(\"capture\")\nConsole.writeLine(\"done\")";
+        ScalarEmissionTest.EmitFixture("CommonAnonymousCapture" + different, source, "drop\ndone\n");
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void SelectedBodyFailureKeepsItsOwnCause(bool independent, bool different)
+    {
+        var overloads = First + (different ? Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) : Second);
+        var source = overloads + "let result = apply(func [] (x) => true)" + (independent ? "\nlet bad: i32 = false" : string.Empty);
         var path = Path.GetFullPath("common-context.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
@@ -88,17 +112,21 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
     [Fact]
     public void DifferentContextsNeverProbeBodiesToSelect()
     {
-        var c = MinimalEmissionTest.Analyze(First + Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) + "let result = apply(func [] (x) => missing)");
+        var c = MinimalEmissionTest.Analyze(First.Replace("action: F)", "action: F, other: bool = false)", StringComparison.Ordinal) +
+            Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) + "let result = apply(func [] (x) => missing)");
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal("UnsupportedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
+        Assert.Equal("AmbiguousBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
         Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure);
     }
 
-    [Fact]
-    public void EqualCandidatesReportAmbiguityBeforeLookingAtTheBody()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EqualCandidatesReportAmbiguityBeforeLookingAtTheBody(bool different)
     {
-        var source = First.Replace("action: F)", "action: F, other: bool = false)", StringComparison.Ordinal) + Second + "let result = apply(func [] (x) => missing)";
+        var alternative = different ? Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) : Second;
+        var source = First.Replace("action: F)", "action: F, other: bool = false)", StringComparison.Ordinal) + alternative + "let result = apply(func [] (x) => missing)";
         var path = Path.GetFullPath("common-ambiguous.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
@@ -160,10 +188,13 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmCommonContextBindingAndEmissionAllocateNothing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmContextSelectionBindingAndEmissionAllocateNothing(bool different)
     {
-        var c = MinimalEmissionTest.Analyze(Overloads + "let result = apply(func [] (x) => x)");
+        var overloads = First + (different ? Second.Replace("(i32) -> i32", "(bool) -> bool", StringComparison.Ordinal) : Second);
+        var c = MinimalEmissionTest.Analyze(overloads + "let result = apply(func [] (x) => x)");
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);

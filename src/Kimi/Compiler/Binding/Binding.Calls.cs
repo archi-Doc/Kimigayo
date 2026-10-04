@@ -741,9 +741,10 @@ public sealed partial class Binding
                 {
                     if (evaluated[i].State == CandidateApplicability.Waiting)
                     {
-                        // Only a shared concrete context and acquisition shape can rank unbound Closure slots.
-                        // Other waiting forms remain explicit limits; bodies never choose a candidate.
-                        if (!CommonWaitingContexts(call, evaluated.AsSpan(0, count), operations, operationStride))
+                        // F will be this argument's concrete Closure Type in every candidate. Its Callable signature
+                        // is an expectation, not a parameter Type to rank. Select from ordinary inputs/defaults first;
+                        // only the winner supplies a body context, even when the candidates' signatures differ.
+                        if (!ComparableClosureSlots(call, evaluated.AsSpan(0, count), operations, operationStride))
                         {
                             return this.FailWaitingSelection(call, BindingFailure.Unsupported);
                         }

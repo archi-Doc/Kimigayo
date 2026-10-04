@@ -65,7 +65,7 @@ public sealed partial class Binding
                     if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
                         operations[(a * stride) + i].Source is { } source && KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true, BoundType: null })
                     {
-                        // CommonWaitingContexts proved matching acquisition. Both slots will receive this one
+                        // ComparableClosureSlots proved matching acquisition. Both slots will receive this one
                         // concrete Closure Type; its Callable constraint signature is not a substituted parameter Type.
                         continue;
                     }
@@ -113,7 +113,7 @@ public sealed partial class Binding
         return -1;
     }
 
-    private static bool CommonWaitingContexts(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+    private static bool ComparableClosureSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
         {
@@ -123,7 +123,6 @@ public sealed partial class Binding
             }
 
             var first = true;
-            BoundType? signature = null;
             SemanticsKind? acquisition = null;
             for (var candidate = 0; candidate < candidates.Length; candidate++)
             {
@@ -144,12 +143,11 @@ public sealed partial class Binding
                 var slot = borrowed ? pattern.Components[0] : pattern;
                 SemanticsKind? mode = borrowed ? pattern.Semantics : null;
                 if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 ||
-                    (!first && (!ReferenceEquals(signature, operation.ParameterType) || acquisition != mode)))
+                    (!first && acquisition != mode))
                 {
                     return false;
                 }
 
-                signature = operation.ParameterType;
                 acquisition = mode;
                 first = false;
             }
