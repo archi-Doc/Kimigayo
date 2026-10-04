@@ -658,6 +658,11 @@ public sealed partial class Binding
             // SPEC 10.5: the Type parameter that no expected call signature or explicit Type argument binds.
             issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)]);
         }
+        else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
+        {
+            // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
+            issue.Node.Report(requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
+        }
         else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
         {
             this.ReportParameterShapes(issue.Node, requirement, shapes);
@@ -852,6 +857,7 @@ public sealed partial class Binding
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
                     BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
+                    BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,

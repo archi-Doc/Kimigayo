@@ -79,10 +79,14 @@ public sealed partial class Binding
     private static bool IsWaitingCallable(Koto node)
         => KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true, BoundType: null } || IsWaitingFunctionReference(node);
 
-    private static bool IndependentFunctionItem(BindingSymbol symbol)
+    private static bool IndependentFunctionItem(BindingSymbol symbol, bool unbound)
         => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, TypeConstraints.Count: 0, IsDestructor: false } &&
-            symbol.ReceiverIndex < 0 && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
+            (symbol.ReceiverIndex < 0 || unbound) && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
             symbol.Intrinsic == IntrinsicKind.None;
+
+    // The referenced Name, inside parentheses and an explicit Type-argument list.
+    private static Koto ReferenceName(Koto use)
+        => KotoHelper.UnwrapParentheses(use) is GenericsKoto { Identifier: { } name } ? name : KotoHelper.UnwrapParentheses(use);
 
     // The bound arguments of a generic Item are its Components, in declaration-slot order; per-call Origins stay in place.
     private BoundType? ItemType(BoundType type, BoundType item, FunctionKoto function)
@@ -108,16 +112,30 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 7.3: a Type-qualified instance function reference is unbound; its self is an ordinary parameter.
+    private bool UnboundMemberReference(Koto use)
+        => ReferenceName(use) is MemberAccessKoto member && this.CallReceiver(member) is null;
+
+    // SPEC 7.3: value.method without invocation forms no bound-method value.
+    private bool BoundMethodReference(Koto use, BindingSymbol symbol)
+        => symbol.ReceiverIndex >= 0 && ReferenceName(use) is MemberAccessKoto member && this.CallReceiver(member) is not null;
+
     private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol, BindingScope scope)
     {
+        if (this.BoundMethodReference(use, symbol))
+        {
+            return this.Fail(use, BindingFailure.BoundMethodValue);
+        }
+
         if (KotoHelper.UnwrapParentheses(use) is GenericsKoto explicitReference)
         {
             return this.BindExplicitFunctionItem(use, explicitReference, symbol, scope);
         }
 
-        if (!IndependentFunctionItem(symbol))
+        var unbound = this.UnboundMemberReference(use);
+        if (!IndependentFunctionItem(symbol, unbound))
         {
-            return this.FailUnfixedReference(use, symbol);
+            return this.FailUnfixedReference(use, symbol, unbound);
         }
 
         return this.CompleteFunctionItem(use, symbol);
@@ -125,13 +143,13 @@ public sealed partial class Binding
 
     // SPEC 10.5: without a fixed expected call signature, a reference is a value only when one candidate remains and that
     // candidate has no unbound own slots. Forms whose references are not yet selected stay explicitly unsupported.
-    private BoundType? FailUnfixedReference(Koto use, BindingSymbol symbol)
+    private BoundType? FailUnfixedReference(Koto use, BindingSymbol symbol, bool unbound)
     {
         var count = 0;
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function) || function.IsDestructor ||
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound) || function.IsDestructor ||
                 candidate.Intrinsic != IntrinsicKind.None || (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0))
             {
                 return this.Fail(use, BindingFailure.Unsupported, true);
@@ -161,6 +179,7 @@ public sealed partial class Binding
     // candidate takes those arguments; its Constraints are proven for them.
     private BoundType? BindExplicitFunctionItem(Koto use, GenericsKoto explicitReference, BindingSymbol symbol, BindingScope scope)
     {
+        var unbound = this.UnboundMemberReference(use);
         var count = explicitReference.TypeArguments.Count;
         BindingSymbol? selected = null;
         var candidates = 0;
@@ -172,7 +191,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (UnsupportedReference(candidate, function))
+            if (UnsupportedReference(candidate, function, unbound))
             {
                 return this.Fail(use, BindingFailure.Unsupported, true);
             }

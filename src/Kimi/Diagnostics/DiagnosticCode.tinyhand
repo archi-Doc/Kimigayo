@@ -958,3 +958,10 @@
     Evidence="parameter:Text"
     Label="Type parameter '{0}' is not bound"
     Advice="Write explicit Type arguments, as in identity<i32>, or annotate the expected Function Type, as in let f: (i32) -> i32 = identity"
+
+  + Name="BoundMethodValue_Kd"
+    Category="Language"
+    Message="A method named through a value without a call forms no bound-method value; a function value never binds a receiver"
+    Evidence="method:Text"
+    Label="'{0}' is named through a value"
+    Advice="Reference the method through its Type, as in Counter.peek, and pass the receiver as an argument, or write an anonymous function that calls the method"

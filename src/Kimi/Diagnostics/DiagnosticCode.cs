@@ -220,6 +220,7 @@ public enum DiagnosticCode
     InvalidTryReturn_Kd,
     TryPayloadMismatch_Kd,
     UnboundTypeArgument_Kd,
+    BoundMethodValue_Kd,
 
     Count, // Last sentinel
 }

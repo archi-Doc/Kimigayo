@@ -155,6 +155,9 @@ internal enum BindingFailure : byte
     // SPEC 10.5: a reference without a fixed expected call signature needs every Type parameter bound explicitly.
     UnboundTypeArgument,
 
+    // SPEC 7.3: value.method without invocation forms no bound-method value.
+    BoundMethodValue,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,

@@ -27,11 +27,11 @@ public sealed partial class Binding
         return true;
     }
 
-    // Instance members, members of generic or Origin-bearing containers, length-generic functions and generic functions that
-    // the compiler implements are not yet referenced.
-    private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function)
+    // Members of generic or Origin-bearing containers, length-generic functions and generic functions that the compiler
+    // implements are not yet referenced; an instance member is referenced unbound, through its Type (SPEC 7.3).
+    private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function, bool unbound)
     {
-        if (candidate.ReceiverIndex >= 0 || candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+        if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
         {
             return true;
         }
@@ -136,6 +136,12 @@ public sealed partial class Binding
 
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
+        if (this.BoundMethodReference(use, symbol))
+        {
+            return this.Fail(use, BindingFailure.BoundMethodValue);
+        }
+
+        var unbound = this.UnboundMemberReference(use);
         var count = 0;
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
@@ -153,7 +159,7 @@ public sealed partial class Binding
             for (var candidate = symbol; candidate is not null; candidate = candidate.Next, index++)
             {
                 this.BindHeader(candidate);
-                if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function))
+                if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound))
                 {
                     return this.Fail(use, BindingFailure.Unsupported, true);
                 }
@@ -235,18 +241,20 @@ public sealed partial class Binding
             }
         }
 
+        // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.6.4), whatever syntax names it.
+        var concrete = this.CompleteFunctionItem(use, selected);
         if (!erase)
         {
-            return this.CompleteFunctionItem(use, selected);
+            return concrete;
         }
 
-        use.BoundSymbol = selected;
-        if (use is MemberAccessKoto member)
+        if (!this.ErasesToFunction(use, concrete, required))
         {
-            member.Right.BoundSymbol = selected;
+            return this.FailMismatch(use, use, concrete, required);
         }
 
-        return Complete(use, required);
+        use.ErasedFunctionType = required;
+        return required;
     }
 
     // Whether one function of a group converts to a common Function Type. A form BindFunctionReference rejects with its own
@@ -254,10 +262,11 @@ public sealed partial class Binding
     // published after selection.
     private bool FunctionGroupFits(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)
     {
+        var unbound = this.UnboundMemberReference(use);
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function))
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound))
             {
                 return true;
             }
