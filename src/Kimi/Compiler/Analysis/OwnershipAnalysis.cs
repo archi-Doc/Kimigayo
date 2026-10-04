@@ -897,9 +897,14 @@ public sealed partial class OwnershipAnalysis
             return this.ConstructEnum(node, construction!);
         }
 
-        if (node.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto itemDefinition } && node.BoundType?.Kind == BoundTypeKind.FunctionItem)
+        if (node.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto itemDefinition } && node.BoundType is { Kind: BoundTypeKind.FunctionItem } itemType)
         {
             this.CollectLibraryBody(itemDefinition);
+            for (var i = 0; i < itemType.Components.Count; i++)
+            {
+                this.CollectLibraryWitnesses(itemType.Components[i]); // The bound arguments of a generic Item, as for a call.
+            }
+
             return this.Temporary(node);
         }
 

@@ -119,12 +119,14 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void GenericReferenceSelectionRemainsExplicitlyUnsupported()
+    public void GenericReferenceBindsItsSlotsFromTheCallableContext()
     {
-        var c = MinimalEmissionTest.Analyze("func choose<T>(value: T) -> T => value@move\n" + Apply + "let result = apply(41, choose)");
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
-        Assert.False(c.Emission.Validate(out _));
+        const string Source = "func choose<T>(value: T) -> T => value@move\n" + Apply + "require apply(41, choose) == 41 else => $abort(\"generic\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "apply");
+        Assert.Same(BoundType.I32, Assert.Single(call.BoundCall!.TypeArguments[1]!.Components));
+        ScalarEmissionTest.EmitFixture("ContextualReferenceGeneric", Source, string.Empty);
     }
 
     [Fact]

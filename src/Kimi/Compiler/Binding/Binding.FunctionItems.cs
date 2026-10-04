@@ -6,8 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // A nongeneric declaration is the complete identity of its zero-sized Item. Its signature is a call contract,
-    // not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
+    private readonly List<(BoundType Item, BoundCall Context)> functionItemContexts = new();
+
+    // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
+    // call contract, not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
     internal BoundType? FunctionItemSignature(BoundType type)
     {
         if (type.Kind != BoundTypeKind.FunctionItem || type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
@@ -20,21 +22,55 @@ public sealed partial class Binding
         {
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } parameter)
+                if (function.Parameters[i].Type.BoundType is not { } parameter || this.ItemType(parameter, type, function) is not { } bound)
                 {
                     return null;
                 }
 
-                parameters[i] = parameter;
+                parameters[i] = bound;
+            }
+
+            if (this.ItemType(result, type, function) is not { } boundResult)
+            {
+                return null;
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, parameters.AsSpan(0, function.Parameters.Count));
-            return this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
+            return this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult]);
         }
         finally
         {
             this.typeScratch.Return(parameters, clearArray: true);
         }
+    }
+
+    // The call context of a generic Item whose bound arguments are closed: the instance its calls and erasure enter. One
+    // context is retained per Item Type, so repeated preparation finds the same generic entry and allocates nothing.
+    internal BoundCall? FunctionItemContext(BoundType type)
+    {
+        if (type.Kind != BoundTypeKind.FunctionItem || type.Components.Count == 0 || type.ContainsParameter ||
+            type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
+        {
+            return null;
+        }
+
+        foreach (var (item, context) in this.functionItemContexts)
+        {
+            if (ReferenceEquals(item, type))
+            {
+                return context;
+            }
+        }
+
+        if (this.ItemType(result, type, function) is not { } boundResult)
+        {
+            return null;
+        }
+
+        var created = new BoundCall();
+        created.Set(type.Symbol, boundResult, null, [], (BoundType[])type.Components);
+        this.functionItemContexts.Add((type, created));
+        return created;
     }
 
     private static bool IsWaitingFunctionReference(Koto node)
@@ -47,6 +83,10 @@ public sealed partial class Binding
         => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, TypeConstraints.Count: 0, IsDestructor: false } &&
             symbol.ReceiverIndex < 0 && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
             symbol.Intrinsic == IntrinsicKind.None;
+
+    // The bound arguments of a generic Item are its Components, in declaration-slot order; per-call Origins stay in place.
+    private BoundType? ItemType(BoundType type, BoundType item, FunctionKoto function)
+        => item.Components.Count == 0 ? type : this.SubstituteType(type, function, (BoundType[])item.Components);
 
     // A fixed Function or Callable signature can select a function reference after the outer candidate is determined.
     private bool TakesCallableContext(BindingSymbol? group)
@@ -79,9 +119,9 @@ public sealed partial class Binding
         return this.CompleteFunctionItem(use, symbol);
     }
 
-    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol)
+    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default)
     {
-        var type = this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+        var type = this.FunctionItemType(symbol, typeArguments);
         while (use is ParenthesizedKoto parentheses)
         {
             use.BoundSymbol = symbol;
@@ -98,5 +138,28 @@ public sealed partial class Binding
 
         Complete(use, type);
         return type;
+    }
+
+    private BoundType FunctionItemType(BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments)
+    {
+        if (typeArguments.IsEmpty)
+        {
+            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+        }
+
+        var components = this.RentTypes(typeArguments.Length);
+        try
+        {
+            for (var i = 0; i < typeArguments.Length; i++)
+            {
+                components[i] = typeArguments[i]!;
+            }
+
+            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, components.AsSpan(0, typeArguments.Length));
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
     }
 }

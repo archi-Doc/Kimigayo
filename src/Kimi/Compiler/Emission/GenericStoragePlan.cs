@@ -121,7 +121,8 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure))
+            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure) ||
+                !this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure))
             {
                 return false;
             }
@@ -162,6 +163,37 @@ internal sealed partial class GenericStoragePlan
 
     private static bool IsFormattingCallback(BoundCall call)
         => Binding.HasFormattingCallback(call);
+
+    // SPEC 7.6.4: a generic Function Item is called and erased through the instance of its bound arguments. Its entry is
+    // requested where the Item is produced, under the producing body's own substitution.
+    private bool PrepareFunctionItems(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    {
+        failure = null;
+        var binding = compilation.Binding;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            var operation = body.Operations[i];
+            if (operation.Kind != OwnershipOperationKind.Produce || operation.Place < 0 ||
+                body.Places[operation.Place].Type is not { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } produced ||
+                produced.Symbol?.Declaration is not FunctionKoto target)
+            {
+                continue;
+            }
+
+            var item = call is null ? produced : binding.InstantiateStorageType(produced, call);
+            if (item is null || binding.FunctionItemContext(item) is not { } context || !this.templates.TryGetValue(target, out var template))
+            {
+                return Fail("Generic Function Item requires a closed substitution and a verified generic body.", out failure);
+            }
+
+            if (!this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // The template records the calls its instances forward; each instance resolves them under its substitution. The previous
     // emission's template is reused when its body and forwarded calls are unchanged.
@@ -333,7 +365,8 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
-        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1))
+        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1) ||
+            !this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure))
         {
             return false;
         }

@@ -67,23 +67,6 @@ public sealed partial class Binding
 
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false);
 
-    private static string? ClosureConversionNote(object actual, object expected)
-    {
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } } || expected is not BoundType { Kind: BoundTypeKind.Function } signature)
-        {
-            return null;
-        }
-
-        return closure.Receiver switch
-        {
-            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
-            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !CallableSignatureFits(closure.Signature, signature)
-                ? "The closure's parameter or result contract does not match the expected common Function signature"
-                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
-        };
-    }
-
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
         => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
             expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
@@ -103,6 +86,43 @@ public sealed partial class Binding
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
+    }
+
+    private string? ClosureConversionNote(Koto node, object actual, object expected)
+    {
+        if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
+        {
+            return null;
+        }
+
+        // SPEC 10.5, 7.6.4: a generic reference binds its slots from the expected signature, and its Item converts only
+        // when its bound arguments are Owned.
+        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } item)
+        {
+            return this.FunctionItemSignature(item) is { } itemSignature && CallableSignatureFits(itemSignature, signature)
+                ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
+                : null;
+        }
+
+        if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
+        {
+            return "The generic function's Type parameters are bound from the expected signature without adaptations; no binding fits it, " +
+                "or a bound argument fails its Constraints or would hold a per-call Origin of that signature";
+        }
+
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } })
+        {
+            return null;
+        }
+
+        return closure.Receiver switch
+        {
+            SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
+            SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
+            _ => !CallableSignatureFits(closure.Signature, signature)
+                ? "The closure's parameter or result contract does not match the expected common Function signature"
+                : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
+        };
     }
 
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>

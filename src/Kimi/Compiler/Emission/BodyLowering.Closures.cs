@@ -43,8 +43,17 @@ internal sealed partial class BodyLowering
         return offset;
     }
 
+    // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
     private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
-        => type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+    {
+        if (type.Kind == BoundTypeKind.FunctionItem && type.Components.Count != 0)
+        {
+            return definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
+                ? instance.Selected ?? instance.Abi : null;
+        }
+
+        return type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+    }
 
     // Retain physical signatures only; repeated compilation must not allocate
     // parameter arrays or keep a previous syntax/Binding graph alive.
@@ -88,10 +97,10 @@ internal sealed partial class BodyLowering
         if (source?.Kind == BoundTypeKind.FunctionItem)
         {
             if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
-                !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
+                !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
                 !Binding.CallableSignatureFits(itemSignature, body.Places[operation.Place].Type) ||
-                this.functions?.GetValueOrDefault(itemDefinition) is not { CallerLocation: false } itemEntry ||
+                this.ClosureEntry(source, itemDefinition) is not { CallerLocation: false } itemEntry ||
                 (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Function Item erasure requires an acquired Item and its checked signature.", out failure);

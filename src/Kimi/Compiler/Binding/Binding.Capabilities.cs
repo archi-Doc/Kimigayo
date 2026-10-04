@@ -128,9 +128,11 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind == BoundTypeKind.FunctionItem)
+        if (type.Kind == BoundTypeKind.FunctionItem && (kind == IntrinsicKind.Copy || type.Components.Count == 0))
         {
-            result = ConstraintProof.Proven; // No bound generic arguments or stored environment in this Item profile.
+            // SPEC 7.6.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments are, which the
+            // structural proof over its Components decides.
+            result = ConstraintProof.Proven;
             return true;
         }
 

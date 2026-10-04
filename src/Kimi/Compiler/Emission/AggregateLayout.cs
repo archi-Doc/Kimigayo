@@ -267,7 +267,9 @@ internal sealed class AggregateLayoutPool
 
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
-        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) : type.Components.Count;
+        // A Function Item's Components are its bound generic arguments, not stored fields.
+        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) :
+            type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count;
         var count = array ? (int)type.Length : fieldCount;
         if (cLayout && (fieldCount == 0 || StructStorage.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
         {

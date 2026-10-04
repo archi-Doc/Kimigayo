@@ -27,6 +27,31 @@ public sealed partial class Binding
         return true;
     }
 
+    // Instance members, members of generic or Origin-bearing containers, length-generic functions and generic functions that
+    // the compiler implements are not yet referenced.
+    private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function)
+    {
+        if (candidate.ReceiverIndex >= 0 || candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+        {
+            return true;
+        }
+
+        if (function.GenericArguments.Count != 0 && (candidate.Intrinsic != IntrinsicKind.None || candidate.CompilerFunction != CompilerFunctionKind.None))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < function.GenericArguments.Count; i++)
+        {
+            if (function.GenericArguments[i] is not GenericParameterKoto)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private bool FixedCaptureSignature(BoundType signature, Koto receiver)
     {
         if (!PerCallInputs(signature))
@@ -128,14 +153,12 @@ public sealed partial class Binding
             for (var candidate = symbol; candidate is not null; candidate = candidate.Next, index++)
             {
                 this.BindHeader(candidate);
-                if (candidate.Declaration is not FunctionKoto function ||
-                    function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
-                    candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function))
                 {
                     return this.Fail(use, BindingFailure.Unsupported, true);
                 }
 
-                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, operations.AsSpan(index * stride, stride - 1));
+                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, scope, operations.AsSpan(index * stride, stride - 1));
                 evaluated[index] = new(candidate, fits ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable, null, 0);
                 if (fits)
                 {
@@ -175,9 +198,41 @@ public sealed partial class Binding
             this.candidateScratch.Return(evaluated, clearArray: true);
         }
 
-        if ((((FunctionKoto)selected.Declaration).Modifier & ModifierKind.Unsafe) != 0)
+        var target = (FunctionKoto)selected.Declaration;
+        if ((target.Modifier & ModifierKind.Unsafe) != 0)
         {
             return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+        }
+
+        if (target.GenericArguments.Count != 0)
+        {
+            // The selected generic Item keeps its bound arguments; at a common Function Type it is then erased (SPEC 7.6.4).
+            var arguments = this.typeScratch.Rent(target.GenericArguments.Count);
+            try
+            {
+                if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundArguments: arguments))
+                {
+                    return this.Fail(use, BindingFailure.Unsupported, true);
+                }
+
+                var item = this.CompleteFunctionItem(use, selected, arguments.AsSpan(0, target.GenericArguments.Count));
+                if (!erase)
+                {
+                    return item;
+                }
+
+                if (!this.ErasesToFunction(use, item, required))
+                {
+                    return this.FailMismatch(use, use, item, required);
+                }
+
+                use.ErasedFunctionType = required;
+                return required;
+            }
+            finally
+            {
+                this.typeScratch.Return(arguments, clearArray: true);
+            }
         }
 
         if (!erase)
@@ -195,19 +250,19 @@ public sealed partial class Binding
     }
 
     // Whether one function of a group converts to a common Function Type. A form BindFunctionReference rejects with its own
-    // diagnostic (a generic, receiver or unsafe function) counts as fitting, so that diagnostic is published after selection.
+    // diagnostic (a receiver, generic-container or length-generic function) counts as fitting, so that diagnostic is
+    // published after selection.
     private bool FunctionGroupFits(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)
     {
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 ||
-                candidate.ReceiverIndex >= 0 || candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function))
             {
                 return true;
             }
 
-            if (this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required))
+            if (this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, scope))
             {
                 return true;
             }
@@ -216,7 +271,72 @@ public sealed partial class Binding
         return false;
     }
 
-    private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, Span<BoundArgumentOperation> operations = default)
+    // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
+    // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
+    // Origins are left to the per-call solver, and a per-call Origin of S never becomes part of a bound argument.
+    private bool BindReferenceArguments(BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType?[] arguments, BindingScope scope)
+    {
+        var count = function.GenericArguments.Count;
+        Array.Clear(arguments, 0, count);
+        var parameters = required.Components[0];
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type.BoundType is not { } parameter || !this.Infer(parameter, parameters.Components[i], function, arguments, inferOrigins: true, structural: true))
+            {
+                return false;
+            }
+        }
+
+        if (symbol.Type is not { } result || !this.Infer(result, required.Components[1], function, arguments, inferOrigins: true, structural: true))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            if (arguments[i] is not { } argument || CarriesInputOrigin(argument))
+            {
+                return false;
+            }
+        }
+
+        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope);
+        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
+        for (var i = 0; i < count; i++)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(arguments[i]!, scope), true);
+        }
+
+        return proof == ConstraintProof.Proven;
+
+        static bool CarriesInputOrigin(BoundType type)
+        {
+            if (type.Origin?.Kind == OriginKind.Input)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (type.OriginArguments[i].Kind == OriginKind.Input)
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (CarriesInputOrigin(type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, Span<BoundArgumentOperation> operations = default, BoundType?[]? boundArguments = null)
     {
         var parameters = required.Components[0];
         if (parameters.Components.Count != function.Parameters.Count)
@@ -224,6 +344,8 @@ public sealed partial class Binding
             return false;
         }
 
+        var generic = function.GenericArguments.Count;
+        var arguments = generic == 0 ? null : boundArguments ?? this.typeScratch.Rent(generic);
         var origins = this.originScratch.Rent(function.Origins.Count);
         var inputCount = InputOriginCount(function);
         var inputs = this.originScratch.Rent(inputCount);
@@ -231,10 +353,15 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
+            if (arguments is not null && !this.BindReferenceArguments(symbol, function, required, arguments, scope))
+            {
+                return false;
+            }
+
             var inference = this.BeginOriginInference(use, function);
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } parameter)
+                if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
                 {
                     return false;
                 }
@@ -245,7 +372,7 @@ public sealed partial class Binding
                 this.CollectOriginInference(parameter, parameters.Components[i], inference);
             }
 
-            if (symbol.Type is { } produced)
+            if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
             {
                 this.CollectOriginInference(produced, required.Components[1], inference, result: true);
             }
@@ -257,7 +384,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                var parameter = Substitute(function.Parameters[i].Type.BoundType!);
+                var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
                 if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use))
                 {
                     return false;
@@ -273,7 +400,8 @@ public sealed partial class Binding
             }
 
             if (!this.CheckCallOriginRelations(function, origins, inputs, use, null) ||
-                symbol.Type is not { } result || HasUnsubstitutedOrigin(result = Substitute(result), function) || !this.FitsTypeAt(result, required.Components[1], use))
+                symbol.Type is not { } result || Bound(result) is not { } boundResult ||
+                HasUnsubstitutedOrigin(result = Substitute(boundResult), function) || !this.FitsTypeAt(result, required.Components[1], use))
             {
                 return false;
             }
@@ -284,7 +412,14 @@ public sealed partial class Binding
         {
             this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            if (arguments is not null && !ReferenceEquals(arguments, boundArguments))
+            {
+                this.typeScratch.Return(arguments, clearArray: true);
+            }
         }
+
+        BoundType? Bound(BoundType type)
+            => arguments is null ? type : this.SubstituteType(type, function, arguments.AsSpan(0, generic));
 
         BoundType Substitute(BoundType type)
             => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));

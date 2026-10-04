@@ -126,7 +126,6 @@ public class CallbackEmissionTest
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet h = func [] (value: i64) -> i64 => value\nlet x = apply(h, 3)")]
     [InlineData("let f = func [] (value) => value + 1")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc wide(v: i64) -> i64 => v\nlet r = apply(wide, 2)")]
-    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc id<T>(x: T) -> T => x@move\nlet r = apply(id, 2)")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nunsafe func raw(v: i32) -> i32 => v\nlet r = apply(raw, 2)")]
     [InlineData("func apply(f: (string) -> i32) -> i32 => f(\"ab\")\nlet n = apply(func [] (s) => s + 1)")]
     [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
@@ -140,14 +139,14 @@ public class CallbackEmissionTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 10.5 permits generic reference selection against a fixed signature. That selection is still unsupported;
-    // nongeneric concrete Item storage and its invalid counterparts are exercised by FunctionItemTest.
+    // SPEC 10.5 permits length-generic reference selection against a fixed signature. That selection is still unsupported;
+    // Type-generic references are exercised by GenericFunctionReferenceTest and nongeneric Items by FunctionItemTest.
     [Theory]
-    [InlineData("let f: (i32) -> i32 = inc")]
-    [InlineData("func g() -> (i32) -> i32 => inc")]
+    [InlineData("let f: ([3 of i32]) -> i32 = inc")]
+    [InlineData("func g() -> ([3 of i32]) -> i32 => inc")]
     public void UnsupportedGenericReferencesReportTheReference(string body)
     {
-        var c = MinimalEmissionTest.Analyze("func inc<T>(v: T) -> T => v@move\n" + body);
+        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\n" + body);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
@@ -160,7 +159,7 @@ public class CallbackEmissionTest
     public void CliAndLspPlaceUnsupportedGenericReferencesAtTheReference()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = MinimalEmissionTest.Analyze("func inc<T>(v: T) -> T => v@move\nlet f: (i32) -> i32 = inc", path);
+        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\nlet f: ([3 of i32]) -> i32 = inc", path);
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -168,8 +167,8 @@ public class CallbackEmissionTest
         Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("Hello.kimi:2:23", console.Text, StringComparison.Ordinal);
-        Assert.Contains("let f: (i32) -> i32 = inc\n  |                       ^^^", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimi:2:30", console.Text, StringComparison.Ordinal);
+        Assert.Contains("let f: ([3 of i32]) -> i32 = inc\n  |                              ^^^", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("UnresolvedBinding", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })

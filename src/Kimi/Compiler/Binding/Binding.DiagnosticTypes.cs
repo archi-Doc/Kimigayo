@@ -62,6 +62,17 @@ public sealed partial class Binding
             {
                 text.Append("function item ");
                 AppendDeclaration(current.Symbol!);
+                for (var i = 0; i < current.Components.Count; i++)
+                {
+                    text.Append(i == 0 ? "<" : ", ");
+                    Append(current.Components[i]);
+                }
+
+                if (current.Components.Count != 0)
+                {
+                    text.Append('>');
+                }
+
                 return;
             }
 
