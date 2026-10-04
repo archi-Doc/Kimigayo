@@ -37,13 +37,15 @@ public sealed partial class Binding
         }
     }
 
+    private static bool IndependentFunctionItem(BindingSymbol symbol)
+        => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, TypeConstraints.Count: 0, IsDestructor: false } &&
+            symbol.ReceiverIndex < 0 && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
+            symbol.Intrinsic == IntrinsicKind.None;
+
     private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol)
     {
         // Overload selection, bound generic arguments and requirement references need their own retained selection plan.
-        if (symbol.Next is not null || symbol.Declaration is not FunctionKoto function ||
-            function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || symbol.ReceiverIndex >= 0 ||
-            symbol.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } ||
-            symbol.Intrinsic != IntrinsicKind.None || function.IsDestructor)
+        if (!IndependentFunctionItem(symbol))
         {
             return this.Fail(use, BindingFailure.Unsupported, true);
         }

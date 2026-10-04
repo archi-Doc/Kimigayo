@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -97,6 +98,49 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal("NoApplicableOverload_Kd", error.Code);
         Assert.Contains("(bool) -> i64", error.Note, StringComparison.Ordinal);
         Assert.Contains("(i32) -> R", error.Note, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ASignatureCanInferNeverWithoutExecutingItsCallable(bool common)
+    {
+        var source = "func stop() -> Never => $abort(\"unreachable\")\n" +
+            (common ? "func accept<T>(f: () -> T) => ()\n" : "func accept<T, F>(f: ref/F)\n    F is Callable<() -> T>\n    return\n") +
+            "accept(stop)\nConsole.writeLine(\"alive\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "accept");
+        Assert.Same(BoundType.Never, call.BoundCall!.TypeArguments[0]);
+        ScalarEmissionTest.EmitFixture("CallableSignatureNever" + common, source, "alive\n");
+    }
+
+    [Fact]
+    public void SignatureMatchingDoesNotUseNeverSubtypingToHideConflictingEvidence()
+    {
+        const string Source = "func stop() -> Never => $abort(\"stop\")\nfunc accept<T, F>(f: ref/F, value: T)\n    F is Callable<() -> T>\n    return\nlet number: i32 = 7\naccept(stop, number)";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("NoApplicableOverload_Kd", error.Code);
+        Assert.Contains("() -> Never", error.Note, StringComparison.Ordinal);
+        Assert.Contains("() -> i32", error.Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARealNeverExpressionStillSuppliesNoTypeEvidence()
+    {
+        const string Source = "func stop() -> Never => $abort(\"stop\")\nfunc keep<T>(first: T, second: T) -> T => first@move\nlet result = keep(7, stop())";
+        var column = Source.IndexOf("$abort", StringComparison.Ordinal) + 1;
+        ScalarEmissionTest.EmitFixture("CallableSignatureNeverExpression", Source, string.Empty, 1, $"Hello.kimi:1:{column}: abort KIMI_E_ABORT: stop\n");
+    }
+
+    [Fact]
+    public void AnIndependentReferenceSuppliesEvidenceBeforeCommonFunctionErasure()
+    {
+        const string Source = "func answer() -> i64 => 42\nfunc make<T>(f: () -> T) -> T => f()\nfunc need(value: i64) => require value == 42 else => $abort(\"signature\")\nlet result = make(answer)\nneed(result)";
+        ScalarEmissionTest.EmitFixture("CallableSignatureCommonReference", Source, string.Empty);
     }
 
     [Theory]

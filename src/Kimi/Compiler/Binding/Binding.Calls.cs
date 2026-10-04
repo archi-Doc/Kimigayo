@@ -464,7 +464,7 @@ public sealed partial class Binding
             {
                 if (argument is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
-                    if (TakesCommonFunction(group))
+                    if (TakesCommonFunction(group) && !IndependentFunctionItem(item))
                     {
                         continue; // SPEC 7.6.4: a function group is converted at the selected parameter's common Function Type.
                     }
@@ -716,7 +716,8 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            if (operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required && !CallableSignatureFits(signature, required))
+                            // Signature-refusal facts have no selected parameter operation.
+                            if (operation.ParameterIndex == -1 && operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required)
                             {
                                 rejected[i] = rejected[i] with { Actual = signature, Expected = required, CallableSignature = true };
                                 break;
@@ -1498,7 +1499,7 @@ public sealed partial class Binding
             }
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null);
+            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function);
         }
 
         bool InferCallableSignatures(Span<BoundArgumentOperation> signatureOperations)
@@ -1531,10 +1532,10 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths))
+                if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths, structural: true))
                 {
                     var required = this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) ?? requiredSignature;
-                    signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
 
                     return false;
                 }
@@ -1587,9 +1588,10 @@ public sealed partial class Binding
         return pattern;
     }
 
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false)
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false)
     {
-        if (ReferenceEquals(actual, BoundType.Never))
+        // A Never-valued expression supplies no input value; a Never Type inside a known signature is exact evidence.
+        if (!structural && ReferenceEquals(actual, BoundType.Never))
         {
             return true;
         }
@@ -1611,18 +1613,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins);
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins);
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural);
         }
 
         // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins);
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -1634,7 +1636,7 @@ public sealed partial class Binding
 
             // SPEC 10.2.1: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
             // argument is then value-read.
-            if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            if (!structural && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, function))
             {
                 actual = referent;
@@ -1642,7 +1644,7 @@ public sealed partial class Binding
 
             if (arguments[slot] is { } previous)
             {
-                if (ReferenceEquals(previous, actual) || (inferOrigins && FitsType(actual, previous)))
+                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)))
                 {
                     return true;
                 }
@@ -1682,7 +1684,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins))
+            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural))
             {
                 return false;
             }
