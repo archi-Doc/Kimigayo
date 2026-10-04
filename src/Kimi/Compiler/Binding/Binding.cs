@@ -604,12 +604,14 @@ public sealed partial class Binding
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
                 {
                     var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                    label = candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
+                    label = candidate.CallableSignature ? $"{candidate.Function.Name}: callable signature is {shownActual.Text}; requires {shownExpected.Text}"
+                        : candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
                         : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
                     // Keep the compared Types even when the related-location limit omits this candidate.
-                    shapeNote ??= candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
+                    shapeNote ??= candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
+                        : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
                         : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
-                    if (!candidate.SharedReceiver)
+                    if (!candidate.SharedReceiver && !candidate.CallableSignature)
                     {
                         advice ??= RangeShapeAdvice;
                     }

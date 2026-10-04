@@ -715,6 +715,12 @@ public sealed partial class Binding
                                 rejected[i] = rejected[i] with { Actual = actual, Expected = parameter };
                                 break;
                             }
+
+                            if (operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required && !CallableSignatureFits(signature, required))
+                            {
+                                rejected[i] = rejected[i] with { Actual = signature, Expected = required, CallableSignature = true };
+                                break;
+                            }
                         }
                     }
 
@@ -1120,6 +1126,11 @@ public sealed partial class Binding
             }
         }
 
+        if (!InferCallableSignatures(operations))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (!used[i] && function.Parameters[i].DefaultValue is null)
@@ -1488,6 +1499,39 @@ public sealed partial class Binding
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
             return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null);
+        }
+
+        bool InferCallableSignatures(Span<BoundArgumentOperation> signatureOperations)
+        {
+            // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence
+            // alongside ordinary inputs, before expected results and literal defaults. An anonymous waiting body is
+            // never evidence; its written header is handled separately. Per-call Origins need the signature solver.
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                var source = call.ArgumentNodes[i];
+                var pattern = function.Parameters[mapping[i]].Type.BoundType!;
+                var callableSlot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
+                    ? pattern.Components[0] : pattern;
+                if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, callableSlot.Symbol!) < 0 ||
+                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || source.BoundType is not { } actual ||
+                    !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
+                    !this.TryCallable(actual, scope, out var actualSignature, out _) || requiredSignature.CarriesOrigin || actualSignature.CarriesOrigin)
+                {
+                    continue;
+                }
+
+                if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths))
+                {
+                    if (this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) is { } required)
+                    {
+                        signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    }
+
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         bool CompleteArguments()

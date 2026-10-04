@@ -103,6 +103,8 @@ entries, preserving existing IDs (`GenericObjectFactoryTest`: nested factories, 
 `Binding.ArgumentOperations.ExpectedAdaptation` shares object authority with argument adaptation; `SharedObjectAdaptationTest` covers fixed expectations, result dependencies and native object views.
 Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLowering.Closures` and `LlvmModuleWriter.Closures`; `HeapClosureErasureTest` covers inline/heap selection, environment adapters and final destruction. `ClosureEffects` recognizes captured-object Copy Field inspection.
 `Binding.FunctionItems` binds declaration-identified Item Types and supplies call signatures to value calls and `Binding.Constraints`; `AggregateLayout` gives them empty storage and `BodyLowering.Closures` calls/erases their ordinary entries. `FunctionItemTest` and `FunctionItemCallableTest` cover storage, captures, Copy, borrowed calls, erasure, generic receiver contracts, diagnostic display and warm reuse.
+`Binding.Calls.InferInput` shares `Binding.ValueCalls.TryCallable` for known-signature evidence at generic Callable slots;
+`CallableSignatureInferenceTest` covers receiver modes, forwarding, conflicts, waiting bodies and warm reuse.
 
 `FunctionItemResultTest` covers declaration references in control-flow results; `Binding.ControlFlow` surveys value evidence and `Binding.Expressions` applies fixed Function expectations through ordinary result storage.
 
