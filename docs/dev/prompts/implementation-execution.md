@@ -44,6 +44,7 @@ reproducer (a failing test or program variant)
 - Removing an unsupported guard requires every newly reachable analysis and generation path to be implemented and tested.
 - Preserve ownership, Loan, Origin, evaluation order, cleanup and Abort semantics; keep internal invariant checks.
 - Tests: add positive and negative cases for each observable change and a regression test for each fix. A test may be corrected only when SPEC shows it is wrong; say why in the commit.
+- Before treating an example's rejection as an implementation gap, check its declared result, acquisitions and Constraints against SPEC and compile a valid control. An omitted named-function result means Unit; a body result is not evidence for changing that rule. Keep the intended failure and the valid control independently specified.
 - Reuse existing structures; avoid new layers, speculative abstraction and unrelated reformatting.
 
 ## 4. Decisions and blockers
