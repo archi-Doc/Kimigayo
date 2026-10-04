@@ -156,6 +156,13 @@ internal static partial class LlvmModuleWriter
                 throw new InvalidOperationException("Counted object cleanup is not enabled by ownership analysis.");
             }
 
+            if (aggregate.ObjectPayloadDrop is { } payloadDrop)
+            {
+                WriteSealedObjectDrop(output, objectHandle, payloadDrop);
+                output.Write("  ret void\n}\n");
+                return;
+            }
+
             output.Write(objectHandle.Counting == ObjectCountingStep.NonAtomic
                 ? "  call void @__kimi_drop_rc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n"
                 : "  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n");

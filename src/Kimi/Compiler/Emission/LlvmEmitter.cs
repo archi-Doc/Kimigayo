@@ -28,6 +28,7 @@ public sealed class LlvmEmitter
     {
         this.compilation = compilation;
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
+        this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }
 
     /// <summary>Verifies the entire selected input against the implemented execution subset.</summary>

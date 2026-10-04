@@ -93,6 +93,9 @@ cleanup by handle mode. `SharedObjectRuntimeTest` covers counts, lifetime, gener
 `SharedObjectOwnershipTest` covers Tuple/Case transfer, clone result Origins, destruction observations and CLI/LSP Loans.
 `OwnershipAnalysis.Pointers.SupportsPointerValue` shares executable handle storage with raw Move acquisition;
 `SharedObjectCleanupTest` covers owning Array iteration, clear, abandoned arguments and rc dynamic base identity.
+`AggregateLayoutPool.SealedObjectHandle` combines the Sealed proof with concrete payload cleanup; physical handle layouts
+carry its drop identity to `LlvmModuleWriter.WriteSealedObjectDrop`. Open/recursive targets retain dynamic cleanup
+(`SealedObjectFinalizationTest`).
 `FunctionKoto.RequiresInstantiation` supplies the shared generic-context predicate. `Binding.InstantiateForwardedCall`
 closes acquisition Types while keeping source anchors; `GenericStoragePlan` includes factory calls in each entry.
 `ObjectGenerationPlan.PrepareInstances` appends their checked physical plans as the bounded destructor queue discovers
