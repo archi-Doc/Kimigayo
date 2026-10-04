@@ -50,6 +50,21 @@ public sealed partial class Binding
             _ => false,
         };
 
+    // The binder of the fresh per-call inputs of an expected Function Type.
+    private static Koto? ExpectedInputBinder(BoundType expected)
+    {
+        var inputs = expected.Components[0];
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            if (inputs.Components[i].Origin is { Kind: OriginKind.Input } origin)
+            {
+                return origin.Binder;
+            }
+        }
+
+        return null;
+    }
+
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
@@ -59,12 +74,88 @@ public sealed partial class Binding
         return this.BindNode(argument, scope);
     }
 
+    // SPEC 10.5, 15.6.4: a fixed expected signature names its fresh per-call inputs through its own Function Type's binder; an
+    // anonymous function takes them as its own inputs, so the expectation is restated over the anonymous function's binder.
+    private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
+    {
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || !PerCallShape(expected) || ExpectedInputBinder(expected) is not { } binder ||
+            ReferenceEquals(binder, function))
+        {
+            return expected;
+        }
+
+        var count = expected.Components[0].Components.Count;
+        var inputs = this.originScratch.Rent(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                inputs[i] = this.OriginAtom(function, OriginKind.Input, i);
+            }
+
+            return this.SubstituteStoredOrigins(expected, binder, default, inputs.AsSpan(0, count));
+        }
+        finally
+        {
+            this.originScratch.Return(inputs, clearArray: true);
+        }
+    }
+
+    // The anonymous function's header as written, with omitted parts taken from the fixed signature, is the found Type; a
+    // different parameter count is stated by its count.
+    private BoundType? FailClosureHeader(FunctionKoto function, BoundType expected)
+    {
+        if (expected.Kind != BoundTypeKind.Function)
+        {
+            return this.Fail(function, BindingFailure.TypeMismatch);
+        }
+
+        var restated = this.ClosureExpectation(function, expected);
+        var inputs = restated.Components[0];
+        var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
+        if (function.Parameters.Count != count)
+        {
+            return this.RecordMismatch(function, function, function.Parameters.Count == 1 ? "an anonymous function with 1 parameter" : $"an anonymous function with {function.Parameters.Count} parameters", expected);
+        }
+
+        var scope = this.scopes[function];
+        var types = this.RentTypes(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var parameter = function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } ? inputs.Components[i] : this.BindType(function.Parameters[i].Type, scope);
+                if (parameter is null)
+                {
+                    return this.Fail(function, BindingFailure.TypeMismatch);
+                }
+
+                types[i] = parameter;
+            }
+
+            var result = function.ReturnType is { } written ? this.BindType(written, scope) : restated.Components[1];
+            if (result is null)
+            {
+                return this.Fail(function, BindingFailure.TypeMismatch);
+            }
+
+            var parameters = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types.AsSpan(0, count));
+            return this.FailMismatch(function, function, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
+        }
+        finally
+        {
+            this.typeScratch.Return(types, clearArray: true);
+        }
+    }
+
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || expected.CarriesOrigin)
+        if (expected.Kind != BoundTypeKind.Function || (expected.CarriesOrigin && !PerCallShape(expected)))
         {
             return false;
         }
+
+        expected = this.ClosureExpectation(function, expected);
 
         var inputs = expected.Components[0];
         var count = ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count;
@@ -95,7 +186,17 @@ public sealed partial class Binding
     {
         if (expected is not null && !this.ClosureSignatureFits(function, expected))
         {
-            return this.Fail(function, BindingFailure.TypeMismatch);
+            // SPEC 10.5, 23.3.6.4: the written header disagrees with the fixed signature; the omitted parameter Types that
+            // signature would have supplied rest on this failure.
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+                {
+                    this.CompleteDependent(inferred, function);
+                }
+            }
+
+            return this.FailClosureHeader(function, expected);
         }
 
         // A fixed signature supplies header inference, never a different capture or ownership model. The ordinary
@@ -217,6 +318,7 @@ public sealed partial class Binding
 
     private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected)
     {
+        expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
         plan.Receiver = SemanticsKind.Ref;
