@@ -731,6 +731,11 @@ public sealed partial class OwnershipBody
                 return this.Values[id].Constant == place || operation.Input == place;
             }
 
+            if (operation.Kind == OwnershipOperationKind.Call && operation.Input == place)
+            {
+                return true; // SPEC 15.6.4: a value call's receiver and its environment's Loans stay protected through the call.
+            }
+
             if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
             {
                 for (var loan = this.LoanInputs[id]; loan >= 0; loan = this.ComparisonLoans[loan].Parent)

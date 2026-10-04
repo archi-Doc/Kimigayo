@@ -125,7 +125,6 @@ public sealed partial class OwnershipAnalysis
             this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.Arguments[i]));
         }
 
-        this.ActivateCallReservations(call, reservationMark);
         if (!explicitReceiver && reservation < 0 && ReferenceTypes.IsBorrow(this.body.Places[receiver].Type))
         {
             // A reference receiver is used again at the call, so the Place it borrows stays lent while the arguments run; an
@@ -137,6 +136,9 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        // As at an ordinary call, the reserved exclusive arguments activate after the receiver's preparation, immediately before
+        // the entries (SPEC 15.6.7), while an owned receiver still holds its environment's Loans.
+        this.ActivateCallReservations(call, reservationMark);
         if (plan.ReceiverKind == SemanticsKind.Owner)
         {
             // Preparation owns the receiver until every argument completes. An early return in an argument
