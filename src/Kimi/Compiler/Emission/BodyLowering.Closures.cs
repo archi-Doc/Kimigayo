@@ -103,10 +103,11 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
-            !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
-            !Binding.CallableSignatureFits(closure.Signature, body.Places[operation.Place].Type) ||
+            !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
+            operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
+            !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
-            this.functions?.GetValueOrDefault(definition) is not { } entry ||
+            this.ClosureEntry(source, definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
         {
             return Fail("Erasure requires an acquired, Owned, Shared concrete environment and supported signature.", out failure);

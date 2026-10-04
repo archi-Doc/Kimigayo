@@ -372,8 +372,8 @@ public sealed partial class Binding
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected)) ||
             (actual.Kind == BoundTypeKind.Closure &&
-            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
-            CallableSignatureFits(closure.Signature, expected))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
+            actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref } &&
+            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
