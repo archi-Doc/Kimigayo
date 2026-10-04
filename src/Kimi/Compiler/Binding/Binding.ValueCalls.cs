@@ -114,7 +114,7 @@ public sealed partial class Binding
 
         if (owner.Kind == BoundTypeKind.Closure && owner.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
         {
-            signature = closure.Signature;
+            signature = this.ClosureSignature(owner)!;
             receiver = closure.Receiver;
             return true;
         }

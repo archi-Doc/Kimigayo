@@ -43,6 +43,9 @@ internal sealed partial class BodyLowering
         return offset;
     }
 
+    private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
+        => type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+
     // Retain physical signatures only; repeated compilation must not allocate
     // parameter arrays or keep a previous syntax/Binding graph alive.
     private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
@@ -128,7 +131,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (body.Function.BoundClosure is not { } closure || value.Constant < 0 || value.Constant >= closure.Captures.Count ||
             body.Operations[id].Kind != OwnershipOperationKind.Produce || !ReferenceEquals(body.Operations[id].Source, body.Function) ||
-            !ReferenceEquals(ValueType(body, id), closure.Captures[(int)value.Constant].Environment.Type) ||
+            !ReferenceEquals(ValueType(body, id), SignatureType(this, closure.Captures[(int)value.Constant].Environment.Type)) ||
             !body.SymbolPlaces.TryGetValue(closure.Captures[(int)value.Constant].Environment, out var place) || place != body.Operations[id].Place)
         {
             return Fail("Invalid closure capture parameter.", out failure);
@@ -136,7 +139,7 @@ internal sealed partial class BodyLowering
 
         if (closure.EnvironmentType is { } environment)
         {
-            return (this.aggregateLayouts.Get(environment) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
+            return (this.aggregateLayouts.Get(SignatureType(this, environment)!) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
         }
 
         var offset = CaptureOffset(closure, (int)value.Constant);
@@ -157,8 +160,8 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (operation.Source is not FunctionKoto { BoundClosure: { } closure } source ||
             closure.Signature.Kind != BoundTypeKind.Function ||
-            !ReferenceEquals(body.Places[operation.Place].Type, closure.EnvironmentType ?? closure.Signature) || value.Count != closure.Captures.Count ||
-            this.functions?.GetValueOrDefault(source) is not { } callee ||
+            !ReferenceEquals(body.Places[operation.Place].Type, SignatureType(this, closure.EnvironmentType ?? closure.Signature)) || value.Count != closure.Captures.Count ||
+            this.ClosureEntry(body.Places[operation.Place].Type, source) is not { } callee ||
             (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) != 0))
         {
             return Fail("Invalid closure creation or selected entry.", out failure);
@@ -180,7 +183,7 @@ internal sealed partial class BodyLowering
         }
 
         var patternStart = function.PatternSteps.Count;
-        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(environmentType) : null;
+        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(SignatureType(this, environmentType)!) : null;
         if (closure.EnvironmentType is not null && environmentLayout is null)
         {
             return Fail("Concrete environment has no storage layout.", out failure);
@@ -200,14 +203,14 @@ internal sealed partial class BodyLowering
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
                 (borrowed ? environmentLayout is null || body.Places[place = body.Operations[input].Place].Kind != OwnershipPlaceKind.Temporary
                     : !body.SymbolPlaces.TryGetValue(capture.Source, out place) || place != body.Operations[input].Place) ||
-                !ReferenceEquals(body.Places[place].Type, capture.Environment.Type) ||
+                !ReferenceEquals(body.Places[place].Type, SignatureType(this, capture.Environment.Type)) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
             {
                 return Fail("Closure capture requires a checked initialized inline scalar snapshot.", out failure);
             }
 
             function.PatternSteps.Add(new(offset, representation, 0));
-            function.Operands.Add(SlotTypes.IsResult(capture.Environment.Type) ? new(EmissionOperandKind.SlotAddress, body.Operations[input].Input) : this.PhysicalOperand(body, input));
+            function.Operands.Add(SlotTypes.IsResult(body.Places[place].Type) ? new(EmissionOperandKind.SlotAddress, body.Operations[input].Input) : this.PhysicalOperand(body, input));
         }
 
         function.Instructions.Add(new(EmissionOpcode.CreateClosure, id, operation.Place, Callee: callee, OperandStart: start, OperandCount: value.Count, PatternStart: patternStart, PatternCount: value.Count, Aggregate: environmentLayout));
@@ -327,10 +330,15 @@ internal sealed partial class BodyLowering
         var start = function.Operands.Count;
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var itemCall = receiverType.Kind == BoundTypeKind.FunctionItem;
-        var concreteEntry = receiverType.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
+        var concreteEntry = receiverType.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.ClosureEntry(receiverType, definition) : null;
         if (itemCall && concreteEntry is not { CallerLocation: false })
         {
             return Fail("Function Item call requires its resolved declaration entry.", out failure);
+        }
+
+        if (receiverType.Kind == BoundTypeKind.Closure && concreteEntry is null)
+        {
+            return Fail("Concrete closure call requires its resolved environment entry.", out failure);
         }
 
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);

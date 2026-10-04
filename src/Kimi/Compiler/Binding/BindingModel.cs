@@ -389,6 +389,9 @@ public sealed record BoundType : ControlFlowType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
+    // A generic closure keeps the enclosing substitution even when none of its slots occupy capture storage.
+    internal BoundCall? ClosureContext { get; init; }
+
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
 

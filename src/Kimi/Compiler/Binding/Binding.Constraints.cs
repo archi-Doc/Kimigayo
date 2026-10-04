@@ -217,7 +217,7 @@ public sealed partial class Binding
         {
             var subject = proposition.Subject!;
             var closure = subject.Kind == BoundTypeKind.Closure ? (subject.Symbol?.Declaration as FunctionKoto)?.BoundClosure : null;
-            var signature = closure?.Signature ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
+            var signature = (closure is null ? null : this.ClosureSignature(subject)) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {
                 return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
@@ -693,7 +693,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext) : type;
         }
         finally
         {

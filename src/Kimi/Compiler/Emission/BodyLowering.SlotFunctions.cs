@@ -68,7 +68,7 @@ internal sealed partial class BodyLowering
 
         if (body.Function.BoundClosure is { EnvironmentType: { } environment } closure)
         {
-            if (this.aggregateLayouts.Get(environment) is not { } layout)
+            if (this.aggregateLayouts.Get(SignatureType(this, environment)!) is not { } layout)
             {
                 return Fail("Concrete closure has no finite environment layout.", out failure);
             }

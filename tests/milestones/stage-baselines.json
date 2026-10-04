@@ -1,7 +1,6 @@
 [
   { "Program": 24, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "value.item", "SupportedPrefixEnd": "contract Viewed" },
   { "Program": 25, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "value.count", "SupportedPrefixEnd": "public func main()" },
-  { "Program": 26, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "value@move", "SupportedPrefixEnd": "func inspectTwice" },
   { "Program": 33, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" },
   { "Program": 34, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "let shared = Kimi.Intrinsics.makeArc(Payload.init(2))", "SupportedPrefixEnd": "public func main()" },
   { "Program": 35, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "struct Node" },

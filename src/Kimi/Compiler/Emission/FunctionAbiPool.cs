@@ -11,7 +11,7 @@ internal sealed class FunctionAbiPool
     private readonly List<Signature> signatures = new();
 
     /// <summary>
-    /// Builds the physical signature of a closed, non-closure entry from its substituted parameter and
+    /// Builds the physical signature of a closed entry from its substituted parameter and
     /// result Types with the same parameter kinds and slot rules as ordinary functions (SPEC 21.3.1:
     /// generic entries and concrete functions share one ABI rule).
     /// </summary>
@@ -21,10 +21,16 @@ internal sealed class FunctionAbiPool
     /// <param name="resultSlot">Whether the result is returned through a caller-provided slot.</param>
     /// <param name="layouts">The layout pool for aggregate Types.</param>
     /// <param name="callerLocation">Whether this standard source entry forwards its caller's diagnostic location.</param>
+    /// <param name="closure">Whether the entry receives a concrete closure environment and call context.</param>
     /// <returns>The physical signature; zero-sized parameters have no physical slot.</returns>
-    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false)
+    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false, bool closure = false)
     {
-        var physical = new List<AbiParameter>(parameters.Length + 1 + (callerLocation ? 2 : 0));
+        var physical = new List<AbiParameter>(parameters.Length + 1 + (callerLocation ? 2 : 0) + (closure ? 2 : 0));
+        if (closure)
+        {
+            physical.Add(new("ptr", "environment", AbiParameterKind.Environment));
+        }
+
         if (resultSlot)
         {
             physical.Add(new("ptr", "ret", AbiParameterKind.ResultSlot));
@@ -37,6 +43,11 @@ internal sealed class FunctionAbiPool
             {
                 physical.Add(new(shape.Type, "a" + i.ToString(CultureInfo.InvariantCulture), shape.Kind, i));
             }
+        }
+
+        if (closure)
+        {
+            physical.Add(new("ptr", "context", AbiParameterKind.Context));
         }
 
         if (callerLocation)
@@ -55,15 +66,21 @@ internal sealed class FunctionAbiPool
     /// <param name="resultSlot">Whether the result is returned through a slot.</param>
     /// <param name="layouts">The current aggregate layouts.</param>
     /// <param name="callerLocation">Whether the source entry forwards the caller's location.</param>
+    /// <param name="closure">Whether the entry receives a concrete closure environment and call context.</param>
     /// <returns>Whether <see cref="Build"/> would produce the same physical signature.</returns>
-    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false)
+    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false, bool closure = false)
     {
         if (abi.CallerLocation != callerLocation || abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
         {
             return false;
         }
 
-        var physical = resultSlot ? 1 : 0;
+        if (closure && (abi.Parameters.Length < 2 || abi.Parameters[0].Kind != AbiParameterKind.Environment || abi.Parameters[^1].Kind != AbiParameterKind.Context))
+        {
+            return false;
+        }
+
+        var physical = (resultSlot ? 1 : 0) + (closure ? 1 : 0);
         for (var i = 0; i < parameters.Length; i++)
         {
             var shape = Shape(parameters[i], layouts);
@@ -80,7 +97,7 @@ internal sealed class FunctionAbiPool
             physical++;
         }
 
-        return physical + (callerLocation ? 2 : 0) == abi.Parameters.Length;
+        return physical + (callerLocation ? 2 : 0) + (closure ? 1 : 0) == abi.Parameters.Length;
     }
 
     internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
