@@ -133,6 +133,22 @@ public enum KimiDeclarationId : byte
     RawInitialize,
     RawSlice,
     Loan,
+    StorageArgumentOutOfRange,
+    FromEndResolve,
+    StartResolve,
+    EndResolve,
+    RangeResolve,
+    ClosedRangeResolve,
+    ResolvedRangeResolve,
+    RangeIterate,
+    RangeIterateUniq,
+    RangeIntoIterator,
+    ClosedRangeIterate,
+    ClosedRangeIterateUniq,
+    ClosedRangeIntoIterator,
+    RangeIteratorStarting,
+    ClosedRangeIteratorStarting,
+    ArrayTruncate,
 }
 
 public enum KimiDeclarationState : byte

@@ -164,8 +164,9 @@ public class CoreCatalogTest
         Assert.False(c.Library.IsCompleteLibrary);
         // Dictionary's two source Indexable entries and the private storage primitives are catalog identities too, as is
         // the Wrapping<T> stub (SPEC 3.1.1.1) and the private i64 address primitive.
-        Assert.Equal(120, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(125, c.Library.Declarations.Length);
+        // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive.
+        Assert.Equal(136, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(141, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

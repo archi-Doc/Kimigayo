@@ -81,6 +81,7 @@ public enum CompilerFunctionKind : byte
     StorageOwnFixed,
     StorageDictionaryLayout,
     StorageMissingDictionaryKey,
+    StorageArgumentOutOfRange,
     StoragePlaceDictionaryEntry,
     StorageReserveDictionary,
     StorageShrinkDictionary,

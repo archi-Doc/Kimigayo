@@ -124,7 +124,7 @@ public struct Array<T>
     ///
     /// - abort: `length` is negative.
     public func truncate(self: uniq/Self, length: isize)
-        require length >= 0 else => $abort("Negative Array length")
+        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
         while self.length > length
             match self.pop()
                 .Some(_) => ()

@@ -23,11 +23,6 @@ public sealed partial class KimiLibrary
     private static bool PlacementInput(FunctionParameterKoto parameter, string name)
         => parameter is { DefaultValue: null, AttributeChain: null } && parameter.InternalName == name && parameter.ExternalName == name;
 
-    private bool ValidMissingDictionaryKey(BindingSymbol symbol)
-        => symbol.CompilerFunction == CompilerFunctionKind.StorageMissingDictionaryKey &&
-        symbol.Declaration is FunctionKoto { Name: "missingDictionaryKey", Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function &&
-        ReferenceEquals(function.Parent, this.StorageScope.Owner) && BareName(function.ReturnType, "Never");
-
     // This private unsafe primitive only exposes physical storage to the source algorithms. It acquires no entries.
     private bool ValidDictionaryLayout(BindingSymbol symbol)
         => symbol.CompilerFunction == CompilerFunctionKind.StorageDictionaryLayout &&

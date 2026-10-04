@@ -157,6 +157,23 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice),
         // SPEC 15.3.5: the zero-sized dependency Field Core.
         new(KimiDeclarationId.Loan, "Loan"),
+        // Ordinary source bodies carry private diagnostic context; their public signatures remain ordinary source.
+        new(KimiDeclarationId.StorageArgumentOutOfRange, "argumentOutOfRange", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageArgumentOutOfRange),
+        new(KimiDeclarationId.FromEndResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "FromEnd"),
+        new(KimiDeclarationId.StartResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "Start"),
+        new(KimiDeclarationId.EndResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "End"),
+        new(KimiDeclarationId.RangeResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "Range"),
+        new(KimiDeclarationId.ClosedRangeResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
+        new(KimiDeclarationId.ResolvedRangeResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "ResolvedRange"),
+        new(KimiDeclarationId.RangeIterate, "iterate", SourceFunction: true, CallerLocation: true, Owner: "Range"),
+        new(KimiDeclarationId.RangeIterateUniq, "iterateUniq", SourceFunction: true, CallerLocation: true, Owner: "Range"),
+        new(KimiDeclarationId.RangeIntoIterator, "intoIterator", SourceFunction: true, CallerLocation: true, Owner: "Range"),
+        new(KimiDeclarationId.ClosedRangeIterate, "iterate", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
+        new(KimiDeclarationId.ClosedRangeIterateUniq, "iterateUniq", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
+        new(KimiDeclarationId.ClosedRangeIntoIterator, "intoIterator", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
+        new(KimiDeclarationId.RangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "RangeIterator"),
+        new(KimiDeclarationId.ClosedRangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "ClosedRangeIterator"),
+        new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
     ];
 
     private static readonly int[] Indices = CreateIndices();
@@ -209,7 +226,7 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false, string? Owner = null)
     {
         internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
     }

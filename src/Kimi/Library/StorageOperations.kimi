@@ -20,6 +20,7 @@ internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (r
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
 internal func missingDictionaryKey() -> Never
+internal func argumentOutOfRange() -> Never
 // Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
 // no equal key is stored; growth failure Aborts at the standard operation's caller location.
 internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)
@@ -29,4 +30,3 @@ internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isi
     K is Equatable
 internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
     K is Equatable
-

@@ -97,6 +97,9 @@ and exposes no public ABI. The three iteration entries also use Kimigayo.
 Dictionary declares `UniqIndexable<K>` with ordinary `index` and `indexUniq` bodies over those remainders.
 Subscripts, direct calls and generic Contract calls share these bodies; catalog metadata adds a private caller-location pair to their
 physical ABI so the missing-key primitive reports the access rather than the embedded source.
+The same catalog metadata and private ABI carry the caller context through Position/range `resolve`, integer range
+iteration entries and their `starting` helpers, and Array `truncate`. Their Kimigayo bodies choose the failure;
+`Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
 `Storage.placeEntry` appends one slot and transfers the acquired pair, carrying the standard operation's caller location
 for growth failure; `Storage.placeValue` refills a live slot after `valueAt` moved its value out, so replacement secures

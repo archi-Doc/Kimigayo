@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
+    private bool ValidStorageAbort(BindingSymbol symbol, in KimiLibraryCatalog.Entry rule)
+        => symbol.CompilerFunction == rule.Function &&
+        symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function && function.Name == rule.Name &&
+        ReferenceEquals(function.Parent, this.StorageScope.Owner) && BareName(function.ReturnType, "Never");
+
     // Canonical complete signatures over the declaration's own E. Compare the ordinary binder's
     // identities and Origins, not just the spelling of Array, E or the remainder names.
     private static readonly StorageSignature[] StorageSignatures =
@@ -77,7 +82,7 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id == KimiDeclarationId.StorageMissingDictionaryKey)
+        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
         }

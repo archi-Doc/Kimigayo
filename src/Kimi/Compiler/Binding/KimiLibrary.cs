@@ -67,6 +67,7 @@ public sealed partial class KimiLibrary
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
+        var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++)
         {
             ref readonly var entry = ref entries[i];
@@ -81,6 +82,18 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Raw => this.RawScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
+            if (entry.Owner is { } owner)
+            {
+                if (!sourceScopes.TryGetValue(owner, out var sourceScope))
+                {
+                    var container = FindDeclaration(this.Kotonoha.RootKoto, owner, false) as DeclarationContainerKoto;
+                    sourceScope = container is null ? this.Scope : new(container) { Parent = this.Scope };
+                    sourceScopes.Add(owner, sourceScope);
+                }
+
+                scope = sourceScope;
+            }
+
             var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
             BindingSymbol? symbol = null;
             if (declaration is not null)
@@ -393,24 +406,9 @@ public sealed partial class KimiLibrary
             var members = container.Members is List<Koto> memberList ? CollectionsMarshal.AsSpan(memberList) : default;
             foreach (var node in members)
             {
-                if (node is FunctionKoto member && member.Name == name)
+                if (Visit(node))
                 {
-                    if (overload >= 0)
-                    {
-                        if (overload-- == 0)
-                        {
-                            return member;
-                        }
-
-                        continue;
-                    }
-
-                    if (found is not null)
-                    {
-                        return null;
-                    }
-
-                    found = member;
+                    return found;
                 }
             }
         }
@@ -432,6 +430,42 @@ public sealed partial class KimiLibrary
         }
 
         return found;
+
+        bool Visit(Koto node)
+        {
+            if (node is FunctionKoto member && member.Name == name)
+            {
+                if (overload >= 0)
+                {
+                    if (overload-- == 0)
+                    {
+                        found = member;
+                        return true;
+                    }
+                }
+                else if (found is not null)
+                {
+                    found = null;
+                    return true; // Several declarations require an explicit catalog overload.
+                }
+                else
+                {
+                    found = member;
+                }
+            }
+            else if (node is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Operands: [_, _, CodeBlockKoto block] })
+            {
+                for (var i = 0; i < block.Items.Count; i++)
+                {
+                    if (Visit(block.Items[i]))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 
     private BindingSymbol CreateAbort()

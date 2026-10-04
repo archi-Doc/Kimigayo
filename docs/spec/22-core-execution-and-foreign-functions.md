@@ -488,6 +488,8 @@ Failures of Alloc and WriteStdout, and detected Free failures, Abort. TryWriteSt
 
 Physical helpers carry any required private diagnostic context through the compiler-selected internal ABI (§21.4.2); its position and representation are not fixed. Lowering preserves the static logical path, line and column of the original operation, including failures inside Alloc, Free and WriteStdout and generated-source CodeContext provenance. This does not depend on PDBs or stack traces.
 
+A standard operation implemented by Kimigayo helper calls carries that same context to its precondition failures; an implementation helper's source position does not replace the caller's operation. An implicit iteration entry or step initiated by `for` reports the start of that `for` expression. Explicit user `$abort` keeps the position of its own expression.
+
 Generated arithmetic checks report the start of the failing arithmetic expression. Compound assignment and increment/decrement report the start of the complete update expression. These locations remain the same across optimization levels.
 
 ### 22.5.2. Allocation and release

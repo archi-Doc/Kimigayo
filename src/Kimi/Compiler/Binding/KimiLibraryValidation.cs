@@ -26,7 +26,8 @@ public sealed partial class KimiLibrary
             var state = KimiDeclarationState.Missing;
             if (entry.Symbol is { } symbol)
             {
-                var matches = ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
+                var matches = (rule.Owner is null || ReferenceEquals(FindDeclaration(this.Kotonoha.RootKoto, rule.Owner, false), symbol.Scope.Owner)) &&
+                    ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
                     (rule.Intrinsic != IntrinsicKind.None ? this.Valid(symbol, rule.Intrinsic) : entry.Id switch
                     {
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
@@ -62,11 +63,12 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
                         KimiDeclarationId.StorageOwnFixed => this.ValidFixedOwningOperation(symbol),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
-                        KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
+                        KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange => this.ValidStorageAbort(symbol, rule),
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.Loan => this.ValidLoan(symbol),
                         KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
+                        _ when rule.SourceFunction => symbol.CompilerFunction == CompilerFunctionKind.None && symbol.Declaration is FunctionKoto { IsRequirement: false, IsGenerated: false, IsSpecialization: false } ordinary && (ordinary.Body is not null || ordinary.ExpressionBody is not null),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
