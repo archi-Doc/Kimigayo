@@ -222,21 +222,15 @@ public class StringFunctionEmissionTest
     public void WarmStringFunctionPreparationAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Echo + "var i = 0\nwhile i < 3\n    Console.writeLine(echo(echo(\"text\")))\n    i += 1");
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var success = true;
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var bytes = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(success);
         Assert.Equal(0, bytes);
     }
