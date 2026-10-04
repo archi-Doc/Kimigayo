@@ -607,6 +607,15 @@ public sealed partial class Binding
                     advice = "Write explicit Type arguments or a Type annotation that uniquely selects the intended function reference";
                 }
 
+                if (candidate.UnfixedReference)
+                {
+                    // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
+                    shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
+                    advice = "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
+                    candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
+                    continue;
+                }
+
                 if (candidate.Selected)
                 {
                     shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";
@@ -643,6 +652,11 @@ public sealed partial class Binding
             // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
             issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: advice, at: at);
+        }
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && KotoHelper.UnwrapParentheses(issue.Node).BoundSymbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+        {
+            // SPEC 10.5: the Type parameter that no expected call signature or explicit Type argument binds.
+            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)]);
         }
         else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
         {
@@ -837,6 +851,7 @@ public sealed partial class Binding
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
+                    BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,

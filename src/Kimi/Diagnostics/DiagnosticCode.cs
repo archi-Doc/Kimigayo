@@ -219,6 +219,7 @@ public enum DiagnosticCode
     OwningWriteArgument_Kd,
     InvalidTryReturn_Kd,
     TryPayloadMismatch_Kd,
+    UnboundTypeArgument_Kd,
 
     Count, // Last sentinel
 }

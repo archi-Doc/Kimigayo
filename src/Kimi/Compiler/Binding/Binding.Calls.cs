@@ -449,7 +449,7 @@ public sealed partial class Binding
 
                     // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
                     // A generic Callable contract checks that Type without erasing it to a common Function handle.
-                    if (this.BindFunctionItem(argument, item) is not null)
+                    if (this.BindFunctionItem(argument, item, scope) is not null)
                     {
                         continue;
                     }

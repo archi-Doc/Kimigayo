@@ -64,6 +64,77 @@ public class GenericFunctionReferenceTest
         Assert.Contains(source.Contains("once", StringComparison.Ordinal) ? "Owned bound generic arguments" : "Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal);
     }
 
+    // SPEC 10.5: explicit Type arguments narrow the candidates to those that take them; one remaining candidate is a value.
+    [Theory]
+    [InlineData("Value", Show + "let d = show<i32>\nd(3)", "generic\n")]
+    [InlineData("Expected", Show + "let a: (i32) -> () = show<i32>\na(4)", "generic\n")]
+    [InlineData("Callable", Identity + Apply + "require apply(identity<i32>, 5) == 5 else => $abort(\"callable\")", "")]
+    [InlineData("String", Identity + "let f = identity<string>\nConsole.writeLine(f(\"text\"))", "text\n")]
+    [InlineData("Qualified", "group Tools\n    public func echo<T>(value: T) -> T => value@move\nlet g = Tools.echo<i32>\nrequire g(6) == 6 else => $abort(\"qualified\")", "")]
+    [InlineData("Parenthesized", Identity + "let h: (bool) -> bool = (identity<bool>)\nrequire h(true) else => $abort(\"parenthesized\")", "")]
+    public void ExplicitTypeArgumentsSelectTheReference(string name, string source, string stdout)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.EmitFixture("GenericReferenceExplicit" + name, source, stdout);
+    }
+
+    [Fact]
+    public void AnOverloadSetWithoutASignatureIsAmbiguous()
+    {
+        var c = MinimalEmissionTest.Analyze(Show + "let e = show");
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(nameof(DiagnosticCode.AmbiguousBinding_Kd), error.Code);
+        Assert.Equal("show", error.Text);
+        Assert.Contains("without a fixed expected call signature", error.Note, StringComparison.Ordinal);
+        Assert.Contains("explicit Type arguments", error.Advice, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("let f = identity")]
+    [InlineData("let o: Option<i32> = .None\nlet f = (identity)")]
+    public void AGenericReferenceWithoutASignatureLeavesItsSlotUnbound(string body)
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze(Identity + body, path);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), error.Code);
+        Assert.True(error.Text is "identity" or "(identity)", error.Text);
+        Assert.Contains("'T'", error.Label, StringComparison.Ordinal);
+        Assert.Contains("identity<i32>", error.Advice, StringComparison.Ordinal);
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var record = Assert.Single(result.Diagnostics);
+        Assert.Equal(DiagnosticCategory.Language, record.Category);
+        Assert.Equal("declaration", Assert.Single(record.Related!).Role);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("Type parameter 'T' is not bound", console.Text, StringComparison.Ordinal);
+        var identity = Kimi.Checking.SourceIdentity.FromPath(path);
+        foreach (var capability in new[] { false, true })
+        {
+            var sent = Assert.Single(Kimi.Lsp.WorkspaceCheck.Place(new(Kimi.Checking.CheckOutcome.Completed, false, Kimi.Checking.TestPresence.No, result), [identity], identity, capability)[identity]);
+            Assert.Equal(record.Code, sent.Code);
+            Assert.Equal(record.Display!.Range, sent.Range);
+        }
+    }
+
+    [Theory]
+    [InlineData(Identity + "let g = identity<i32, bool>", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData(Show + "let u: (i32) -> () = show<i32, bool>", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("func pair<T>(value: T) -> (T, T)\n    T is Copy\n    return (value, value)\nlet p = pair<string>", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    public void ExplicitArgumentsThatNoCandidateTakesAreRejected(string source, string code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error).Code);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericReferenceSelectionAndEmissionAllocateNothing()

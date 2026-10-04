@@ -108,15 +108,125 @@ public sealed partial class Binding
         return false;
     }
 
-    private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol)
+    private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol, BindingScope scope)
     {
-        // Overload selection, bound generic arguments and requirement references need their own retained selection plan.
+        if (KotoHelper.UnwrapParentheses(use) is GenericsKoto explicitReference)
+        {
+            return this.BindExplicitFunctionItem(use, explicitReference, symbol, scope);
+        }
+
         if (!IndependentFunctionItem(symbol))
         {
-            return this.Fail(use, BindingFailure.Unsupported, true);
+            return this.FailUnfixedReference(use, symbol);
         }
 
         return this.CompleteFunctionItem(use, symbol);
+    }
+
+    // SPEC 10.5: without a fixed expected call signature, a reference is a value only when one candidate remains and that
+    // candidate has no unbound own slots. Forms whose references are not yet selected stay explicitly unsupported.
+    private BoundType? FailUnfixedReference(Koto use, BindingSymbol symbol)
+    {
+        var count = 0;
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+        {
+            this.BindHeader(candidate);
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function) || function.IsDestructor ||
+                candidate.Intrinsic != IntrinsicKind.None || (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0))
+            {
+                return this.Fail(use, BindingFailure.Unsupported, true);
+            }
+
+            count++;
+        }
+
+        if (count == 1)
+        {
+            return this.Fail(use, BindingFailure.UnboundTypeArgument);
+        }
+
+        var rejected = new RejectedCandidate[count];
+        var next = 0;
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+        {
+            var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
+            rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true);
+        }
+
+        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+        return this.Fail(use, BindingFailure.Ambiguous);
+    }
+
+    // SPEC 10.5: without a fixed expected call signature, a reference with explicit Type arguments is a value when exactly one
+    // candidate takes those arguments; its Constraints are proven for them.
+    private BoundType? BindExplicitFunctionItem(Koto use, GenericsKoto explicitReference, BindingSymbol symbol, BindingScope scope)
+    {
+        var count = explicitReference.TypeArguments.Count;
+        BindingSymbol? selected = null;
+        var candidates = 0;
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+        {
+            this.BindHeader(candidate);
+            if (candidate.Declaration is not FunctionKoto function || function.GenericArguments.Count != count || !this.Accessible(candidate, scope))
+            {
+                continue;
+            }
+
+            if (UnsupportedReference(candidate, function))
+            {
+                return this.Fail(use, BindingFailure.Unsupported, true);
+            }
+
+            selected = candidate;
+            candidates++;
+        }
+
+        if (candidates != 1)
+        {
+            return this.Fail(use, candidates == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+        }
+
+        var target = (FunctionKoto)selected!.Declaration;
+        if ((target.Modifier & ModifierKind.Unsafe) != 0)
+        {
+            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+        }
+
+        var arguments = this.typeScratch.Rent(count);
+        try
+        {
+            if (!this.ExplicitReferenceArguments(explicitReference, arguments))
+            {
+                return null;
+            }
+
+            var proof = this.ReferenceArgumentProof(target, arguments, scope);
+            if (proof != ConstraintProof.Proven)
+            {
+                this.RequireConstraint(use, proof, this.capabilityMode);
+                return null;
+            }
+
+            return this.CompleteFunctionItem(use, selected, arguments.AsSpan(0, count));
+        }
+        finally
+        {
+            this.typeScratch.Return(arguments, clearArray: true);
+        }
+    }
+
+    // The bound Types of a reference's explicit Type arguments; a length argument is not yet referenced.
+    private bool ExplicitReferenceArguments(GenericsKoto explicitReference, BoundType?[] arguments)
+    {
+        for (var i = 0; i < explicitReference.TypeArguments.Count; i++)
+        {
+            if ((arguments[i] = explicitReference.TypeArguments[i].BoundType) is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default)
@@ -130,7 +240,14 @@ public sealed partial class Binding
         }
 
         use.BoundSymbol = symbol;
-        if (use is MemberAccessKoto member)
+        var name = use is GenericsKoto { Identifier: { } identifier } ? identifier : use;
+        if (!ReferenceEquals(name, use))
+        {
+            name.BoundSymbol = symbol;
+            Complete(name, type);
+        }
+
+        if (name is MemberAccessKoto member)
         {
             member.Right.BoundSymbol = symbol;
             Complete(member.Right, type);

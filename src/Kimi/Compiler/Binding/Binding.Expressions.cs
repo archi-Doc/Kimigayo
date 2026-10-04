@@ -404,7 +404,7 @@ public sealed partial class Binding
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
             (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
         {
-            actual = this.BindFunctionItem(node, item);
+            actual = this.BindFunctionItem(node, item, scope);
         }
 
         if (expected is not null && actual is not null && this.ErasesToFunction(node, actual, expected))
@@ -756,11 +756,44 @@ public sealed partial class Binding
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
+            case GenericsKoto { Identifier: IdentifierNameKoto or MemberAccessKoto } reference when IsValueUse(reference):
+                return this.BindExplicitReferenceName(reference, scope);
         }
 
         // Unsupported semantics stay explicit and cannot pass final Bound checking.
         this.BindUnknownChildren(node, scope);
         return this.Fail(node, BindingFailure.Unsupported, true);
+    }
+
+    // SPEC 10.5: a function Name with explicit Type arguments in a value position is a reference whose candidates take
+    // those arguments. It is resolved here and selected as a value, or against the fixed expected call signature.
+    private BoundType? BindExplicitReferenceName(GenericsKoto reference, BindingScope scope)
+    {
+        var name = reference.Identifier!;
+        this.BindNodeCore(name, scope, null);
+        if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
+        {
+            this.BindUnknownChildren(reference, scope);
+            return this.Fail(reference, BindingFailure.Unsupported, true);
+        }
+
+        for (var i = 0; i < reference.TypeArguments.Count; i++)
+        {
+            var syntax = reference.TypeArguments[i];
+            if (this.IsLengthArgument(syntax, scope))
+            {
+                return this.Fail(reference, BindingFailure.Unsupported, true);
+            }
+
+            if (this.BindType(syntax, scope) is null)
+            {
+                return this.CompleteDependent(reference, syntax);
+            }
+        }
+
+        reference.BoundSymbol = group;
+        reference.BindingState = BindingState.Resolved;
+        return null;
     }
 
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)

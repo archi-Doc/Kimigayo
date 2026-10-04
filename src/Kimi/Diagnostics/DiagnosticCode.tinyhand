@@ -951,3 +951,10 @@
     Evidence="payload:Type"
     Label="the payload is {0}"
     Advice="At an Option or Result return, consider .Some(try ...) or .Ok(try ...) with an appropriate return annotation, then recheck Type inference, ownership and cleanup"
+
+  + Name="UnboundTypeArgument_Kd"
+    Category="Language"
+    Message="A generic function reference without a fixed expected call signature or explicit Type arguments leaves its Type parameters unbound; it is not a value"
+    Evidence="parameter:Text"
+    Label="Type parameter '{0}' is not bound"
+    Advice="Write explicit Type arguments, as in identity<i32>, or annotate the expected Function Type, as in let f: (i32) -> i32 = identity"

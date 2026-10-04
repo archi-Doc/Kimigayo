@@ -579,6 +579,9 @@
   + Name="Binding.ParameterShapeMismatch"
     Description="the functions of one Name acquire corresponding parameters of overlapping Types in one mode"
 
+  + Name="Binding.UnboundTypeArgument"
+    Description="a function reference without a fixed expected call signature binds every Type parameter of its function"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 

@@ -316,7 +316,7 @@ public sealed partial class Binding
                         source is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                     {
                         // SPEC 7.6.4: infer an open payload from the declaration's Item Type, just as for a generic call.
-                        actual = this.BindFunctionItem(source, item);
+                        actual = this.BindFunctionItem(source, item, scope);
                     }
 
                     if (actual is null)

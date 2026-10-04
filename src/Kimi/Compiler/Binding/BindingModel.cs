@@ -152,6 +152,9 @@ internal enum BindingFailure : byte
     // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.
     ParameterShapeMismatch,
 
+    // SPEC 10.5: a reference without a fixed expected call signature needs every Type parameter bound explicitly.
+    UnboundTypeArgument,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,

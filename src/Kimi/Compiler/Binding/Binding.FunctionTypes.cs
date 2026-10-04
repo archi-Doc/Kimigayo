@@ -274,10 +274,15 @@ public sealed partial class Binding
     // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
     // Origins are left to the per-call solver, and a per-call Origin of S never becomes part of a bound argument.
-    private bool BindReferenceArguments(BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType?[] arguments, BindingScope scope)
+    private bool BindReferenceArguments(BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType?[] arguments, BindingScope scope, GenericsKoto? explicitReference)
     {
         var count = function.GenericArguments.Count;
         Array.Clear(arguments, 0, count);
+        if (explicitReference is not null && !this.ExplicitReferenceArguments(explicitReference, arguments))
+        {
+            return false;
+        }
+
         var parameters = required.Components[0];
         for (var i = 0; i < function.Parameters.Count; i++)
         {
@@ -300,14 +305,7 @@ public sealed partial class Binding
             }
         }
 
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope);
-        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
-        for (var i = 0; i < count; i++)
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(arguments[i]!, scope), true);
-        }
-
-        return proof == ConstraintProof.Proven;
+        return this.ReferenceArgumentProof(function, arguments, scope) == ConstraintProof.Proven;
 
         static bool CarriesInputOrigin(BoundType type)
         {
@@ -336,10 +334,26 @@ public sealed partial class Binding
         }
     }
 
+    // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5).
+    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, BoundType?[] arguments, BindingScope scope)
+    {
+        var count = function.GenericArguments.Count;
+        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope);
+        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
+        for (var i = 0; i < count; i++)
+        {
+            proof = CombineProof(proof, this.CheckTypeConstraints(arguments[i]!, scope), true);
+        }
+
+        return proof;
+    }
+
     private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, Span<BoundArgumentOperation> operations = default, BoundType?[]? boundArguments = null)
     {
         var parameters = required.Components[0];
-        if (parameters.Components.Count != function.Parameters.Count)
+        var explicitReference = KotoHelper.UnwrapParentheses(use) as GenericsKoto;
+        if (parameters.Components.Count != function.Parameters.Count ||
+            (explicitReference is not null && explicitReference.TypeArguments.Count != function.GenericArguments.Count))
         {
             return false;
         }
@@ -353,7 +367,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            if (arguments is not null && !this.BindReferenceArguments(symbol, function, required, arguments, scope))
+            if (arguments is not null && !this.BindReferenceArguments(symbol, function, required, arguments, scope, explicitReference))
             {
                 return false;
             }
