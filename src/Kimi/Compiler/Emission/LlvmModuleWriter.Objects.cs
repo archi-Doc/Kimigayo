@@ -91,6 +91,7 @@ internal static partial class LlvmModuleWriter
 
             """);
         WriteRcObjects(output);
+        WriteArcObjects(output);
         foreach (var item in module.Objects)
         {
             var id = item.Id;

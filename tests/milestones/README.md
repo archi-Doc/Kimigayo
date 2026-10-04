@@ -137,7 +137,7 @@ authoring correction re-spelled the pending program 36:
 | 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Completed 2026-10-03 (user decision G58). Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; every public operation dispatches through Kimigayo source, and the capacity callback construction moved to P26. [Evidence](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../../docs/dev/PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
-| 34 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | The unchanged source advances through rc ownership and stops at the first makeArc declaration (2026-10-04, U4). Concrete rc runtime fixtures cover creation, clone, results/replacement and final release; arc execution continues in the shared object track. |
+| 34 | YES | PASS | PASS (Release, O0/O2) | PASS | IN_PROGRESS | The unchanged source executes through its original-source harness (2026-10-04, U5). rc/arc creation, clone, shared views and final release are verified; remaining handle-update neighbors and milestone completion evidence stay in PLAN U6/U7. |
 | 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Node>`: `Weak` and the Weak/cyclic intrinsics are cataloged without declarations (PLAN G4). |
 | 36 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27; re-spelled 2026-10-04 (authoring correction: `Resource.drop` gains the `2 =>` arm). Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
@@ -1789,7 +1789,7 @@ moved and consumed; the payload is destroyed exactly once when the last strong
 handle is released. Object borrows read the payload without changing counts, and
 a payload that keeps a borrow retains that dependency in its handle.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (specification-derived; the original-source harness verifies Release O0/O2):
 
 ```text
 Handle reads payload 1.

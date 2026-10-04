@@ -120,12 +120,12 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData("arc/i32")]
     [InlineData("uniq/arc/i32")]
     [InlineData("Option<arc/i32>")]
-    public void AtomicOwnershipRemainsClosed(string type)
+    public void AtomicOwnershipUsesTheCommonStoragePlan(string type)
     {
-        var c = MinimalEmissionTest.Analyze($"func unsupported(value: {type}) => ()");
+        var c = MinimalEmissionTest.Analyze($"func consume(value: {type}) => ()\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Theory]

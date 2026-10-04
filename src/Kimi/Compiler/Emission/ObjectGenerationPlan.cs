@@ -65,7 +65,7 @@ internal sealed class ObjectGenerationPlan
                 }
 
                 if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
-                    call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.Clone))
+                    call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone))
                 {
                     continue;
                 }
@@ -185,14 +185,14 @@ internal sealed class ObjectGenerationPlan
     private bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out string? failure)
     {
         failure = null;
-        if (call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc) || this.calls.ContainsKey(call))
+        if (call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) || this.calls.ContainsKey(call))
         {
             return true;
         }
 
         if (call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
-            ObjectTypes.HandleMode(call.ReturnType) is not { Counting: ObjectCountingStep.None or ObjectCountingStep.NonAtomic } || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
-            call.ReturnType.Semantics != (call.Target.CompilerFunction == CompilerFunctionKind.MakeObj ? SemanticsKind.Obj : SemanticsKind.Rc) ||
+            ObjectTypes.HandleMode(call.ReturnType) is null || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
+            call.ReturnType.Semantics != call.Target.CompilerFunction switch { CompilerFunctionKind.MakeObj => SemanticsKind.Obj, CompilerFunctionKind.MakeRc => SemanticsKind.Rc, _ => SemanticsKind.Arc } ||
             call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0] is not { Kind: ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead, Source: { } source } argument ||
             !ReferenceEquals(argument.ParameterType, payload) ||
             FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)

@@ -99,15 +99,9 @@ public sealed partial class OwnershipAnalysis
             handle = ObjectTypes.HandleMode(type.Components[0]);
         }
 
-        if (handle is { } mode)
+        if (handle is not null)
         {
-            // Atomic ownership remains closed until its runtime transitions are implemented.
-            return mode.Counting switch
-            {
-                ObjectCountingStep.None or ObjectCountingStep.NonAtomic => true,
-                ObjectCountingStep.Atomic => false,
-                _ => throw new InvalidOperationException("Unknown object counting step."),
-            };
+            return true;
         }
 
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))

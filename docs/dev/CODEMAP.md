@@ -86,8 +86,9 @@ Strong object creation and clone declarations enter through `Library/Intrinsics.
 and pair signature validation), `KimiLibraryPrimitives` and catalog Function kinds. `SharedObjectBindingTest`,
 `CoreCatalogTest` and `CatalogSignatureValidationTest` cover source recognition, inference and contract tampering.
 `ObjectGenerationPlan` shares payload factories with a checked static control argument; `BodyLowering.Calls` selects
-the strong clone ABI. `LlvmModuleWriter.SharedObjects` emits rc retain/release and `LlvmModuleWriter.Aggregates` selects
-cleanup by handle mode. `SharedObjectRuntimeTest` covers counts, lifetime, generated transitions and warm reuse;
+the strong clone ABI. `LlvmModuleWriter.SharedObjects` emits rc and CAS-based arc retain/release, shared by Sealed and
+dynamic cleanup in `LlvmModuleWriter.Aggregates`. `SharedObjectRuntimeTest` and `SharedArcRuntimeTest` cover counts,
+lifetime, generated transitions and warm reuse; `test-milestone34.ps1` executes the original rc/arc program;
 [SHARED_OBJECT_RUNTIME.md](SHARED_OBJECT_RUNTIME.md) records the transition proof.
 `MatchTypes.SupportsOwnedPatternValue` treats whole object handles as opaque values with mode-specific cleanup;
 `SharedObjectOwnershipTest` covers Tuple/Case transfer, clone result Origins, destruction observations and CLI/LSP Loans.

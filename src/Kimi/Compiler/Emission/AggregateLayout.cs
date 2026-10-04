@@ -192,7 +192,7 @@ internal sealed class AggregateLayoutPool
 
         if (ObjectTypes.HandleMode(type) is { } mode)
         {
-            if (mode.Counting != ObjectCountingStep.Atomic && this.SealedObjectHandle(type.Components[0], mode, depth) is { } sealedHandle)
+            if (this.SealedObjectHandle(type.Components[0], mode, depth) is { } sealedHandle)
             {
                 return this.resolved[type] = sealedHandle;
             }

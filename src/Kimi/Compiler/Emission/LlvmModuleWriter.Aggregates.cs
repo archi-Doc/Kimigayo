@@ -151,11 +151,6 @@ internal static partial class LlvmModuleWriter
         output.Write("(ptr %slot, ptr %location, i64 %length) #0 {\nentry:\n");
         if (aggregate.ObjectHandle is { } objectHandle)
         {
-            if (objectHandle.Counting == ObjectCountingStep.Atomic)
-            {
-                throw new InvalidOperationException("Counted object cleanup is not enabled by ownership analysis.");
-            }
-
             if (aggregate.ObjectPayloadDrop is { } payloadDrop)
             {
                 WriteSealedObjectDrop(output, objectHandle, payloadDrop);
@@ -163,9 +158,12 @@ internal static partial class LlvmModuleWriter
                 return;
             }
 
-            output.Write(objectHandle.Counting == ObjectCountingStep.NonAtomic
-                ? "  call void @__kimi_drop_rc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n"
-                : "  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n");
+            output.Write(objectHandle.Counting switch
+            {
+                ObjectCountingStep.NonAtomic => "  call void @__kimi_drop_rc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+                ObjectCountingStep.Atomic => "  call void @__kimi_drop_arc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+                _ => "  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+            });
             return;
         }
 

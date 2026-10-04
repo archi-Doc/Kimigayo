@@ -58,6 +58,7 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
     internal static readonly FunctionAbi CloneRc = new("__kimi_clone_rc", "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "value", AbiParameterKind.Value, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "length", AbiParameterKind.LocationLength)], resultSlot: true);
+    internal static readonly FunctionAbi CloneArc = new("__kimi_clone_arc", "void", CloneRc.Parameters, resultSlot: true);
 
     // SPEC 4.7.4: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
     internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];

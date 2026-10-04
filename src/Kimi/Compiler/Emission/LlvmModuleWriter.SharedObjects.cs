@@ -11,6 +11,10 @@ internal static partial class LlvmModuleWriter
         {
             WriteRcReleaseTransition(output);
         }
+        else if (mode.Counting == ObjectCountingStep.Atomic)
+        {
+            WriteArcReleaseTransition(output);
+        }
 
         if (payloadDrop != -1)
         {
@@ -29,7 +33,7 @@ internal static partial class LlvmModuleWriter
 
         // Every current factory uses this allocator. Destruction may Abort; free follows only its normal return.
         output.Write("  call void @__kimi_free(ptr %header, ptr %location, i64 %length)\n");
-        if (mode.Counting == ObjectCountingStep.NonAtomic)
+        if (mode.Counting != ObjectCountingStep.None)
         {
             output.Write("  br label %done\ndone:\n");
         }
@@ -37,6 +41,75 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteRcReleaseTransition(TextWriter output)
         => output.Write("  %control = getelementptr i8, ptr %header, i64 8\n  %old = load i64, ptr %control, align 8\n  %next = sub i64 %old, 2\n  store i64 %next, ptr %control, align 8\n  %final = icmp eq i64 %old, 2\n  br i1 %final, label %destroy, label %done\ndestroy:\n");
+
+    // Weak and cyclic factories remain closed: every reachable control is inline and even. The complete word is
+    // compared and the observed value is retried; opening migration must add representation dispatch at the retry.
+    private static void WriteArcReleaseTransition(TextWriter output)
+        => output.Write("""
+              %control = getelementptr i8, ptr %header, i64 8
+              %initial = load atomic i64, ptr %control monotonic, align 8
+              br label %release
+            release:
+              %old = phi i64 [ %initial, %entry ], [ %observed, %release ]
+              %next = sub i64 %old, 2
+              %exchange = cmpxchg ptr %control, i64 %old, i64 %next release monotonic, align 8
+              %observed = extractvalue { i64, i1 } %exchange, 0
+              %updated = extractvalue { i64, i1 } %exchange, 1
+              br i1 %updated, label %released, label %release
+            released:
+              %final = icmp eq i64 %old, 2
+              br i1 %final, label %destroy, label %done
+            destroy:
+              fence acquire
+
+            """);
+
+    private static void WriteArcObjects(TextWriter output)
+    {
+        output.Write("""
+            define internal void @__kimi_clone_arc(ptr %ret, ptr %value, ptr %location, i64 %length) #0 {
+            entry:
+              %header = load ptr, ptr %value, align 8
+              %control = getelementptr i8, ptr %header, i64 8
+              %initial = load atomic i64, ptr %control monotonic, align 8
+              br label %check
+            check:
+              %old = phi i64 [ %initial, %entry ], [ %observed, %retain ]
+              %maximum = icmp eq i64 %old, -2
+              br i1 %maximum, label %overflow, label %retain
+            retain:
+              %next = add i64 %old, 2
+              %exchange = cmpxchg ptr %control, i64 %old, i64 %next monotonic monotonic, align 8
+              %observed = extractvalue { i64, i1 } %exchange, 0
+              %updated = extractvalue { i64, i1 } %exchange, 1
+              br i1 %updated, label %publish, label %check
+            publish:
+              store ptr %header, ptr %ret, align 8
+              ret void
+            overflow:
+              call void @__kimi_abort(i32
+            """);
+        output.Write(' ');
+        WriteNumber(output, WindowsLowering.ReferenceCountReason);
+        output.Write("""
+            , ptr %location, i64 %length, i64 -2)
+              unreachable
+            }
+            define internal void @__kimi_drop_arc(ptr %slot, ptr %location, i64 %length) #0 {
+            entry:
+              %header = load ptr, ptr %slot, align 8
+
+            """);
+        WriteArcReleaseTransition(output);
+        output.Write("""
+              call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)
+              br label %done
+            done:
+              ret void
+            }
+
+            """);
+    }
 
     // IMPL 21.2.3: rc remains inline until Weak operations become executable. Clone changes only the count;
     // final release stores zero before destruction, and never accesses the header after finalization.
