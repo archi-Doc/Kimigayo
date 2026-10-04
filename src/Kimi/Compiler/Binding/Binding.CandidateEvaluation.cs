@@ -71,10 +71,10 @@ public sealed partial class Binding
                 {
                     if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
                         operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
-                        operations[(a * stride) + i].Source is { } source && KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true, BoundType: null })
+                        operations[(a * stride) + i].Source is { } source && IsWaitingCallable(source))
                     {
-                        // ComparableClosureSlots proved matching acquisition. Both slots will receive this one
-                        // concrete Closure Type; its Callable constraint signature is not a substituted parameter Type.
+                        // ComparableCallableSlots proved matching acquisition and a common reference context when needed.
+                        // Both slots receive the same concrete callable Type, not their Callable constraint signature.
                         continue;
                     }
 
@@ -121,17 +121,18 @@ public sealed partial class Binding
         return -1;
     }
 
-    private static bool ComparableClosureSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+    private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
         {
-            if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[argument]) is not FunctionKoto { IsAnonymous: true, BoundType: null })
+            if (!IsWaitingCallable(call.ArgumentNodes[argument]))
             {
                 continue;
             }
 
             var first = true;
             SemanticsKind? acquisition = null;
+            BoundType? referenceContext = null;
             for (var candidate = 0; candidate < candidates.Length; candidate++)
             {
                 if (candidates[candidate].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
@@ -156,12 +157,13 @@ public sealed partial class Binding
                 var slot = borrowed ? pattern.Components[0] : pattern;
                 SemanticsKind? mode = borrowed ? pattern.Semantics : null;
                 if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 ||
-                    (!first && acquisition != mode))
+                    (!first && (acquisition != mode || (IsWaitingFunctionReference(call.ArgumentNodes[argument]) && !ReferenceEquals(referenceContext, operation.ParameterType)))))
                 {
                     return false;
                 }
 
                 acquisition = mode;
+                referenceContext = operation.ParameterType;
                 first = false;
             }
         }

@@ -143,28 +143,6 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
-    // Gets the first written Type of a bound header that did not resolve.
-    // Whether some function of a callee group has a common Function Type parameter, the only position a function group
-    // argument converts to.
-    private static bool TakesCommonFunction(BindingSymbol? group)
-    {
-        for (var candidate = group; candidate is not null; candidate = candidate.Next)
-        {
-            if (candidate.Declaration is FunctionKoto function)
-            {
-                for (var i = 0; i < function.Parameters.Count; i++)
-                {
-                    if (function.Parameters[i].Type.BoundType?.Kind == BoundTypeKind.Function)
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
     private static Koto? IncompleteSignature(FunctionKoto function)
     {
         if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
@@ -462,11 +440,11 @@ public sealed partial class Binding
             // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
             if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindNode(argument, scope) is null)
             {
-                if (argument is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
+                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
-                    if (TakesCommonFunction(group) && !IndependentFunctionItem(item))
+                    if (this.TakesCallableContext(group) && !IndependentFunctionItem(item))
                     {
-                        continue; // SPEC 7.6.4: a function group is converted at the selected parameter's common Function Type.
+                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
                     }
 
                     // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
@@ -741,10 +719,10 @@ public sealed partial class Binding
                 {
                     if (evaluated[i].State == CandidateApplicability.Waiting)
                     {
-                        // F will be this argument's concrete Closure Type in every candidate. Its Callable signature
+                        // F will be this argument's concrete callable Type in every candidate. Its Callable signature
                         // is an expectation, not a parameter Type to rank. Select from ordinary inputs/defaults first;
                         // only the winner supplies a body context, even when the candidates' signatures differ.
-                        if (!ComparableClosureSlots(call, evaluated.AsSpan(0, count), operations, operationStride))
+                        if (!ComparableCallableSlots(call, evaluated.AsSpan(0, count), operations, operationStride))
                         {
                             return this.FailWaitingSelection(call, BindingFailure.Unsupported);
                         }
@@ -791,15 +769,19 @@ public sealed partial class Binding
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
                 for (var i = 0; i < argumentCount; i++)
                 {
-                    if (call.ArgumentNodes[i].BoundType is null && KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } closure)
+                    if (IsWaitingCallable(call.ArgumentNodes[i]))
                     {
                         var contract = this.activeRequirementContract;
                         this.activeRequirementContract = null;
                         var pattern = selected.Parameters[mapping[i]].Type.BoundType!;
                         var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                        var bound = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(selected, slotType.Symbol!) >= 0
-                            ? this.BindClosureArgument(call.ArgumentNodes[i], closure, scope, waitingOperations[i].ParameterType)
-                            : this.BindNode(call.ArgumentNodes[i], scope, waitingOperations[i].ParameterType);
+                        var concrete = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(selected, slotType.Symbol!) >= 0;
+                        var argument = call.ArgumentNodes[i];
+                        var bound = concrete && KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true } closure
+                            ? this.BindClosureArgument(argument, closure, scope, waitingOperations[i].ParameterType)
+                            : concrete && IsWaitingFunctionReference(argument)
+                                ? this.BindFunctionReference(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, waitingOperations[i].ParameterType!, scope, erase: false)
+                                : this.BindNode(argument, scope, waitingOperations[i].ParameterType);
                         this.activeRequirementContract = contract;
                         if (bound is null)
                         {
@@ -1148,8 +1130,8 @@ public sealed partial class Binding
         var next = 0;
         var named = false;
         var contextualInputs = false;
-        var anonymousInputs = false;
-        var waitingClosures = false;
+        var contextualCallables = false;
+        var waitingCallables = false;
         var waiting = 0UL;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
@@ -1160,7 +1142,7 @@ public sealed partial class Binding
 
             mapping[i] = slot;
             contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsAggregateArgument(call.ArgumentNodes[i]);
-            anonymousInputs |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true };
+            contextualCallables |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;
             if (type is null)
             {
@@ -1285,12 +1267,12 @@ public sealed partial class Binding
         }
 
         var ordinaryPasses = contextualInputs ? 2 : 1;
-        for (var pass = 0; pass < ordinaryPasses + (anonymousInputs ? 1 : 0); pass++)
+        for (var pass = 0; pass < ordinaryPasses + (contextualCallables ? 1 : 0); pass++)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-                if (argument is FunctionKoto { IsAnonymous: true } ? pass != ordinaryPasses :
+                if (argument is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(argument) ? pass != ordinaryPasses :
                     pass == ordinaryPasses || (contextualInputs && (NeedsEnumContext(argument) || IsAggregateArgument(argument)) != (pass == 1)))
                 {
                     continue;
@@ -1301,7 +1283,7 @@ public sealed partial class Binding
                 {
                     var pattern = function.Parameters[mapping[i]].Type.BoundType!;
                     var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                    if (argument is FunctionKoto { IsAnonymous: true, BoundType: null } anonymous &&
+                    if (IsWaitingCallable(argument) &&
                         slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(function, slotType.Symbol!) is var slot && slot >= 0 && arguments[slot] is null)
                     {
                         BoundType? signature = null;
@@ -1313,17 +1295,17 @@ public sealed partial class Binding
                                 return CandidateApplicability.Pending;
                             }
 
-                            if (!this.ClosureSignatureFits(anonymous, signature))
+                            if (argument is FunctionKoto anonymous && !this.ClosureSignatureFits(anonymous, signature))
                             {
                                 return CandidateApplicability.Inapplicable;
                             }
                         }
-                        else if (HasOmittedClosureParameter(anonymous))
+                        else if (argument is not FunctionKoto anonymous || HasOmittedClosureParameter(anonymous))
                         {
                             return CandidateApplicability.Pending;
                         }
 
-                        waitingClosures = true;
+                        waitingCallables = true;
                         operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
                         continue;
                     }
@@ -1463,7 +1445,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var completed = this.CallType(function.Parameters[i].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
-            if (completed is null ? !waitingClosures : !this.ProveTypeLengths(completed, scope.Function))
+            if (completed is null ? !waitingCallables : !this.ProveTypeLengths(completed, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1487,7 +1469,7 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        if ((result is null && !waitingClosures) || (result is not null && HasUnsubstitutedOrigin(result, function)))
+        if ((result is null && !waitingCallables) || (result is not null && HasUnsubstitutedOrigin(result, function)))
         {
             // Result-only Origin inference needs the later call-site solver. Never retain a
             // requirement's abstract binder as though it were this call's concrete Origin.
@@ -1516,7 +1498,7 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths, incomplete: waitingClosures);
+        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths, incomplete: waitingCallables);
         if (declaringType is not null)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
@@ -1534,7 +1516,7 @@ public sealed partial class Binding
         }
 
         proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
-        if (waitingClosures && proof is ConstraintProof.Proven or ConstraintProof.Unknown)
+        if (waitingCallables && proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
             // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve
             // an outer input/result slot, even if its inferred signature would happen to provide that Type.
@@ -1550,7 +1532,7 @@ public sealed partial class Binding
                 {
                     var pattern = function.Parameters[mapping[a]].Type.BoundType!;
                     var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                    supplied |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[a]) is FunctionKoto { IsAnonymous: true, BoundType: null } &&
+                    supplied |= IsWaitingCallable(call.ArgumentNodes[a]) &&
                         slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(function, slotType.Symbol!) == g;
                 }
 

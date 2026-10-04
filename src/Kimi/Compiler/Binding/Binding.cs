@@ -603,7 +603,7 @@ public sealed partial class Binding
                 var label = candidate.Function.Name;
                 if (candidate.Selected)
                 {
-                    shapeNote = "This declaration was selected before checking the anonymous body and captures; its argument constraints failed. Another overload is not selected";
+                    shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";
                     if (candidate.ActualReceiver is { } actualReceiver && candidate.RequiredReceiver is { } requiredReceiver)
                     {
                         label = $"{candidate.Function.Name}: closure requires {actualReceiver.ToString().ToLowerInvariant()}; Callable requires {requiredReceiver.ToString().ToLowerInvariant()}";
@@ -618,7 +618,8 @@ public sealed partial class Binding
                         : candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
                         : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
                     // Keep the compared Types even when the related-location limit omits this candidate.
-                    shapeNote ??= candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
+                    shapeNote ??= candidate.ReferenceSignature ? $"The function reference requires the fixed call signature {shownExpected.Text}; no candidate applies"
+                        : candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
                         : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
                         : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
                     if (!candidate.SharedReceiver && !candidate.CallableSignature)

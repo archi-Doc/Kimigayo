@@ -109,7 +109,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope)
+    private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
         BindingSymbol? selected = null;
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
@@ -127,11 +127,6 @@ public sealed partial class Binding
                 continue;
             }
 
-            if ((function.Modifier & ModifierKind.Unsafe) != 0)
-            {
-                return this.Fail(use, BindingFailure.UnsafeFunctionValue);
-            }
-
             if (selected is not null)
             {
                 return this.Fail(use, BindingFailure.Ambiguous, true);
@@ -142,7 +137,37 @@ public sealed partial class Binding
 
         if (selected is null)
         {
-            return this.Fail(use, BindingFailure.TypeMismatch);
+            if (symbol.Next is null && this.FunctionItemSignature(this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, [])) is { } actual)
+            {
+                return this.FailMismatch(use, use, actual, required);
+            }
+
+            var count = 0;
+            for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+            {
+                count++;
+            }
+
+            var rejected = new RejectedCandidate[count];
+            var index = 0;
+            for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+            {
+                var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
+                rejected[index++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true);
+            }
+
+            (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+            return this.Fail(use, BindingFailure.NoApplicableCandidate);
+        }
+
+        if ((((FunctionKoto)selected.Declaration).Modifier & ModifierKind.Unsafe) != 0)
+        {
+            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+        }
+
+        if (!erase)
+        {
+            return this.CompleteFunctionItem(use, selected);
         }
 
         use.BoundSymbol = selected;

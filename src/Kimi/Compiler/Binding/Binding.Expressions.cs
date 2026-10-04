@@ -1021,9 +1021,9 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
-            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
+            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
             {
-                // SPEC 7.7: an unsafe function supports direct calls only.
+                // SPEC 7.7: an unsafe function supports direct calls only. An overload group is checked after selection.
                 return this.Fail(node, BindingFailure.UnsafeFunctionValue);
             }
 

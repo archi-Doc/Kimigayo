@@ -37,10 +37,36 @@ public sealed partial class Binding
         }
     }
 
+    private static bool IsWaitingFunctionReference(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is not FunctionKoto and { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function };
+
+    private static bool IsWaitingCallable(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true, BoundType: null } || IsWaitingFunctionReference(node);
+
     private static bool IndependentFunctionItem(BindingSymbol symbol)
         => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, TypeConstraints.Count: 0, IsDestructor: false } &&
             symbol.ReceiverIndex < 0 && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
             symbol.Intrinsic == IntrinsicKind.None;
+
+    // A fixed Function or Callable signature can select a function reference after the outer candidate is determined.
+    private bool TakesCallableContext(BindingSymbol? group)
+    {
+        for (var candidate = group; candidate is not null; candidate = candidate.Next)
+        {
+            if (candidate.Declaration is FunctionKoto function)
+            {
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    if (function.Parameters[i].Type.BoundType is { } type && this.TryCallable(type, this.ConstraintScope(function), out _, out _))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
 
     private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol)
     {
@@ -50,12 +76,27 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.Unsupported, true);
         }
 
+        return this.CompleteFunctionItem(use, symbol);
+    }
+
+    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol)
+    {
         var type = this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+        while (use is ParenthesizedKoto parentheses)
+        {
+            use.BoundSymbol = symbol;
+            Complete(use, type);
+            use = parentheses.Operand;
+        }
+
+        use.BoundSymbol = symbol;
         if (use is MemberAccessKoto member)
         {
+            member.Right.BoundSymbol = symbol;
             Complete(member.Right, type);
         }
 
-        return Complete(use, type);
+        Complete(use, type);
+        return type;
     }
 }
