@@ -107,6 +107,8 @@
   + Name="AmbiguousBinding_Kd"
     Category="Language"
     Message="More than one declaration or operation remains applicable"
+    Evidence="candidates:Number"
+    Label="no unique best candidate among {0} candidates"
 
   + Name="DuplicateBinding_Kd"
     Category="Language"

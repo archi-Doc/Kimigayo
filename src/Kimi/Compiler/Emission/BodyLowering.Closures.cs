@@ -219,7 +219,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundValueCall plan, out string? failure)
+    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundValueCall plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -423,6 +423,20 @@ internal sealed partial class BodyLowering
         if (abi.NoReturn)
         {
             function.Add(EmissionOpcode.Unreachable, id);
+        }
+        else if (plan.ReceiverKind == SemanticsKind.Owner &&
+            (receiverType.Kind == BoundTypeKind.Function || receiverType is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner } }) &&
+            this.aggregateLayouts.Get(receiverType) is { NeedsDestruction: true } cleanup)
+        {
+            // The owning Callable contract transfers the whole receiver. A Shared/Exclusive concrete entry (or
+            // common Function entry) only borrows its environment, so this adapter retains the final destruction
+            // responsibility. A Consuming concrete entry already destroys its own remaining captures.
+            if (!this.TryGetLocation(call, directory, constants, out var location))
+            {
+                return Fail("Consuming callable cleanup has no source location.", out failure);
+            }
+
+            AddOwnedDestruction(function, id, new(EmissionOperandKind.SlotAddress, operation.Input), location, cleanup);
         }
 
         return true;

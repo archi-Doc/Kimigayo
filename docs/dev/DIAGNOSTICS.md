@@ -265,6 +265,11 @@ AGENTS.md lists the required steps. This section gives their detail.
 
 ## 11. Audit findings (D1)
 
+Call ambiguity records the remaining candidates and their declaration locations, with the count retained in the primary
+label/Reason. Waiting anonymous parameters derive their missing context from the failed selection. After selection,
+a Callable receiver failure names the selected declaration and actual/required receiver modes; it never reopens the
+overload set (`CommonAnonymousContextTest`, CLI/LSP and independent body errors).
+
 Ownership storage bounds report `OwnershipStorageLimit_Kd` (Resource) at the affected function signature. Its Reason retains the required bytes, byte limit and table identity. The analysis checks dimensions before allocation or narrow multiplication, leaves the body unverified, and continues independent functions. `OwnershipStorageLimitTest` covers the allocation-free dimension guard, warmed-capacity independence, repair by restoring the profile limit, CLI/LSP placement and an independent moved-value error. Concrete-instance limits retain the emission Resource classification and the storage explanation; their regression checks zero published IR, unchanged universal verification and successful recovery on the same compilation after restoring the limit.
 
 Origin suffix annotation sites now use factual catalog messages and conditional Advice, with focused recovery and output checks (`OriginSyntaxDiagnosticTest`; DIAGNOSTICS_REVIEW.md). External parameter-name collisions now identify each later name and relate the first written name across both argument sections and the receiver (`ParameterSyntaxDiagnosticTest`). The syntax recorder shares its identity/recovery path when attaching related evidence. Unit `20260930-165003-655-unit-parameter-duplicate-evidence`: warning-free Release build, 235 tests and unchanged diagnostic snapshot; CLI/LSP, Unicode, long names and independent errors are covered. The parser finding below remains open for the other reporting sites; its counts describe the original D1 audit.

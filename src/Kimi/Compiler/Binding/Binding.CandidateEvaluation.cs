@@ -24,7 +24,7 @@ public sealed partial class Binding
         var compared = stride - 1;
         for (var a = 0; a < candidates.Length; a++)
         {
-            if (candidates[a].State != CandidateApplicability.Applicable)
+            if (candidates[a].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
             {
                 continue;
             }
@@ -33,7 +33,7 @@ public sealed partial class Binding
             var dominates = true;
             for (var b = 0; b < candidates.Length; b++)
             {
-                if (a == b || candidates[b].State != CandidateApplicability.Applicable)
+                if (a == b || candidates[b].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                 {
                     continue;
                 }
@@ -62,6 +62,14 @@ public sealed partial class Binding
 
                 for (var i = 0; i < compared; i++)
                 {
+                    if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
+                        operations[(a * stride) + i].Source is { } source && KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true, BoundType: null })
+                    {
+                        // CommonWaitingContexts proved matching acquisition. Both slots will receive this one
+                        // concrete Closure Type; its Callable constraint signature is not a substituted parameter Type.
+                        continue;
+                    }
+
                     var x = operations[(a * stride) + i].ParameterType;
                     var y = operations[(b * stride) + i].ParameterType;
                     if (ReferenceEquals(x, y))
@@ -103,6 +111,72 @@ public sealed partial class Binding
         }
 
         return -1;
+    }
+
+    private static bool CommonWaitingContexts(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+    {
+        for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
+        {
+            if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[argument]) is not FunctionKoto { IsAnonymous: true, BoundType: null })
+            {
+                continue;
+            }
+
+            var first = true;
+            BoundType? signature = null;
+            SemanticsKind? acquisition = null;
+            for (var candidate = 0; candidate < candidates.Length; candidate++)
+            {
+                if (candidates[candidate].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
+                {
+                    continue;
+                }
+
+                if (candidates[candidate].State != CandidateApplicability.Waiting)
+                {
+                    return false;
+                }
+
+                var operation = operations[(candidate * stride) + argument];
+                var function = (FunctionKoto)candidates[candidate].Symbol.Declaration;
+                var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
+                var borrowed = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq };
+                var slot = borrowed ? pattern.Components[0] : pattern;
+                SemanticsKind? mode = borrowed ? pattern.Semantics : null;
+                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 ||
+                    (!first && (!ReferenceEquals(signature, operation.ParameterType) || acquisition != mode)))
+                {
+                    return false;
+                }
+
+                signature = operation.ParameterType;
+                acquisition = mode;
+                first = false;
+            }
+        }
+
+        return true;
+    }
+
+    private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
+    {
+        // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking
+        // the body or turning an independent written-Type error into a consequence of the selection.
+        foreach (var argument in call.ArgumentNodes)
+        {
+            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+            {
+                foreach (var parameter in closure.Parameters)
+                {
+                    if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+                    {
+                        this.CompleteDependent(inferred, call);
+                    }
+                }
+            }
+        }
+
+        return this.Fail(call, failure, true);
     }
 
     private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed);

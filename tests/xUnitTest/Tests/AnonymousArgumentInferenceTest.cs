@@ -107,15 +107,17 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void UnresolvedOuterCandidatesDoNotProbeAnonymousBodies()
+    public void SelectedOuterCandidateChecksItsBodyOnce()
     {
         const string Source = "func apply<F>(action: F)\n    F is Callable<() -> i32>\n    return\nfunc apply<F>(action: F, value: i32 = 0)\n    F is Callable<() -> i32>\n    return\napply(func [] () => missing)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal("UnsupportedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnresolvedBinding_Kd", error.Code);
+        Assert.Equal("missing", error.Text);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        Assert.Null(closure.BoundClosure);
+        Assert.NotNull(closure.BoundClosure);
     }
 
     [Trait("Purpose", "Allocation")]

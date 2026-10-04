@@ -95,6 +95,9 @@ public sealed partial class Binding
         }
     }
 
+    private static bool CallableReceiverFits(SemanticsKind actual, SemanticsMask required)
+        => actual == SemanticsKind.Ref || required == SemanticsMask.Owner || (actual == SemanticsKind.Uniq && required == SemanticsMask.Uniq);
+
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)
     {
         var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;

@@ -741,16 +741,32 @@ public sealed partial class Binding
                 {
                     if (evaluated[i].State == CandidateApplicability.Waiting)
                     {
-                        // A common context across unresolved callable candidates needs the shared expectation pass.
-                        // Until then, keep this boundary explicit and never inspect bodies to choose a candidate.
-                        return this.Fail(call, BindingFailure.Unsupported, true);
+                        // Only a shared concrete context and acquisition shape can rank unbound Closure slots.
+                        // Other waiting forms remain explicit limits; bodies never choose a candidate.
+                        if (!CommonWaitingContexts(call, evaluated.AsSpan(0, count), operations, operationStride))
+                        {
+                            return this.FailWaitingSelection(call, BindingFailure.Unsupported);
+                        }
+
+                        break;
                     }
                 }
 
                 winnerIndex = SelectBest(evaluated.AsSpan(0, count), operations, operationStride);
                 if (winnerIndex < 0)
                 {
-                    return this.Fail(call, BindingFailure.Ambiguous, true);
+                    var remaining = new RejectedCandidate[applicable];
+                    var next = 0;
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                        {
+                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                        }
+                    }
+
+                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+                    return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
                 }
             }
 
@@ -794,6 +810,19 @@ public sealed partial class Binding
                 var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
+                    var rejected = new RejectedCandidate(selected, null, null, Selected: true);
+                    for (var i = 0; i < argumentCount; i++)
+                    {
+                        if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { BoundClosure: { } closure } &&
+                            this.TryCallable(selected.Parameters[mapping[i]].Type.BoundType!, this.ConstraintScope(selected), out _, out var required) &&
+                            !CallableReceiverFits(closure.Receiver, required switch { SemanticsKind.Ref => SemanticsMask.Ref, SemanticsKind.Uniq => SemanticsMask.Uniq, _ => SemanticsMask.Owner }))
+                        {
+                            rejected = rejected with { ActualReceiver = closure.Receiver, RequiredReceiver = required };
+                            break;
+                        }
+                    }
+
+                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [rejected];
                     return this.Fail(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate, true);
                 }
             }

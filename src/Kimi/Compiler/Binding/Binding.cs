@@ -592,15 +592,25 @@ public sealed partial class Binding
             // FailObjectPayload records the declaring Type before it fails the use.
             issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
         }
-        else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+        else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
         {
             var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
-            string? shapeNote = null;
+            string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies and captures do not select an overload" : null;
             string? advice = null;
             for (var c = 0; c < rejected.Length; c++)
             {
                 var candidate = rejected[c];
                 var label = candidate.Function.Name;
+                if (candidate.Selected)
+                {
+                    shapeNote = "This declaration was selected before checking the anonymous body and captures; its argument constraints failed. Another overload is not selected";
+                    if (candidate.ActualReceiver is { } actualReceiver && candidate.RequiredReceiver is { } requiredReceiver)
+                    {
+                        label = $"{candidate.Function.Name}: closure requires {actualReceiver.ToString().ToLowerInvariant()}; Callable requires {requiredReceiver.ToString().ToLowerInvariant()}";
+                        shapeNote = $"{label}. {shapeNote}";
+                    }
+                }
+
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
                 {
                     var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));

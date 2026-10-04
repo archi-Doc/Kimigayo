@@ -118,10 +118,6 @@ public sealed partial class OwnershipAnalysis
                 this.CompleteCallReservation(reservation, read, loan: loan);
             }
         }
-        else
-        {
-            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
-        }
 
         var mark = this.arguments.Count;
         for (var i = 0; i < plan.Arguments.Length; i++)
@@ -155,6 +151,13 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
+        if (plan.ReceiverKind == SemanticsKind.Owner)
+        {
+            // Preparation owns the receiver until every argument completes. An early return in an argument
+            // must still destroy that prepared value; ownership enters the call only at this common boundary.
+            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
+        }
+
         var invoke = this.Emit(OwnershipOperationKind.Call, call, input: receiver);
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(plan.ReturnType, BoundType.Never))

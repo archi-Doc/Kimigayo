@@ -115,7 +115,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
         {
-            return this.LowerValueCall(body, function, id, invocation, valueCall, out failure);
+            return this.LowerValueCall(body, function, constants, directory, id, invocation, valueCall, out failure);
         }
 
         if (operation.Source is InvocationKoto { BoundCall: { } arrayPlan } arrayCall && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
