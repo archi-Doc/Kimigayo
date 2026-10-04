@@ -8,8 +8,58 @@ public sealed partial class Binding
 {
     internal static bool CallableSignatureFits(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
+    // SPEC 15.6.4: fresh per-call inputs and a result whose Origins, if any, are all static, so a call substitutes nothing.
     private static bool PerCallSignature(BoundType signature)
-        => !signature.Components[1].CarriesOrigin && PerCallInputs(signature);
+        => (!signature.Components[1].CarriesOrigin || StaticOnly(signature.Components[1])) && PerCallInputs(signature);
+
+    private static bool StaticOnly(BoundType type)
+    {
+        if (!StaticOrigin(type.Origin))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (!StaticOrigin(type.OriginArguments[i]))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (!StaticOnly(type.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        static bool StaticOrigin(BoundOrigin? origin)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind != OriginKind.Intersection)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (!StaticOrigin(origin.Operands[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
 
     // SPEC 15.6.4: the binder of a signature whose inputs are fresh per-call borrows and whose result depends on those inputs
     // or on static storage alone; a call substitutes the arguments' Origins into that result.

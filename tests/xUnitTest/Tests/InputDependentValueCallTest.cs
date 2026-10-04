@@ -50,6 +50,32 @@ public class InputDependentValueCallTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    private const string None = "func none() -> Option<ref/i32> => .None\nfunc noneOf(x: i32) -> Option<ref/i32> => .None\n";
+
+    private const string IsNone = "\nmatch r\n    .Some(let item) => $abort(\"some\")\n    .None => ()";
+
+    // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs.
+    [Theory]
+    [InlineData("Item", None + "let e = none\nlet r = e()" + IsNone)]
+    [InlineData("Erased", None + "let e: () -> Option<ref/i32> = none\nlet r = e()" + IsNone)]
+    [InlineData("ErasedInput", None + "let e: (i32) -> Option<ref/i32> = noneOf\nlet r = e(1)" + IsNone)]
+    [InlineData("Callable", None + "func apply<F>(f: ref/F) -> Option<ref/i32>\n    F is Callable<() -> Option<ref/i32>>\n    return f()\nlet r = apply(none)" + IsNone)]
+    public void StaticResultsNeedNoSubstitution(string name, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.EmitFixture("InputDependentCallStatic" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    let r = f()\n    return r\nlet n = 7\nlet view = n@ref\nlet f = func [view] () => view\nlet v = apply(f@ref)")]
+    [InlineData("let n = 7\nlet view = n@ref\nlet f = func [view] () => view\nlet g: () -> ref/i32 = f")]
+    public void ALocalResultIsNoStaticResult(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified && c.Emission.Validate(out _));
+    }
+
     [Fact]
     public void TheCallResultIsOverTheArgumentPlace()
     {

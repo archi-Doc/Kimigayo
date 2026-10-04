@@ -52,7 +52,7 @@ internal sealed partial class BodyLowering
                 (uint)delivery.Write >= (uint)body.Operations.Count ||
                 body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } secured ||
                 secured.Place != operation.Place || (uint)secured.Input >= (uint)body.Places.Count ||
-                !ReferenceEquals(body.Places[secured.Input].Type, type) || !this.IsSlotValue(body.Places[secured.Input]) ||
+                !ReferenceTypes.StorageMatches(type, body.Places[secured.Input].Type) || !this.IsSlotValue(body.Places[secured.Input]) || // An Origin shortened by variance keeps the storage (SPEC 15.3.5).
                 (body.GetInputState(delivery.Write, secured.Input) & PlaceState.MustInit) == 0 ||
                 (body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0 || !this.Dominates(delivery.Write, id))
             {
