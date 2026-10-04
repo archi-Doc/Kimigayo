@@ -84,7 +84,7 @@ CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 Type                 := FunctionType | AnnotatedType
 AnnotatedType        := SemanticsType ("?")* BorrowOrigin?
 FunctionType         := FunctionParameters "->" (Type | PlaceResult)
-FunctionParameters   := "(" TrailingList<Type>? ")"
+FunctionParameters   := "(" TaskSlot? TrailingList<Type>? ")"
 SemanticsType        := Semantics "/" SemanticsType | TypeAtom
 TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
@@ -140,7 +140,7 @@ GenericParameters and TypeArguments are nonempty and allow trailing commas. Name
 
 ## F.3. Declaration grammar
 
-[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameters-and-defaults), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
+[Containers](../06-declarations-and-containers.md#61-declaration-containers), [structures](../06-declarations-and-containers.md#62-structure-declarations), [enums](../06-declarations-and-containers.md#63-enums), [Constraints](../08-generics-constraints-and-contracts.md#82-constraints), [bindings](../06-declarations-and-containers.md#64-bindings), [functions](../07-functions-and-callable-values.md#7-functions-and-callable-values), [parameters](../07-functions-and-callable-values.md#72-parameters-and-defaults), [task slots](../24-suspension-and-asynchronous-tasks.md#242-task-slots), [aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases).
 
 ```ebnf
 QualifiedName        := Name ("." Name)*
@@ -204,7 +204,7 @@ ConditionalImplementationItem := AttributedFunctionDefinition
                                | Directive<ConditionalImplementationItem>
 ConstructorDeclaration := Access? "init" ParameterList<Parameter>
                           BaseInitializer? ExecutableBody
-BaseInitializer      := ":" "base" "(" TrailingList<Argument>? ")"
+BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
 FunctionHeader       := Access? "unsafe"? "func" Name
                         GenericParameters?
                         ParameterList<Parameter> ("->" FunctionResult)?
@@ -213,7 +213,7 @@ AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
 ForeignFunctionDeclaration := FunctionHeader
 // Only with the LibraryImport prefix and restricted header/placement in §22.3.
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
-                            "(" TrailingList<SpecializationParameter>? ")"
+                            "(" TaskSlot? TrailingList<SpecializationParameter>? ")"
                             ("->" FunctionResult)? SpecializationBody
 SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 SpecializationBody   := ExecutableBody
@@ -222,7 +222,8 @@ Parameter            := Attribute* ParameterCore
 ParameterCore        := ParameterName ":" Type ("=" Expression)?
                       | ReceiverShorthand
 ParameterName        := Name ("=>" Name)?
-ParameterList<P>      := "(" (List<P> ","? | List<P>? "!" List<P> ","?)? ")"
+ParameterList<P>      := "(" TaskSlot? (List<P> ","? | List<P>? "!" List<P> ","?)? ")"
+TaskSlot             := "task" ";" // "task" is contextual only here (§2.5.1, §24.2).
 ReceiverShorthand    := "self"
 ConstraintClause     := ConstraintSubject "is" IsRequirement
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
@@ -261,13 +262,15 @@ Modifier placement and compound-access combinations are constrained by [accessib
 
 `ReceiverShorthand` is permitted only for an instance function receiver under [§7.3](../07-functions-and-callable-values.md#73-explicit-receivers), including Contract requirements and full specializations, and expands to `self: ref/Self` at its written position. The shared Parameter grammar does not permit it on constructors, local functions or group/rootgroup functions. That the functions with receivers in one member group share one receiver shape, and that a Receiver Expression is acquired without a spelling, are semantic rules of §7.3, not grammar.
 
-AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, drop or explicit specializations. Attribute-bearing functions in executable and enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions of [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures). Unavailable declaration modifiers use the diagnostic recognition of §2.5.1, not grammar productions.
+AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, drop or explicit specializations. Attribute-bearing functions in executable and enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures; it is a contextual token recognized in a declaration's leading modifier sequence (§2.5.1). `BaseClause` has the semantic restrictions of [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures). Unavailable declaration modifiers use the diagnostic recognition of §2.5.1, not grammar productions.
 
 `SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access or unsafe modifiers, attributes, defaults or `!` boundaries. Its body uses ordinary executable syntax, and it inherits the original function's contract under [full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
 An omitted result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions keep their own inference rules.
 
 Ordinary parameter bindings are immutable under §7. A ParameterList permits at most one `!`, with no adjacent comma and at least one ordinary parameter on its right. Its external names are unique across both sections and the receiver. Receiver recognition uses the internal Name `self`, its position and the declaration context under §7.3; the shared Parameter production alone grants no receiver defaults, renaming or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group, rootgroup, struct and contract declarations follow §6.1.1; empty enums remain invalid.
+
+A TaskSlot precedes the receiver and both `!` sections, belongs to neither, and no comma follows its `;`. Constructors, foreign function declarations, an Application's `main` and test functions reject it, and an explicit specialization writes one exactly when its original has one (§24.2.1). In an argument list, TaskSlot is the task argument. Accessor signatures, DropDeclaration, Attribute and `$` operation arguments, InferredCaseExpression payloads and Patterns do not admit it.
 
 Contract function requirements permit the `!` boundary but have no parameter defaults, access modifiers or executable bodies. Property requirements have no parameter defaults, `!` boundaries, initializers, access modifiers or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses, Origin relations and effect clauses; `effect`, `confined`, `preserves` and `results` are contextual words only in the effect forms (§8.4.10.1); method generic parameters and implicit signature Origins follow the ordinary function rules. Property requirements are instance-only: `get` is mandatory and `set` optional, each at most once in either order, and no accessor is implied beyond the written list or explicit signatures. The shared and exclusive defaults for `has` and the explicit signature checks follow §11.4.
 
@@ -323,7 +326,7 @@ Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
 Postfix              := Primary PostfixSuffix*
 PostfixSuffix        := "." (Name | DecimalTupleIndex)
                       | "." "(" ContractReference ")" "." Name
-                      | "(" TrailingList<Argument>? ")"
+                      | "(" TaskSlot? TrailingList<Argument>? ")"
                       | AdjacentTypeArguments | "[" Expression "]" | "++" | "--"
                       | "@" "follow"
 AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §12.4.2 ?
@@ -341,14 +344,14 @@ BoundContainerExpression := BoundContainerQualifier
                            ("." Name | "." "(" ContractReference ")" "." Name)
 ConstructionQualifier := PlainNamedType | BoundContainerQualifier
 ConstructionExpression := ConstructionQualifier "." "init"
-                          "(" TrailingList<Argument>? ")"
+                          "(" TaskSlot? TrailingList<Argument>? ")"
 InferredCaseExpression := "." Name ("(" TrailingList<Expression> ")")?
 TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
 ArrayExpression      := "[" TrailingList<Expression>? "]"
                       | "[" ArrayLength "of" Expression "]"
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
 DictionaryEntry      := Expression ":" Expression
-FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>? ")"
+FunctionExpression   := "func" CaptureList? "(" TaskSlot? TrailingList<AnonymousParameter>? ")"
                         ("->" FunctionResult)? AnonymousBody
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := ExecutableBody
@@ -496,7 +499,7 @@ These entries record where the syntax summary of this revision ends. They are ne
 | Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and the complete forms such as `@obj/T` and `@rc/T` add no allocation or count increment. |
 | Complete payload and whole-value updates | Sealed and ObjectPayload use ordinary requirement syntax; the opt-out `Self is not ObjectPayload` is an ordinary `ConstraintClause` whose placement §8.4.7.2 restricts. `@follow` selects a proven complete payload (§13.5.5.1), and `@ref`/`@uniq` borrow the written slot. `Kimi.Intrinsics.replace`, `exchange` and `swap` use ordinary generic calls and named arguments (§15.7). |
 | Places and iteration | `place ref/T` and `place uniq/T` results, Contract Type parameters, Origin-parameterized associated Types with formation Types, single-slot `during` bindings, `@copy`, the postfix `@follow` and `for var` slots are defined in F.2–F.5. Pattern-local acquisition selectors and Contract-owned Origin parameters are not introduced ([Appendix D](D-deferred-features.md)). |
-| Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external and internal names and independent defaults; F.3 summarizes their syntax. |
+| Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external and internal names and independent defaults, and [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) the leading task slot and the task argument `task;`; F.3 and F.4 summarize their syntax. |
 | Re-export and special FFI layouts | See [Re-exports](../18-modules-and-dependencies.md#182-re-exports) and [layout boundaries](../../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi). |
 | Failure propagation | Prefix `try` is defined in §17.2.4. User-defined propagation and try blocks are not introduced. |
 

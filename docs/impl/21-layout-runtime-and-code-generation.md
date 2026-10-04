@@ -850,7 +850,7 @@ target triple = "x86_64-pc-windows-msvc"
 !0 = !{i32 8, !"PIC Level", i32 2}
 ```
 
-The compiler emits pre-optimization IR. O0 skips the general IR optimization pipeline and uses `llc -O0`; the default O2 uses `opt default<O2>` followed by `llc -O2`. `opt` reads CPU and features from function attributes, so they are not duplicated as `opt -mcpu/-mattr` options. `llc` and manifest settings match, and IR is verified before and after optimization.
+The compiler emits pre-optimization IR. O0 skips the general IR optimization pipeline and uses `llc -O0`, after the coroutine passes of §21.6.2 for a module with coroutines; the default O2 uses `opt default<O2>`, which includes those passes, followed by `llc -O2`. `opt` reads CPU and features from function attributes, so they are not duplicated as `opt -mcpu/-mattr` options. `llc` and manifest settings match, and IR is verified before and after optimization.
 
 LLVM performs inlining, constant propagation, dead-code elimination, SROA, mem2reg, instruction selection and register allocation. No default O3, unconditional `alwaysinline`, loop unrolling or redundant general SSA optimizer is required. Internal ABI changes by whole-module optimization are allowed only when all uses and semantics stay consistent, and the external ABI and observable storage are preserved. O0 and O2 cannot change acceptance, checks, cleanup or nontermination.
 
@@ -991,3 +991,94 @@ This backend marker is not CRT initialization state. No `dllimport`, weak or com
 The compiler's profile catalog fixes `packageId=kimi-backend-windows-x64`, `abiVersion=2`, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and `providedSymbols=[__chkstk, memcmp, memcpy, memmove, memset]`. `packageVersion` comes from the shared compiler and backend release in `Directory.Build.props` (§20.8.7). The ABI version is updated when symbol or call contracts change. Filename or path equality is insufficient, and if version, ABI and hash are not established, no successful generation is claimed with a placeholder supply.
 
 The archive is recorded as a profile-wide link input even when no known reference currently needs it; unused archive members need not be linked. Generated `_fltused` and externally supplied symbols have separate manifest classifications (§20.8.3). Later LLVM versions may add or remove references, so actual object undefined symbols are inspected and their providers verified. Unknown or unsupplied dependencies fail adoption or linking and never receive empty stub helpers. This supply does not add to the six runtime operations or the seven Windows APIs.
+
+## 21.6. Tasks
+
+This section is the implementation contract for the asynchronous tasks of [Chapter 24](../spec/24-suspension-and-asynchronous-tasks.md) and [§22.1.3](../spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks). The physical forms below stay within the freedom of §21.4.2: the scheme is fixed per generation, not as a stable ABI.
+
+### 21.6.1. Task entries and plain instances
+
+- **Entry.** In this profile, every function with a task slot is entered with the task, a continuation, its other arguments and a result slot, and returns `i1`, where true means completed. The task is a compiler-chosen context pointer without `noalias`.
+- **Plain instances.** Plainness is computed bottom-up for each strongly connected component of the monomorphized instance graph (§21.3.1). An instance is plain when it contains no suspension intrinsic, no indirect task call and no task call to a non-plain instance. A plain instance is an ordinary function that emits no `llvm.coro.*` and always reports completion. LLVM already folds such instances at O2; the gain is O0 code size and arena traffic, and modules without coroutines skip the extra `opt` step of §21.6.2.
+- **Coroutines.** Every other instance becomes a switched-resume coroutine. Its frame represents the task frame, lives in the task's arena and never moves while live; this is a lowering obligation, and byte-transfer Moves (§21.4.5) are unchanged because a task frame is not a value. Borrow parameters of a non-plain entry get no `captures(none)`, because the task frame keeps them past the physical return.
+- **Barriers.** `TaskBoundary.park` and every waiting intrinsic are compiler barriers for the state behind shared channel handles (obligation 4 of §22.1.3.1).
+
+### 21.6.2. Coroutine lowering and the O0 step
+
+`llc -O0` cannot lower `llvm.coro.*`. A module with coroutines first runs `opt -passes=coro-early,cgscc(coro-split,coro-annotation-elide),coro-cleanup`, written without spaces because `opt` rejects them; at O2 the same passes run within the optimization pipeline. The native build performs this step (§20.8.4, §20.8.6), and its processing record lists it.
+
+Completion protocol:
+
+```llvm
+define internal i1 @g(ptr %task, ptr %cont, ptr %result) presplitcoroutine {
+  ; coro.id, coro.alloc (an arena push) and coro.begin produce %hdl.
+  %done = call i1 @wait_register(ptr %task, ptr %hdl)  ; true when no wait is needed
+  br i1 %done, label %complete, label %wait
+wait:
+  %s = call i8 @llvm.coro.suspend(token none, i1 false)
+  switch i8 %s, label %suspend [i8 0, label %complete
+                                i8 1, label %never]
+complete:
+  store i32 42, ptr %result                             ; the result goes to the caller's result slot
+  %inramp = call i1 @llvm.coro.is_in_ramp()
+  br i1 %inramp, label %end, label %transfer
+transfer:
+  call void @set_next(ptr %task, ptr %cont)             ; resume the parent directly
+  br label %end
+suspend:
+  br label %end
+end:
+  %st = phi i1 [true, %complete], [true, %transfer], [false, %suspend]
+  call void @llvm.coro.end(ptr %hdl, i1 false, token none)
+  ret i1 %st
+never:
+  unreachable                                           ; no destroy path (obligation 1)
+}
+```
+
+1. **Result.** The result goes to the result slot that the caller passes.
+2. **No destroy path.** The destroy successor of every suspend is `unreachable`. There is no final suspend: completion runs ordinary cleanup and reaches the single `coro.end`. The destroy and cleanup clones become empty at O2; at O0 their code size is recorded as a measurement.
+3. **Arena position.** The caller saves the arena position and restores it at completion, whether synchronous or resumed. A plain callee needs neither.
+4. **Parent resumption.** A resumed task frame that completes stores its continuation in the task record's `next` word, and the dispatch loop resumes it in the same step, bypassing the ready list. The ready list receives only wake-ups from waits. `llvm.coro.is_in_ramp()` tells synchronous from resumed completion, so the frame needs no flag.
+
+### 21.6.3. Embedded child frames
+
+The compiler marks a `TaskBoundary.enter` call `coro_elide_safe` only when the call is in no loop body and no `while` condition. Such a call runs at most once per task frame, and by obligation 2 its child completes before that task frame does. CoroAnnotationElide then places the child's top frame in the parent's frame, so leaf children never push.
+
+- The rule covers `join`, `joinOk`, `race`, `pipe` and `shield` without naming them, and excludes the in-loop starts of `each` and `eachReceived`. A call in a conditional branch qualifies; recursion is safe, because each recursive task frame joins its own children.
+- Ordinary task calls are never marked: sequential calls reuse one arena region, whereas embedded frames would be summed in the caller's frame.
+- Child bodies are never `noinline`; the O0 step includes the pass, so O0 and O2 agree. An internal switch may drop the attribute, and inlining a function that contains a marked call into a loop drops the mark.
+- Without the rule and obligation 2, a helper that returns before its child completes lets its frame, which holds the child's frame, be reused, and a marked call in a `while` condition makes children that are alive at the same time share one frame.
+- Functional and allocation tests never depend on elision; its own regression reads the CoroSplit remark.
+
+### 21.6.4. Frame contents and hot loops
+
+- **Lifetime markers.** In a coroutine instance, `llvm.lifetime.start` is emitted at the first initialization of a local's storage, and `llvm.lifetime.end` at the earliest proven point: scope exit, or after the last use when the storage is not address-observed and holds no destruction responsibility or live Loan (§21.5.5). For storage lent to a task call, the last use is the caller's resumption point, never the call instruction.
+- **Hot loops.** A value live across a suspension is spilled at its definition, so a loop that calls `checkpoint` loads and stores the frame on every iteration and is not vectorized. Step 1: plain functions that contain loops are not inlined into coroutine bodies, with the effect measured in `src/Benchmark`. Step 2, once step 1's gain is confirmed: loops without task calls are outlined from coroutine bodies into internal plain functions before CoroSplit.
+
+### 21.6.5. Executor, timers and I/O completion
+
+The executor is Kimi source over the task boundary. Its observable contracts are those of §22.1.3; the following is the policy of this profile.
+
+- **Executor state.** Each thread has one executor state in Kimi-internal raw storage, kept across `run` calls: the I/O completion port, created at the first association or the first blocking wait; the dequeue array and the ready-list heads; one timer structure; the arena free lists; and a stack of `run` scopes. Windows associates a handle with one completion port until the handle closes, so a port per `run` cannot work.
+- **Nested `run`.** A nested `run` pushes a scope. Wake-ups for tasks of outer scopes are held on their scope's pending list; when a scope ends, only the pending list of the scope being resumed rejoins its ready list. If the root completes without suspending, `run` returns without touching the port or the timers.
+- **Waits.** A waker is a pointer to its registration, with no reference count, generation or allocation. The ready list is an intrusive FIFO with a `queued` bit. Each registration holds a commit word that only its first commit writes; a resumed wait returns from that word, never from the task's cancellation flag, and on one thread the word needs no atomic operation.
+- **Requests.** A request sets flags along the child links, and a child started under a set flag starts with it set. It commits every still-pending timer, channel and yielded `checkpoint` registration in the subtree to cancellation, unlinks timer and channel registrations in O(1), and enqueues each such task whose `queued` bit is clear; a registration already committed is left unchanged. An I/O wait issues `CancelIoEx` and keeps its registration until its packet commits it. The child of a `shield` has a shield bit on its task record, where the walk stops; the `shield` task frame arms a grace timer node, which continues the walk into the child when it expires and is unlinked if the child completes first.
+- **Timers.** A timer node records its duration. Before each completion poll, the executor reads the counter of §22.7.1 once and converts every newly registered node to that reading plus its duration, rounded up to the next tick; the reading is taken after the call, so `sleep(task; d)` never completes early. Wait time-outs may expire early, so after every wait the executor rereads the counter and wakes only expired nodes. The millisecond timeout is rounded up and kept below `INFINITE`. A hierarchical timing wheel or an intrusive pairing heap is chosen by benchmark.
+- **I/O completion.** Each handle is associated once, with `FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE`; only handles where this succeeded are marked, and only marked handles complete an immediate success in place. On an unmarked handle a packet still arrives, so the wait registers and parks as for `ERROR_IO_PENDING`. A socket uses the mode only when its `SO_PROTOCOL_INFOW` `dwServiceFlags1` has `XP1_IFS_HANDLES`. Non-overlapped handles use synchronous reads and writes. Imports are ordinary `#LibraryImport` declarations (§22.7.1), not runtime symbols (§22.5.6).
+- **Executor round.** Dispatch a snapshot of the ready list; call `GetQueuedCompletionStatusEx` for up to 64 entries, with timeout 0 when tasks are ready, otherwise the next timer or `INFINITE`, and `alertable` 0; then map every entry to its waiter, which commits the wait, and enqueue it before running any task, because a nested `run` reuses the array.
+- **Arena.** The first chunk is taken at the first push, from the smallest class of at least max(frame + header, minimum); an overflow takes a class of at least max(2 × previous, needed), so a chain of depth d uses O(log d) chunks; an emptied top chunk is kept as one spare. A completed task returns its chunks to per-thread, per-class free lists, which persist across `run` calls and are trimmed by a cap or a high-water mark. Frame sizes exist only after CoroSplit, so the arena is not sized statically.
+
+### 21.6.6. Allocation bounds
+
+| Operation | Heap allocations |
+| --- | --- |
+| Task call | 0: an arena push, none for a plain callee |
+| One-shot children with elision | 0: frames inside the parent's frame |
+| Task start, `each` child | Pooled records and arena chunks, at most `limit` child records at once for `each`; 0 in steady state |
+| Timer, channel operation, I/O wait | 0: registrations live in the task frame; ring buffers |
+| `pipe` start | 0 for capacity 0; otherwise an arena push, 0 in steady state |
+| `shield` | 0: one grace timer node in its task frame |
+| Repeated `run` | 0 in steady state, because the per-thread state persists |
+
+O0 and O2 allocation regressions fix these bounds for a loop of task calls that crosses a chunk boundary, repeated top-level `run` calls, a read loop on reads that complete immediately, which makes no port calls, and a pipe ping-pong, which makes at most one port call per round. Frame size is a measurement bound to the O level and toolchain identity, read from CoroSplit remarks, not a check fact.

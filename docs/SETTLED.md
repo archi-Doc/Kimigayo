@@ -101,3 +101,77 @@
 
 - **Proposed fix:** Search the base layers at lookup stage 2, one layer at a time, so that an unqualified Name inside a derived struct selects the inherited declaration: `marker()` would call `Base.marker`, and a bare nested Type Name would name the inherited Type.
 - **Why not applied:** Members of an external base would be found unqualified, contradicting §18.1, where external members are never found unqualified. They would also be found at stage 2, before the project root and the aliases of stages 5 and 6, through which unqualified Names otherwise reach external declarations last, so the precedence would be reversed. An upstream base that adds `marker` or a nested `Node` would silently retarget a downstream unqualified use: dependency revalidation (§18.7.3) succeeds against the new target and reports nothing. Resolving a base clause would still need an exception, because searching the struct's own base layers there forms a cycle. §9.4 instead examines the base layers only to stop lookup with `QualificationRequired_Kd`, whose repair candidates insert the canonical qualifiers `self.`, `Self.` or `C.`, so an unqualified Name that succeeds always denotes a lexical declaration.
+
+## Futures and `async`/`await`
+
+- **Problem:** C#, Rust and Swift mark asynchronous functions with `async` and suspension points with `await`, and Rust returns a future value that the caller polls. Kimigayo writes neither: a function that may suspend begins its parameter list with the task slot `task;`, and a call passes it as `task;` (Chapter 24).
+- **Example:**
+
+  ```kimi
+  func fetchBoth(task; a: ref/Url, b: ref/Url) -> Result<(Page, Page), Net.Error>
+      let getA = func [a] (task;) -> Result<Page, Net.Error> => fetchPage(task; a)
+      let getB = func [b] (task;) -> Result<Page, Net.Error> => fetchPage(task; b)
+      return Async.joinOk(task; getA, getB)    // The task argument marks the suspension point
+  ```
+
+- **Proposed fix:** Add `async func` and `await expression`, or return a future value that holds the pending computation.
+- **Why not applied:** A future that borrows its caller's locals is a receiver-dependent public result, which is deferred (Appendix D), and a future that borrows itself needs a pinning rule that conflicts with byte-transfer Moves (§21.4.5). Cancelling by dropping a future needs an abrupt completion that §16.2.3 does not have. `async` would also need an implicit current task for cancellation and children (Principle 2), and `await` beside the task argument would be a second spelling of the same suspension point (Principle 1). The task slot is neither a Type nor a value, so it cannot escape, and every suspension point is visible at its call.
+
+## A no-leak guarantee
+
+- **Problem:** A scoped guard whose destructor joins borrowing children is unsound when the guard is leaked, as with Rust's `mem::forget`. A language-wide guarantee that every non-Owned value is destroyed before its Origins end would make such guards sound.
+- **Example:**
+
+  ```kimi
+  func fillBoth(task; left: uniq/Buffer, right: uniq/Buffer) -> ()
+      let fillLeft = func [left] (task;) => fill(task; left)
+      let fillRight = func [right] (task;) => fill(task; right)
+      _ = Async.join(task; fillLeft@move, fillRight@move)   // Returns only after both children complete
+  ```
+
+- **Proposed fix:** Guarantee that every non-Owned value is destroyed before its Origins end, and add a scope or join-handle value whose destruction waits for its children.
+- **Why not applied:** The guarantee would bind every future cycle-forming API (`rc` cycles, §16.4) and all unsafe code, and tasks do not need it. Children start only inside a Kimi operation that returns after they complete (§22.1.3.3), and no value represents a running child or a suspended task frame, so safe-code soundness never depends on a destructor running. Future guards and scopes keep that constraint and use the same call-duration shape.
+
+## Detached tasks and join handles
+
+- **Problem:** Go's `go` statement and Swift's detached tasks start work that outlives the caller, and join handles let a caller start a child now and wait for it later.
+- **Example:**
+
+  ```kimi
+  func runJobs(task; jobs: uniq/Async.Receiver<(task;) -> ()>) -> Result<(), Async.Cancelled>
+      let runOne = func [] (task; job: (task;) -> ()) => job(task;)
+      return Async.eachReceived(task; jobs, runOne@ref, limit: 8)   // Dynamic work, still joined
+  ```
+
+- **Proposed fix:** Add `Async.spawn`, returning a handle that is joined or detached.
+- **Why not applied:** A child that outlives its starting call cannot borrow the caller's locals, and a handle would make soundness depend on its destruction (see "A no-leak guarantee"). Children would also gain a second way to start (Principle 1). Dynamic work sends jobs or their state through a channel to `eachReceived`, which bounds the number of running children and joins every one before it returns.
+
+## Deferred Blocks that suspend
+
+- **Problem:** Finalization such as a flush belongs on every exit path, and `defer` is the construct for that. A Deferred Block cannot pass its function's task, so `defer => _ = file.flush(task;)` is rejected.
+- **Example:**
+
+  ```kimi
+  func appendLine(task; path: ref/string, line: ref/string) -> Result<(), Io.Error>
+      var file = try Io.File.open(task; path)
+      // defer => _ = file.flush(task;)    // Error: a Deferred Block cannot pass the task
+      try file.write(task; line)
+      return file.flush(task;)             // Finalize on the path that needs it
+  ```
+
+- **Proposed fix:** Let Deferred Blocks pass the task, or add an asynchronous `drop`.
+- **Why not applied:** Every exit path would gain resume states in its cleanup, cleanup under cancellation would need an abrupt completion that §16.2.3 does not have, and a Deferred Block that ignored cancellation would hide an unbounded mask that stops outer timeouts. Finalization stays on explicit paths, and one that must run under cancellation is called through `Async.shield` with an explicit grace (§22.1.3.4).
+
+## Overloads with and without a task slot
+
+- **Problem:** A library may want both a suspending `read(task; ...)` and a blocking `read(...)` under one Name.
+- **Example:**
+
+  ```kimi
+  contract Fetcher
+      func fetch(task; self, url: ref/Url) -> Page
+      func fetch(self, url: ref/Url, retries: i32) -> Page   // Error: one group, two task-slot shapes
+  ```
+
+- **Proposed fix:** Let the task slot distinguish overloads, as parameter count does.
+- **Why not applied:** A forgotten `task;` would then silently select the blocking variant instead of reporting a missing task argument, and one operation would have two forms (Principle 1). As with receiver shapes (§7.3), one function group has one task-slot shape (§24.2.3), so a call's need for the task argument follows from its Name; code without a task uses `Async.run` at its boundary.

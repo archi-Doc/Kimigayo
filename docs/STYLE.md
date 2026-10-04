@@ -74,6 +74,9 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
   ([SPEC §2.2](spec/02-source-and-lexical-structure.md#22-lines-indentation-and-continuation)).
 - `[Kimi]` Use `=>` for a short, single-item body that fits on one line. Otherwise use a block.
 - `[Kimi]` Keep source lines within 120 columns.
+- `[Kimi]` Write the task slot and the task argument `task;` with no space before the `;` and one space after it
+  when an item follows on the same line: `(task;)`, `(task; url: ref/Url)`, `fetch(task; url)`
+  ([SPEC §24.2.1](spec/24-suspension-and-asynchronous-tasks.md#2421-form)).
 - `[Kimi]` Write ordinary comments as `// ` followed by a sentence explaining intent or a non-obvious
   constraint. Cite rules as `SPEC 4.7.1`.
 
@@ -167,6 +170,46 @@ declares; the restatement is valid but adds nothing.
   (`x@Wrapping<u64>`, `w@u64`); use `@wrap` only across a width or signedness boundary
   ([SPEC §13.5.4.1](spec/13-operators-and-assignment.md#13541-wrapping-integer-conversions)).
 
+### 3.5. Tasks
+
+- `[Language]` A function may suspend only when its parameter list begins with the task slot `task;`, and only at
+  a task call, a call whose argument list begins with `task;`. One function group has one task-slot shape
+  ([SPEC §24.2](spec/24-suspension-and-asynchronous-tasks.md#242-task-slots),
+  [§24.3](spec/24-suspension-and-asynchronous-tasks.md#243-task-calls)).
+- `[Kimi]` Give an operation that may wait a task slot and no task-free or `Async`-suffixed counterpart:
+  `Io.File.open(task; path)`, not `open` beside `openAsync`. The specified exceptions are `Async.run`, the bridge
+  from code without a task, and `Console.writeLine`, which stays synchronous
+  ([SPEC §22.1.3.6](spec/22-core-execution-and-foreign-functions.md#22136-sequences-and-the-scope-of-task-operations)).
+- `[Kimi]` Take the bounds of concurrent work as required named arguments without defaults: `limit` for the
+  children that run at once, `capacity` for buffered items and `grace` for the delay before cancellation reaches
+  a shielded body, as in `Async.each(task; rows.iterateUniq(), fix@ref, limit: 16)`.
+- `[Kimi]` In a body with a task slot, pass the task on: `fetchPage(task; url)`. Use `Async.run` only to bridge
+  from code without a task slot; inside a task it suspends every task of the enclosing trees until it returns
+  ([SPEC §22.1.3.3](spec/22-core-execution-and-foreign-functions.md#22133-running-and-structured-operations)).
+- `[Advice]` Split CPU-heavy work into an inner loop without task calls, in a separate plain function, and an
+  outer loop that calls `Async.checkpoint` between chunks. A loop that calls `checkpoint` keeps its live values in
+  the task frame and is not vectorized
+  ([IMPL §21.6.4](impl/21-layout-runtime-and-code-generation.md#2164-frame-contents-and-hot-loops)).
+
+```kimi
+func sum(values: Slice<u64>) -> u64                 // Plain: no task slot and no task call.
+    var total: u64 = 0
+    for index in values.indices
+        total += values[index]
+    return total
+
+func sumAll(task; values: ref/Array<u64>) -> Result<u64, Async.Cancelled>
+    var total: u64 = 0
+    var start: isize = 0
+    while start < values.length
+        var end = start + 4096
+        if end > values.length => end = values.length
+        total += sum(values[start..end])
+        start = end
+        try Async.checkpoint(task;)                 // Suspends only between chunks.
+    return .Ok(total)
+```
+
 ## 4. Ownership and borrowing
 
 ### 4.1. Inputs
@@ -219,6 +262,11 @@ during the call; take ownership when storing, returning or consuming them.
 
 `S` stands for a signature such as `(ref/T) -> bool`. The exclusive form also accepts Shared-callable
 values that can be lent exclusively. Stored callbacks use the constraint needed for later calls.
+
+`[Kimi]` Receive the children of task operations by the same intent. A child called once is consumed,
+`child: F` with `F is Callable<owner, (task;) -> R>`, as in `Async.join`; a child called concurrently is shared,
+`child: ref/F` with `F is Callable<(task; T) -> ()>`, as in `Async.each`
+([SPEC §22.1.3.2](spec/22-core-execution-and-foreign-functions.md#22132-declarations)).
 
 `[Language]` Concrete Callable use creates no erased container, but guarantees neither monomorphization
 nor zero allocation by captures or the body. Erased Function Types retain published borrow contracts;
@@ -273,14 +321,21 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 - `[Kimi]` Represent error reasons with a specific enum or struct, not a string. Return rejected owned
   inputs in `Err`; their Type or a Tuple is sufficient when no separate reason is needed.
   `Dictionary.tryInsert` uses `Result<(), (K, V)>`.
+- `[Kimi]` Give a domain error enum that can report cancellation exactly one cancellation Case,
+  `Cancelled(Async.Cancelled)`. `try` combines no error Types, so convert a wait's `Async.Cancelled` explicitly:
+  `.Err(let reason) => return .Err(.Cancelled(reason))`
+  ([SPEC §22.1.3.4](spec/22-core-execution-and-foreign-functions.md#22134-cancellation)).
 - `[Advice]` Prefer a named enum to `Option<bool>` or `Result<(), ()>` when it makes the outcomes clearer.
   Propagate with `try`, handle with `match`, and discard intentionally with `_ =`.
 
 ### 5.2. Names, checks and constructors
 
-- `[Kimi]` Use `try` for recoverable failure unless the name already expresses checking (`validateUtf8`).
-  An Aborting counterpart, as in `resolve` / `tryResolve`, is optional. Normal absence or completion
-  needs no prefix (`firstIndex`, `pop`, `next`). Keep Contract names such as `reserve` and `format`.
+- `[Kimi]` Use `try` for recoverable failure unless the name already expresses checking (`validateUtf8`) or the
+  operation takes a task (below). An Aborting counterpart, as in `resolve` / `tryResolve`, is optional. Normal absence
+  or completion needs no prefix (`firstIndex`, `pop`, `next`). Keep Contract names such as `reserve` and `format`.
+- `[Kimi]` Give no `try` prefix to a task-taking operation that returns `Result`: the Result reports its own
+  failure and, for waits, cancellation, as `WriteWindow.push` and `WriteWindow.append` report `BufferFull`
+  ([SPEC §22.1.3.2](spec/22-core-execution-and-foreign-functions.md#22132-declarations)).
 - `[Language]` A try-prefixed Kimi API recovers only from its specified outcome, not arbitrary failures
   in argument evaluation or callees
   ([SPEC §4.7.1](spec/04-arrays-indexing-and-slices.md#471-common-acquisition-and-outcomes)).
@@ -289,6 +344,11 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
   short capitalized phrase naming the violated condition, without a final period.
 - `[Kimi]` `init` has no recoverable failure result; invalid preconditions or unrecoverable failures may
   Abort. Recoverable construction uses a Type function returning `Option<Self>` or `Result<Self, E>`.
+- `[Kimi]` A constructor has no task slot, so asynchronous construction uses a factory Type function with one,
+  such as `Connection.open(task; address)`. Give a waiting finalization, such as a flush or a graceful close, a
+  named operation with a task slot and handle its `Result` on each path; call it through `Async.shield` when it
+  must run under cancellation. `drop` and Deferred Blocks cannot pass a task, so they never wait
+  ([SPEC §22.1.3.4](spec/22-core-execution-and-foreign-functions.md#22134-cancellation)).
 
 ## 6. Documentation comments
 

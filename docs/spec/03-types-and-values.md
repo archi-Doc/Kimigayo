@@ -168,7 +168,7 @@ A Type declared inside another declaration retains the normalized bindings of it
 
 Tuple Types use parentheses and commas: `()` is Unit, `(T,)` is a one-element Tuple, and `(T, U)` is a two-element Tuple. `(T)` groups a Type without creating a Tuple or changing its Semantics.
 
-A Function Type consists of a parenthesized **Function Parameter List**, `->` and a result Type. The list is its own grammar element, not a grouped or Tuple Type, and accepts an optional trailing comma. A bare Type cannot replace it. `->` associates to the right.
+A Function Type consists of a parenthesized **Function Parameter List**, `->` and a result Type. The list is its own grammar element, not a grouped or Tuple Type, and accepts an optional trailing comma. A bare Type cannot replace it. The list may begin with the task slot `task;`, which is no parameter ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)). `->` associates to the right.
 
 | Function Type | Parameters |
 | --- | --- |
@@ -177,6 +177,8 @@ A Function Type consists of a parenthesized **Function Parameter List**, `->` an
 | `(()) -> U` | One, of Type Unit |
 | `((T,)) -> U` | One, of Type `(T,)` |
 | `(T, V) -> U` | Two, of Types `T` and `V` |
+| `(task;) -> U` | None, after a task slot |
+| `(task; T) -> U` | One, of Type `T`, after a task slot |
 
 ```kimi
 (i32, string)
@@ -196,6 +198,8 @@ A **Function Value** is a callable value. Its concrete Type differs from a commo
 Each evaluation of the same anonymous-function expression with the same Type arguments produces the same anonymous Core; distinct expressions have distinct Types, even with identical text and signatures. Each value keeps its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct, and the generated Type cannot receive a user-defined `drop`.
 
 The initial common Function Type requires an `Owned` environment, exposes only Shared call, and cannot return a borrow that depends on its hidden environment receiver. Its arguments and results need not all be owned values. Concrete Closures keep their actual receiver and lifetime contracts ([function expressions](07-functions-and-callable-values.md#76-function-expressions), [Callable constraints](08-generics-constraints-and-contracts.md#86-callable-constraints)).
+
+Task-slot presence is part of Function Type identity: `(task; T) -> U` and `(T) -> U` are different Types, and Function Types and callable values that differ in it never convert to each other, including by conversion to a common Function Type ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)).
 
 Function Type Origin elision follows §15.4. Direct borrowed inputs bind their Origins per call, and results may depend on those Origins independently of the owned environment's lifetime. Already bound nested dependencies stay fixed.
 
@@ -236,7 +240,7 @@ A Weak keeps `S`'s complete View Type, mode, Type/Origin arguments and actual Lo
 | `(T) -> U?` | `(T) -> Option<U>` |
 | `((T) -> U)?` | `Option<(T) -> U>` |
 
-`(A)? -> B` is invalid: use `(A?) -> B` or `((A) -> B)?`. A parenthesized list is a Function Parameter List only when immediately followed by an arrow under the existing continuation rules. After Semantics prefixes, an entire Function Type still needs grouping. Existing formation checks apply after expansion; enum targets are not forbidden solely because they are enums.
+`(A)? -> B` is invalid: use `(A?) -> B` or `((A) -> B)?`. A parenthesized list is a Function Parameter List only when immediately followed by an arrow under the existing continuation rules. A parenthesized list in Type position that begins with the task slot `task;` is always a Function Parameter List and must be followed by `->`; `(task;)` and `(task; T)` without an arrow are errors ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). After Semantics prefixes, an entire Function Type still needs grouping. Existing formation checks apply after expansion; enum targets are not forbidden solely because they are enums.
 
 Resolve Origin attachment before expansion: `ref/T? during a` is `Option<ref/T during a>`, `ref/(T?) during a` is `ref/Option<T> during a`, and `View<T>{v}?` is `Option<View<T>{v}>`. A binding-set suffix belongs to a named Type: `T?{v}` is invalid; name the outer set as `Option<T>{v}`. No dependencies or Loans are erased or extended. Generic Semantics decomposition uses the expanded Type: passing `ref/i32? during a` to `<s/T>` gives `s = owner`, `T = Option<ref/i32 during a>`.
 
@@ -782,7 +786,7 @@ Here `A <: B` covers normalized identity and the explicitly defined subtype rule
 | Alias equivalence | An alias and its resolved target, with substitutions and complete Type information preserved. | Part of normalized identity; no wrapper, conversion or ownership change. Alias lookup still follows the ordinary visibility and lookup rules. |
 | Subtyping | Two complete Types under the established generic and Origin constraints. Prove identity or a subtype relation explicitly defined by this specification. `Wrapping<T>` and `T` have no subtype relation (§3.1.1.1). | Static fitting only. The proof inserts no acquisition, Borrow/Reborrow, follow, numeric conversion, object upcast or user conversion. |
 | Origin shortening and variance | Apply [Origin variance](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins) and outlives constraints at each relevant position. Covariance permits shortening, contravariance reverses the relation, and invariance requires equality. | A subtype proof, not a new borrow. Each relevant position produces a required [Origin relation](15-ownership-and-lifetime-analysis.md#1561-constraints), not a structural condition: a fit whose structural part holds (the identity and subtype proof with all Origin bindings treated as equal) is never a Type mismatch. Existing dependencies and Loans are preserved; lifetimes are not extended, and inner Origins are not replaced by an outer annotation. Exclusive Referent Type invariance remains mandatory. |
-| Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility): equal arity, `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It inserts no argument or result operations and does not itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
+| Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](10-overload-resolution-and-inference.md#107-callable-signature-compatibility): equal arity, the same task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It inserts no argument or result operations and does not itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
 | Expected-result compatibility | An instantiated candidate result Type and an independently established expected Type, under [expected-result filtering](10-overload-resolution-and-inference.md#103-expected-results). Requires that the use position admit an acquisition or common adaptation of the known result. | Excludes candidates whose result the position cannot admit; candidates are never ranked by result adaptation. Result acquisition and declared Loan propagation still apply. |
 | Never fitting | Never has no normally produced value and fits any otherwise valid expected value Type without a value conversion. | No outer value operation executes on a non-completing path. Target, Unsafe and local correctness checks remain, and transfer operands are validated against their own result boundary under [result validation](14-control-flow.md#149-result-validation). The Target Result Type stays separate from inferred Never; every syntactic result source is checked under §14.9. |
 | Implicit expression adaptation | An expression, a fixed expected Type and use-site context. Exactly one operation of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), including its erasure row ([common function conversion](07-functions-and-callable-values.md#764-function-references-and-common-type-conversion)), is selected. | May require acquisition, Borrow/Reborrow, a value read or a defined conversion. Literal fitting determines the Type of an unresolved literal; it does not convert an established numeric Type. Adaptations are never chained, and no universal implicit-conversion search exists. |

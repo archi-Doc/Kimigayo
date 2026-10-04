@@ -151,7 +151,7 @@ contract Indexable<Key>
 
 ### 8.4.1. Function requirements
 
-A function requirement declares a Name, optional function generic parameters, implicitly introduced signature Origins (§15.3.4), explicitly typed parameters (the receiver may use the shorthand of §7.3) and an optional result Type or Place result (§7.1.1); an omitted result means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
+A function requirement declares a Name, optional function generic parameters, implicitly introduced signature Origins (§15.3.4), an optional task slot ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), explicitly typed parameters (the receiver may use the shorthand of §7.3) and an optional result Type or Place result (§7.1.1); an omitted result means Unit. A requirement with a receiver is an instance function; one without a receiver is a Type function. Receiver, parameter labels, ownership, Origins and safe/unsafe conditions follow the ordinary function rules.
 
 Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, Origin relations or effect clauses and no executable statements, `return`, local declarations or single-item body. It may also hold Origin relations (§15.3.3) and effect clauses (§8.4.10). Its subjects are the function's generic parameters or associated-Type projections rooted in them. Contract-wide Constraints belong at the Contract body level.
 
@@ -161,7 +161,7 @@ contract Factory
         T is Copy
 ```
 
-Requirement Constraints are premises for checking implementation compatibility; they are not silently added to the implementation declaration. Same-name requirements with receivers in one Contract, including those inherited through refinement (§8.4.2), must share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)); a Contract that violates this is a declaration error. Requirements permit the `!` argument-name boundary (§7.2) but prohibit defaults. A call through a requirement supplies every ordinary argument and follows the requirement's name-omission permissions; defaults or name-omission permissions on the implementation do not change this call surface. Requirements and required accessors have no [access modifiers](09-names-signatures-and-access.md#934-conformance-accessibility) of their own.
+Requirement Constraints are premises for checking implementation compatibility; they are not silently added to the implementation declaration. Same-name requirements with receivers in one Contract, including those inherited through refinement (§8.4.2), must share one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)), and all same-name requirements in one Contract, including inherited ones, must share one task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-and-one-shape-per-group)); a Contract that violates either is a declaration error. Requirements permit the `!` argument-name boundary (§7.2) but prohibit defaults. A call through a requirement supplies every ordinary argument and follows the requirement's name-omission permissions; defaults or name-omission permissions on the implementation do not change this call surface. Requirements and required accessors have no [access modifiers](09-names-signatures-and-access.md#934-conformance-accessibility) of their own.
 
 Property requirements use `has`; their selection and compatibility rules are in [Contract Property requirements](11-properties.md#114-contract-property-requirements).
 
@@ -332,6 +332,7 @@ After `Self`, the conforming Type's arguments and the associated Types are subst
 | Name | Exact name. |
 | Function kind | Type function or instance function. |
 | Function generic parameters | Same count, kinds and order; they correspond by position, not spelling. |
+| Task slot | Same presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)); an implementation that never suspends still declares the task slot of its requirement. |
 | Ordinary parameters | Same count, order and external labels; internal names and K need not match. |
 | Receiver | Same presence and normalized Type structure, with only the inherited receiver correspondence allowed by §8.4.4. |
 | Parameter Types | Same normalized Type structure. |
@@ -377,7 +378,7 @@ func makeEmpty<T>() -> T
 
 A function reference to a requirement through a constrained Type, such as `T.compare` under `T is Comparable`, is the requirement's Function Item instantiated with the binding of `Self` ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization)); its calls keep the conformance mapping.
 
-Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution the current Constraints allow. The comparison covers function generics, parameters and labels, normalized K (§7.2.2), receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
+Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution the current Constraints allow. The comparison covers function generics, task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), parameters and labels, normalized K (§7.2.2), receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
 
 ```text
 A.reset --+-- equivalent call contract and same mapping proved
@@ -664,7 +665,8 @@ An environment effect is an operation that obtains authority over mutable state 
 
 | Operation | Classification |
 | --- | --- |
-| Obtaining a reference or pointer by following references or pointers from an input (the receiver and each argument), including the input itself | Not an environment effect. Ordinary Loan checking applies even when the referent has static storage. |
+| Obtaining a reference or pointer by following references or pointers from an input (the receiver, each argument and the task slot), including the input itself | Not an environment effect. Ordinary Loan checking applies even when the referent has static storage. |
+| Obtaining the current task's state through the task slot (`TaskBoundary.current`, [§22.1.3.1](22-core-execution-and-foreign-functions.md#22131-task-boundary)) | Not an environment effect. That state matches no user Loan. |
 | Obtaining it from Storage created within the call, including an allocation such as `Raw.allocate` (§5.6) | Not an environment effect. |
 | Taking the address of a Place with `@raw` (§5.4) | An access to that Place, classified like the Place's other accesses: an environment effect exactly when the Place is a mutable static Field. |
 | Converting between raw pointer Types, or from a raw pointer to `usize` (§5.4) | Not an environment effect. |
@@ -769,7 +771,7 @@ contract Peek
 **Requirement call effects.** The effects of such a call are derived from its available bounds, by the same rules inside implementation checks and at callers:
 
 1. *Effects through inputs.* The call may affect every Place reachable through references from the receiver and from each argument, in the access mode of its parameter, and only with shared access past a shared layer (§15.6.2): reads and shared borrows for shared access, and also writes, replacement and destruction for exclusive access. This holds with or without bounds. An input of an abstract Type may reach every Loan that its Type's Origins may denote. Destroying an owned handle argument contributes the effects of §16.3.3.
-2. *Environment effects.* None with `confined`; otherwise unknown. Bound verification treats unknown effects as conflicts (§8.4.5); elsewhere §15.6.4 applies.
+2. *Environment effects.* None with `confined`; otherwise unknown. Bound verification treats unknown effects as conflicts (§8.4.5); elsewhere §15.6.4 applies. Whatever the available bounds, a task call is also compared in its calling body with every potentially affected static Loan as a call with unknown environment effects ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)), and such a conflict carries the Reason of [§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics).
 3. *Earlier results.* With `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded from the comparison.
 
 The derived effects are compared with the active Loans by the conflict rules of §15.6.2. A result without Loans takes no part in the comparison. `preserves results` is one way to prove non-conflict, not a condition of acceptance.
@@ -855,7 +857,7 @@ struct Topped<J>
 
 - **Declarations.** An unidentified, ambiguous or non-ancestor target, a bound declared twice in the same Contract, an effect item outside a Contract, `preserves results` without a borrowed receiver, or a dependent result is the Language Error `InvalidEffectBound_Kd`. The primary location is the effect item and the related location the target requirement. For a dependent result, the Reason names the dependent part and its path, such as an associated-Type specification or an elided Origin; no automatic repair is offered, because the dependency is the meaning of the API.
 - **Conformance.** A bound violation is `IncompatibleContractImplementation_Kd` (§23.3.6.1). Its Reason names the bound, the declaring Contract and the requirement, and distinguishes a definite violation (an environment effect or a conflicting Loan) from an unknown effect treated as a conflict. For an environment effect, the Reason names the kind of operation that obtained the authority (§8.4.10.2), and that operation is the primary location. For a conflict with a Loan of an earlier result, the Reason states why the Loan was not excluded (§8.4.10.5): it comes from an argument, from another requirement or from another value, or the body replaces a value on the path; the source or the replacement is a related location. Otherwise, the primary location is the first violating effect in the implementation's own body. Related locations also give the effect path, the `Self is C` declaration and the bound. Advice offers repairs that keep the guarantee: moving the state into a Field of `self` or a parameter, avoiding the conflicting access, or returning only results obtained from the same requirement on a value reached through a Field path of `self`. Only where the declarations are editable may it also mention, conditionally, weakening the public contract by conforming to a Contract without the bound or removing the bound, stating that callers relying on the guarantee are affected. An implementation alone cannot remove an inherited bound.
-- **Callers.** A derived requirement-call effect that may conflict with an active Loan is the Language Error `CallEffectConflict_Kd` at the later call. Related locations give the conflicting Loan and the call that created it. The Reason names the access, the input it goes through and the Loan, and states that no available bound excludes the access under the premises; it does not assert that a conflict occurs. Advice suggests strengthening the Constraint to a Contract that declares the bound, when every use Type conforms to it, or ending the use of the held result before the call. A conflict with the receiver borrow itself keeps the existing diagnostics, such as `CallActivationConflict_Kd`.
+- **Callers.** A derived requirement-call effect that may conflict with an active Loan is the Language Error `CallEffectConflict_Kd` at the later call. A task call's comparison with static Loans (rule 2 of §8.4.10.4, [§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)) is not reported with this code: its conflict is `ComparisonLoanConflict_Kd` with the Reason `suspension point (other tasks)` (§15.6.4, [§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics)). Related locations give the conflicting Loan and the call that created it. The Reason names the access, the input it goes through and the Loan, and states that no available bound excludes the access under the premises; it does not assert that a conflict occurs. Advice suggests strengthening the Constraint to a Contract that declares the bound, when every use Type conforms to it, or ending the use of the held result before the call. A conflict with the receiver borrow itself keeps the existing diagnostics, such as `CallActivationConflict_Kd`.
 - **Recovery.** A conformance that violates a bound is invalid, as before. An invalid effect item gives no guarantee, and the caller conflicts it would have resolved are derived from the declaration error (§23.3.6.4).
 - **Inspection.** Semantic inspection and language-server hover expose the bounds a Contract declares and, at a requirement call, each available bound together with every Contract that declares it (§8.4.10.1) and the premise that proved it. Given the declarations of §8.4.10.1 and `contract SafeSource: StableSource`, the call `source.take()` under `S is SafeSource` shows:
 
@@ -913,7 +915,7 @@ Only requirements accessible through `Speaker` are available from that view. Lif
 
 ## 8.6. Callable constraints
 
-`F is Callable<r, S>` is a built-in Constraint requiring calls with receiver access `r` and signature `S`; `Callable<S>` abbreviates `Callable<ref, S>`. In this revision `r` is the literal Semantics `ref`, `uniq` or `owner`, and `S` is `(A1, ..., An) -> R`, where `R` may be a Place result (§7.1.1). The result may keep input Origins or already-bound external dependencies but cannot borrow the hidden environment receiver.
+`F is Callable<r, S>` is a built-in Constraint requiring calls with receiver access `r` and signature `S`; `Callable<S>` abbreviates `Callable<ref, S>`. In this revision `r` is the literal Semantics `ref`, `uniq` or `owner`, and `S` is `(A1, ..., An) -> R` or, with a task slot, `(task; A1, ..., An) -> R` ([§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)), where `R` may be a Place result (§7.1.1); the task slot is no parameter, and the per-call Origin rules concern only `A1` to `An`. The result may keep input Origins or already-bound external dependencies but cannot borrow the hidden environment receiver.
 
 | Constraint receiver | Receiver acquired by a generic call | Admitted minimum call requirement |
 | --- | --- | --- |
@@ -1028,7 +1030,7 @@ specialize func process<i32>(value: i32) -> ()
     ()
 ```
 
-`specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, explicitly typed parameters (the fixed bare `self` shorthand of §7.3 is permitted), an optional result Type and a common single-item or indented Body (§14.2). It declares no Type parameters and does not bring the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. An omitted result means Unit, even if the original's substituted result is non-Unit; write that result explicitly.
+`specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, a task slot exactly when the original has one ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), explicitly typed parameters (the fixed bare `self` shorthand of §7.3 is permitted), an optional result Type and a common single-item or indented Body (§14.2). It declares no Type parameters and does not bring the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. An omitted result means Unit, even if the original's substituted result is non-Unit; write that result explicitly.
 
 All of the function's own generic slots are supplied in declaration order, with their original kinds; ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core and Semantics component must be fixed: no unbound Type or Semantics parameter, unresolved projection or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with an unbound `T` is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately (§8.8.2). These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
 
@@ -1037,7 +1039,7 @@ The target must be a named generic Type function or instance method with an ordi
 Duplicate ordinary declarations are rejected first. Then the original function is identified:
 
 1. Collect same-name generic functions in the same Declaration Container with the same function kind (Type function or instance method) and generic slot count.
-2. Bind the written generic arguments using each candidate's slot definitions. Match the substituted receiver presence and Type structure, and the ordinary parameters' count, order and normalized Type structure. Complete Types are formed and validated before Origins are excluded for this structural comparison.
+2. Bind the written generic arguments using each candidate's slot definitions. Match task-slot presence (§24.2.4), the substituted receiver presence and Type structure, and the ordinary parameters' count, order and normalized Type structure. Complete Types are formed and validated before Origins are excluded for this structural comparison.
 3. Zero matches is an error, and several matches make the specialization declaration ambiguous. For exactly one match, the inherited contract is validated.
 
 Result Types, parameter names, Constraint satisfaction, Origin relationships, implicit adaptation, slot kind alone, overload ranking and declaration or file order never resolve an ambiguity. A failed contract check cannot select another target.
@@ -1049,7 +1051,7 @@ specialize func inspect<i32>(value: i32) -> () => ()
 // Error: both ordinary declarations have the same substituted input structure.
 ```
 
-Diagnostics distinguish no target, an input-structure mismatch, several targets and a contract mismatch after selection. They include the candidate declaration locations and the relevant Type, receiver or arity differences; diagnostic comparison never chooses a nearest candidate.
+Diagnostics distinguish no target, an input-structure mismatch, several targets and a contract mismatch after selection. They include the candidate declaration locations and the relevant task-slot, Type, receiver or arity differences; diagnostic comparison never chooses a nearest candidate.
 
 ### 8.8.2. Inherited contract
 
@@ -1057,6 +1059,7 @@ The specialization header identifies and checks the original contract; it is not
 
 | Item | Specialization rule |
 | --- | --- |
+| Task slot | Written exactly when the original has one (§24.2.1) |
 | Receiver and ordinary parameters | Restate count, order and substituted Type structure, keeping the original's receiver shape (§7.3); no implicit adaptation |
 | Result | Match the substituted Type; omission means Unit |
 | External parameter names | Match the original; not used to identify the target |
@@ -1073,7 +1076,7 @@ specialize func find<i32>(value: i32, count: i32) -> () => ()
 find<i32>(10) // Evaluate the original default, then call the specialization.
 ```
 
-These restrictions concern the specialization declaration, not ordinary syntax inside its body. A specialization of an unsafe function inherits its Safety contract, but unsafe operations in its body still need an Unsafe Block. Contract inheritance introduces no unsupported async, exception-Effect or variadic feature.
+These restrictions concern the specialization declaration, not ordinary syntax inside its body. A specialization of an unsafe function inherits its Safety contract, but unsafe operations in its body still need an Unsafe Block. Contract inheritance introduces no unsupported exception-Effect or variadic feature, and a task slot is restated, not inherited implicitly (§24.2.1).
 
 Omitted specialization Origins are inherited, not quantified. The normalized input structure is matched first, mapping pending Origin positions to each candidate, and exactly one target is selected; Origin conditions and results never break ties. The Origins are then completed from that contract, and explicit bindings, result, formation, bounds and Loans are validated. A failed validation never retries another candidate. After the inherited binders are matched, the body must work for **every Origin binding the original contract permits**. A specialization cannot add an Origin parameter or lifetime restriction, narrow applicability by Origin, or register another implementation for different Origins. It cannot rescue an invalid ordinary implementation or replace a declaration-required proof; [deferred generic checking](#810-generic-body-checking-and-deferred-obligations) keeps its stated design boundary.
 

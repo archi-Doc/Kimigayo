@@ -15,7 +15,7 @@ Implementation coverage and verified support boundaries are recorded in [STATUS.
 ## Contents
 
 - [20. Compilation configuration](impl/20-compilation-configuration.md): build units and inputs, Mods, LLVM output, native builds and the compiler commands.
-- [21. Layout, runtime metadata, and code generation](impl/21-layout-runtime-and-code-generation.md): structure layout and ABI, runtime representations, generic code generation, checked lowering and the LLVM Windows x64 profile.
+- [21. Layout, runtime metadata, and code generation](impl/21-layout-runtime-and-code-generation.md): structure layout and ABI, runtime representations, generic code generation, checked lowering, the LLVM Windows x64 profile and task lowering.
 - [Test execution profile](impl/testing-profile.md): solution execution, settings, temporary storage, limits, identities and results.
 - [Appendix A. Compiler implementation requirements](impl/appendices/A-compiler-requirements.md)
 - [Appendix B. Non-normative reference models](impl/appendices/B-reference-models.md)

@@ -56,7 +56,7 @@ This index links to design boundaries owned by the language sections and adds no
 | Language-server features beyond diagnostics and quick-fix code actions: completion, navigation, formatting, pull diagnostics, semantic tokens | Not introduced; the server publishes check diagnostics and offers their repair candidates as quick-fix code actions (§23.4.8) | [Language Server Protocol](../23-compiler-services.md#234-language-server-protocol) |
 | Compiler Server Protocol: durable snapshot identity, syntax handles, edits against snapshots, verification records | Specified, not implemented; the check foundation, repair candidates and the JSON output are provided | [Compiler Server Protocol](../23-compiler-services.md#235-compiler-server-protocol) |
 | Diagnostic extensions: durable diagnostic identities, syntax and semantic node handles in diagnostics, a causal graph of whole analyses, complete structured Type and Constraint values, queries and counts of suppressed problems, public diagnostic and requirement catalogs, generated code enumerations | Deferred until a tool needs them; bounded records with explicit prerequisites and repair candidates with explicit conditions are specified (§23.3.6.9). Conditions that need analysis of the edited input are established by the CSP's verifiable changes | [Diagnostics](../23-compiler-services.md#2336-diagnostics) |
-| Concurrency, memory model and thread-transfer capabilities | Deferred design | [D.2](#d2-concurrency-memory-model-and-thread-transfer) |
+| Concurrency, memory model and thread-transfer capabilities | Deferred design; single-thread asynchronous tasks are specified | [D.2](#d2-concurrency-memory-model-and-thread-transfer), [Suspension and asynchronous tasks](../24-suspension-and-asynchronous-tasks.md#24-suspension-and-asynchronous-tasks) |
 
 ## D.1. Enum and Pattern extensions
 
@@ -78,7 +78,7 @@ Object-Semantics enum construction and matching, empty enums, and representation
 
 ## D.2. Concurrency, memory model, and thread transfer
 
-**Deferred design.** Source threads and tasks, a language memory model, data-race rules, atomic ordering operations, thread-transfer and shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded (§22.2).
+**Deferred design.** Source threads, a language memory model, data-race rules, atomic ordering operations, thread-transfer and shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded (§22.2). Single-thread asynchronous tasks are specified ([Chapter 24](../24-suspension-and-asynchronous-tasks.md), [§22.1.3](../22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks)): every task of a tree runs on the thread of its `Async.run`, so tasks keep that model.
 
 `arc` guarantees only its atomic reference-count protocols and the runtime initialization and release ordering of §21.2.3.3. It does not authorize thread-safe access to, publication of, destruction of or transfer of source payloads. `Owned` proves lifetime independence, not thread safety. Future concurrency capability requirements may reject programs or foreign integrations that a pre-alpha compiler accepted; neither `arc` nor `Owned` preauthorizes them.
 

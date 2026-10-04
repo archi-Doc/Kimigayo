@@ -2,7 +2,7 @@
 
 Date: 2026-10-04
 
-Status: Final proposal. Adoption is undecided; nothing is integrated into the specification or implemented. Supersedes `2026-10-03 Async Tasks.md` and `2026-10-03 Async Tasks2.md`. Stage 3 depends on `2026-10-04 Callable Effect Bounds.md`.
+Status: 一部取り込み (partially integrated, 2026-10-04). Everything except §12 is integrated into the specification and frozen; §12 (threads, stage 3) stays open and depends on `2026-10-04 Callable Effect Bounds.md`. Nothing is implemented. Supersedes `2026-10-03 Async Tasks.md` and `2026-10-03 Async Tasks2.md`. The record is in `draft/INTEGRATED.md`.
 
 References: `SPEC §n` is the language specification, `impl §n` the implementation specification, and a bare `§n` this proposal.
 
@@ -69,7 +69,7 @@ New Chapter 24, "Suspension and asynchronous tasks", is the only normative state
 
    Neither restricts a function expression inside them: it has its own Function Boundary (SPEC §7.6.1, §16.1.1), and its body may pass its own task slot.
 3. **Not a parameter.** A task slot is no parameter (SPEC §7.2.2). It has no position number, external name, acquisition mode or matching key, binds no argument, and corresponds to no parameter (SPEC §7.3.1). The receiver and the ordinary parameters keep their numbering in the bound and unbound call sequences and their counts `N` and `K` (SPEC §7.2.2): in `func configure(task; ! count: i32)`, `count` is ordinary parameter 0 and `K = 0`.
-4. **Shape.** In one function group (SPEC §7.3, §9.5), either every declaration has a task slot or none does. As for parameter acquisition shapes (SPEC §7.3.1), a group formed by the same-name declarations of one declaration scope (a Container and its fragments, the project root, a local scope, the members of a Type, the requirements of a Contract) is checked at the declarations, and a group gathered at a use (SPEC §9.4.1, §9.5) is checked at that use. A task slot therefore never distinguishes overloads, and whether a call needs the task argument follows from the Name alone.
+4. **Shape.** In one function group (SPEC §7.3, §9.5), either every declaration has a task slot or none does. As for parameter acquisition shapes (SPEC §7.3.1), a group formed by the same-name declarations of one declaration scope (a Container and its fragments, the project root, a local scope, the members of a Type, the requirements of a Contract, including those inherited through refinement) is checked at the declarations, and a group gathered at a use (SPEC §9.4.1, §9.5) is checked at that use. A task slot therefore never distinguishes overloads, and whether a call needs the task argument follows from the Name alone.
 5. **Compatibility.** Implementation identification (SPEC §8.4.5), candidate equivalence (SPEC §8.4.6), specialization target identification (SPEC §8.8.1), callable signature compatibility and common Function Type conversion (SPEC §10.7), known- and fixed-signature matching (SPEC §10.5, §10.8) and Function Type identity (SPEC §3.2.1) require both sides to have a task slot or neither. The remaining parameters, or a Function Type's parameter Types, are compared position by position as before.
 
 ### 4.2. Rule 2: task calls
@@ -246,7 +246,7 @@ public group Async
 
 Conventions:
 
-- **Arity.** `join`, `joinOk` and `race` have one overload per arity; there are no variadic Type arguments (SPEC §8.1).
+- **Arity.** `join`, `joinOk` and `race` have one overload per arity; there are no variadic Type arguments (SPEC §8.1). `Raced` likewise has one declaration per arity, with one Case per child in order, each holding every final result.
 - **Children.**
   - A *one-shot child* (of `join`, `joinOk`, `race`, `pipe` and `shield`) is consumed by its call, so it is received as `Callable<owner, ...>`, the "Consume the callback on invocation" row of STYLE §4.3. It may have a Shared, Exclusive or Consuming body (SPEC §8.6). A Non-Copy child held in a `let` is passed with `@move`; a Closure whose captures are all Copy, such as `getA` in §1, is copied.
   - `each` and `eachReceived` call their child concurrently, so they borrow it shared (`ref/F`, the "Shared invocation" row of STYLE §4.3), which admits only a Shared body.

@@ -8,7 +8,7 @@ This is the index of the Kimigayo language specification; the chapter files unde
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–19 and 22, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [UTF-8 formatting profile](spec/utf8-formatting.md) | Normative language rules. |
+| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [UTF-8 formatting profile](spec/utf8-formatting.md) | Normative language rules. |
 | Chapter 23 | Normative contracts of the compiler services (check foundation, Language Server Protocol, Compiler Server Protocol). They govern tools and never change language validity. |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
 | Appendix D | Index of deferred designs and boundaries; the owning sections remain authoritative. |
@@ -76,6 +76,11 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
   - [Language Server Protocol](spec/23-compiler-services.md#234-language-server-protocol): `kimi lsp` transport, document synchronization, discovery, units, change detection, scheduling, publication, [code actions](spec/23-compiler-services.md#2348-code-actions) and settings.
   - [Compiler Server Protocol](spec/23-compiler-services.md#235-compiler-server-protocol): purpose, the provided foundation and the requirements of the future protocol.
 
+### Part VIII. Asynchronous execution
+
+- [24. Suspension and asynchronous tasks](spec/24-suspension-and-asynchronous-tasks.md)
+  - [Task slots](spec/24-suspension-and-asynchronous-tasks.md#242-task-slots) and [task calls](spec/24-suspension-and-asynchronous-tasks.md#243-task-calls): a function may suspend only when its parameter list begins with `task;`, a call passes the task as `task;`, and tasks on one thread interleave only at task calls; the `Kimi.Async` operations are in [§22.1.3](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks).
+
 ### Appendices
 
 - Appendices A (compiler implementation requirements) and B (reference models): [implementation specification](IMPL.md)
@@ -97,6 +102,7 @@ Chapter 20 (compilation configuration), Chapter 21 (layout, runtime metadata and
 - **Parameters and arguments:** the argument-name boundary (`!`), normalized name contracts and independent defaults in [§7.2](spec/07-functions-and-callable-values.md#72-parameters-and-defaults), one receiver shape and one acquisition mode per position in [§7.3](spec/07-functions-and-callable-values.md#73-explicit-receivers) and [§7.3.1](spec/07-functions-and-callable-values.md#731-parameter-acquisition-shape), and positional matching in [§10.1](spec/10-overload-resolution-and-inference.md#101-candidate-applicability).
 - **Optional Types and failure:** [Optional Type spelling](spec/03-types-and-values.md#323-optional-type-spelling), [explicit discard](spec/14-control-flow.md#1424-explicit-discard) and [try propagation](spec/17-failure-handling.md#1724-try-propagation).
 - **Initial implementation profile:** generics are [monomorphized](impl/21-layout-runtime-and-code-generation.md#2131-policy-and-sharing-conditions); generic code sharing and the Mod host are deferred ([Appendix D](spec/appendices/D-deferred-features.md)).
+- **Asynchronous tasks:** [task slots and task calls](spec/24-suspension-and-asynchronous-tasks.md), the [task boundary, `Async.run`, structured operations, cancellation and channels](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks), and [task lowering](impl/21-layout-runtime-and-code-generation.md#216-tasks).
 - **Standard declarations and functions:** [Kimi declaration and function reference](#kimi-declaration-and-function-reference).
 - **First executable program:** [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output and native build](impl/20-compilation-configuration.md#208-llvm-output-native-build-and-execution).
 - **Source commands:** [input resolution and implicit single-source projects](impl/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects); [lock files](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`.
@@ -115,6 +121,8 @@ This table indexes the required declarations of [§22.1](spec/22-core-execution-
 | `Kimi.Raw` | `allocate`, `release`, `initialize`, `slice` | [§5.6 raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations) |
 | `Kimi.Windows`, `Kimi.Time` | Windows counter imports; `Duration`, `Stopwatch` | [§22.7 Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time) |
 | `Kimi.Storage` (internal) | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`; `borrowStorage`, `borrowStorageUniq`, `ownStorage`, `splitFirst`, `takeFirst` | [§22.1.2.5 storage boundary](spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary) |
+| `Kimi.Async` | Types: `Cancelled`, `SendFailure`, `Raced<A, B>`, `Sender<T>`, `Receiver<T>`; `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe` | [§22.1.3 asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks) |
+| `Kimi.TaskBoundary` (internal) | `enter`, `current`, `park`, `resume` | [§22.1.3.1 task boundary](spec/22-core-execution-and-foreign-functions.md#22131-task-boundary) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |
 | `Kimi.Console` | `writeLine(text: ref/string) -> ()`, `writeLine(text: Text.Utf8Slice) -> ()` | [§22.4](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output) |

@@ -418,7 +418,7 @@ $tools = 'C:/path/to/Kimigayo/toolchain'
 .\Application.exe
 ```
 
-Use every manifest input, not just the libraries of the example. O0 omits `opt` and passes the original `.ll` to `llc -O0` with the same profile. IR is verified before and after optimization, and actual object dependencies are inspected. `/debug` creates no Kimigayo line or variable information; CodeView/PDB emission remains separate from Abort source context.
+Use every manifest input, not just the libraries of the example. O0 omits optimization and passes the original `.ll` to `llc -O0` with the same profile, except that a module with coroutines first runs the coroutine passes of §21.6.2 through `opt`. IR is verified before and after optimization, and actual object dependencies are inspected. `/debug` creates no Kimigayo line or variable information; CodeView/PDB emission remains separate from Abort source context.
 
 A profile is validated with the pinned LLVM version before adoption; a preliminary result from another version is not acceptance. Semantic tests, representative IR structure and golden files, object ABI/unwind/dependency checks and execution results remain distinct (§A.14). Performance decisions use measured execution time, code size and build time, never weakened checks.
 
@@ -441,7 +441,7 @@ Successful explicit verification records `toolchainVerification: "passed"`, `rep
 | `kimi restore <project>` | Resolves the current product/test partitions and atomically updates their lock (§18.5.1); no source execution, Mods or network access. |
 | `kimi check <project> [--Format text\|json]` | Validates the required lock and the current source and semantic inputs, without native generation or execution. `--Format json` checks one unit through the shared check entry and writes the document of [SPEC §23.3.6.8](../spec/23-compiler-services.md#23368-rendering) to standard output; `text`, the default, renders the records as before. |
 | `kimi emit <input>` | Resolves the input (§20.8.6.1), performs the required source, ownership and generation checks, and publishes the matched pre-optimization `.ll`/`.link.json` pair (§20.8.3). Never executes LLVM, validates an installed LLVM version, links or runs. |
-| `kimi build <input>` | Resolves the input, generates fresh LLVM inputs, validates native build inputs, runs `opt` verification (and `default<O2>` only at O2), `llc` and `lld-link`, and publishes the executable and a successful build record. Never executes the Application. |
+| `kimi build <input>` | Resolves the input, generates fresh LLVM inputs, validates native build inputs, runs `opt` verification (and `default<O2>` only at O2, or the coroutine passes of §21.6.2 at O0 for a module with coroutines), `llc` and `lld-link`, and publishes the executable and a successful build record. Never executes the Application. |
 | `kimi toolchain verify` | Verifies the selected installation without compiling or running project code (§20.8.5). |
 | `kimi test <input>` | Requires valid product/test resolution and records the current test inputs. [§20.9](#209-test-command-and-discovery) defines discovery and options, and [§22.6](../spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) execution. |
 | `kimi pack <project>` | Verifies the fixed source-package graph and saves its closure (§18.6.1), without reserving a release. |
