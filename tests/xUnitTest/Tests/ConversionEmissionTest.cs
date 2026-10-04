@@ -175,22 +175,17 @@ public class ConversionEmissionTest
     public void WarmConversionAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Consumers);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                valid &= c.Ownership.Analyze().IsVerified;
+                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(valid);
+        Assert.Equal(0, allocated);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -214,20 +209,10 @@ public class ConversionEmissionTest
         Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
         Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionBinding);
         Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var complete = true;
-        for (var i = 0; i < 128; i++)
-        {
-            complete &= c.Bind().IsComplete;
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         Assert.True(complete);
+        Assert.Equal(0, allocated);
     }
 
     [Theory]

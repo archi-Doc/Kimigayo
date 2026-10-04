@@ -94,22 +94,17 @@ public class DeferredEmissionTest
     public void WarmDeferredAnalysisAndWritingAllocateNothing(int scenario)
     {
         var c = MinimalEmissionTest.Analyze(scenario == 2 ? Formatting : scenario == 1 ? ExpansionSource(2) : Snapshot);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var success = true;
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(success);
+        Assert.Equal(0, allocated);
     }
 
     [Theory]
