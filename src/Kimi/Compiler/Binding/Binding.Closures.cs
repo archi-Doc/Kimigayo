@@ -236,9 +236,11 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 7.6.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
+        // Slices and raw pointers.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Parameter or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Tuple or BoundTypeKind.FixedArray ||
-                    StructStorage.IsStruct(type) || ReferenceTypes.IsStorage(type) || ObjectTypes.HandleMode(type) is not null))))
+                (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
+                    ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type)))))
         {
             if (entry is { } written)
             {

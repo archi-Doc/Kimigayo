@@ -90,25 +90,16 @@ public class CallbackEmissionTest
     public void LargerEnvironmentsUseHeapErasure(string name, string source)
         => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, 1, 1, 16, string.Empty);
 
-    // An unsupported captured Type is reported at its capture entry rather than across the whole closure.
+    // SPEC 7.6.2: an Option capture, once reported at its entry as unsupported, is an ordinary environment binding.
     [Theory]
-    [InlineData("let t: Option<i32> = .Some(1)\nlet f = func [t] () => 1")]
-    [InlineData("let t: Option<i32> = .Some(1)\nlet f: () -> i32 = func [t] () => 1")]
-    [InlineData("let t: Option<i32> = .Some(1)\nlet n = 3\nlet f = func [n, t] () => n")]
-    public void UnsupportedCapturesAreReportedAtTheEntry(string source)
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f: () -> i32 = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet n = 3\nlet f = func [n, t] () => n\nrequire f() == 3 else => $abort(\"f\")")]
+    public void OptionCapturesAreEnvironmentBindings(string source)
     {
-        var path = Path.GetFullPath("Hello.kimi");
-        var c = MinimalEmissionTest.Analyze(source, path);
-        c.Binding.ReportDiagnostics();
-        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
-        var result = c.Diagnostics.Finalize(rejected: true);
-        var error = Assert.Single(result.Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
-        Assert.Equal(source.LastIndexOf('t', source.IndexOf(']', StringComparison.Ordinal)), error.Span!.Value.Start);
-        Assert.Equal(1, error.Span.Value.Length);
-        var identity = SourceIdentity.FromPath(path);
-        var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
-        Assert.Equal(error.Display!.Range, sent.Range);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var failure), failure);
     }
 
     [Theory]
