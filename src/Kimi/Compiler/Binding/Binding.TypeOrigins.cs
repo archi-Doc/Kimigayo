@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
-    private static bool ContainsOrigin(BoundType type, BoundOrigin origin)
+    internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
         if (Contains(type.Origin, origin))
         {

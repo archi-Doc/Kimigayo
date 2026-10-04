@@ -23,6 +23,9 @@ public sealed partial class OwnershipBody
     private List<int>? borrowRoots;
     private List<int>? liveBorrowPlaces;
 
+    // SPEC 15.6.1, 15.6.4: Origins of borrowed call arguments that a call result names; a value over one reaches the whole root.
+    private List<BoundOrigin>? wholeReferentOrigins;
+
     // Each acquisition reported against a holder's Loan, with the Place that received the rejected Loan.
     private List<(int Holder, int Result)>? rejectedAcquisitions;
 
@@ -87,6 +90,7 @@ public sealed partial class OwnershipBody
         }
 
         var any = false;
+        this.CollectWholeReferentOrigins();
         for (var p = 0; p < count; p++)
         {
             if (this.IsExclusiveBorrowInput(p))
@@ -441,6 +445,9 @@ public sealed partial class OwnershipBody
 
                 if (origin.Kind == OriginKind.Projection)
                 {
+                    // SPEC 15.6.1 well-formedness: a call result over a borrow of the root may hold what the borrowed referent
+                    // holds, so a value over that Origin keeps every Loan of the root, not only those of its own referent.
+                    referent &= !this.IsWholeReferentOrigin(origin);
                     var guardCandidate = false;
                     for (var m = 0; m < this.Matches.Count; m++)
                     {
@@ -2180,6 +2187,43 @@ public sealed partial class OwnershipBody
         }
 
         return entries == 0 ? -1 : call - entries;
+    }
+
+    // SPEC 15.6.1, 15.6.4 steps 4-5: a call result that names the Origin of a borrowed argument whose referent carries Origins, such
+    // as `h.get()` returning `ref/i32 during self` while `h` holds `ref/i32 during a`, may reach every reference that referent holds.
+    private void CollectWholeReferentOrigins()
+    {
+        this.wholeReferentOrigins?.Clear();
+        for (var call = 0; call < this.Operations.Count; call++)
+        {
+            if (this.Operations[call] is not { Kind: OwnershipOperationKind.Call, Place: >= 0 } operation || operation.Place >= this.Places.Count)
+            {
+                continue;
+            }
+
+            var result = this.Places[operation.Place].Type;
+            for (var entry = call - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
+            {
+                if (input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { Kind: OriginKind.Projection } origin } argument &&
+                    HasProjection(argument.Components[0]) && Binding.ContainsOrigin(result, origin) && !this.IsWholeReferentOrigin(origin))
+                {
+                    (this.wholeReferentOrigins ??= new()).Add(origin);
+                }
+            }
+        }
+    }
+
+    private bool IsWholeReferentOrigin(BoundOrigin origin)
+    {
+        for (var i = 0; i < (this.wholeReferentOrigins?.Count ?? 0); i++)
+        {
+            if (ReferenceEquals(this.wholeReferentOrigins![i], origin))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int ResultArgument(int call)
