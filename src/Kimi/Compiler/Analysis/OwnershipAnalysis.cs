@@ -498,11 +498,40 @@ public sealed partial class OwnershipAnalysis
             this.Unsupported(function);
         }
 
+        this.CheckEnvironmentMoves(function);
         this.CheckConstruction(function);
         this.Cleanup(0, 0, function, CleanupReason.Return);
         this.Deliver(function, secured);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.CompleteBody(function);
+    }
+
+    // SPEC 7.6.2, 7.6.3: Shared and Exclusive calls only borrow their captures, and the environment destroys them afterwards, so a
+    // Move out of a capture belongs to a Consuming call; Binding classifies the receiver, and this check keeps that classification
+    // honest.
+    private void CheckEnvironmentMoves(FunctionKoto function)
+    {
+        if (function.BoundClosure is not { EnvironmentType: not null, Receiver: not SemanticsKind.Owner } closure)
+        {
+            return;
+        }
+
+        for (var op = 0; op < this.body.Operations.Count; op++)
+        {
+            if (this.body.Operations[op] is not { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Input: >= 0 } moved)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                if (this.body.SymbolPlaces.TryGetValue(closure.Captures[i].Environment, out var place) && place == moved.Input)
+                {
+                    this.Unsupported(moved.Source);
+                    break;
+                }
+            }
+        }
     }
 
     private void CompleteBody(FunctionKoto function)

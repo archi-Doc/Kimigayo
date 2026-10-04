@@ -506,7 +506,7 @@ public sealed partial class Binding
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
-                    (exclusiveReference && this.UsesReferentExclusively(use)))
+                    this.UsesReferentExclusively(use))
                 {
                     if (this.plan.Receiver != SemanticsKind.Owner)
                     {
@@ -514,10 +514,13 @@ public sealed partial class Binding
                     }
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
-                    (!exclusiveReference && use.BoundType is { } usedType && binding.ProveCopy(usedType, this.function) == ConstraintProof.Refuted && use.Parent is not ConversionKoto &&
-                    !(receiver && called!.ReceiverKind == SemanticsKind.Ref) && !memberBorrow && !fieldRead && !InspectedValue(use)))
+                    (receiver && called!.ReceiverKind == SemanticsKind.Owner) || (memberCall is not null && memberOperation.Kind == ArgumentOperationKind.Value && !memberBorrow &&
+                        use.BoundType is { } receiverType && binding.ProveCopy(receiverType, this.function) == ConstraintProof.Refuted))
                 {
-                    // SPEC 7.6.3: transferring a capture out of the environment makes the call Consuming.
+                    // SPEC 7.6.3, 13.5.3: transferring a capture out of the environment makes the call Consuming. A bare Non-Copy
+                    // Place is never moved, so every other use, such as `items.length`, a shared element read, a bare `for` or
+                    // `match` Subject or a borrowed argument, only borrows the capture; ownership rejects a Move out of a capture
+                    // in a Shared or Exclusive call.
                     this.plan.Receiver = SemanticsKind.Owner;
                 }
             }
@@ -546,9 +549,10 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 7.6.3: a captured exclusive reference used in a way that needs its referent exclusively: Reborrowed exclusively
-        // (bare, at an expected uniq Type or as a uniq argument), or followed to a Place that is written, incremented, borrowed
-        // exclusively or used as an exclusive receiver. Such a body mutates a captured referent, so the call is Exclusive.
+        // SPEC 7.6.3: a capture used in a way that needs it, or the referent of a captured exclusive reference, exclusively:
+        // Reborrowed exclusively (bare, at an expected uniq Type or as a uniq argument), or reached through Fields, elements or a
+        // follow to a Place that is written, incremented, borrowed exclusively or used as an exclusive receiver. Such a body
+        // mutates the environment or a captured referent, so the call is Exclusive.
         private bool UsesReferentExclusively(Koto use)
         {
             if (binding.adaptations.TryGetValue(use, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow && adaptation.Type.Semantics == SemanticsKind.Uniq)
