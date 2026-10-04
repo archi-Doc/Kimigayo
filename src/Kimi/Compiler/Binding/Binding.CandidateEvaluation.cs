@@ -73,8 +73,8 @@ public sealed partial class Binding
                         operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
                         operations[(a * stride) + i].Source is { } source && IsWaitingCallable(source))
                     {
-                        // ComparableCallableSlots proved matching acquisition and a common reference context when needed.
-                        // Both slots receive the same concrete callable Type, not their Callable constraint signature.
+                        // ComparableCallableSlots proved matching acquisition. A waiting argument is completed only for the
+                        // selected candidate, so its Callable constraint signature never ranks.
                         continue;
                     }
 
@@ -132,7 +132,6 @@ public sealed partial class Binding
 
             var first = true;
             SemanticsKind? acquisition = null;
-            BoundType? referenceContext = null;
             for (var candidate = 0; candidate < candidates.Length; candidate++)
             {
                 if (candidates[candidate].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
@@ -156,14 +155,14 @@ public sealed partial class Binding
                 var borrowed = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq };
                 var slot = borrowed ? pattern.Components[0] : pattern;
                 SemanticsKind? mode = borrowed ? pattern.Semantics : null;
-                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 ||
-                    (!first && (acquisition != mode || (IsWaitingFunctionReference(call.ArgumentNodes[argument]) && !ReferenceEquals(referenceContext, operation.ParameterType)))))
+                // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
+                // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
+                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 || (!first && acquisition != mode))
                 {
                     return false;
                 }
 
                 acquisition = mode;
-                referenceContext = operation.ParameterType;
                 first = false;
             }
         }

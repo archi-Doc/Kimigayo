@@ -129,13 +129,38 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("ContextualReferenceGeneric", Source, string.Empty);
     }
 
+    private const string Select = "func select<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(41)\n";
+
+    // SPEC 10.5: the outer candidates are compared without the waiting reference; the winner's fixed call signature then
+    // selects the reference, even though another candidate's signature would select a different function.
     [Fact]
-    public void DifferingOuterReferenceContextsRemainExplicitlyUnsupported()
+    public void DifferingOuterReferenceContextsSelectThroughTheWinner()
     {
-        var c = MinimalEmissionTest.Analyze(Functions + "func select<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(41)\nfunc select<F>(action: ref/F, extra: i32 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(true)\nlet result = select(choose)");
+        const string Source = Functions + Select + "func select<F>(action: ref/F, extra: i32 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(true)\n" +
+            "require select(choose) == 42 else => $abort(\"winner\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "select");
+        Assert.Equal(1, call.BoundCall!.Target.Declaration is FunctionKoto selected ? selected.Parameters.Count : 0);
+        ScalarEmissionTest.EmitFixture("ContextualReferenceDiffering", Source, string.Empty);
+    }
+
+    [Fact]
+    public void DifferingContextsThatDoNotRankAreAmbiguous()
+    {
+        var c = MinimalEmissionTest.Analyze(Functions + "func select<F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(i32) -> i32>\n    return action(41)\n" +
+            "func select<F>(action: ref/F, other: i64 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(false)\nlet result = select(choose)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+    }
+
+    [Fact]
+    public void TheWinnersSignatureMayFitNoReferenceCandidate()
+    {
+        var c = MinimalEmissionTest.Analyze("func choose(value: bool) -> bool => value\n" + Select + "let result = select(choose)");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
     }
 
     [Fact]
