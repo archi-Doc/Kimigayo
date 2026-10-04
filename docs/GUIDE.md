@@ -245,7 +245,7 @@ struct View<T> {source}
 
 ## 9. Callbacks and less common features
 
-- Closure: `func [captures] (x: T) -> U => expression`. Without a fixed expected signature, annotate inputs.
+- Closure: `func [captures] (x: T) -> U => expression`. Without a fixed expected call signature, annotate inputs.
   Omitted captures are Copy-only; `[]` forbids captures. An explicit entry `x`, `x@move`, `x@ref` or `x@uniq`,
   optionally with `var`, initializes the environment binding as `let x = x` or `let x = x@op` would, so `x@ref`
   borrows the outer slot. Captures execute at creation. Named nested functions cannot capture.

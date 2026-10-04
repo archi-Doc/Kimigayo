@@ -193,6 +193,21 @@ Explanations are formed once, when the result is finalized, and only for publish
 
 Limits never change a problem's identity, category, survival, location or the acceptance of its result. Outputs arrange the finalized explanation in a fixed form; they neither add explanation nor truncate it again.
 
+**Origins.** A Reason names an Origin by a kind and a bounded string. Only fixed and finite Origins are displayed, such as the ends of a failed relation chain; an inferred region never is. Where a Reason would name an inferred region, such as the failing Origin of an `Owned` failure, it names the fixed or finite Origin whose relation to that region causes the failure, such as the borrow `local@ref`. In the JSON document (§23.3.6.8), such a fact has the value kind `Origin`, its `value` is the string and its `origin` is the kind.
+
+| Kind | Origin | String |
+| --- | --- | --- |
+| `expression` | A fixed Origin that an Origin expression (§15.2.1) can write: `static`, a signature name, a parameter or receiver, a projection such as `p.a`, or a meet | The expression written in the signature; without a written name, the parameter or projection |
+| `borrow` | A finite Origin (§15.6.5) | The source text of the Borrow (`local@ref`, `State.count@ref`); for an implicit Borrow, that of its Place or temporary (`node`, `makeResource()`); for a capture item, the item (`bias@ref`) |
+| `omitted` | A fixed Origin without a name or projection, such as the slot of `View` in `items: ref/Array<View<T>>` | The source text of that Type occurrence |
+
+- A `borrow` or `omitted` string is never written as an Origin expression: a Reason names "the borrow `State.count@ref`", never `during State.count` (§15.9).
+- These two kinds also add a related location with the role `origin` at their syntax. The string stays in the Reason, so the fact never rests only on an omissible supplement (§23.3.6.2).
+- This display serves every Reason that names an Origin, including Origin relation records (§15.6.1), `Owned` failures (§15.2.3) and the records of §15.3.2 and §15.4.3.
+- A Type mismatch is a failure of the structural part of a fit (§15.6.1), so its display neither compares nor shows Origin bindings.
+
+The Reason of an Origin relation record (`UnsatisfiedOriginRelation_Kd` or `UnprovenOriginRelation_Kd`, §15.6.1) holds `relation` (`outlives` or `==`), `longer` and `shorter` (Origin displays) and `source` (`fit`, `declared` or `wellFormed`). With `fit` it adds `destination`, the destination Type, in which only the Origin at the failed position is shown; with `declared` the relation clause is a related location with the role `relation`. The Reason of an `Owned` failure (§15.2.3) adds `origin`, an Origin display, and `member`, the part through which that Origin enters OwnedOrigins: the outer Origin, the Semantics target, the n-th argument, a base, a Field name, the payload, the n-th component, the element or a capture name. It names the first member that is Refuted in depth-first order over the enumeration of §15.2.3, or else the first Unknown one; Omissions count the others.
+
 #### 23.3.6.6. Order and equality
 
 The records of a result are ordered by source table order, then primary span, then an order defined by the problem's identity: its subject, code, requirement, condition and context, each compared by source position or by a fixed order. Within one source, a record without a span comes first; records without a source come last. Order never depends on arrival, threads, memory addresses, message text or Type display names. The same facts, definitions and limits give the same records in the same order, and record equality compares every field, including display data and repair candidates.
@@ -245,8 +260,9 @@ A **repair candidate** is a structured edit of a recorded input that resolves a 
 | `ExclusiveAccess` | The lending point is exclusively writable (§15.1.5) |
 | `UsageLegality` | The selected operation and every later use of the affected Place satisfy the usage conditions of §10.6: initialization and Move state, Loans and lifetimes |
 | `Structure` | The visibility of existing Names, the order of destruction and `defer`, the evaluation Context and result supply of each expression and the targets of existing control transfers are unchanged |
+| `Selection` | The qualified Name selects what its use needs: one Type by Type name selection (§9.6), a Field or Property used as a value, or an applicable function by overload resolution (§10.1–§10.4) |
 
-The conditions relevant to a candidate are fixed by its diagnostic and kind (the catalog below). The check judges each relevant condition from its own facts as **verified**, **required** (undecidable without analyzing the edited input) or **refuted**, and a candidate with a refuted condition is not offered. No check analyzes the edited input, so `UsageLegality` is always required in this revision.
+The conditions relevant to a candidate are fixed by its diagnostic and kind (the catalog below) and, where the catalog says so, by whether the repaired use is a value or a Type. The check judges each relevant condition from its own facts as **verified**, **required** (undecidable without analyzing the edited input) or **refuted**, and a candidate with a refuted condition is not offered. No check analyzes the edited input, so `UsageLegality`, wherever it is relevant, is always required in this revision.
 
 **Edits.** An edit replaces or inserts syntax and supplies the separators its boundary needs: inserted or replaced text is a complete token or item and never merges with an adjacent identifier (`a&&b` becomes `a and b`). A deletion at a line start removes only indentation that exists, and no edit touches an empty line, a line break or the inside of a multi-line literal. The edits of one candidate do not overlap, are ordered by position, and two insertions at one point are one edit; they are applied together, and their text is never shortened or elided. Edits reach recorded inputs only, never `compiler://` or generated sources.
 
@@ -264,8 +280,9 @@ The conditions relevant to a candidate are fixed by its diagnostic and kind (the
 | `BorrowOriginKeyword_Kd` (§3.3.6) | `Repair.ReplaceToken`: `during` | None | Always |
 | `MissingSyntax_Kd` for a closing delimiter | `Repair.InsertToken`: the closer at the insertion point | None | Always |
 | `DiscardedResult_Kd`, the try-success warning (§17.4.3) | `Repair.PropagateFailure`: `_ = try ` before a discarded Result; `Repair.ExplicitDiscard`: `_ = ` before either expression | None: `_ =` makes the right side a Value Context (§14.2.4), so `Structure` is not relevant | The expression is a direct item of an indented body; propagation only when the enclosing function's failure return target fits (§17.2.4); propagation precedes explicit discard |
+| `QualificationRequired_Kd` (§9.4) | `Repair.Qualify`: a qualifier before the Name: `self.`, `Self.` or `C.` for the searched Container `C`, or `::P.` for a declaration of a later stage | `Selection`: verified for a Field or Property that is not called, verified or refuted by Type name selection for a Type, required otherwise; `UsageLegality`: required for a value, not relevant for a Type | `self.`: the found declarations include an instance member, and a `self` visible in the same Function Boundary has Effective Core `C`; a construction receiver qualifies only in the constructor body and for an own stored Property (§6.2.3.4). `Self.`: they include a non-instance declaration and `Self` denotes `C`; otherwise `C.` when `C` has no generic parameters or Origin header and the Qualifier `C` selects `C` at the use. `::P.`: the diagnostic exploration of the later stages finds eligible non-instance declarations in a Container reached from the Compilation root by a path `P` without Type or Origin arguments whose every segment is accessible at the use (`::` alone at the project root) |
 
-A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin repairs of §15.3.2 and §15.4.3 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification, so they carry no candidates; their Advice describes the repair.
+A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin repairs of §15.3.2, §15.4.3 and §15.6.1 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification, so they carry no candidates; their Advice describes the repair.
 
 ## 23.4. Language Server Protocol
 

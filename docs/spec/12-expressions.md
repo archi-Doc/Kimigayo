@@ -249,7 +249,7 @@ NotProven means the absence of a common proof, not a refutation for every bindin
 
 #### 12.4.4.2. Effect verification
 
-Completeness evidence is kept separately from storage relations. A payload follow does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `ref`/`uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved.
+Completeness evidence is kept separately from storage relations. A payload follow does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved. A `ref` input has only read and shared-borrow effects (§15.6.2).
 
 Verification uses resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints and conditional premises, every admitted Type/Origin binding is verified using §8.7–§8.10, without inferring hidden caller Constraints from a body. The abstract rules below determine the public result independently of analysis precision, optimization and processing order; representations and worklist algorithms are implementation choices.
 
@@ -263,7 +263,7 @@ Summaries keep operation kinds and their relation to receiver and input roots, c
 | Escape of unrestricted exclusive access to a protected receiver or base | Violation unless it is a legal complete-target borrow; includes results, stores, callee paths and all dependencies |
 | Borrowed result | Root/alias correspondence is kept; return Origins, Loans and authority are verified |
 | Separate operation | No violation against the root from which separation is proven |
-| MayAlias, or unverified unsafe/indirect effects that may violate receiver preservation | Unproven effect on every potentially affected root |
+| MayAlias with receiver storage, or unsafe access in the operation's own body that may reach it | Unproven effect on the receiver |
 | Calls, custom accessors, defaults, cleanup | Published root effects are mapped and composed through actual arguments, captures and static anchors |
 | Branches and loops | Union of all Type-checked paths; only environment-excluded syntax is omitted, not paths removed by runtime reasoning or optimization |
 
@@ -271,9 +271,13 @@ Composing base-only paths yields Base; a storage-element edge yields Part. A Fie
 
 A callee's whole-value replacement mapped onto a caller's Part is not replacement of the whole caller receiver, but the actual target's restrictions are kept: Part classification cannot erase a base-subobject use check. Defined completeness-preserving Replacement and Exchange are summarized as such, rather than counting their internal lowering transfers as separate illegal MoveOuts. Operation summaries are retained instead of simply propagating a callee's NotProven bit.
 
+**Potentially affected roots.** At every call the receiver's Loan is active for the whole call (§15.6.4), so an operation on the receiver's storage through any other path, such as another argument, a capture, a static anchor or a callee with unknown effects, is rejected at that call (§15.6.2, §15.6.4) or is undefined behavior for raw access (§5.2.1). Receiver preservation therefore considers only operations reached through the receiver: its path, the Places and references derived from it, and the callees given such access. Through a `ref/Self` receiver only reads and shared borrows are reached (§15.6.2), so an operation with a `ref/Self` receiver, including every custom or computed `get` and every shared standard witness bridge (§11.4.2), is Proven exactly when its declaration is valid.
+
+**Exclusive input bound.** A callee affects its inputs at most as §8.4.10.4 rule 1 permits, and its results keep the dependencies its signature states. For receiver preservation, everything it does to an exclusive input is at most one completeness-preserving Replacement of the input's actual target, because borrowed referents offer no Take (§15.1.5) and unsafe code bears the same obligation (§5.2.3). A callee without a computed or validated summary, such as a bodiless compiler-owned declaration or an indirect or generic-requirement call, contributes exactly this bound, and unproven or unsafe effects inside a callee's body contribute at most it. `Kimi.Intrinsics.replace` and `exchange` are such a Replacement and `swap` an Exchange of both targets (§15.7). The bound mapped onto a receiver Part preserves the receiver; mapped onto its Whole or Base it is a violation.
+
 For same-build calls, direct effects are propagated over the finite domain of declaration schemas and roots to the least union fixed point, including recursion and the implementation families of §12.4.4.3. Concrete Types are not enumerated, and specializations are not removed on the basis of a particular call. Recursion alone is not an unproven effect, and an unfinished empty summary is not a proof; a verified empty summary is valid.
 
-Separately compiled, indirect and generic-requirement calls use validated public summaries or requirement effect bounds (§8.4.10). Without an optional effect guarantee, unproven effects propagate to the potentially affected roots; private bodies are not inspected, and possible implementations are not enumerated. Missing mandatory artifact data is an artifact error, not a missing optional guarantee. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
+Separately compiled, indirect and generic-requirement calls use validated public summaries or requirement effect bounds (§8.4.10). Without such a summary they contribute the exclusive input bound; private bodies are not inspected, and possible implementations are not enumerated. Missing mandatory artifact data is an artifact error, not a missing summary. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
 
 An implementation succeeds only when normal semantic checking completes and no admitted binding has a receiver violation or unproven effect. Pending call and conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; the normal proof deadlines and errors still apply.
 

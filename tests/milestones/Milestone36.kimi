@@ -5,6 +5,7 @@ struct Resource
     drop
         match self.id
             1 => Console.writeLine("Static resource 1 destroyed.")
+            2 => Console.writeLine("Static resource 2 destroyed.")
             3 => Console.writeLine("Static resource 3 destroyed.")
             _ => $abort("Unexpected resource")
 
@@ -42,4 +43,4 @@ public func main()
     require Cache<i32>.Statistics.hits == 1 and Cache<string>.Statistics.hits == 5 else => $abort("Generic keys merged")
     Console.writeLine("Generic keys are distinct.")
     Console.writeLine("Main finished.")
-    // Shutdown destroys initialized static values in reverse initialization order: Resource 3, then Resource 1.
+    // Shutdown destroys static vars, then static lets, each in reverse initialization order: Resource 3, then Resource 1.

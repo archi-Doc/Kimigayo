@@ -8,7 +8,7 @@ Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, 
 - **Target:** the milestone or track stage (for example `D2a`) named by the request; otherwise the target that PLAN §6 assigns. A paused milestone is not a target until PLAN resumes it.
 - **Diagnostics:** when a unit adds or changes a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication, follow the Diagnostic Development Workflow of `AGENTS.md` (detail in `docs/dev/DIAGNOSTICS.md` §10).
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
-- **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only to re-spell it for a SPEC revision (recorded in `tests/milestones/README.md`) or with the user's approval. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
+- **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only to re-spell it for a SPEC revision or an authoring correction where the source contradicts its own specification-derived output (recorded in `tests/milestones/README.md`), or with the user's approval. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
 
 ## 1. Start (keep it under 10 minutes)
 
@@ -39,7 +39,7 @@ reproducer (a failing test or program variant)
 
 ## 3. Correctness rules
 
-- docs/SPEC.md and its chapters define the required behavior; revise them only as AGENTS.md describes. Appendix D items are out of scope. Never weaken SPEC, tests or diagnostics to match a missing or incomplete implementation.
+- docs/SPEC.md and its chapters define the required behavior; revise them only as AGENTS.md describes. Items that Appendix D defers are out of scope; ObjectCallCompatible stage 2 (Appendix D.5.1: same-build inference, use-time enforcement and publication) is in scope. Never weaken SPEC, tests or diagnostics to match a missing or incomplete implementation.
 - Report invalid source through the existing diagnostics at the correct stage, with an `Unsupported` code for a form the SPEC permits but the implementation lacks (SPEC §23.3.6.1). Unsupported generation must be diagnosed and must never produce wrong code.
 - Removing an unsupported guard requires every newly reachable analysis and generation path to be implemented and tested.
 - Preserve ownership, Loan, Origin, evaluation order, cleanup and Abort semantics; keep internal invariant checks.

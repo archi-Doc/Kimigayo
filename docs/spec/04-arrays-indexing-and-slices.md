@@ -184,7 +184,7 @@ The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`.
 
 These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
-**Diagnostic Type display.** Diagnostics and hover displays qualify these Kimi Types when a user declaration hides their normal alias, for example `Kimi.Start`. A Type mismatch retains the actual and expected complete Types, including the range shape and boundary Type arguments, and identifies the expression that does not fit (§23.3.6).
+**Diagnostic Type display.** Diagnostics and hover displays qualify these Kimi Types when a user declaration hides their normal alias, for example `Kimi.Start`. A Type mismatch shows the structural differences between the actual and expected Types, including the range shape and boundary Type arguments, elides their Origin bindings (§23.3.6.5), and identifies the expression that does not fit (§23.3.6). A difference only in Origins is not a Type mismatch (§3.8).
 
 When a function call rejects a range because its shape differs from a parameter's concrete range Type, its diagnostic identifies the compared argument and candidate parameter Types. Advice is conditional on the function's required capability: a function that only resolves a range for slicing can accept `R is PositionRange`; enumeration requires the appropriate `Iterable`, `UniqIterable` or `IntoIterable` entry and its Item constraints; boundary access requires the appropriate concrete range Type. A function's intent is not inferred from its name or a rejected call alone. The changed body must be verified before offering an automatic repair (§23.5).
 

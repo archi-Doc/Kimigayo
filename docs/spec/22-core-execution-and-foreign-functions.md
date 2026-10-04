@@ -320,17 +320,41 @@ The entry body is the implicit body or a call to the selected main. Required run
 
 The entry handles Kimigayo initialization and cleanup only; it runs no executable CRT startup or C/C++ static constructors. Foreign initialization must already be satisfied, for example by OS DLL loading, or by an explicitly supported adapter. /NODEFAULTLIB is not initialization.
 
-Static stored Properties initialize per slot under §11.3.2. A first read, Borrow, write or other storage operation checks the slot state:
+Static stored Properties initialize per slot under §11.3.2. A slot is in one of four states, Not started, Initializing, Initialized or Finished, and every read, Borrow, write or other storage operation on it checks that state:
 
 | State | Action |
 | --- | --- |
-| Not started | Mark Initializing; evaluate the declaration initializer; after normal completion mark Initialized, then perform the operation |
-| Initializing | Abort for an initialization cycle |
+| Not started | Before shutdown: mark Initializing; evaluate the declaration initializer; after normal completion mark Initialized, then perform the operation. During shutdown: Abort with KIMI_E_STATIC_SHUTDOWN |
+| Initializing | Abort with KIMI_E_STATIC_CYCLE |
 | Initialized | Perform the operation without rerunning initialization |
+| Finished | Abort with KIMI_E_STATIC_SHUTDOWN |
 
 A first write initializes before Replacement. Actual access determines dependency order, not fragment, file or link order. Computed execution initializes only the storage it actually accesses. A Type or function reference, an untaken branch or an effect summary initializes no unrelated Field. All initializers are checked even if unused; unused Fields need not be initialized and are not destroyed. An implementation without static execution support diagnoses the uses that require it.
 
-Normal body exit cleans up its locals exactly once. Initialized static values are then destroyed in reverse order of successful initialization, retaining the required lifetime dependencies; dependencies that cannot survive this order are rejected. Initializing new static storage, accessing destroyed storage or reentering a Field's destruction during shutdown Aborts. These language rules include dependencies, although multi-Kotonoha linking is outside the initial profile.
+Normal body exit cleans up its locals exactly once, and shutdown then begins. Shutdown destroys every Initialized static `var` slot and afterwards every Initialized static `let` slot, each group in reverse order of successful initialization, and marks a slot Finished before destroying its value. These rules apply to the static slots of every Kotonoha, dependencies included, although multi-Kotonoha linking is outside the initial profile.
+
+As a result, a slot is Finished only during shutdown, and no slot is Initializing when shutdown begins. Destroying a static `let` slot Aborts with KIMI_E_STATIC_SHUTDOWN whenever that destruction accesses a static `var` slot: every Initialized `var` slot is already Finished, and a Not started slot cannot be initialized during shutdown. Whether such an access Aborts thus depends on declarations alone, not on which slots execution initialized or in what order.
+
+```kimi
+struct Probe
+    public let id: i32
+
+    public init(id: i32) => self.id = id
+
+    drop => Console.writeLine("Count is \(Registry.count).")
+
+group Registry
+    public var count: i32 = 0
+    public let probe: Probe = Probe.init(1)
+
+public func main()
+    Registry.count = 1
+    require Registry.probe.id == 1 else => $abort("Unexpected probe")
+```
+
+Shutdown destroys `count` in the `var` phase and `probe` in the `let` phase. The `drop` of `probe` then reads the Finished `count` and Aborts with KIMI_E_STATIC_SHUTDOWN, reported at the start of `Registry.count` (§22.5.4). Declaring `probe` with `var`, or keeping its `drop` away from static storage, avoids the Abort.
+
+**Non-normative note.** No shutdown dependency check is needed. In safe code a `during static` borrow is anchored only in a static `let` slot or in constant data (§11.3.2, §15.2.3), and a `let` slot's value, including payloads reached through its handles, cannot change after its initialization completes (§11.3.2, §13.5.5.1, §15.1.5). A `let` therefore depends only on `let` slots that completed earlier, and no value depends on a `var` slot's storage. Raw-pointer derivations keep the obligations of §5.2.1.
 
 Each cleanup finishes before subsequent cleanup or Exit. Abort stops normal cleanup and unwinding and attempts diagnostics before Runtime.Exit(1) (§17.3, §22.5); secured results are then neither delivered nor separately destroyed.
 
@@ -350,7 +374,7 @@ Cache<i32>.Statistics.count and Cache<string>.Statistics.count are separate. Cac
 
 The stored value must be Owned and satisfy the existing static-storage conditions; enclosing Type arguments need not be Owned. Full Origins are preserved for access and lifetime checking. Under §8.10 and §21.3, one representation, initialization and destruction plan is verified for all valid Origin bindings that share a key, including the required operations, evidence and callees. Owned storage alone does not prove that an initializer can be shared. Verified typed plans are reused and concrete layout is finalized at instantiation; a plan is never chosen by the first accessing Origin, and a failing plan is never split into Origin-specific storage. Initializers may depend on ordinary runtime state.
 
-The rules of §22.2.3 apply: lazy initialization, initialization-cycle Abort, reverse-initialization shutdown destruction, and the rules for Type and function references and for unused Fields and initializers.
+The rules of §22.2.3 apply: lazy initialization, the slot states and their Aborts, the shutdown order, and the rules for Type and function references and for unused Fields and initializers.
 
 Shared code reaches a key through a supplied initialize-and-address operation (§21.3.3.4), either fixed directly or represented by an existing entry/context pair. Its immutable private context retains the storage and state references and the required initializer and destructor operations; mutable initialization state stays with the storage. No new GenericContext slot kind, per-call context construction or runtime Type search is required. Direct-call optimization must preserve initialization checks, cycle detection and storage Identity.
 
@@ -510,7 +534,25 @@ Catalog codes are unique. They include KIMI_E_ALLOC_SIZE (allocation size exceed
 - A runtime integer conversion outside the target range uses KIMI_E_INT_CONVERSION, as does a float-to-integer failure, including NaN and infinities. A conversion of a finite source that rounds to floating infinity uses `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range`. These codes identify the failures required by §13.5.4; direct literal fitting failures remain compile-time errors.
 - Ordinary element indexing outside the receiver bounds uses KIMI_E_INDEX_BOUNDS, including constant indices and zero-length arrays. Dictionary indexing with an absent key uses `KIMI_E_MISSING_KEY: Dictionary key was not found`; an absent result from a try-prefixed operation is not an Abort.
 - An increment of a strong or weak count at its maximum (§13.5.8, §13.5.9) uses KIMI_E_REF_COUNT before updating. It reports the start of the call expression of the explicit operation, `clone`, `downgrade` or `upgrade`; no count is incremented implicitly.
+- `KIMI_E_STATIC_CYCLE: Static initialization cycle` and `KIMI_E_STATIC_SHUTDOWN: Static storage unavailable during shutdown` are the static-storage Aborts of §22.2.3. Each reports the start of the Place expression that designates the slot, including its qualifier: `Values.first` reports `Values`, and `Cache<i32>.Statistics.count` (§22.2.4) reports `Cache`. An unqualified name, including `storage` in the Field's own accessor, reports itself.
 - Formatting defines `KIMI_E_ARG_RANGE: Argument out of range` and `KIMI_E_FORMAT: Formatting failed`; their triggers are in the [formatting profile](utf8-formatting.md).
+
+In the following application, `main` starts initializing `first`, whose initializer starts initializing `second`, whose initializer reads `first` while it is Initializing:
+
+```kimi
+group Values
+    public let first: i64 = Values.second + 1
+    public let second: i64 = Values.first + 1 // This access finds first Initializing.
+
+public func main()
+    let value = Values.first
+```
+
+```text
+Main.kimi:3:30: abort KIMI_E_STATIC_CYCLE: Static initialization cycle
+```
+
+The reported location is that read, neither the declaration of `first` nor the first access in `main`.
 
 Unavailable OS codes are omitted, and FormatMessageW is not used. Displayed logical paths escape non-ASCII and control characters as `\u{HEX}` and backslash as `\\`; the actual path and provenance are preserved internally.
 

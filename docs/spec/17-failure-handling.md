@@ -141,7 +141,7 @@ let pending: Result<i64, ParseError> = parse()
 let other = try pending@move // The stored Non-Copy Result is transferred.
 ```
 
-`try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected signature or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.
+`try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected call signature (§10.5) or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.
 
 ```kimi
 // getOpt() -> Option<i32>; f has no expected signature.
@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; missing indexed keys; and static storage access in a state that forbids it (§22.2.3). Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 

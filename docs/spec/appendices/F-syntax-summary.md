@@ -298,7 +298,7 @@ OrExpression         := AndExpression ("or" AndExpression)*
 AndExpression        := Comparison ("and" Comparison)*
 Comparison           := BitOr (("<" | "<=" | ">" | ">=" | "==" | "!=") BitOr)?
                       | BitOr "is" "not"? NamedCoreType
-OriginFreePath       := ? ContainerPath with no written direct borrow annotations at any layer ?
+OriginFreePath       := ? ContainerPath in which no Origin, "during" or binding set is written, including inside its Type arguments ?
 NamedCoreType        := OriginFreePath
 BitOr                := BitXor ("|" BitXor)*
 BitXor               := BitAnd ("^" BitAnd)*

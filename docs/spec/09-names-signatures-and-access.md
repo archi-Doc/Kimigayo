@@ -250,7 +250,35 @@ group Outer
 
 A nearer group `X` does not stop Core lookup for an annotation `X`, but it does stop Qualifier lookup for `X.member`; if that group lacks `member`, lookup does not switch to an outer `X`. Similarly, an integer local `f` stops Value lookup and makes `f()` a non-callable-value error.
 
-There is no implicit `self`: instance members require `self.member` or another explicit receiver. An unqualified reference that finds only accessible instance members reports a missing receiver instead of searching for an outer static member.
+**No implicit receiver or inheritance.** In the Type and Value namespaces, an unqualified Name never supplies a receiver and never selects a declaration that a struct inherits from its bases. When stage 2 or 3 searches a Container `C`, lookup stops there with `QualificationRequired_Kd` (Error, `Language`) instead of searching outward if `C`'s own eligible declarations are all instance members, or if `C` is a struct without own eligible declarations and an examination of its base layers finds a declaration of the Name. The examination visits the direct base, then its base, one layer at a time, over the completed declaration set (§6.2.2), conditional members included, and stops at the first layer with an accessible, role-compatible declaration of the Name, as inherited ordinary lookup does (§9.5). It reads declarations only: it needs no base Type or Origin arguments and selects nothing. Accessibility is judged by the effective access domain at the use (§9.3.1); the protected receiver restriction concerns an explicit receiver and does not apply. A base's generic parameters and `Self` are not members and are never examined. A struct's base clause, with its arguments, resolves without examining that struct's own base layers; a dependency cycle that an examination still forms is an unresolvable dependency cycle, as when `struct S : S.N` is declared and resolving the base clause of the nested `N` examines the base layers of `S`, which begin with `N`. In the two-namespace exploration of §9.5, such a stop is a failed path of its namespace. Instance members are reached with `self.member` or another explicit receiver, and other inherited declarations with `Self.member` or `C.member`. The rule does not concern Origin lookup (§15.3.4) or Label lookup.
+
+```kimi
+func marker() -> i32 => 1
+
+struct Node
+
+open struct Base
+    protected var count: i32 = 0
+
+    public func marker() -> i32 => 25
+
+    public struct Node
+
+struct Derived : Base
+    func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
+
+    func root() -> i32 => ::marker()                      // Valid: selects the root marker, 1.
+
+    func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
+
+    func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
+
+    func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
+
+    func third(value: Node) -> () => ()                   // Error: the inherited Node; write Self.Node or ::Node.
+```
+
+A bare `marker()` in a Container nested in `Derived` stops in the same way at stage 3, and one in a fragment of `Derived` without the base clause stops at stage 2.
 
 If all stages fail, the diagnostic prefers an inaccessible matching-role declaration, then an accessible wrong-role declaration, then an undefined Name. Exploring outer declarations for a diagnostic never makes them valid fallback targets.
 
@@ -296,7 +324,7 @@ func read(Config: ref/Settings) -> i32
 
 Member lookup searches ordinary members. An accessible, role-compatible ordinary member commits lookup even if no overload applies. There is no extension stage in this revision. **Future extension constraint:** ordinary members must precede extensions, and inaccessible or wrong-role members alone must not block them. A future design must specify lexical, source-alias and default-alias enablement stages and must not automatically add argument-associated Containers.
 
-**Inherited ordinary lookup.** After base arguments are substituted, lookup searches the statically selected struct and then its direct bases, one layer at a time, and commits to the first layer with accessible, role-compatible declarations. That layer's same-name functions form the entire overload set; overloads from farther bases are not merged. Inaccessible or wrong-role declarations alone do not commit lookup. Receiver compatibility, generic and argument applicability, accessors and Loans are later checks and cannot reopen lookup. Instance and Type functions share the Value role, so invalid receiver use cannot skip a nearer layer. A new explicit Contract implementation is selected this way and then checked for conformance; already inherited conformances keep their [verified mapping](08-generics-constraints-and-contracts.md#844-conformance).
+**Inherited ordinary lookup.** Unqualified uses never select declarations inherited from a base; §9.4 examines base layers only to stop lookup. After base arguments are substituted, lookup searches the statically selected struct and then its direct bases, one layer at a time, and commits to the first layer with accessible, role-compatible declarations. That layer's same-name functions form the entire overload set; overloads from farther bases are not merged. Inaccessible or wrong-role declarations alone do not commit lookup. Receiver compatibility, generic and argument applicability, accessors and Loans are later checks and cannot reopen lookup. Instance and Type functions share the Value role, so invalid receiver use cannot skip a nearer layer. A new explicit Contract implementation is selected this way and then checked for conformance; already inherited conformances keep their [verified mapping](08-generics-constraints-and-contracts.md#844-conformance).
 
 A derived `f(string)` with an accessible base `f(i32)` is a declaration error under the [inherited-Name rule](06-declarations-and-containers.md#622-inheritance-and-open-structures), regardless of call sites. Without an eligible derived `f`, lookup finds the base group. A derived author may reuse a Name that is inaccessible to them, and the layer-commit rule still governs that case. Receiver projection (§9.5.1) adds no ordinary derived-to-base conversion.
 

@@ -63,10 +63,14 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
-        "kind": { "enum": ["Number", "Enumeration", "Boolean", "Text", "Requirement"] },
+        "kind": { "enum": ["Number", "Enumeration", "Boolean", "Text", "Requirement", "Origin"] },
         "value": { "type": "string" },
+        "origin": { "enum": ["expression", "borrow", "omitted"], "description": "The kind of an Origin display (SPEC 23.3.6.5); present exactly when kind is Origin, whose value is the display's bounded string." },
         "elided": { "type": "boolean" }
-      }
+      },
+      "if": { "properties": { "kind": { "const": "Origin" } } },
+      "then": { "required": ["origin"] },
+      "else": { "not": { "required": ["origin"] } }
     },
     "related": {
       "type": "object",
@@ -124,14 +128,14 @@
         "phrase": { "type": "string" }
       }
     },
-    "condition": { "enum": ["Take", "ExclusiveAccess", "UsageLegality", "Structure"] },
+    "condition": { "enum": ["Take", "ExclusiveAccess", "UsageLegality", "Structure", "Selection"] },
     "repair": {
       "type": "object",
       "required": ["kind", "title", "edits", "verified", "required"],
       "additionalProperties": false,
       "properties": {
         "kind": {
-          "enum": ["Repair.Transfer", "Repair.Borrow", "Repair.BorrowExclusively", "Repair.RemoveUnsafe", "Repair.ReplaceToken", "Repair.InsertToken", "Repair.PropagateFailure", "Repair.ExplicitDiscard"]
+          "enum": ["Repair.Transfer", "Repair.Borrow", "Repair.BorrowExclusively", "Repair.RemoveUnsafe", "Repair.ReplaceToken", "Repair.InsertToken", "Repair.PropagateFailure", "Repair.ExplicitDiscard", "Repair.Qualify"]
         },
         "title": { "type": "string" },
         "facts": { "type": "array", "items": { "$ref": "#/$defs/value" } },

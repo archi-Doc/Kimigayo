@@ -574,7 +574,7 @@ Every environment-selected specialization's target, arguments, Constraints, inhe
 
 The complete declaration, body, selection, premise and absence dependencies are preserved and validated under [§18.7](../spec/18-modules-and-dependencies.md#187-verified-information-and-reuse). Changed selections are revalidated before generation; old proofs are never mixed with new mappings, and no incorrect shared fallback is chosen.
 
-Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings; children are not cloned per instantiation, and resolving a child does not require the outer layout. Artifacts keep bindings, Constraint roles and origins, proof dependencies and selected declarations, and outer changes invalidate dependent inner proofs and plans. Adding or widening an accessible Container name on an open base can break derived declarations and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failures of the specified proof rules.
+Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings; children are not cloned per instantiation, and resolving a child does not require the outer layout. Artifacts keep bindings, Constraint roles and origins, proof dependencies and selected declarations, and outer changes invalidate dependent inner proofs and plans. Adding or widening an accessible member Name on an open base can break derived declarations or unqualified uses in derived bodies (§6.2.2, §9.4) and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failures of the specified proof rules.
 
 #### 21.3.4.2. Persistence and composition
 
@@ -949,7 +949,7 @@ A `ref/Key` argument whose referent is a Scalar may be passed physically by valu
 
 Raw access and foreign implementations receiving these borrows are bound by the same promises, as cases of the access conditions of SPEC §5.2.1 and the declaration promise of SPEC §22.3.1: raw pointers derived from `ref` cannot write its inline storage, and `uniq` permits no conflicting independent access during the call. The Scalar by-value form of a `ref` parameter above does not apply to foreign imports, which receive the referent address (SPEC §22.3.2).
 
-**Address-observed locals.** A local variable whose address is taken with `@raw` (SPEC §5.4) is address-observed: it keeps one storage slot, which is neither promoted to SSA nor reused, until its scope ends or its value is Moved, whichever comes first (SPEC §5.2.1). Missing Loan or effect verification is diagnosed before emission. Future interior mutability or concurrency requires revisiting the shared proof.
+**Address-observed locals.** A local variable whose address is taken with `@raw` (SPEC §5.4) is address-observed: it keeps one storage slot, which is neither promoted to SSA nor reused, until its scope ends or its value is Moved, whichever comes first (SPEC §5.2.1). Missing Loan or effect verification is diagnosed before emission. The `ref/V` guarantees of this section rest on SPEC §15.6.2 (Shared access grants no mutation).
 
 For other optimization attributes, defined bits and absence of `poison` are proven separately for `noundef`, including padding in coercions; the full GEP conditions for `inbounds`; and the absence of signed or unsigned overflow for `nsw`/`nuw`. `mustprogress`, `willreturn` and `loop.mustprogress` are not applied uniformly to ordinary functions or loops.
 

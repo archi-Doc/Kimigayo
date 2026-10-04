@@ -473,7 +473,7 @@ let slot = r@ref          // ref/(uniq/i32): the slot of r itself.
 
 These permissions also govern View borrows, upcasts and implicit receiver borrows. Sealed and the complete-payload proof are required only to expose the payload as an ordinary value Place; forming and borrowing an open View and ObjectCallCompatible calls keep their own rules (§12.4.4, §13.5.7). `h@objref/Base` is a View upcast, `h@ref` borrows the handle slot as `ref/(obj/T)`, and `h@follow@ref` and `h@follow@uniq` borrow the payload. A complete `uniq/T` can replace all of `T` in another function, so it is never formed from an incomplete View.
 
-A Loan on an owning handle also protects the payload for as long as it is needed: while the handle is shared-borrowed, no other path may update the payload exclusively. After a Move, the payload follows the new owning path. Neither operation identifies the handle storage with the payload storage, and neither changes a reference count. `@follow` applies to temporary references and eligible temporary handles under their ordinary lifetimes; it extends no owner's lifetime.
+A Loan on an owning handle also protects the payload for as long as it is needed: while the handle is shared-borrowed, no other path may update the payload exclusively. A Borrow whose lending point lies in an object (an object borrow, a payload follow, a projection of either, or an implicit receiver borrow) keeps, directly or through its parent Loans, a Loan in its own mode on the handle Place through which the object was reached. While the Borrow is live, that handle cannot be Moved, replaced, exclusively borrowed or destroyed (§16.3.3); a shared Borrow still permits reading the handle and `Kimi.Intrinsics.clone(handle@ref)`. A handle Moved when no such Borrow is live reaches the payload through its new path. Neither these Loans nor a Move identifies the handle storage with the payload storage, and neither changes a reference count. `@follow` applies to temporary references and eligible temporary handles under their ordinary lifetimes; it extends no owner's lifetime.
 
 ```kimi
 func borrowPayload<T>(source: objref/T) -> ref/T during source
@@ -702,11 +702,11 @@ let moved = other@move // Transfer, with no count increment.
 struct Node
     public let selfWeak: Weak<rc/Node>
     public init(selfWeak: Weak<rc/Node>)
-        self.selfWeak = selfWeak
+        self.selfWeak = selfWeak@move
 
 let build = func [] (weak: Weak<rc/Node>) -> Node
     let before = Kimi.Intrinsics.upgrade(weak) // None while Building.
-    return Node.init(weak)
+    return Node.init(weak@move)
 let node = Kimi.Intrinsics.makeRcCyclic(build)
 let after = Kimi.Intrinsics.upgrade(node.selfWeak@ref) // Some after publication.
 ```
@@ -717,7 +717,7 @@ A stored Weak to a payload that keeps a local borrow cannot outlive that borrow 
 
 ### 13.6.1. Runtime is tests
 
-In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side is one named struct Core, optionally qualified and with resolved Type arguments, but without Semantics, Origin, binding name or requirement composition. Aliases are expanded and accessibility is checked. Unresolved Type parameters, associated Types and non-struct targets are outside this initial syntax. The object form of the right side under the left side's Semantics must be formable (§8.4.7.2), because refinement (§14.10) gives the operand that Effective Type; a Core that opts out of ObjectPayload is rejected even though a false-only test would otherwise be accepted.
+In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side, the target, is one named struct Core, optionally qualified, without Semantics, binding name or requirement composition. Its Type arguments are complete Types without Origins and may contain enclosing generic parameters and associated Types. No Origin, `during` or binding set is written anywhere in the target, including inside its Type arguments and after alias expansion; [Target completion](#1362-general-view-tests-and-checked-casts) supplies its bindings. Aliases are expanded and accessibility is checked. A target that is itself a Type parameter, an associated Type or a non-struct Core is a `Language` error, because [generic body checking](08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations) cannot establish that it is a struct Core. The object form of the target under the left side's Semantics must be formable (§8.4.7.2), because refinement (§14.10) gives the operand that Effective Type; a Core that opts out of ObjectPayload is rejected even though a false-only test would otherwise be accepted.
 
 The left side must have Type `obj/S`, `rc/S`, `arc/S`, `objref/S` or `objuniq/S` with a struct Core `S`. It is evaluated once, and the result is `Supports(RuntimeObjectType(value), T)` or its negation. Generic identity includes the relevant arguments. The test itself neither Copies, Moves nor Consumes the operand, changes no counts, and acquires no stronger authority; getter and call evaluation, required shared access, temporaries and cleanup keep their normal effects.
 
@@ -755,7 +755,42 @@ owned animal -> checked cast -> success(dog) or failure(original)
 
 For an exclusive result whose variant is not yet known, the possible child Loan is tracked conservatively; the parent cannot conflict until that dependency ends. An owning cast never restores the source binding on failure. It neither destroys nor copies the object and changes no reference counts. Destroying the result follows the normal responsibility of the branch it holds.
 
-Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied as `static` only where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 during static>` may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. The handle's outer borrow Origin is preserved. Non-static bindings are never invented, per-call callable Origins are never bound, and no other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
+Target validity and accessibility, Semantics preservation, [Owned erasure](15-ownership-and-lifetime-analysis.md#1581-object-payload-erasure), result Origins and Loans, and destruction dependencies are checked statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. The source is evaluated and secured once. The target writes no Origin; its bindings come from Target completion below, which supplies a fixed Origin binding as `static` only for a source certified by Owned payload erasure and only where the §15.2.3 proof covers that binding. Thus a cast to `Box<ref/i32>`, completed to `Box<ref/i32 during static>`, may be valid when Runtime Type Identity, Supports and all other checks match; this is a static proof, not a runtime recovery of an Origin. No other information excluded from that proof is rewritten; a target needing unpreserved or uncertified information is rejected. API names and Option/Result branching syntax remain design boundaries: these guarantees define no cast spelling and add no checked cast to `@`.
+
+**Target completion.** Runtime `is` tests, refinement (§14.10) and checked casts share this rule for the bindings of a target, which writes no Origin. Let `S` be the operand's View Target and `D` the target; for a refined name, `S` is the View Target of its [Effective Type](14-control-flow.md#14101-stable-bindings-and-effective-types). The relation of `S` and `D` is judged by `Supports` (§3.3.5) over Runtime Type Identity, ignoring Origins and including Type arguments; a generic body judges it for every admitted binding (§8.10).
+
+| Relation of `S` and `D` | Bindings of `D` | Runtime `is` test | Checked cast |
+| --- | --- | --- | --- |
+| `D` is proven to be `S` or a base of `S` | Those `S` gives: `S`'s own bindings, or those at the position where `D` occurs as a base within `S` | Always true; adds no fact | Always succeeds, with the bindings of the corresponding upcast |
+| `D` is proven to be neither `S` nor a base of `S` | Every fixed Origin binding in `D` and its Type arguments is `static`; the completed `D` must be Owned | Refines under [§14.10.2](14-control-flow.md#14102-condition-states-and-joins) | A success holds the completed `D` |
+| Undecided, which occurs only in a generic body | No completion | Adds no fact (§14.10.2); no Owned proof is needed | Rejected |
+
+The second row is sound because, under single inheritance (§6.2.2), such a test or cast succeeds only when the Dynamic Type is strictly more derived than `S`. Such an object was erased by an upcast, and a Contract view is formed only by erasure; erasure proved the payload Owned (§15.8.1), and that proof holds for the object's lifetime because `obj` and `objuniq` are invariant in their View Target (§15.3.5). A generic body proves Owned from its declared Constraints; a completed target not proven Owned is reported at the target as a failed Owned proof, as for payload erasure. In every case, non-static bindings are never created, per-call callable Origins are never bound (§15.2.3), and the handle's Semantics, outer Origin and Loans are kept.
+
+```kimi
+open struct Base
+    protected init() => ()
+
+struct Slot<U> : Base
+    public var value: U
+
+    public init(value: U) : base() => self.value = value@move
+
+func readValue(view: objref/Base) -> ref/i32 during static
+    require view is Slot<ref/i32> else => $abort("Not a slot")
+    return view.value // view is objref/Slot<ref/i32 during static>.
+
+func put<T>(view: objuniq/Base, value: T)
+    T is Owned // Required: the completed Slot<T> must be Owned.
+    if view is Slot<T>
+        view.value = value@move
+
+func probe<T>(view: objref/Base, slot: objref/Slot<T>)
+    if slot is Base => ()      // A base of the View Target: always true; adds no fact.
+    if slot is Slot<i32> => () // Undecided in this body: no completion and no fact.
+    // if view is Slot<ref/i32 during static> => () // Error: no Origin is written in a target.
+    // if view is T => ()                          // Error: a Type parameter is not a struct Core.
+```
 
 ## 13.7. Assignment
 

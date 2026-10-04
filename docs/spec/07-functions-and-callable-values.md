@@ -460,7 +460,7 @@ let positive: (i32) -> bool = func (value) => value > 0
 let invalid = func (value) => value * 2 // Error: no fixed input signature.
 ```
 
-An omitted parameter Type requires a fixed expected callable signature; parameter Types are never inferred from body operations or later uses. The result is inferred from that expectation or, once the parameters are fixed, from the body under normal result validation. Whole-result inference also keeps the [result Origins and Loans](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results); annotations use the existing elision rules.
+An omitted parameter Type requires a [fixed expected call signature](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization); parameter Types are never inferred from body operations or later uses. The result is inferred from that expectation or, once the parameters are fixed, from the body under normal result validation. Inference from the body yields only the anonymous function's own result and is never evidence for the slots of an enclosing call: an anonymous body that waits for an expectation is a waiting argument (§10.5), and even when a slot such as `F` is bound to the concrete Closure Type after the body is checked, that Closure's result Type fills no other slot (§10.8). Whole-result inference also keeps the [result Origins and Loans](15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results); annotations use the existing elision rules.
 
 A try failure is an expectation-dependent return source (§17.2.4) and cannot supply a return Type candidate. Its operand is inferred independently (§10.5), and success values are never wrapped automatically.
 
@@ -569,7 +569,7 @@ The internal call signature keeps the complete receiver, parameter and result Ty
 
 ### 7.6.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
+A function reference is resolved under [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization) and produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y
@@ -577,13 +577,31 @@ let item = add                         // Concrete Function Item; Copy.
 let erased: (i32, i32) -> i32 = add    // Common owned value; Non-Copy.
 ```
 
-At an initialization, argument or return position whose expected Type is a fixed common Function Type, a Function Item or concrete Closure is converted implicitly exactly when:
+At a position whose fixed expected Type (§10.2) is a common Function Type, a Function Item or concrete Closure is converted implicitly, by the erasure row of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), exactly when:
 
 - its signature fits and its minimum receiver is Shared;
 - its complete environment is Owned, and its result does not borrow the hidden environment receiver;
 - all public Origin and Loan contracts hold, and ordinary acquisition of the source is legal.
 
 Non-static capture environments and Exclusive- or Consuming-only bodies are therefore rejected; no dependency may be erased to force conformance.
+
+As one row of that table, erasure applies wherever §10.2 fixes the expected Type, whether or not the destination is already initialized, and is never chained with another operation: a borrowed concrete Closure is not erased (§3.2.1), an erasure is not followed by a borrow, and no value is erased inside a structure, so an existing `Option` that holds a Function Item does not fit `Option<(i32) -> i32>`. The common-Type search of [result validation](14-control-flow.md#1491-expression-type-and-target-result-type) compares the sources' own Types, so erasure never supplies a common Function Type there. A qualified Case construction erases its payload as the leading-dot form does, because the expected enum supplies its generic arguments first (§6.3.2). A [fill element](04-arrays-indexing-and-slices.md#43-initialization-and-inference) must be Copy, which an erased value is not.
+
+```kimi
+func inc(value: i32) -> i32 => value + 1
+func dec(value: i32) -> i32 => value - 1
+func twice(action: ref/((i32) -> i32), value: i32) -> i32 => action(action(value))
+
+var handler: (i32) -> i32 = inc
+handler = dec                                         // Assignment source: the old value is destroyed.
+let table: [2 of (i32) -> i32] = [inc, dec]           // Aggregate elements.
+let some: Option<(i32) -> i32> = .Some(inc)           // Payload.
+let same: Option<(i32) -> i32> = Option.Some(inc)     // The expected enum fixes T first.
+let chosen: (i32) -> i32 = if ready => inc else => dec // Each arm is erased.
+// let mixed = if ready => handler@move else => inc   // Error: the search forms no common Function Type.
+// let filled: [2 of (i32) -> i32] = [2 of inc]       // Error: a fill element must be Copy.
+// let result = twice(inc, 1)                         // Error: erasure and a borrow are two operations.
+```
 
 The existing environment is acquired by ordinary acquisition (§3.5): a Copy, an explicit `@move` or the transfer of a temporary. Conversion never rereads outer bindings or repeats captures. The resulting owned common value is always Non-Copy. Transferring it again as the same common Type is an ordinary Move, not a new erasure. Shared invocation does not consume it, and borrowing it as `uniq/F` still exposes only the Shared call.
 

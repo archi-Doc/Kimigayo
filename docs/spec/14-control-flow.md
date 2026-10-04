@@ -821,11 +821,11 @@ A warning is issued for `while true`, including a parenthesized `true`, suggesti
 
 Runtime Type refinement attaches to the current **Value Instance** of a resolved **Binding Identity**. Eligible subjects are parenthesized or bare names of object-typed local `let` bindings or non-reassignable parameters with struct Core targets. `var` bindings, Fields, computed and required Properties, indexing and call results can be tested but do not refine later reads. Facts do not transfer to aliases or shadowed bindings.
 
-The **Effective Type** of a name at a program point narrows only its guaranteed Core. Declared Semantics, Origins, Loans, mutability, initialization state, object identity and complete destruction responsibility are preserved. Writes or reinitialization that could replace the binding invalidate old facts, and Move or destruction prevents further use. Mutation of members alone does not invalidate facts while the binding's value and Dynamic Type remain the same. This adds no `var` refinement and no write permission.
+The **Effective Type** of a name at a program point is its declaration Type with the View Target replaced by the **Effective Core**, the most derived Core guaranteed there. When the Effective Core is the declared Core, its bindings are those of the declaration; when it is a more derived Core, its bindings come from [Target completion](13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts), which makes every fixed Origin binding `static`. The handle's Semantics and outer Origin, Loans, mutability, initialization state, object identity and complete destruction responsibility are preserved. Writes or reinitialization that could replace the binding invalidate old facts, and Move or destruction prevents further use. Mutation of members alone does not invalidate facts while the binding's value and Dynamic Type remain the same. This adds no `var` refinement and no write permission.
 
 A complete payload update invalidates facts about the old field contents and their projections, including `let` fields, while preserving object Identity and Dynamic Type refinements and still-valid storage access (§15.7.3); a `let` field is not an object-lifetime constant. Replacing or moving a handle follows the separate invalidation rules above.
 
-The Effective Type is used for member lookup, argument applicability, overload resolution, assignment sources, results and local inference. Each candidate's ordinary fitting and adaptation rules apply; a base candidate is not discarded if those rules fit, resolution is not retried with the declared Type, and already fixed declarations and destination Types do not change. Explicit object upcasts remain necessary where ordinarily required.
+Every value use of a refinable name uses its Effective Type: member lookup, argument applicability, overload resolution, assignment sources, results, local inference, the operands of explicit operations (§13.5) such as `@follow`, `@move`, `@copy`, `@objref`, `@objuniq` and upcasts, implicit receiver acquisition (§7.3), and the operands of runtime `is` tests (§13.6.1). Only operations on the binding's slot use its declaration Type: the slot borrows `@ref` and `@uniq` (§13.5.5.2) and the address `@raw` (§5.4), whose results are typed by the stored Type. A read through such a slot borrow is a value alias and inherits no facts. Captures also use the declaration Type (§14.10.2). Each candidate's ordinary fitting and adaptation rules apply; a base candidate is not discarded if those rules fit, resolution is not retried with the declared Type, and already fixed declarations and destination Types do not change. Explicit object upcasts remain necessary where ordinarily required.
 
 ```kimi
 func handle(value: objref/Animal) -> ()
@@ -833,6 +833,7 @@ func handle(value: objref/Animal) -> ()
     require value is Dog else => return
     value.bark()
     let dog = value       // Inferred objref/Dog.
+    let slot = value@ref  // ref/(objref/Animal): the slot keeps its declaration Type.
     alias.bark()          // Error: alias has no Dog guarantee.
 ```
 
@@ -856,7 +857,30 @@ For an eligible `x`, the table updates only refinement; "retain" means the facts
 
 For `A and B`, `B` is analyzed under `True(A, I)`; the true state is `B`'s true state, and the false state joins `A`-false and `B`-false. For `A or B`, `B` is analyzed under `False(A, I)`; the false state is `B`'s false state, and the true state joins `A`-true and `B`-true. These rules apply at every expression position. Short-circuiting skips runtime evaluation, not static syntax, Name or Type checks. No exclusion Types, union Types, or provenance through stored Booleans, `== true` or arbitrary calls is added.
 
-On one path, compatible positive facts select the most derived guaranteed Type. At joins, the most derived base guaranteed by every reachable incoming path is retained, never wider than the declaration Type. Incompatible facts on one path revert that binding to declaration-Type checking; they neither make the path unreachable nor prove arbitrary Types. A contradiction alone may warn but is not an error. Other Flow State components keep their own joins.
+Facts describe the set of possible Dynamic Types of a binding. The set starts as the declared Core and its derived Cores. A fact `x is D` acts on the current Effective Core `S`; the relation is judged as in [Target completion](13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts), by Runtime Type Identity and, in a generic body, for every admitted binding (§8.10):
+
+- When `D` is proven strictly derived from `S`, the binding narrows to `D`.
+- When `D` is proven unrelated to `S`, neither supporting the other, no possible Dynamic Type remains. The binding is then checked with its declaration Type on that path, and later tests add nothing on that path.
+- Otherwise nothing is added: `D` is `S` or a base of `S`, or the relation is undecided in a generic body.
+
+The path stays reachable, and the other Flow State components, such as initialization, Move, Loans, cleanup, Structural Completion, result sources and `require` failure checking, keep their own rules and joins. A contradiction alone may warn but is not an error. Under single inheritance (§6.2.2), the sets of a Core and its derived Cores are nested or disjoint, so for concrete Types these rules intersect the facts on a path and do not depend on the order of its tests.
+
+At joins, the most derived base guaranteed by every reachable incoming path that still has possible Dynamic Types is retained, never wider than the declaration Type. An incoming path without possible Dynamic Types constrains nothing for that binding; the join has none only when no incoming path has any.
+
+```kimi
+// Dog and Cat derive from Animal; only Dog declares score() -> i32.
+func afterDeadBranch(animal: objref/Animal) -> i32
+    require animal is Dog else => return 0
+    if animal is Cat
+        Console.writeLine("Never at run time.") // No possible Dynamic Type: animal is checked as Animal.
+    return animal.score() // Valid: the contradicted path constrains nothing at the join.
+
+func insideContradiction(animal: objref/Animal) -> i32
+    require animal is Dog else => return 0
+    require animal is Cat else => return 1 // Always false; a warning is allowed.
+    require animal is Dog else => return 2 // Adds nothing on this path.
+    return animal.score() // Error: animal is checked as Animal.
+```
 
 | Construct | Propagation |
 | --- | --- |
@@ -865,7 +889,7 @@ On one path, compatible positive facts select the most derived guaranteed Type. 
 | `require` | True to subsequent statements; false to the failure body |
 | Subsequent joins | Only incoming paths retained by Runtime Reachability after transfers and cleanup (§14.9.2) |
 
-Continuations of constructs that catch transfers are tracked, so an early `return` through an ordinary `if` can refine later statements. Loop entries join the first entry and every backedge, and exits join the condition-false and delivered `exit` paths. `continue` propagates to its correct iteration point. These rules are solved to a stable result independent of processing order; a previous successful iteration alone is insufficient.
+Continuations of constructs that catch transfers are tracked, so an early `return` through an ordinary `if` can refine later statements. Loop entries join the first entry and every backedge, and exits join the condition-false and delivered `exit` paths. `continue` propagates to its correct iteration point. A loop entry starts from its first entry's state; a backedge contributes nothing until it is reached, and the entry state only widens until it is stable. The result is the most refined stable solution, which is unique and independent of processing order; a previous successful iteration alone is insufficient.
 
 A `defer` body keeps the Names and Effective Types of its registration point (§16.1.2). Function boundaries import no outer flow facts. A capture uses the source binding's declared complete Type and the ordinary capture operation, without importing refinement attached to the outer binding. To capture a narrowed Type, first initialize a new local from the refined expression; its inferred declaration Type is then available under the normal capture rules.
 

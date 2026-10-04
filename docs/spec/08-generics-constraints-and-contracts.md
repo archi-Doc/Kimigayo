@@ -375,6 +375,8 @@ func makeEmpty<T>() -> T
 
 `EmptyConstructible.empty()` is invalid because it identifies no implementation Type, which is never inferred backward from the expected result. A concrete call such as `Buffer.empty()` uses ordinary Type-member lookup; generic requirement calls keep their conformance mapping.
 
+A function reference to a requirement through a constrained Type, such as `T.compare` under `T is Comparable`, is the requirement's Function Item instantiated with the binding of `Self` ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization)); its calls keep the conformance mapping.
+
 Distinct Requirement Identities may form one call candidate only when their exposed signatures and conditions are equivalent **and** their mappings select the same effective implementation Member Identity for every valid Type substitution the current Constraints allow. The comparison covers function generics, parameters and labels, normalized K (§7.2.2), receiver, results, Origins, Constraints and calling conditions, plus the implementation's Type substitutions and receiver correspondence. Equal code, runtime addresses or optimizer sharing supply no proof. The conformance requirements themselves remain distinct. Repeated paths to the same Requirement Identity are already one requirement and need no such proof.
 
 ```text
@@ -766,7 +768,7 @@ contract Peek
 
 **Requirement call effects.** The effects of such a call are derived from its available bounds, by the same rules inside implementation checks and at callers:
 
-1. *Effects through inputs.* The call may affect every Place reachable through references from the receiver and from each argument, in the access mode of its parameter: reads and shared borrows for shared access, and also writes, replacement and destruction for exclusive access. This holds with or without bounds. An input of an abstract Type may reach every Loan that its Type's Origins may denote.
+1. *Effects through inputs.* The call may affect every Place reachable through references from the receiver and from each argument, in the access mode of its parameter, and only with shared access past a shared layer (§15.6.2): reads and shared borrows for shared access, and also writes, replacement and destruction for exclusive access. This holds with or without bounds. An input of an abstract Type may reach every Loan that its Type's Origins may denote. Destroying an owned handle argument contributes the effects of §16.3.3.
 2. *Environment effects.* None with `confined`; otherwise unknown. Bound verification treats unknown effects as conflicts (§8.4.5); elsewhere §15.6.4 applies.
 3. *Earlier results.* With `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded from the comparison.
 

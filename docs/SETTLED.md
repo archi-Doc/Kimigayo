@@ -79,3 +79,25 @@
 
 - **Proposed fix:** Keep the ownership-bearing accessor receivers and require a spelling at the use (`meter@uniq.reading`), mark the declaration (`mutating get`), or warn.
 - **Why not applied:** A use spelling conflicts with the implicit acquisition of Receiver Expressions (§7.3) and with the meaning of `tasks@uniq.length`, a declaration mark leaves `x.p` looking like a read at every use, and a warning keeps the failing `let` receiver and the lost Copy update. The receiver of an accessor is fixed per operation instead, `ref/Self` for `get` and `uniq/Self` for `set` (§11.2), and the exclusive or consuming operation is a function named by §4.7.1 (`nextReading`, `intoItem`). `ref/Self` and `uniq/Self` are reachable through object handles by the path rules, so no capability is lost except a getter that returns `self` as a handle.
+
+## Unqualified names find inherited declarations
+
+- **Problem:** Inside a derived struct, an unqualified Name never reaches a declaration inherited from a base, although the inherited Names belong to the derived struct (§6.2.2, §9.6.1). Every inherited declaration needs a qualifier or an explicit receiver: `Self.marker()` for `marker()`, `self.count` for `count` (§9.4).
+- **Example:**
+
+  ```kimi
+  func marker() -> i32 => 1
+
+  open struct Base
+      public var count: i32 = 0
+
+      public func marker() -> i32 => 25
+
+  struct Derived : Base
+      func first(self) -> i32 => marker() // Error: lookup stops at the inherited Base.marker; write Self.marker()
+      func second(self) -> i32 => count   // Error: an inherited instance member; write self.count
+      func total(self) -> i32 => self.count + Self.marker()
+  ```
+
+- **Proposed fix:** Search the base layers at lookup stage 2, one layer at a time, so that an unqualified Name inside a derived struct selects the inherited declaration: `marker()` would call `Base.marker`, and a bare nested Type Name would name the inherited Type.
+- **Why not applied:** Members of an external base would be found unqualified, contradicting §18.1, where external members are never found unqualified. They would also be found at stage 2, before the project root and the aliases of stages 5 and 6, through which unqualified Names otherwise reach external declarations last, so the precedence would be reversed. An upstream base that adds `marker` or a nested `Node` would silently retarget a downstream unqualified use: dependency revalidation (§18.7.3) succeeds against the new target and reports nothing. Resolving a base clause would still need an exception, because searching the struct's own base layers there forms a cycle. §9.4 instead examines the base layers only to stop lookup with `QualificationRequired_Kd`, whose repair candidates insert the canonical qualifiers `self.`, `Self.` or `C.`, so an unqualified Name that succeeds always denotes a lexical declaration.
