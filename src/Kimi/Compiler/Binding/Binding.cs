@@ -695,6 +695,10 @@ public sealed partial class Binding
         {
             this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
         }
+        else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
+        {
+            ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
+        }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
             this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);

@@ -265,6 +265,20 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 7.6.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
+    // the location, and the declaration of the binding is related.
+    private static void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var declaring = contextual.Declaration!;
+        var self = contextual.Name == "self";
+        var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)"
+            : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)";
+        var advice = !self ? "Name it in a capture list, as in [value]"
+            : declaring is FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } ? "Capture the Fields the body needs instead, as in let id = self.id and [id]; in a constructor or destructor, self is reached only through its Fields"
+            : "Name it in a capture list, as in [self] or [self@ref]";
+        node.Report(requirement, code, note: note, advice: advice, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
+    }
+
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
@@ -491,6 +505,10 @@ public sealed partial class Binding
                         new(RepairKind.Transfer, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
                         new(RepairKind.Borrow, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@ref")], RepairConditionSet.None, RepairConditionSet.UsageLegality),
                     ]);
+                break;
+            case DiagnosticCode.InvalidCaptureBinding_Kd:
+                // SPEC 7.6.2: an explicit capture of self obeys the construction and destruction restrictions.
+                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.6.2)", advice: "Capture the Fields the body needs instead, as in let id = self.id and [id]", span: capture.Span);
                 break;
             default:
                 node.Report(requirement, code, span: capture.Span);

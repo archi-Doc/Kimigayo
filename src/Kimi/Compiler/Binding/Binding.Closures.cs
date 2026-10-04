@@ -41,6 +41,15 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 7.6.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
+    private static bool IsContextualBinding(BindingSymbol symbol)
+        => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch
+        {
+            FunctionKoto { IsAnonymous: false } declaring => symbol.Name == "self" || (symbol.Name == "value" && declaring.Accessor?.Kind == PropertyAccessorKind.Set),
+            PropertyAccessorKoto accessor => symbol.Name == "self" || (symbol.Name == "value" && accessor.AccessorKind == PropertyAccessorKind.Set),
+            _ => false,
+        };
+
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
@@ -97,6 +106,11 @@ public sealed partial class Binding
     // An unsupported captured Type is reported at the written capture entry when there is one.
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
+        if (entry is null && IsContextualBinding(source))
+        {
+            return null; // SPEC 7.6.2: contextual self and a setter's value are never captured implicitly.
+        }
+
         if (scope.Parent?.Function is { } outer && !ReferenceEquals(source.Scope.Function, outer))
         {
             // A nested closure can capture only what its immediately enclosing activation owns.
@@ -227,6 +241,13 @@ public sealed partial class Binding
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
+                if (source is { Kind: BindingSymbolKind.Parameter, Name: "self", Declaration: FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } })
+                {
+                    // SPEC 7.6.2, 6.2.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
+                    // which self is reached only through its Fields.
+                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Capture, (capture, source.Type ?? BoundType.Unit));
+                }
+
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
                     return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
