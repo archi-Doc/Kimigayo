@@ -120,6 +120,7 @@ Struct environments share the stored-part capture path; `ClosureEffects` reads c
 `GenericClosureErasureTest` covers substituted erasure signatures/entries, returned common Functions, definition-level Owned proof and native inline/heap allocation bounds.
 `FunctionKoto.RequiresInstantiation` carries generic contexts through anonymous parents; `NestedGenericCaptureTest` covers nested Moves/results, empty environments, container substitution and erased cleanup.
 `GenericCaptureStorageTest` covers length-dependent arrays, shared/exclusive generic borrows, closure identity forwarding and warm storage-plan reuse.
+`GenericCaptureLifecycleTest` covers compound and handle substitutions, zero-sized destructors, reverse destruction and rc allocation bounds.
 `Binding.FunctionTypes.FixedCaptureSignature` checks fixed result contracts from capture Types; `Binding.TypeOrigins.ContainsOrigin` shares complete Origin identity with diagnostics. `ClosureResultOriginTest` covers result Loans, shared pointer/aggregate results, environment destruction and closed dependent-result boundaries.
 
 ## Use and maintenance
