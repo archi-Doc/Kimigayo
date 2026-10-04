@@ -105,6 +105,7 @@ Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLow
 `Binding.FunctionItems` binds declaration-identified Item Types and supplies call signatures to value calls and `Binding.Constraints`; `AggregateLayout` gives them empty storage and `BodyLowering.Closures` calls/erases their ordinary entries. `FunctionItemTest` and `FunctionItemCallableTest` cover storage, captures, Copy, borrowed calls, erasure, generic receiver contracts, diagnostic display and warm reuse.
 `Binding.Calls.InferInput` shares `Binding.ValueCalls.TryCallable` for known-signature evidence at generic Callable slots;
 `CallableSignatureInferenceTest` covers receiver modes, forwarding, conflicts, waiting bodies and warm reuse.
+`Binding.Calls.InferClosureHeader` supplies written anonymous-header evidence; waiting candidates complete only after selection through `Binding.Closures.BindClosureArgument`. `AnonymousArgumentInferenceTest` covers concrete acquisition, partial headers, argument order, diagnostics and warm reuse.
 
 `FunctionItemResultTest` covers declaration references in control-flow results; `Binding.ControlFlow` surveys value evidence and `Binding.Expressions` applies fixed Function expectations through ordinary result storage.
 

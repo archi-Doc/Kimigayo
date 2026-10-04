@@ -23,11 +23,14 @@ public class GenericCaptureStorageTest
         ScalarEmissionTest.EmitFixture("GenericCaptureStorageExclusive", Source, string.Empty);
     }
 
-    [Fact]
-    public void GenericIdentityRetainsConcreteEnvironmentContext()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GenericIdentityRetainsConcreteEnvironmentContext(bool inline)
     {
         const string Source = "func identity<F>(value: F) -> F => value@move\nfunc take<T>(value: T) -> T\n    let original = func [value@move] () -> T => value@move\n    let action = identity(original@move)\n    return action@move()\nrequire take(7) == 7 else => $abort(\"forwarded\")\nConsole.writeLine(take(\"owned\"))";
-        ScalarEmissionTest.EmitFixture("GenericCaptureStorageForwarded", Source, "owned\n");
+        var source = inline ? Source.Replace("    let original = func [value@move] () -> T => value@move\n    let action = identity(original@move)", "    let action = identity(func [value@move] () -> T => value@move)", StringComparison.Ordinal) : Source;
+        ScalarEmissionTest.EmitFixture("GenericCaptureStorageForwarded" + inline, source, "owned\n");
     }
 
     [Fact]

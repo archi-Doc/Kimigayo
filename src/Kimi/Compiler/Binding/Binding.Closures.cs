@@ -28,6 +28,28 @@ public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
 
+    private static bool HasOmittedClosureParameter(FunctionKoto function)
+    {
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
+    {
+        // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
+        var parent = this.BeginConsultation(closure);
+        this.BindClosure(closure, this.NodeScope(closure, scope), signature);
+        this.EndConsultation(closure, parent);
+        return this.BindNode(argument, scope);
+    }
+
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
         if (expected.Kind != BoundTypeKind.Function || expected.CarriesOrigin)
@@ -58,37 +80,6 @@ public sealed partial class Binding
         }
 
         return function.ReturnType is null || ReferenceEquals(this.BindType(function.ReturnType, scope), expected.Components[1]);
-    }
-
-    // SPEC 10.5: an anonymous function whose parameter and result Types are all written offers its header as call evidence
-    // before its body is checked, so a generic parameter it fixes is inferred before selection.
-    private BoundType? ClosureHeaderType(FunctionKoto function)
-    {
-        if (function.ReturnType is null || !this.scopes.TryGetValue(function, out var scope))
-        {
-            return null;
-        }
-
-        var scratch = this.RentTypes(function.Parameters.Count);
-        try
-        {
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (this.BindType(function.Parameters[i].Type, scope) is not { } input)
-                {
-                    return null;
-                }
-
-                scratch[i] = input;
-            }
-
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, scratch.AsSpan(0, function.Parameters.Count));
-            return this.BindType(function.ReturnType, scope) is { } result ? this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]) : null;
-        }
-        finally
-        {
-            this.typeScratch.Return(scratch, clearArray: true);
-        }
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected)

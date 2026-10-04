@@ -12,6 +12,7 @@ public sealed partial class Binding
     {
         Inapplicable,
         Applicable,
+        Waiting,
         Pending,
         Error,
     }
