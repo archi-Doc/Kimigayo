@@ -699,6 +699,10 @@ public sealed partial class Binding
         {
             ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
+        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
+        {
+            ReportArity(issue.Node, arity, requirement, issue.Code);
+        }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
             this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);

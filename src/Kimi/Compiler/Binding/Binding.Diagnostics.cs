@@ -65,6 +65,10 @@ public sealed partial class Binding
     // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
     private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
 
+    // SPEC 9.6.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
+    // the generic container that declares it (Outer), with the declared and the written counts.
+    private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
+
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false);
 
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
@@ -263,6 +267,34 @@ public sealed partial class Binding
             operand.WriteTo(ref builder);
             builder.Append(')');
         }
+    }
+
+    // SPEC 9.6.1: a Type's own Type arguments are written in full, and those of a container are never inferred from call
+    // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
+    private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var name = arity.Declaration.Name;
+        var parameters = arity.Declaration.Declaration is DeclarationContainerKoto container ? string.Join(", ", container.GenericParameterNodes) : string.Empty;
+        var declared = $"{name}<{parameters}>";
+        var member = node.Parent is MemberAccessKoto access && ReferenceEquals(KotoHelper.UnwrapParentheses(access.Left), node) ? access.Right.ToString() : null;
+        string note, advice;
+        if (arity.Outer)
+        {
+            note = $"{node} is declared in {declared}; outside it, the Type arguments of {name} are written on the qualifier and are never inferred (SPEC 9.6.1)";
+            advice = $"Name it through {name} with its Type arguments, one for each of {parameters}";
+        }
+        else if (arity.Written == 0 && member is not null)
+        {
+            note = $"{declared} is named without its Type arguments; the Type arguments of a container are never inferred from call arguments or an expected Type (SPEC 9.6.1)";
+            advice = $"Write them on the qualifier, one for each of {parameters}, as in {name}<...>.{member}";
+        }
+        else
+        {
+            note = $"{declared} declares {arity.Declared} Type parameter{(arity.Declared == 1 ? string.Empty : "s")}, and {arity.Written} Type argument{(arity.Written == 1 ? " is" : "s are")} written (SPEC 9.6.1)";
+            advice = $"Write exactly one Type argument for each of {parameters}";
+        }
+
+        node.Report(requirement, code, note: note, advice: advice, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
     // SPEC 7.6.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
@@ -597,6 +629,7 @@ public sealed partial class Binding
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.captureFailures?.Clear();
+        this.arityFailures?.Clear();
         this.rejectedCandidates?.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();

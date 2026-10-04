@@ -103,12 +103,12 @@ public sealed partial class Binding
         return true;
     }
 
-    // Members of Origin-bearing containers, members of generic containers named without their Type arguments,
+    // Members of Origin-bearing containers, requirements referenced through a constrained Type (SPEC 10.5, `T.compare`),
     // length-generic functions and generic functions that the compiler implements are not yet referenced; an instance
-    // member is referenced unbound, through its Type (SPEC 7.3).
+    // member is referenced unbound, through its Type (SPEC 7.3), and a generic container is named with its Type arguments.
     private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function, bool unbound, BoundType? declaringType)
     {
-        if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
+        if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
             (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType)))
         {
             return true;
@@ -240,7 +240,7 @@ public sealed partial class Binding
                 this.BindHeader(candidate);
                 if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound, declaring))
                 {
-                    return this.Fail(use, BindingFailure.Unsupported, true);
+                    return this.Fail(use, BindingFailure.Unsupported);
                 }
 
                 var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, scope, operations.AsSpan(index * stride, stride - 1));

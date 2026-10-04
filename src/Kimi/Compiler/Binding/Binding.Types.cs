@@ -692,7 +692,7 @@ public sealed partial class Binding
 
         if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            return this.Fail(generic, BindingFailure.TypeMismatch);
+            return this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
         }
 
         generic.Identifier!.BoundSymbol = definition;

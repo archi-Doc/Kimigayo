@@ -85,7 +85,7 @@ public sealed partial class Binding
             (function.TypeConstraints.Count == 0 || ContainerBound(symbol, declaringType)) &&
             (symbol.ReceiverIndex < 0 || unbound) && symbol.Scope.Owner.BoundSymbol?.Schema is not { Origins.Count: > 0 } &&
             (symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } || ContainerBound(symbol, declaringType)) &&
-            symbol.Intrinsic == IntrinsicKind.None;
+            symbol.Intrinsic == IntrinsicKind.None && symbol.Scope.Owner is not ContractKoto;
 
     // SPEC 7.3, 10.5: a member of a generic container is referenced through a Type that binds the container's slots.
     private static bool ContainerBound(BindingSymbol symbol, BoundType? declaringType)
@@ -187,7 +187,12 @@ public sealed partial class Binding
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound, declaring) || function.IsDestructor ||
+            if (candidate.Declaration is FunctionKoto unsupported && UnsupportedReference(candidate, unsupported, unbound, declaring))
+            {
+                return this.Fail(use, BindingFailure.Unsupported); // No later context makes the form a value (SPEC 23.3.6.1).
+            }
+
+            if (candidate.Declaration is not FunctionKoto function || function.IsDestructor ||
                 candidate.Intrinsic != IntrinsicKind.None || (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0 && !ContainerBound(candidate, declaring)))
             {
                 return this.Fail(use, BindingFailure.Unsupported, true);
@@ -232,7 +237,7 @@ public sealed partial class Binding
 
             if (UnsupportedReference(candidate, function, unbound, declaring))
             {
-                return this.Fail(use, BindingFailure.Unsupported, true);
+                return this.Fail(use, BindingFailure.Unsupported);
             }
 
             selected = candidate;

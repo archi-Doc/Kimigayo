@@ -49,7 +49,7 @@ public class TypeArityBindingTest
     {
         var c = Parse("struct Box<T>\ngroup G\n    struct Box<T, U>\n    func f(x: Box<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
     [Theory]
@@ -73,10 +73,10 @@ public class TypeArityBindingTest
     [InlineData("struct Box\nenum Box<T>\n    A", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("struct Box<T>\nstruct Box\nstruct Box<U>", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("enum Box<T>\n    A\nenum Box\n    B\nenum Box<T>\n    C", DiagnosticCode.DuplicateBinding_Kd)]
-    [InlineData("struct Box\nstruct Box<T>\nfunc f(x: Box<i32, u8>) => ()", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("struct Box<T>\nstruct Box<T, U>\nfunc f(x: Box) => ()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Box\nstruct Box<T>\nfunc f(x: Box<i32, u8>) => ()", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("struct Box<T>\nstruct Box<T, U>\nfunc f(x: Box) => ()", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("alias A\nalias B\ngroup A\n    public struct Box<T>\ngroup B\n    public struct Box<T>\nfunc f(x: Box<i32>) => ()", DiagnosticCode.AmbiguousBinding_Kd)]
-    [InlineData("struct Box<T>\ngroup G\n    struct Box<T, U>\n    func f(x: Box<i32>) => ()", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("struct Box<T>\ngroup G\n    struct Box<T, U>\n    func f(x: Box<i32>) => ()", DiagnosticCode.InvalidTypeFormation_Kd)]
     public void InvalidAritiesAndDeclarationsRemainErrors(string source, DiagnosticCode expected)
     {
         var c = Parse(source);

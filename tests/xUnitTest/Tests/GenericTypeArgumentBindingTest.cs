@@ -51,8 +51,8 @@ public class GenericTypeArgumentBindingTest
     [InlineData("C", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("1", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("(1 + 2)", DiagnosticCode.UnresolvedBinding_Kd, DiagnosticCode.NoApplicableOverload_Kd)]
-    [InlineData("Box", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("([2 of Box])", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("Box", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("([2 of Box])", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("([2 of C])", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("(Box<C>)", DiagnosticCode.InvalidTypeFormation_Kd)]
     public void NonTypesAndIncompleteNestedTypesRemainInvalid(string type, DiagnosticCode expected, DiagnosticCode? callExpected = null)

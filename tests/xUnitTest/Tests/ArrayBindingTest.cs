@@ -234,7 +234,7 @@ public class ArrayBindingTest
     [InlineData("func take(values: Array<i32>) => ()\nlet values: Array<i32> = []\ntake(values)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("let values: Array<i32> = []\nlet empty = values.isFull", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("let values: Array<i32> = [1, true]", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let values: Array<i32, bool> = []", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let values: Array<i32, bool> = []", DiagnosticCode.InvalidTypeFormation_Kd)]
     public void ArrayIsNonCopyAndCheckedLikeOtherSequences(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
