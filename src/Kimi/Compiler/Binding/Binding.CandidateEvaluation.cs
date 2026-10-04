@@ -45,6 +45,13 @@ public sealed partial class Binding
                 {
                     var x = operations[(a * stride) + i];
                     var y = operations[(b * stride) + i];
+                    if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
+                    {
+                        // Incomparability at one argument cannot be rescued by another argument or a later tie-breaker.
+                        worse = true;
+                        break;
+                    }
+
                     better |= x.Adaptation < y.Adaptation;
                     worse |= x.Adaptation > y.Adaptation;
                 }
@@ -63,6 +70,7 @@ public sealed partial class Binding
                 for (var i = 0; i < compared; i++)
                 {
                     if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
+                        operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
                         operations[(a * stride) + i].Source is { } source && KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true, BoundType: null })
                     {
                         // ComparableClosureSlots proved matching acquisition. Both slots will receive this one
@@ -131,12 +139,17 @@ public sealed partial class Binding
                     continue;
                 }
 
+                var operation = operations[(candidate * stride) + argument];
+                if (operation.Adaptation == ArgumentAdaptation.Erasure)
+                {
+                    continue; // The comparison retains this distinct operation; it never ties with a concrete slot.
+                }
+
                 if (candidates[candidate].State != CandidateApplicability.Waiting)
                 {
                     return false;
                 }
 
-                var operation = operations[(candidate * stride) + argument];
                 var function = (FunctionKoto)candidates[candidate].Symbol.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
                 var borrowed = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq };

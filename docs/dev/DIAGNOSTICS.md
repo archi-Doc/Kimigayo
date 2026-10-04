@@ -271,6 +271,8 @@ a Callable receiver failure names the selected declaration and actual/required r
 overload set (`CommonAnonymousContextTest`, CLI/LSP and independent body errors). Different complete Callable
 expectations do not prevent ordinary ranking of concrete Closure slots; tied candidates report ambiguity before any
 body check, while a selected body's mismatch remains its own error even when another candidate would accept it.
+Erasure versus concrete acquisition also reports ambiguity, including mixed anonymous contexts: another argument's
+advantage, nongeneric status or fewer defaults cannot break that incomparability (`FunctionErasureRankingTest`).
 
 Ownership storage bounds report `OwnershipStorageLimit_Kd` (Resource) at the affected function signature. Its Reason retains the required bytes, byte limit and table identity. The analysis checks dimensions before allocation or narrow multiplication, leaves the body unverified, and continues independent functions. `OwnershipStorageLimitTest` covers the allocation-free dimension guard, warmed-capacity independence, repair by restoring the profile limit, CLI/LSP placement and an independent moved-value error. Concrete-instance limits retain the emission Resource classification and the storage explanation; their regression checks zero published IR, unchanged universal verification and successful recovery on the same compilation after restoring the limit.
 

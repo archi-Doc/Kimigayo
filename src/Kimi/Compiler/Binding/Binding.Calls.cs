@@ -1378,7 +1378,7 @@ public sealed partial class Binding
                         return CandidateApplicability.Inapplicable;
                     }
 
-                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
                     continue;
                 }
 
@@ -1391,7 +1391,7 @@ public sealed partial class Binding
                         return CandidateApplicability.Inapplicable;
                     }
 
-                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
                     continue;
                 }
 
@@ -1435,7 +1435,7 @@ public sealed partial class Binding
                 {
                     // SPEC 7.6.4: a concrete Closure value converts to the parameter's common Function Type, as at an
                     // initialization; the argument is bound with that expectation once the call is selected.
-                    operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
                     continue;
                 }
 

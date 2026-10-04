@@ -12,6 +12,9 @@ public enum ArgumentAdaptation : byte
     Literal,
     SameSemanticsReborrow,
     CrossSemanticsBorrow,
+
+    // SPEC 10.2: two erasures are equal; erasure and any other row are incomparable, not numerically ranked.
+    Erasure,
 }
 
 public enum ArgumentOperationKind : byte
