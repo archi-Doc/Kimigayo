@@ -15,3 +15,16 @@ thread allocation count, source hashes and runtime/platform identity, and fails 
 
 Native fixtures separately check values, retained owner Loans and allocation/free counts at O0/O2. Timings are observations,
 not pass thresholds or speedup evidence without matched before/after runs on the same machine and configuration.
+
+For uninstrumented native finalization timings, run after the same Release build:
+
+```powershell
+./src/backend/windows-x64/benchmark-object-finalization.ps1 -Name before
+```
+
+The two fixed sources perform 1,048,576 factory/clone/final-release rounds and 262,144 two-entry Dictionary owning
+iterations. Each object's destructor checks its payload; the first execution checks stdout, stderr and exit status.
+The harness builds each unchanged source once at O0/O2 and runs each binary seven times, without allocation-audit
+instrumentation. The JSON report retains all samples, source/compiler hashes and machine identity. Times include
+process startup; there is no warm-up run. Keep these counts unchanged for before/after comparisons, and do not run
+builds or other measurements concurrently. Allocation/free guarantees remain separate native regressions.
