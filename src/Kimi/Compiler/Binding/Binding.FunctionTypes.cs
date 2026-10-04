@@ -111,53 +111,74 @@ public sealed partial class Binding
 
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
-        BindingSymbol? selected = null;
+        var count = 0;
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
-            this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function ||
-                function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
-                candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
-            {
-                return this.Fail(use, BindingFailure.Unsupported, true);
-            }
-
-            if (!this.Accessible(candidate, scope) || !this.FunctionReferenceFits(use, candidate, function, required))
-            {
-                continue;
-            }
-
-            if (selected is not null)
-            {
-                return this.Fail(use, BindingFailure.Ambiguous, true);
-            }
-
-            selected = candidate;
+            count++;
         }
 
-        if (selected is null)
+        var evaluated = this.candidateScratch.Rent(count);
+        var stride = required.Components[0].Components.Count + 1;
+        var operations = this.argumentOperationScratch.Rent(count * stride);
+        BindingSymbol selected;
+        try
         {
-            if (symbol.Next is null && this.FunctionItemSignature(this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, [])) is { } actual)
-            {
-                return this.FailMismatch(use, use, actual, required);
-            }
-
-            var count = 0;
-            for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
-            {
-                count++;
-            }
-
-            var rejected = new RejectedCandidate[count];
             var index = 0;
-            for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+            var applicable = 0;
+            for (var candidate = symbol; candidate is not null; candidate = candidate.Next, index++)
             {
-                var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-                rejected[index++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true);
+                this.BindHeader(candidate);
+                if (candidate.Declaration is not FunctionKoto function ||
+                    function.GenericArguments.Count != 0 || function.TypeConstraints.Count != 0 || candidate.ReceiverIndex >= 0 ||
+                    candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                {
+                    return this.Fail(use, BindingFailure.Unsupported, true);
+                }
+
+                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required);
+                evaluated[index] = new(candidate, fits ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable, null, 0);
+                if (fits)
+                {
+                    applicable++;
+                    // References insert no adaptations and use no defaults. Parameter Types still participate in
+                    // the common best-candidate relation; results and declaration order never rank candidates.
+                    for (var parameter = 0; parameter < stride - 1; parameter++)
+                    {
+                        operations[(index * stride) + parameter] = new(null, null, function.Parameters[parameter].Type.BoundType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
+                    }
+                }
             }
 
-            (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
-            return this.Fail(use, BindingFailure.NoApplicableCandidate);
+            var winner = SelectBest(evaluated.AsSpan(0, count), operations, stride);
+            if (winner < 0)
+            {
+                if (count == 1 && this.FunctionItemSignature(this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, [])) is { } actual)
+                {
+                    return this.FailMismatch(use, use, actual, required);
+                }
+
+                var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
+                var next = 0;
+                for (var i = 0; i < count; i++)
+                {
+                    if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
+                    {
+                        var candidate = evaluated[i].Symbol;
+                        var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
+                        rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true);
+                    }
+                }
+
+                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+                return this.Fail(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
+            }
+
+            selected = evaluated[winner].Symbol;
+        }
+        finally
+        {
+            this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.candidateScratch.Return(evaluated, clearArray: true);
         }
 
         if ((((FunctionKoto)selected.Declaration).Modifier & ModifierKind.Unsafe) != 0)

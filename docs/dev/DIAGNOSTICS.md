@@ -276,6 +276,8 @@ advantage, nongeneric status or fewer defaults cannot break that incomparability
 Fixed-signature reference selection checks unsafe acquisition only for the selected declaration. A failed overload
 group records every candidate signature and the required signature in `NoApplicableOverload_Kd`; a single reference
 keeps `TypeMismatch_Kd` with actual/expected facts. `ContextualFunctionReferenceTest` covers CLI/LSP and independent errors.
+Reference ambiguity retains only fitting candidates, their signatures and declaration locations, with Type-argument/annotation Advice.
+`FunctionReferenceRankingTest` checks opposing parameter advantages, CLI/LSP placement and independent errors.
 
 Ownership storage bounds report `OwnershipStorageLimit_Kd` (Resource) at the affected function signature. Its Reason retains the required bytes, byte limit and table identity. The analysis checks dimensions before allocation or narrow multiplication, leaves the body unverified, and continues independent functions. `OwnershipStorageLimitTest` covers the allocation-free dimension guard, warmed-capacity independence, repair by restoring the profile limit, CLI/LSP placement and an independent moved-value error. Concrete-instance limits retain the emission Resource classification and the storage explanation; their regression checks zero published IR, unchanged universal verification and successful recovery on the same compilation after restoring the limit.
 

@@ -601,6 +601,12 @@ public sealed partial class Binding
             {
                 var candidate = rejected[c];
                 var label = candidate.Function.Name;
+                if (candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
+                {
+                    shapeNote = "No function reference candidate is better than every other fitting candidate under the parameter Type and generic ranking rules. Results do not rank candidates";
+                    advice = "Write explicit Type arguments or a Type annotation that uniquely selects the intended function reference";
+                }
+
                 if (candidate.Selected)
                 {
                     shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";
@@ -614,7 +620,8 @@ public sealed partial class Binding
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
                 {
                     var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                    label = candidate.CallableSignature ? $"{candidate.Function.Name}: callable signature is {shownActual.Text}; requires {shownExpected.Text}"
+                    label = candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? $"{candidate.Function.Name}: callable signature {shownActual.Text}"
+                        : candidate.CallableSignature ? $"{candidate.Function.Name}: callable signature is {shownActual.Text}; requires {shownExpected.Text}"
                         : candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
                         : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
                     // Keep the compared Types even when the related-location limit omits this candidate.
