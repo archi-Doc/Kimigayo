@@ -135,17 +135,11 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.Unsupported, true);
                 }
 
-                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required);
+                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, operations.AsSpan(index * stride, stride - 1));
                 evaluated[index] = new(candidate, fits ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable, null, 0);
                 if (fits)
                 {
                     applicable++;
-                    // References insert no adaptations and use no defaults. Parameter Types still participate in
-                    // the common best-candidate relation; results and declaration order never rank candidates.
-                    for (var parameter = 0; parameter < stride - 1; parameter++)
-                    {
-                        operations[(index * stride) + parameter] = new(null, null, function.Parameters[parameter].Type.BoundType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-                    }
                 }
             }
 
@@ -222,7 +216,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required)
+    private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, Span<BoundArgumentOperation> operations = default)
     {
         var parameters = required.Components[0];
         if (parameters.Components.Count != function.Parameters.Count)
@@ -267,6 +261,14 @@ public sealed partial class Binding
                 if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use))
                 {
                     return false;
+                }
+
+                if (!operations.IsEmpty)
+                {
+                    // Compare the same substituted contract that established applicability. In particular,
+                    // independently named per-call Origins are fixed to the required signature before ranking.
+                    // References insert no adaptations and use no defaults; results never rank candidates.
+                    operations[i] = new(null, null, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
                 }
             }
 

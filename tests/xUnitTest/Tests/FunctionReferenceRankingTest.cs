@@ -16,15 +16,28 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
     private const string Narrow = "func choose(value: (i32) -> Never) -> i32 => 42\n";
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public void ParameterSubtypingRanksFittingReferences(bool reverse, bool erased)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void ParameterSubtypingRanksFittingReferences(bool reverse, bool erased, bool borrowed)
     {
         var use = erased ? "let action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nrequire action(value@move) == 42 else => $abort(\"reference\")" :
             "func apply<F>(action: ref/F) -> i32\n    F is Callable<((i32) -> Never) -> i32>\n    let value: (i32) -> Never = fail\n    return action(value@move)\nrequire apply(choose) == 42 else => $abort(\"reference\")";
-        ScalarEmissionTest.EmitFixture("FunctionReferenceRanking" + reverse + erased, Types + (reverse ? Narrow + Broad : Broad + Narrow) + use, string.Empty);
+        var source = Types + (reverse ? Narrow + Broad : Broad + Narrow) + use;
+        if (borrowed)
+        {
+            source = source.Replace("func choose(value: (i32) -> i32)", "func choose(value: ref/((i32) -> i32))", StringComparison.Ordinal)
+                .Replace("func choose(value: (i32) -> Never)", "func choose(value: ref/((i32) -> Never))", StringComparison.Ordinal)
+                .Replace("((i32) -> Never) -> i32", "(ref/((i32) -> Never)) -> i32", StringComparison.Ordinal)
+                .Replace("action(value@move)", "action(value@ref)", StringComparison.Ordinal);
+        }
+
+        ScalarEmissionTest.EmitFixture("FunctionReferenceRanking" + reverse + erased + borrowed, source, string.Empty);
     }
 
     [Fact]
@@ -75,10 +88,21 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmReferenceRankingReusesCandidateStorage()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmReferenceRankingReusesCandidateStorage(bool borrowed)
     {
-        var c = MinimalEmissionTest.Analyze(Types + Broad + Narrow + "let action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)");
+        var source = Types + Broad + Narrow + "let action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)";
+        if (borrowed)
+        {
+            source = source.Replace("func choose(value: (i32) -> i32)", "func choose(value: ref/((i32) -> i32))", StringComparison.Ordinal)
+                .Replace("func choose(value: (i32) -> Never)", "func choose(value: ref/((i32) -> Never))", StringComparison.Ordinal)
+                .Replace("((i32) -> Never) -> i32", "(ref/((i32) -> Never)) -> i32", StringComparison.Ordinal)
+                .Replace("action(value@move)", "action(value@ref)", StringComparison.Ordinal);
+        }
+
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
