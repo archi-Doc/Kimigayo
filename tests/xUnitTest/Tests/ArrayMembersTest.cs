@@ -120,16 +120,10 @@ public class ArrayMembersTest
     public void NegativeCapacityAborts()
         => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARGUMENT: Invalid argument value\n");
 
-    // P26 boundary (PLAN G10): the callback members verify in the library, but a function passed to their Callable
-    // parameter is not yet bound; the argument is diagnosed as unsupported instead of generating code. P26 turns this into an execution.
+    // SPEC 4.7.2, 7.6.4: named Function Items satisfy the generic Callable parameters of the source library members.
     [Fact]
-    public void CallbackArgumentsAwaitCallableValues()
-    {
-        var c = MinimalEmissionTest.Analyze(Callables);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd && x.Node.ToString() == "isLarge");
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.Library.Kotonoha);
-    }
+    public void CallbackArgumentsExecuteThroughFunctionItems()
+        => ScalarEmissionTest.EmitFixture("ArrayMembersCallables", Callables, "Callables ok.\n");
 
     [Theory]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.swap(first: 0, second: 0)\nlet n = view.length")]
