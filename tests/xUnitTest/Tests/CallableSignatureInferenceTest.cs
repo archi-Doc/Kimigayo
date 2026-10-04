@@ -57,6 +57,48 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("CallableSignatureNonCopy", Source, "alive\ndrop\n");
     }
 
+    [Fact]
+    public void ContainerArgumentsAreSubstitutedBeforeSignatureMatching()
+    {
+        const string Source = """
+            struct Box<T>
+                public func apply<R, F>(self: ref/Self, f: ref/F, value: T) -> R
+                    F is Callable<(T) -> R>
+                    return f(value@move)
+            func widen(value: i32) -> i64 => value@i64
+            func need(value: i64) => require value == 42 else => $abort("container")
+            let box = Box<i32>.init()
+            let result = box.apply(widen, 42)
+            need(result)
+            func flag(value: bool) -> i32 => if value => 7 else => 0
+            let other = Box<bool>.init()
+            let small = other.apply(flag, true)
+            require small == 7 else => $abort("other instance")
+            """;
+        ScalarEmissionTest.EmitFixture("CallableSignatureContainer", Source, string.Empty);
+    }
+
+    [Fact]
+    public void AFixedContainerInputCannotBeInferredFromTheCallable()
+    {
+        const string Source = """
+            struct Box<T>
+                public func accept<R, F>(self: ref/Self, f: ref/F)
+                    F is Callable<(T) -> R>
+                    return
+            func flag(value: bool) -> i64 => 42
+            let box = Box<i32>.init()
+            box.accept(flag)
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("NoApplicableOverload_Kd", error.Code);
+        Assert.Contains("(bool) -> i64", error.Note, StringComparison.Ordinal);
+        Assert.Contains("(i32) -> R", error.Note, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

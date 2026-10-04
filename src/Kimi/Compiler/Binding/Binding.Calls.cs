@@ -1515,17 +1515,26 @@ public sealed partial class Binding
                 if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, callableSlot.Symbol!) < 0 ||
                     KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || source.BoundType is not { } actual ||
                     !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
-                    !this.TryCallable(actual, scope, out var actualSignature, out _) || requiredSignature.CarriesOrigin || actualSignature.CarriesOrigin)
+                    !this.TryCallable(actual, scope, out var actualSignature, out _))
+                {
+                    continue;
+                }
+
+                if (this.MemberType(requiredSignature, declaringType) is not { } memberSignature)
+                {
+                    return false;
+                }
+
+                requiredSignature = this.ContractType(memberSignature, scope, self);
+                if (requiredSignature.CarriesOrigin || actualSignature.CarriesOrigin)
                 {
                     continue;
                 }
 
                 if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths))
                 {
-                    if (this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) is { } required)
-                    {
-                        signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
-                    }
+                    var required = this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) ?? requiredSignature;
+                    signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
 
                     return false;
                 }
