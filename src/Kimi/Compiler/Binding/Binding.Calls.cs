@@ -462,15 +462,19 @@ public sealed partial class Binding
             // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
             if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindNode(argument, scope) is null)
             {
-                if (argument is { BindingState: BindingState.Resolved, BoundSymbol.Kind: BindingSymbolKind.Function })
+                if (argument is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
                     if (TakesCommonFunction(group))
                     {
                         continue; // SPEC 7.6.4: a function group is converted at the selected parameter's common Function Type.
                     }
 
-                    // As a value of its own Function Item Type (a generic or Callable parameter) it is not yet implemented (P26).
-                    this.Fail(argument, BindingFailure.Unsupported, true);
+                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
+                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
+                    if (this.BindFunctionItem(argument, item) is not null)
+                    {
+                        continue;
+                    }
                 }
 
                 unknownArgument = true;

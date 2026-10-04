@@ -217,7 +217,7 @@ public sealed partial class Binding
         {
             var subject = proposition.Subject!;
             var closure = subject.Kind == BoundTypeKind.Closure ? (subject.Symbol?.Declaration as FunctionKoto)?.BoundClosure : null;
-            var signature = closure?.Signature ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
+            var signature = closure?.Signature ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {
                 return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;

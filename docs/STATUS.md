@@ -276,7 +276,7 @@ Existing representation limits remain: enums containing Never and static scalar-
 
 ## 4. LLVM Generation Coverage
 
-Nongeneric, unambiguous source Function Items (P26, 2026-10-04) have distinct declaration identities and zero-sized Copy storage. Local/aggregate/Option/Array storage, captures, borrowed receivers, scalar and aggregate calls, direct per-call shared inputs, stored-value erasure and allocation-free warm binding/analysis/emission are covered by `FunctionItemTest`; generic/requirement reference selection, unbound method references and dependent result signatures remain unfinished.
+Nongeneric, unambiguous source Function Items (P26, 2026-10-04) have distinct declaration identities and zero-sized Copy storage. Local/aggregate/Option/Array storage, captures, borrowed receivers, scalar and aggregate calls, direct per-call shared inputs, stored-value erasure and allocation-free warm binding/analysis/emission are covered by `FunctionItemTest`. `FunctionItemCallableTest` covers generic Shared/Exclusive/Consuming Callable contracts, declaration temporaries borrowed for shared parameters, forwarding and distinct monomorphized instances; generic/requirement reference selection, unbound method references and dependent result signatures remain unfinished.
 
 **Program 19:** explicit associated identities normalize after each container
 substitution, including nested conditional conformances. Universally verified

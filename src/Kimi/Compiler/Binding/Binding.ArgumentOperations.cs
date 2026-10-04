@@ -888,6 +888,8 @@ public sealed partial class Binding
             // SPEC 13.5.5.2: an explicit borrow of a slot storing a pair application borrows that slot like a stored value.
             var exclusive = target == SemanticsKind.Uniq;
             var unwrapped = KotoHelper.UnwrapParentheses(source);
+            // A declaration reference constructs an Item value; its identifier does not designate a stored Place.
+            var itemValue = actual.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function;
             if (this.BorrowablePlace(source, scope, exclusive))
             {
                 // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
@@ -902,10 +904,10 @@ public sealed partial class Binding
             }
             else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
                 (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)) || // SPEC 4.6.9: a published element Place is never a temporary.
-                (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
+                (!((source.BoundSymbol is null || itemValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-                unwrapped is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
+                (unwrapped is not IdentifierNameKoto || itemValue) && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
                 !(target == SemanticsKind.Ref && IsUnfittedLiteral(source))))
             {
                 return false;
