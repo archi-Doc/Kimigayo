@@ -64,10 +64,41 @@ public class MemberFunctionReferenceTest
         }
     }
 
-    [Fact]
-    public void MembersOfGenericContainersRemainUnsupported()
+    private const string Box = "struct Box<T>\n    var item: T\n\n    public init(item: T)\n        self.item = item@move\n\n" +
+        "    public func get(self) -> ref/T during self => self.item@ref\n    public func size(self) -> i32 => 1\n" +
+        "    public func pair<U>(self, other: U) -> (i32, U) => (self.size(), other@move)\n    public func make(item: T) -> Box<T> => Box<T>.init(item@move)\n";
+
+    // SPEC 7.3, 10.5: a member of a generic container is referenced through a Type that binds the container's slots; the
+    // Item keeps that declaring Type with its own bound arguments, and enters the instance of both.
+    [Theory]
+    [InlineData("Item", "let box = Box<i32>.init(item: 5)\nlet size = Box<i32>.size\nrequire size(box@ref) == 1 else => $abort(\"size\")")]
+    [InlineData("Erased", "let box = Box<i32>.init(item: 5)\nlet erased: (ref/Box<i32>) -> i32 = Box<i32>.size\nrequire erased(box@ref) == 1 else => $abort(\"erased\")")]
+    [InlineData("OwnArguments", "let box = Box<i32>.init(item: 5)\nlet pair = Box<i32>.pair<bool>\nlet p = pair(box@ref, true)\nrequire p.0 == 1 and p.1 else => $abort(\"pair\")")]
+    [InlineData("Static", "let make = Box<string>.make\nlet made = make(\"text\")\nrequire made.size() == 1 else => $abort(\"static\")")]
+    [InlineData("GenericBody", "func wrap<V>(value: V) -> Box<V>\n    let make = Box<V>.make\n    return make(value@move)\nlet w = wrap(3)\nrequire w.size() == 1 else => $abort(\"body\")")]
+    public void GenericContainerMembersKeepTheirDeclaringType(string name, string body)
     {
-        var c = MinimalEmissionTest.Analyze("struct Box<T>\n    var item: T\n\n    public func get(self) -> ref/T during self => self.item@ref\nlet g = Box<i32>.get");
+        var source = Box + body;
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.EmitFixture("MemberReferenceContainer" + name, source, string.Empty);
+    }
+
+    [Fact]
+    public void AContainerMemberItemRecordsItsDeclaringType()
+    {
+        var c = MinimalEmissionTest.Analyze(Box + "let pair = Box<i32>.pair<bool>");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.BoundType?.Kind == BoundTypeKind.FunctionItem).BoundType!;
+        Assert.Equal(2, item.Components.Count);
+        Assert.Same(BoundType.Boolean, item.Components[0]);
+        Assert.Equal("Box", item.Components[1].Name);
+    }
+
+    [Fact]
+    public void AnItemCallWithAnInputDependentResultRemainsUnsupported()
+    {
+        var c = MinimalEmissionTest.Analyze(Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
     }

@@ -68,7 +68,8 @@ public sealed partial class Binding
         }
 
         var created = new BoundCall();
-        created.Set(type.Symbol, boundResult, null, [], (BoundType[])type.Components);
+        var own = ((BoundType[])type.Components).AsSpan(0, function.GenericArguments.Count);
+        created.Set(type.Symbol, boundResult, null, [], own, declaringType: ItemDeclaringType(type, function));
         this.functionItemContexts.Add((type, created));
         return created;
     }
@@ -79,18 +80,54 @@ public sealed partial class Binding
     private static bool IsWaitingCallable(Koto node)
         => KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true, BoundType: null } || IsWaitingFunctionReference(node);
 
-    private static bool IndependentFunctionItem(BindingSymbol symbol, bool unbound)
-        => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, TypeConstraints.Count: 0, IsDestructor: false } &&
-            (symbol.ReceiverIndex < 0 || unbound) && symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 } &&
+    private static bool IndependentFunctionItem(BindingSymbol symbol, bool unbound, BoundType? declaringType)
+        => symbol.Next is null && symbol.Declaration is FunctionKoto { GenericArguments.Count: 0, IsDestructor: false } function &&
+            (function.TypeConstraints.Count == 0 || ContainerBound(symbol, declaringType)) &&
+            (symbol.ReceiverIndex < 0 || unbound) && symbol.Scope.Owner.BoundSymbol?.Schema is not { Origins.Count: > 0 } &&
+            (symbol.Scope.Owner.BoundSymbol?.Schema is not { GenericSlots.Count: > 0 } || ContainerBound(symbol, declaringType)) &&
             symbol.Intrinsic == IntrinsicKind.None;
+
+    // SPEC 7.3, 10.5: a member of a generic container is referenced through a Type that binds the container's slots.
+    private static bool ContainerBound(BindingSymbol symbol, BoundType? declaringType)
+        => declaringType is not null && ReferenceEquals(declaringType.Symbol, symbol.Scope.Owner.BoundSymbol);
+
+    // The declaring Type of a member of a generic container follows the bound function arguments as the last Component.
+    private static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
+        => item.Components.Count > function.GenericArguments.Count ? item.Components[^1] : null;
 
     // The referenced Name, inside parentheses and an explicit Type-argument list.
     private static Koto ReferenceName(Koto use)
         => KotoHelper.UnwrapParentheses(use) is GenericsKoto { Identifier: { } name } ? name : KotoHelper.UnwrapParentheses(use);
 
-    // The bound arguments of a generic Item are its Components, in declaration-slot order; per-call Origins stay in place.
+    // The bound arguments of a generic Item are its Components, in declaration-slot order, followed by the declaring Type of
+    // a member of a generic container; per-call Origins stay in place.
     private BoundType? ItemType(BoundType type, BoundType item, FunctionKoto function)
-        => item.Components.Count == 0 ? type : this.SubstituteType(type, function, (BoundType[])item.Components);
+    {
+        if (item.Components.Count == 0)
+        {
+            return type;
+        }
+
+        if (ItemDeclaringType(item, function) is { } declaring)
+        {
+            if (this.MemberType(type, declaring) is not { } member)
+            {
+                return null;
+            }
+
+            type = member;
+        }
+
+        return function.GenericArguments.Count == 0 ? type : this.SubstituteType(type, function, ((BoundType[])item.Components).AsSpan(0, function.GenericArguments.Count));
+    }
+
+    // The Type through which a member reference names its container, when member lookup established it.
+    private BoundType? ReferenceDeclaringType(Koto use)
+        => ReferenceName(use) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.DeclaringType : null;
+
+    // The declaring Type that binds the slots of a generic container whose member is referenced.
+    private BoundType? ReferenceContainer(Koto use, BindingSymbol candidate)
+        => this.ReferenceDeclaringType(use) is { } declaring && candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && ContainerBound(candidate, declaring) ? declaring : null;
 
     // A fixed Function or Callable signature can select a function reference after the outer candidate is determined.
     private bool TakesCallableContext(BindingSymbol? group)
@@ -133,24 +170,25 @@ public sealed partial class Binding
         }
 
         var unbound = this.UnboundMemberReference(use);
-        if (!IndependentFunctionItem(symbol, unbound))
+        var declaring = this.ReferenceDeclaringType(use);
+        if (!IndependentFunctionItem(symbol, unbound, declaring))
         {
-            return this.FailUnfixedReference(use, symbol, unbound);
+            return this.FailUnfixedReference(use, symbol, unbound, declaring);
         }
 
-        return this.CompleteFunctionItem(use, symbol);
+        return this.CompleteFunctionItem(use, symbol, default, this.ReferenceContainer(use, symbol));
     }
 
     // SPEC 10.5: without a fixed expected call signature, a reference is a value only when one candidate remains and that
     // candidate has no unbound own slots. Forms whose references are not yet selected stay explicitly unsupported.
-    private BoundType? FailUnfixedReference(Koto use, BindingSymbol symbol, bool unbound)
+    private BoundType? FailUnfixedReference(Koto use, BindingSymbol symbol, bool unbound, BoundType? declaring)
     {
         var count = 0;
         for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound) || function.IsDestructor ||
-                candidate.Intrinsic != IntrinsicKind.None || (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0))
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound, declaring) || function.IsDestructor ||
+                candidate.Intrinsic != IntrinsicKind.None || (function.GenericArguments.Count == 0 && function.TypeConstraints.Count != 0 && !ContainerBound(candidate, declaring)))
             {
                 return this.Fail(use, BindingFailure.Unsupported, true);
             }
@@ -180,6 +218,7 @@ public sealed partial class Binding
     private BoundType? BindExplicitFunctionItem(Koto use, GenericsKoto explicitReference, BindingSymbol symbol, BindingScope scope)
     {
         var unbound = this.UnboundMemberReference(use);
+        var declaring = this.ReferenceDeclaringType(use);
         var count = explicitReference.TypeArguments.Count;
         BindingSymbol? selected = null;
         var candidates = 0;
@@ -191,7 +230,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (UnsupportedReference(candidate, function, unbound))
+            if (UnsupportedReference(candidate, function, unbound, declaring))
             {
                 return this.Fail(use, BindingFailure.Unsupported, true);
             }
@@ -219,14 +258,15 @@ public sealed partial class Binding
                 return null;
             }
 
-            var proof = this.ReferenceArgumentProof(target, arguments, scope);
+            var container = this.ReferenceContainer(use, selected);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(use, proof, this.capabilityMode);
                 return null;
             }
 
-            return this.CompleteFunctionItem(use, selected, arguments.AsSpan(0, count));
+            return this.CompleteFunctionItem(use, selected, arguments.AsSpan(0, count), container);
         }
         finally
         {
@@ -248,9 +288,9 @@ public sealed partial class Binding
         return true;
     }
 
-    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default)
+    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null)
     {
-        var type = this.FunctionItemType(symbol, typeArguments);
+        var type = this.FunctionItemType(symbol, typeArguments, declaringType);
         while (use is ParenthesizedKoto parentheses)
         {
             use.BoundSymbol = symbol;
@@ -276,14 +316,15 @@ public sealed partial class Binding
         return type;
     }
 
-    private BoundType FunctionItemType(BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments)
+    private BoundType FunctionItemType(BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments, BoundType? declaringType = null)
     {
-        if (typeArguments.IsEmpty)
+        if (typeArguments.IsEmpty && declaringType is null)
         {
             return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
         }
 
-        var components = this.RentTypes(typeArguments.Length);
+        var count = typeArguments.Length + (declaringType is null ? 0 : 1);
+        var components = this.RentTypes(count);
         try
         {
             for (var i = 0; i < typeArguments.Length; i++)
@@ -291,7 +332,12 @@ public sealed partial class Binding
                 components[i] = typeArguments[i]!;
             }
 
-            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, components.AsSpan(0, typeArguments.Length));
+            if (declaringType is not null)
+            {
+                components[count - 1] = declaringType;
+            }
+
+            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, components.AsSpan(0, count));
         }
         finally
         {
