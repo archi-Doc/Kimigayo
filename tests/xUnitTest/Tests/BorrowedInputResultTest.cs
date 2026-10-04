@@ -15,8 +15,10 @@ public class BorrowedInputResultTest
     private const string Exclusive = "struct E {a}\n    public var view: uniq/i32 during a\n\n    public init(view: uniq/i32 during a) => self.view = view\n\n" +
         "    public func take(self: uniq/Self) -> uniq/i32 during self => self.view\n    public func peek(self: ref/Self) -> ref/i32 during self => self.view@follow@ref\n";
 
-    private const string Named = "struct E {a}\n    public let view: uniq/i32 during a\n\n    public init(view: uniq/i32 during a) => self.view = view\n\n" +
-        "    public func get(self: ref/Self) -> ref/i32 during self.a => self.view@follow@ref\n";
+    // SPEC 15.6.3: a Copy of a stored shared reference keeps only that reference's Origin, so `during self.a` is its contract; a
+    // shared Reborrow through a stored exclusive reference would instead be bounded by `self`.
+    private const string Named = "struct E {a}\n    public let view: ref/i32 during a\n\n    public init(view: ref/i32 during a) => self.view = view\n\n" +
+        "    public func get(self: ref/Self) -> ref/i32 during self.a => self.view\n";
 
     private const string Free = "func get(h: ref/H) -> ref/i32 during h => h.item\n";
 
@@ -41,7 +43,7 @@ public class BorrowedInputResultTest
     [InlineData("Free", Holder + Free + "let n = 7\nlet h = H.init(item: n@ref)\nlet r = get(h@ref)\nrequire r == 7 else => $abort(\"read\")")]
     [InlineData("Exclusive", Exclusive + "var n = 7\nvar e = E.init(view: n@uniq)\nlet r = e.take()\nr@follow = 1\nn = n + 1\nrequire n == 2 else => $abort(\"write\")")]
     [InlineData("Follow", Exclusive + "var n = 7\nlet e = E.init(view: n@uniq)\nlet r = e.peek()\nrequire r == 7 else => $abort(\"read\")\nn = 9\nrequire n == 9 else => $abort(\"write\")")]
-    [InlineData("NamedSlot", Named + "var n = 7\nlet e = E.init(view: n@uniq)\nlet r = e.get()\nrequire r == 7 else => $abort(\"read\")\nn = 9\nrequire n == 9 else => $abort(\"write\")")]
+    [InlineData("NamedSlot", Named + "var n = 7\nlet e = E.init(view: n@ref)\nlet r = e.get()\nrequire r == 7 else => $abort(\"read\")\nn = 9\nrequire n == 9 else => $abort(\"write\")")]
     public void ResultsMayEndBeforeTheInputsLoansAreReleased(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

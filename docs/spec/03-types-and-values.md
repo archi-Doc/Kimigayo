@@ -201,7 +201,7 @@ The initial common Function Type requires an `Owned` environment, exposes only S
 
 Task-slot presence is part of Function Type identity: `(task; T) -> U` and `(T) -> U` are different Types, and Function Types and callable values that differ in it never convert to each other, including by conversion to a common Function Type ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)).
 
-Function Type Origin elision follows §15.4. Direct borrowed inputs bind their Origins per call, and results may depend on those Origins independently of the owned environment's lifetime. Already bound nested dependencies stay fixed.
+Function Type Origin elision follows §15.4. A direct borrowed input whose Origin is omitted binds it per call, and results may depend on those Origins independently of the owned environment's lifetime. A direct input whose Origin is written names an existing Origin (§15.3.4) and is fixed to it; an implementation whose corresponding input is bound per call fits it by instantiating that call-time Origin (§10.7). Already bound nested dependencies stay fixed.
 
 ```text
 Function Item or concrete Closure

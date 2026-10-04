@@ -65,7 +65,7 @@
         "name": { "type": "string" },
         "kind": { "enum": ["Number", "Enumeration", "Boolean", "Text", "Requirement", "Origin"] },
         "value": { "type": "string" },
-        "origin": { "enum": ["expression", "borrow", "omitted"], "description": "The kind of an Origin display (SPEC 23.3.6.5); present exactly when kind is Origin, whose value is the display's bounded string." },
+        "origin": { "enum": ["expression", "borrow", "omitted", "closure"], "description": "The kind of an Origin display (SPEC 23.3.6.5); present exactly when kind is Origin, whose value is the display's bounded string." },
         "elided": { "type": "boolean" }
       },
       "if": { "properties": { "kind": { "const": "Origin" } } },
