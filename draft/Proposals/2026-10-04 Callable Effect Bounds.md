@@ -34,7 +34,7 @@ func applyLogged<F>(transform: ref/F, value: i32) -> i32
    - A Contract implementation that calls a generic callback cannot satisfy `confined` or `preserves results`, because unknown effects count as conflicts (SPEC §8.4.5).
 2. **An API cannot require a callback property.** Instantiation adds no semantic use conditions (SPEC §8.10), so a requirement such as "the callback must be `confined`" would have to be part of the declared Constraint, and no Constraint can state it today.
    - Stage 3 of `2026-10-04 Async Tasks.md` needs exactly this. `Async.offload` must reject children that obtain authority from the environment, such as direct access to mutable statics or foreign calls.
-   - A static borrow that a child receives through a capture is authority from an input (SPEC §8.4.10.2). Rule 2 of that proposal rejects it instead, as a static Loan held across the task call.
+   - A borrow of mutable static storage that a child receives through a capture is authority from an input (SPEC §8.4.10.2). Rule 2 of that proposal rejects it instead, as a potentially affected static Loan of an argument of the task call.
 
 ## 3. Changes
 
@@ -120,7 +120,7 @@ _ = applyLogged(counted@ref, 1)             // Error: counted writes the mutable
 
 Without `effect confined`, the call `transform(value)` in `applyLogged` would conflict with `view`.
 
-**Task calls.** A bound never exempts a task call: rule 2 of `2026-10-04 Async Tasks.md` compares a task call as having unknown environment effects whatever its bounds. This note enters the specification with that proposal's Chapter 24 and cites its rule 2.
+**Task calls.** A bound never exempts a task call: rule 2 of `2026-10-04 Async Tasks.md` compares a task call as having unknown environment effects against every potentially affected static Loan, whatever its bounds. This note enters the specification with that proposal's Chapter 24 and cites its rule 2.
 
 ### 3.5. Publication and compatibility (SPEC §18.7)
 
