@@ -192,6 +192,13 @@ public sealed partial class Binding
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
+        if (context.Expected?.Kind == BoundTypeKind.Function)
+        {
+            // SPEC 10.2: a common-Type search compares each source's own Type; it cannot supply the fixed
+            // Function expectation that enables erasure. The ordinary source pass collects those Types below.
+            context.Expected = null;
+        }
+
         if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
         {
             // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal read Type of the reference sources,
@@ -259,6 +266,13 @@ public sealed partial class Binding
                 return this.BindType(conversion.Right, conversionScope);
             case IdentifierNameKoto name:
                 var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
+                if (symbol?.Kind == BindingSymbolKind.Function)
+                {
+                    // A declaration's Type is its return contract, not the Type of a reference to that declaration.
+                    // Bind the Item in the ordinary source pass; result inference must not invent an erasure signature.
+                    return null;
+                }
+
                 if (symbol?.Type is { } type)
                 {
                     return type;

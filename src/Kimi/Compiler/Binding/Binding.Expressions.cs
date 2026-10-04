@@ -121,30 +121,8 @@ public sealed partial class Binding
         return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
     }
 
-    // SPEC 7.7 acquisition positions currently supported by function-item Binding: a declaration
-    // initializer, an assignment source, a call argument, a transferred result, an expression body
-    // and an array or tuple literal element. Wider selection shapes remain G10/I18.
-    private static bool IsAcquisitionPosition(Koto node)
-    {
-        if (!TryNameRoot(node, out var target))
-        {
-            return false;
-        }
-
-        return target.Parent switch
-        {
-            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
-            JumpKoto jump => ReferenceEquals(jump.Expression, target),
-            FunctionKoto body => ReferenceEquals(body.ExpressionBody, target),
-            ArrayLiteralKoto or TupleLiteralKoto => true,
-            InvocationKoto invocation => !ReferenceEquals(invocation.Method, target),
-            BinaryKoto binary => !ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals,
-            _ => false,
-        };
-    }
-
-    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, unlike the
-    // function-item positions above. Arguments, assignment sources and results take their expected Type from the
+    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
+    // Arguments, assignment sources and results take their expected Type from the
     // declaration and adapt there instead.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
@@ -417,7 +395,7 @@ public sealed partial class Binding
         }
 
         if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
-            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsValueUse(node))
         {
             return this.BindFunctionReference(node, symbol, expected, scope);
         }
