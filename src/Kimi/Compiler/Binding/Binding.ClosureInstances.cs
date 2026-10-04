@@ -38,6 +38,11 @@ public sealed partial class Binding
             if (type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { RequiresInstantiation: true, BoundClosure: { } closure } function)
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
+                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, call.Target.Declaration))
+                {
+                    enclosing = enclosing.BoundSymbol?.Scope.Function;
+                }
+
                 if (enclosing is not null && ReferenceEquals(enclosing, call.Target.Declaration))
                 {
                     var result = this.InstantiateStorageType(closure.Signature.Components[1], call);
